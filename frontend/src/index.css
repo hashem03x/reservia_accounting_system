@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .flex-center {
+    @apply flex items-center justify-center;
+  }
+  /* For the grand parent elements of the home layout pages and (MOBILE admin layout pages) */
+  .root-flex-1 {
+    @apply flex-1;
+  }
+  .product-details-box {
+    @apply flex flex-col gap-3 rounded-xl bg-white p-4 shadow sm:p-6;
+  }
+}
+
+@layer base {
+  * {
+    @apply font-tajawal !important;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-bold text-gray-800;
+  }
+  h1 {
+    @apply text-2xl sm:text-3xl;
+  }
+  h2 {
+    @apply text-xl sm:text-2xl;
+  }
+  h3 {
+    @apply text-lg sm:text-xl;
+  }
+  p {
+    @apply text-xs text-gray-600 sm:text-sm lg:text-base;
+  }
+}
+
+/* --------------- Animations ---------------  */
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes runTruck {
+  0% {
+    transform: translateX(-10px);
+  }
+  50% {
+    transform: translateX(10px);
+  }
+
+  100% {
+    transform: translateX(-10px);
+  }
+}
+
+@keyframes shakeTruck {
+  0% {
+    transform: translateX(0) rotate(0deg);
+  }
+  5% {
+    transform: translateX(-2px) rotate(-1.5deg);
+  }
+  10% {
+    transform: translateX(2px) rotate(1.5deg);
+  }
+  15% {
+    transform: translateX(-2px) rotate(-1deg);
+  }
+  20% {
+    transform: translateX(2px) rotate(1deg);
+  }
+  25% {
+    transform: translateX(0) rotate(0deg);
+  }
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+}
+
+.running-truck {
+  animation: runTruck 7.5s ease-in-out infinite;
+}
+
+.shake-truck {
+  animation: shakeTruck 7.5s 5s ease-in-out infinite;
+}
+
+/* --------------- Hide scrollbar --------------- */
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}

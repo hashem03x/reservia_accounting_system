@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  node-app:
+    image: reversia/accounting-backend
+    container_name: reversia-accounting-backend
+    build: .
+    # volumes:
+    #     - ./server:/usr/src/app:ro
+    ports:
+      - '4000:4000'

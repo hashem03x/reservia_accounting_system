@@ -1,0 +1,11 @@
+Pixel Files
+
+- index.html
+- src\App.tsx
+- src\types\global.d.ts
+- src\utils\helpers\facebook-pixel.ts
+- src\components\global\facebook-pixel\index.ts
+- src\pages\public\products\[id]\components\cart-button.tsx
+ src\pages\inner\confirm-order\index.tsx
+- src\pages\inner\payment-status\index.tsx
+- src\pages\inner\checkout\index.tsx
