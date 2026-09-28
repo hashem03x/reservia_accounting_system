@@ -10,9 +10,6 @@ config.env
 .env.local
 z_test
 # uploads/**/*.*
-*.png
-*.jpg
-*.avif
 # *.webp
 uploads/import/*.csv
 config copy.env
