@@ -33,7 +33,7 @@
   "dependencies": {
     "archiver": "^7.0.1",
     "bcryptjs": "^2.4.3",
-    "canvas": "^2.11.2",
+    "canvas": "^3.2.3",
     "cloudinary": "^1.41.3",
     "color": "^4.2.3",
     "colors": "^1.4.0",
