@@ -135,6 +135,9 @@ export const outlineIcons = {
   Box: FiBox,
   Circle: FaRegCircle,
   ShieldCheck: GoShieldCheck,
+  Projects: FaBuilding,
+  Accounts: IoDocumentText,
+  JournalEntries: FaReceipt,
 };
 
 export const solidIcons = {

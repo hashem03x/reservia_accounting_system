@@ -9,8 +9,7 @@ config.env
 .env
 .env.local
 z_test
-# uploads/**/*.*
+
 # *.webp
 uploads/import/*.csv
 config copy.env
-login.txt

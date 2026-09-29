@@ -45,7 +45,10 @@ export type Resource =
   | "users"
   | "fixedAssets"
   | "analytics"
-  | "databaseExport";
+  | "databaseExport"
+  | "projects"
+  | "accounts"
+  | "journalEntries";
 
 export type Action = "create" | "read" | "update" | "delete";
 

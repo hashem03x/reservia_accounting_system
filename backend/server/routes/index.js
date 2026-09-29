@@ -21,6 +21,9 @@ const warehouseRouter = require('./inventory/warehouseRoute');
 const transferRoute = require('./inventory/transferRoute');
 const variantCodeRoute = require('./inventory/variantCodeRoute');
 const fixedAssetRoute = require('./fixedAssetRoute');
+const projectRoute = require('./project/projectRoute');
+const chartOfAccountRoute = require('./accounting/chartOfAccountRoute');
+const journalEntryRoute = require('./accounting/journalEntryRoute');
 
 const bahrianDatabaseHealthRoute = require('./databaseHealth');
 const databaseExportRoute = require('./databaseExportRoute');
@@ -53,6 +56,11 @@ const mountRoutes = app => {
 
   // fixed assets route
   app.use('/api/v1/fixed-assets', fixedAssetRoute);
+
+  // accounting foundation: projects, chart of accounts, journal entries
+  app.use('/api/v1/projects', projectRoute);
+  app.use('/api/v1/accounts', chartOfAccountRoute);
+  app.use('/api/v1/journal-entries', journalEntryRoute);
 
   // transfer route
   app.use('/api/v1/transfer', transferRoute);

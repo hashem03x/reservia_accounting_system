@@ -108,6 +108,21 @@ export default function AllAdminOptions({ closeDrawer }: { closeDrawer?: () => v
       label: translations.pages.fixedAssets,
       Icon: outlineIcons.FixedAssets,
     },
+    {
+      to: `/${paths.admin}/${paths.projects}`,
+      label: translations.pages.projects,
+      Icon: outlineIcons.Projects,
+    },
+    {
+      to: `/${paths.admin}/${paths.accounts}`,
+      label: translations.pages.accounts,
+      Icon: outlineIcons.Accounts,
+    },
+    {
+      to: `/${paths.admin}/${paths.journalEntries}`,
+      label: translations.pages.journalEntries,
+      Icon: outlineIcons.JournalEntries,
+    },
   ];
 
   return (

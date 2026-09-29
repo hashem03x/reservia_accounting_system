@@ -20,6 +20,27 @@ Vendor
    ├─ ref'd by PurchaseOrder.vendor
    └─ ref'd by Payment.vendorId
 
+Project (Phase 2 - see entities/projects.md)
+   │  ──remainingMoney (derived from Payment.projectId, currently always = projectAmount since
+   │                     no payment-collection UI sets projectId yet)
+   │  ──contract (single subdocument, own PDF upload)
+   │
+   ├─ ref'd by JournalEntry.project (automatic entry posted on creation - see entities/accounting.md)
+   └─ ref'd by Payment.projectId (optional, not yet used by any UI flow)
+
+ChartOfAccount (Phase 2 - see entities/accounting.md)
+   │  ──parentAccount (self-ref: account hierarchy AND "Sub Account" for journal lines)
+   │
+   ├─ ref'd by JournalEntry.lines[].account / .subAccount
+   └─ ref'd by FixedAsset.assetAccountId (optional, Phase 2 addition)
+
+JournalEntry (Phase 2 - see entities/accounting.md)
+   │  ──lines[] (embedded, debit XOR credit per line, enforced balance before posting)
+   │  ──sourceType + sourceId (partial-unique - idempotent automatic entries)
+   │
+   └─ source of truth for the General Ledger (services/accounting/generalLedgerService.js
+      derives balances from posted lines at read time - no separate balance store)
+
 Product (type: 'product' | 'service')
    │
    ├─ type: 'product' → variants[] (ref Variant, the ONLY place real stock lives)

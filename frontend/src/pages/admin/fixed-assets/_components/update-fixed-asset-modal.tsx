@@ -1,12 +1,14 @@
 import { useLanguage } from "@/context/LanguageContext";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
-import { Button, NumberInput, TextInput } from "@mantine/core";
+import { Button, NumberInput, Select, Textarea, TextInput } from "@mantine/core";
 import { useState } from "react";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
-import { FixedAsset } from "@/types/fixed-asset";
+import { FixedAsset, FixedAssetStatus } from "@/types/fixed-asset";
 import { PaginatedData } from "@/types/global";
+
+const statusOptions: FixedAssetStatus[] = ["active", "disposed", "under_maintenance"];
 
 export default function UpdateFixedAssetModal({
   opened,
@@ -23,6 +25,8 @@ export default function UpdateFixedAssetModal({
 
   const [name, setName] = useState(asset.name);
   const [fairValue, setFairValue] = useState<string | number>(asset.fairValue);
+  const [status, setStatus] = useState<string>(asset.status || "active");
+  const [notes, setNotes] = useState(asset.notes || "");
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
@@ -37,6 +41,8 @@ export default function UpdateFixedAssetModal({
         data: {
           name,
           fairValue,
+          status,
+          notes,
         },
       });
 
@@ -58,6 +64,8 @@ export default function UpdateFixedAssetModal({
     setTimeout(() => {
       setName(asset.name);
       setFairValue(asset.fairValue);
+      setStatus(asset.status || "active");
+      setNotes(asset.notes || "");
       setError("");
     }, 250);
   }
@@ -88,6 +96,17 @@ export default function UpdateFixedAssetModal({
           min={0}
           required
         />
+
+        {/* Status */}
+        <Select
+          label={translate("Status", "الحالة")}
+          value={status}
+          onChange={(value) => setStatus(value || "active")}
+          data={statusOptions.map((s) => ({ value: s, label: s }))}
+        />
+
+        {/* Notes */}
+        <Textarea label={translate("Notes", "ملاحظات")} value={notes} onChange={(e) => setNotes(e.target.value)} autosize minRows={2} />
 
         {/* Submit Button */}
         <Button type="submit" loading={loading} mt="md">

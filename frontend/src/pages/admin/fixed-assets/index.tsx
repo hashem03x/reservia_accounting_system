@@ -123,6 +123,8 @@ export default function FixedAssets() {
                   <Table.Th>{translate("Book Value", "القيمة الدفترية")}</Table.Th>
                   <Table.Th>{translate("Fair Value", "القيمة العادلة")}</Table.Th>
                   <Table.Th>{translate("Loss Value", "قيمة الخسارة")}</Table.Th>
+                  <Table.Th>{translate("Asset Account", "حساب الأصل")}</Table.Th>
+                  <Table.Th>{translate("Status", "الحالة")}</Table.Th>
                   <Table.Th>{translate("Warehouse", "المستودع")}</Table.Th>
                   <Table.Th>{translate("Created At", "تاريخ الإنشاء")}</Table.Th>
                   <Table.Th>{translate("Updated At", "تاريخ التحديث")}</Table.Th>
@@ -137,6 +139,8 @@ export default function FixedAssets() {
                     <Table.Td>{asset.fairValue}</Table.Td>
                     {/* <Table.Td>{asset.bookValue - asset.fairValue}</Table.Td> use tofixed(2) */}
                     <Table.Td>{(asset.bookValue - asset.fairValue) > 0 ? (asset.bookValue - asset.fairValue).toFixed(2) : 0} </Table.Td>
+                    <Table.Td>{asset.assetAccountId ? `${asset.assetAccountId.code} - ${asset.assetAccountId.name}` : "-"}</Table.Td>
+                    <Table.Td>{asset.status || "-"}</Table.Td>
                     <Table.Td>{asset.warehouseId.name}</Table.Td>
                     <Table.Td>{formatDateAndTime(asset.createdAt, language)}</Table.Td>
                     <Table.Td>{formatDateAndTime(asset.updatedAt, language)}</Table.Td>

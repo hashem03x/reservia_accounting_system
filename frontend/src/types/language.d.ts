@@ -40,6 +40,9 @@ export interface LanguageContextProps {
       users: string;
       fixedAssets: string;
       analytics: string;
+      projects: string;
+      accounts: string;
+      journalEntries: string;
     };
   };
 }

@@ -79,16 +79,50 @@ Implemented in this pass:
   Cloudinary `resource_type: 'raw'` storage, one small shared controller
   (`controller/documentController.js`) used by both Customer and Vendor routes.
 
+## Phase 2 - Accounting foundation (Projects / Chart of Accounts / Fixed Assets / Journal Entries)
+
+Implemented in this pass - full detail in [`entities/accounting.md`](entities/accounting.md) and
+[`entities/projects.md`](entities/projects.md):
+
+- **Chart of Accounts** (`ChartOfAccount`): real accounting hierarchy (`code`, `name`, `type`,
+  self-referencing `parentAccount` for both account groups and "Sub Account under a General
+  Account"), replacing the ad-hoc `Vendor.type: 'current'|'equity'` stand-in the report controllers
+  used to lean on. A minimal starter set is seeded via `npm run db:seed-accounts`
+  (additive/idempotent, safe against a non-empty/live database).
+- **Journal Entries** (`JournalEntry`): double-entry engine - header + embedded lines, enforced
+  debit=credit balance before posting (model-level, not just controller-level), draft/posted/
+  reversed lifecycle, reversal-not-edit for posted entries, and a partial unique index on
+  `(sourceType, sourceId)` that makes system-generated entries idempotent.
+- **General Ledger**: `services/accounting/generalLedgerService.js` derives account
+  balances/trial-balance directly from posted journal lines at read time - no second, independently
+  maintained balance structure.
+- **Projects** (`Project`): `projectNumber` (user-supplied, unique, effectively immutable),
+  `projectAmount`, derived `remainingMoney`, `executor` (ref `User`), single-slot `contract`
+  attachment (reusing the Phase 1 PDF upload pipeline). Creating a project **automatically posts** a
+  journal entry (Dr Accounts Receivable / Cr Unearned Revenue) in the same database transaction as
+  the Project document - confirmed accounting policy, not inferred (see `entities/accounting.md`).
+- **Fixed Assets** (`FixedAsset`, pre-existing model): extended additively with `price`,
+  `assetAccountId` (ref `ChartOfAccount`), `acquisitionDate`, `status`, `notes` - all optional at
+  the schema level so existing documents stay valid. Optionally posts a journal entry on creation,
+  only when both the asset and source-of-funds accounts are explicitly supplied (never invented).
+- **Known local-dev limitation**: the transaction-dependent tests (Project creation atomicity,
+  automatic-entry idempotency) skip themselves on a local, non-replica-set MongoDB rather than
+  failing - see `entities/accounting.md`'s last section. Works against the real Atlas cluster.
+
 ## Future phases (placeholders - do not assume this list is final or start early)
 
 ```text
-Phase 2  Orders and order lifecycle
-Phase 3  Purchasing / vendor transactions
-Phase 4  Inventory
-Phase 5  Payments / expenses / financial transactions
-Phase 6  Reports and accounting calculations
-Phase 7  Advanced accounting modules
-Phase 8  Final validation / production hardening
+Phase 3  Orders and order lifecycle
+Phase 4  Purchasing / vendor transactions
+Phase 5  Inventory
+Phase 6  Payments / expenses / financial transactions
+Phase 7  Reports wired to the new General Ledger (balanceSheetController.js/
+         incomeStatementController.js/financialStatementController.js still compute from raw
+         PurchaseOrder/SalesOrder/Expense/Payment queries, NOT from JournalEntry - deliberately
+         left alone in Phase 2, see entities/accounting.md)
+Phase 8  Advanced accounting modules (depreciation, asset disposal/revaluation, revenue
+         recognition over time for unearned revenue)
+Phase 9  Final validation / production hardening
 ```
 
 A concrete, currently-unresolved question for whichever phase touches Orders: **a service cannot

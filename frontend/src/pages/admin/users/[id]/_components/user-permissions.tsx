@@ -158,4 +158,7 @@ const allPossiblePermissions: Record<Resource, Action[]> = {
   users: ["create", "read", "update"],
   fixedAssets: ["create", "read", "update"],
   databaseExport: ["read"],
+  projects: ["create", "read", "update", "delete"],
+  accounts: ["create", "read", "update", "delete"],
+  journalEntries: ["create", "read", "update"],
 };

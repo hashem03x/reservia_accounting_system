@@ -75,6 +75,11 @@ import AP_FixedAssetsReport from "@/pages/admin/reports/fixed-assets";
 import AP_BalanceSheetReport from "@/pages/admin/reports/balance-sheet";
 import AP_Analytics from "@/pages/admin/analytics";
 import VariantTransactions from "@/pages/admin/variants/transactions";
+import AP_Projects from "@/pages/admin/projects";
+import AP_Project from "@/pages/admin/projects/[id]";
+import AP_Accounts from "@/pages/admin/accounts";
+import AP_JournalEntries from "@/pages/admin/journal-entries";
+import AP_JournalEntry from "@/pages/admin/journal-entries/[id]";
 
 export default function App() {
   return (
@@ -203,6 +208,17 @@ export default function App() {
                   </Route>
                   <Route element={<ResourceGuard resource={resources.analytics} action={actions.read} />}>
                     <Route path={paths.analytics} element={<AP_Analytics />} />
+                  </Route>
+                  <Route element={<ResourceGuard resource={resources.projects} action={actions.read} />}>
+                    <Route path={paths.projects} element={<AP_Projects />} />
+                    <Route path={paths.projects + "/:id"} element={<AP_Project />} />
+                  </Route>
+                  <Route element={<ResourceGuard resource={resources.accounts} action={actions.read} />}>
+                    <Route path={paths.accounts} element={<AP_Accounts />} />
+                  </Route>
+                  <Route element={<ResourceGuard resource={resources.journalEntries} action={actions.read} />}>
+                    <Route path={paths.journalEntries} element={<AP_JournalEntries />} />
+                    <Route path={paths.journalEntries + "/:id"} element={<AP_JournalEntry />} />
                   </Route>
                 </Route>
 

@@ -149,6 +149,27 @@ const resources: LocalizedEntity<Resource> = {
       ar: "تصدير قاعدة البيانات",
     },
   },
+  projects: {
+    value: "projects",
+    label: {
+      en: "Projects",
+      ar: "المشاريع",
+    },
+  },
+  accounts: {
+    value: "accounts",
+    label: {
+      en: "Chart of Accounts",
+      ar: "دليل الحسابات",
+    },
+  },
+  journalEntries: {
+    value: "journalEntries",
+    label: {
+      en: "Journal Entries",
+      ar: "القيود اليومية",
+    },
+  },
 };
 
 export default resources;

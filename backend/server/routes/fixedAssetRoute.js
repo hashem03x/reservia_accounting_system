@@ -5,12 +5,13 @@ const authController = require('../controller/user/authController');
 
 const { checkUserPermissions } = require('../middleware/hasPermission');
 const { Resources, Actions } = require('../utils/appConstant');
+const { createFixedAssetValidators } = require('../utils/validators/fixedAssetValidators');
 
 // All routes require authentication
 router.use(authController.protect);
 
 // Create new fixed asset
-router.post('/', checkUserPermissions({ resource: Resources.expenses, action: Actions.create }), createFixedAsset);
+router.post('/', checkUserPermissions({ resource: Resources.expenses, action: Actions.create }), createFixedAssetValidators, createFixedAsset);
 
 // Get all fixed assets
 router.get('/', checkUserPermissions({ resource: Resources.expenses, action: Actions.read }), getFixedAssets);

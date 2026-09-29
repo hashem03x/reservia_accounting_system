@@ -44,6 +44,9 @@ exports.Resources = {
   variants: 'variants',
   roles: 'roles',
   databaseExport: 'databaseExport',
+  projects: 'projects',
+  accounts: 'accounts',
+  journalEntries: 'journalEntries',
 };
 
 exports.Actions = {
@@ -72,6 +75,9 @@ exports.adminPermission = [
   { resource: 'coupons', actions: ['create', 'delete', 'read', 'update'] },
   { resource: 'transactions', actions: ['read'] },
   { resource: 'governorates', actions: ['create', 'delete', 'read', 'update'] },
+  { resource: 'projects', actions: ['create', 'delete', 'read', 'update'] },
+  { resource: 'accounts', actions: ['create', 'delete', 'read', 'update'] },
+  { resource: 'journalEntries', actions: ['create', 'read', 'update'] },
 ];
 
 exports.moderatorPermission = [
@@ -94,6 +100,9 @@ exports.moderatorPermission = [
   { resource: 'users', actions: ['read'] },
   { resource: 'permissions', actions: ['read'] },
   { resource: 'databaseExport', actions: [] },
+  { resource: 'projects', actions: ['create', 'read', 'update'] },
+  { resource: 'accounts', actions: ['read'] },
+  { resource: 'journalEntries', actions: ['create', 'read'] },
 ];
 
 exports.operatorPermission = [
@@ -102,6 +111,9 @@ exports.operatorPermission = [
   { resource: 'purchaseOrders', actions: ['create', 'read', 'update'] },
   { resource: 'salesOrders', actions: ['create', 'read', 'update'] },
   { resource: 'databaseExport', actions: [] },
+  { resource: 'projects', actions: ['read'] },
+  { resource: 'accounts', actions: ['read'] },
+  { resource: 'journalEntries', actions: ['read'] },
 ];
 
 exports.userPermission = [

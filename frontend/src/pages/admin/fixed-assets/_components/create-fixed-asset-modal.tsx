@@ -2,12 +2,13 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useWarehouses } from "@/context/WarehousesContext";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
-import { Button, NumberInput, Select, TextInput } from "@mantine/core";
-import { useState } from "react";
+import { Button, NumberInput, Select, Textarea, TextInput } from "@mantine/core";
+import { useEffect, useState } from "react";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { FixedAsset } from "@/types/fixed-asset";
 import { PaginatedData } from "@/types/global";
+import { ChartOfAccount } from "@/types/chart-of-account";
 
 export default function CreateFixedAssetModal({
   opened,
@@ -25,8 +26,23 @@ export default function CreateFixedAssetModal({
   const [bookValue, setBookValue] = useState<string | number>("");
   const [fairValue, setFairValue] = useState<string | number>("");
   const [warehouseId, setWarehouseId] = useState("");
+  // Accounting-foundation fields - all optional, so the pre-existing create flow keeps working
+  // exactly as before when they're left blank (see backend/server/models/fixedAssets.js).
+  const [price, setPrice] = useState<string | number>("");
+  const [assetAccountId, setAssetAccountId] = useState("");
+  const [acquisitionDate, setAcquisitionDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
+  const { privateRequest: fetchAccounts } = useDataHandler({ initialData: null });
+
+  useEffect(() => {
+    if (!opened) return;
+    fetchAccounts({ url: "accounts", params: { limit: 500 }, language })
+      .then((res) => setAccounts(res.data.filter((a: ChartOfAccount) => a.type === "asset")))
+      .catch(() => {});
+  }, [opened]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,6 +57,10 @@ export default function CreateFixedAssetModal({
           bookValue,
           fairValue,
           warehouseId,
+          price: price || undefined,
+          assetAccountId: assetAccountId || undefined,
+          acquisitionDate: acquisitionDate || undefined,
+          notes: notes || undefined,
         },
       });
 
@@ -64,6 +84,10 @@ export default function CreateFixedAssetModal({
       setBookValue("");
       setFairValue("");
       setWarehouseId("");
+      setPrice("");
+      setAssetAccountId("");
+      setAcquisitionDate("");
+      setNotes("");
       setError("");
     }, 250);
   }
@@ -114,6 +138,40 @@ export default function CreateFixedAssetModal({
           data={warehouses.map((warehouse) => ({ value: warehouse._id, label: warehouse.name }))}
           required
         />
+
+        <hr />
+        <p className="text-xs text-gray-500">{translate("Accounting (optional)", "المحاسبة (اختياري)")}</p>
+
+        {/* Price */}
+        <NumberInput
+          label={translate("Price", "السعر")}
+          placeholder={translate("Enter acquisition price", "أدخل سعر الشراء")}
+          value={price}
+          onChange={setPrice}
+          min={0}
+        />
+
+        {/* Asset Account */}
+        <Select
+          label={translate("Asset Account (Chart of Accounts)", "حساب الأصل (دليل الحسابات)")}
+          placeholder={translate("Select account", "اختر الحساب")}
+          value={assetAccountId}
+          onChange={(value) => setAssetAccountId(value || "")}
+          data={accounts.map((a) => ({ value: a._id, label: `${a.code} - ${a.name}` }))}
+          searchable
+          clearable
+        />
+
+        {/* Acquisition Date */}
+        <TextInput
+          type="date"
+          label={translate("Acquisition Date", "تاريخ الشراء")}
+          value={acquisitionDate}
+          onChange={(e) => setAcquisitionDate(e.target.value)}
+        />
+
+        {/* Notes */}
+        <Textarea label={translate("Notes", "ملاحظات")} value={notes} onChange={(e) => setNotes(e.target.value)} autosize minRows={2} />
 
         {/* Submit Button */}
         <Button type="submit" loading={loading} mt="md">
