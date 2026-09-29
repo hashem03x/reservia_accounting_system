@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const { moderatorPermission, userPermission, operatorPermission } = require('../utils/appConstant');
+const { taxInfoSchema, bankInfoSchema, businessDocumentSchema } = require('./shared/businessPartnerSchemas');
+const { getNextCustomerNumber } = require('../services/customer/customerNumberService');
 
 const userSchema = mongoose.Schema(
   {
@@ -81,6 +83,16 @@ const userSchema = mongoose.Schema(
       postalCode: { type: String, match: [/^\d{5}(-\d{4})?$/, 'Postal code must be valid (e.g., 12345 or 12345-6789)'] },
     },
 
+    // Customer-only fields (role: 'user'). Follows the existing convention on this model of
+    // embedding customer-specific data directly on User (see balance/offlineAddress above)
+    // rather than forking a separate Customer collection - "Customer" in this codebase IS a User
+    // with role 'user' (see docs/entities/customers.md). Never populated/meaningful for
+    // staff roles (moderator/operator/admin).
+    customerNumber: { type: Number, unique: true, sparse: true, immutable: true },
+    taxInfo: taxInfoSchema,
+    bankInfo: bankInfoSchema,
+    documents: { type: [businessDocumentSchema], default: [] },
+
     isActive: { type: Boolean, default: true },
     isAdmin: { type: Boolean, default: false },
     isOffline: { type: Boolean, default: false },
@@ -112,6 +124,23 @@ userSchema.methods.savePermissions = async function (next) {
   else if (this.role === 'operator') this.permissions = operatorPermission;
   else this.permissions = userPermission;
 };
+
+// Auto-assigns an atomically-generated, unique customer number to every newly created
+// role:'user' document (offline customers today - see customerController.js#createCustomer -
+// but also any future creation path, e.g. bulk import or a future self-signup, since this lives
+// at the model level rather than in one controller). Never runs for staff roles
+// (moderator/operator/admin) and never re-assigns one on update (`isNew` guard).
+//
+// Deliberately UNCONDITIONAL on `isNew` (no "only if not already set" check): a request body
+// smuggling a `customerNumber` straight into User.create() must not survive - it gets clobbered
+// here every time, exactly like the task's "not trusted from frontend input" requirement demands.
+// `immutable: true` on the schema path then takes over to block it from ever being changed again
+// after this initial save.
+userSchema.pre('save', async function (next) {
+  if (!this.isNew || this.role !== 'user') return next();
+  this.customerNumber = await getNextCustomerNumber();
+  next();
+});
 
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();

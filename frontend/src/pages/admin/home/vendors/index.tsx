@@ -172,6 +172,7 @@ export default function Vendors() {
                     <Table.Th>{translate("Phone", "الهاتف")}</Table.Th>
                     <Table.Th>{translate("Email", "البريد الإلكتروني")}</Table.Th>
                     <Table.Th>{translate("Type", "النوع")}</Table.Th>
+                    <Table.Th>{translate("Tax Info", "البيانات الضريبية")}</Table.Th>
                     <AdminGaurd>
                       <Table.Th>{translate("Balance", "الرصيد")}</Table.Th>
                     </AdminGaurd>
@@ -189,6 +190,7 @@ export default function Vendors() {
                       <Table.Td>{vendor.contact?.phone || ""}</Table.Td>
                       <Table.Td>{vendor.contact?.email || ""}</Table.Td>
                       <Table.Td>{getVendorTypeLabel(vendor.type, language)}</Table.Td>
+                      <Table.Td>{vendor.taxInfo?.taxRegistrationNumber || "-"}</Table.Td>
                       <AdminGaurd>
                         <Table.Td className="font-semibold text-gray-800">
                           {vendor.balance.toFixed(2)} {translations.currency}
@@ -218,6 +220,15 @@ export default function Vendors() {
         callback={(response) => {
           setPaginatedVendors((prev) => {
             if (!prev) return null;
+            // Upsert, not always-prepend: this modal now stays open after creating a vendor (so
+            // documents can be attached), so `callback` can fire again for the SAME vendor -
+            // a naive prepend would insert a duplicate row for every subsequent save/document change.
+            const existingIndex = prev.data.findIndex((vendor) => vendor._id === response._id);
+            if (existingIndex >= 0) {
+              const updated = [...prev.data];
+              updated[existingIndex] = response;
+              return { ...prev, data: updated };
+            }
             return { ...prev, data: [response, ...prev.data] };
           });
         }}

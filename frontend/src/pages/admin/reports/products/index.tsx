@@ -324,11 +324,11 @@ export default function ProductsReport() {
                         {getProductFinalPrice(product.priceAfterDiscount, product.price).toFixed(2)} {translations.currency}
                       </Table.Td>
                       <Table.Td>
-                        {product.cost.toFixed(2)} {translations.currency}
+                        {(product.cost || 0).toFixed(2)} {translations.currency}
                       </Table.Td>
                       <Table.Td>{product.totalStock || "-"}</Table.Td>
                       <Table.Td className="font-semibold text-gray-800">
-                        {(product.cost * product.totalStock).toFixed(2)} {translations.currency}
+                        {((product.cost || 0) * product.totalStock).toFixed(2)} {translations.currency}
                       </Table.Td>
                       <Table.Td>{product.totalSold}</Table.Td>
                       <Table.Td>{getSeasonLabel(product.season, language)}</Table.Td>
@@ -360,7 +360,7 @@ export default function ProductsReport() {
                     {translations.currency}
                   </Table.Td>
                   <Table.Td className="font-semibold">
-                    {data.reduce((acc: number, product: ProductReport) => acc + product.cost, 0).toFixed(2)}{" "}
+                    {data.reduce((acc: number, product: ProductReport) => acc + (product.cost || 0), 0).toFixed(2)}{" "}
                     {translations.currency}
                   </Table.Td>
                   <Table.Td className="font-semibold">

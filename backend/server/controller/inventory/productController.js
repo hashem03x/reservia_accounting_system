@@ -81,11 +81,15 @@ exports.handleProductImages = asyncHandler(async (req, res, next) => {
       };
     }
 
-    // Process color images
+    // Process color images. A service (type: 'service') has no colors/variants at all - see
+    // docs/entities/products.md - so `colors` is legitimately absent from the request body for
+    // one, and this must not crash/require it the way it does for a real product.
     let colors = [];
-    JSON.parse(req.body.colors).forEach(color => {
-      colors.push(color);
-    });
+    if (req.body.colors) {
+      JSON.parse(req.body.colors).forEach(color => {
+        colors.push(color);
+      });
+    }
 
     console.log('colors', colors);
 
@@ -153,11 +157,14 @@ exports.updateProductImages = asyncHandler(async (req, res, next) => {
       };
     }
 
-    // Process colors update
+    // Process colors update. Absent for a service update (no colors/variants - see
+    // docs/entities/products.md), so this must not assume the field always exists.
     const updatedColors = [];
-    JSON.parse(req.body.colors).forEach(color => {
-      updatedColors.push(color);
-    });
+    if (req.body.colors) {
+      JSON.parse(req.body.colors).forEach(color => {
+        updatedColors.push(color);
+      });
+    }
 
     const newColors = [];
 

@@ -1,5 +1,6 @@
 const mongooseI18n = require('mongoose-i18n-localize');
 const { Schema, model } = require('mongoose');
+const { taxInfoSchema, bankInfoSchema, businessDocumentSchema } = require('../shared/businessPartnerSchemas');
 
 const vendorSchema = new Schema(
   {
@@ -88,6 +89,12 @@ const vendorSchema = new Schema(
         message: '{VALUE} is not a valid payment term. Choose from "Net 15", "Net 30", "Net 45", "Net 60"',
       },
     },
+    // Note: the vendor form has sent a `bankInfo` object since before this field existed on the
+    // schema - Mongoose silently dropped it on every save (strict mode). Adding the field now
+    // makes existing frontend behavior actually persist, it isn't new UI surface.
+    taxInfo: taxInfoSchema,
+    bankInfo: bankInfoSchema,
+    documents: { type: [businessDocumentSchema], default: [] },
     isActive: {
       type: Boolean,
       default: true,

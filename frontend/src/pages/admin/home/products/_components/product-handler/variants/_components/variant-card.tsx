@@ -158,10 +158,10 @@ export default function VariantCard({
                 {renderIfAdmin(
                   <>
                     <Table.Td>
-                      {currentProduct.cost} {translations.currency}
+                      {currentProduct.cost || 0} {translations.currency}
                     </Table.Td>
                     <Table.Td>
-                      {stockItem.quantity * currentProduct.cost} {translations.currency}
+                      {stockItem.quantity * (currentProduct.cost || 0)} {translations.currency}
                     </Table.Td>
                   </>,
                 )}

@@ -1,3 +1,5 @@
+import { BankInfo, BusinessDocument, TaxInfo } from "@/types/document";
+
 export type VendorType = "current" | "equity";
 
 export type Vendor = {
@@ -16,10 +18,7 @@ export type Vendor = {
     street?: string;
     postalCode?: string;
   };
-  bankInfo?: {
-    bankName?: string;
-    branchName?: string;
-    accountNumber?: string;
-    iban?: string;
-  };
+  taxInfo?: TaxInfo;
+  bankInfo?: BankInfo;
+  documents: BusinessDocument[];
 };

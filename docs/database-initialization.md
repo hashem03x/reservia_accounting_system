@@ -52,8 +52,9 @@ runtime via `Model.collection.name`, not guessed).
 | purchaseorders | PurchaseOrder | Vendor purchase orders | 0 |
 | purchaseorderreturns | PurchaseOrderReturn | Purchase order returns | 0 |
 | vendors | Vendor | Vendor/supplier records | 0 |
+| counters | Counter | Atomic sequence counters (currently: customer numbers) - see [`docs/entities/customers.md`](entities/customers.md) | 0 |
 
-**24 collections total.**
+**25 collections total.**
 
 ### Models deliberately excluded
 

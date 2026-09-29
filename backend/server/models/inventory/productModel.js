@@ -36,17 +36,48 @@ colorSchema.pre('save', function (next) {
 
 const productSchema = mongoose.Schema(
   {
+    // Distinguishes a physical/stock-tracked item ("product") from a non-inventory offering
+    // ("service") - see docs/entities/products.md for the full event/behavior split this drives
+    // (inventory logic, variant creation, and several reports all branch on this field).
+    type: { type: String, enum: ['product', 'service'], default: 'product', required: true },
+
     title: { type: String, required: true, trim: true, i18n: true, unique: true },
     description: { type: String, required: [true, 'Product description is required'], i18n: true },
-    cost: { type: Number, required: [true, 'Product cost is required'] }, // Cost price
-    price: { type: Number, required: [true, 'Product price is rquired'], max: 250000 },
+    // Cost/category/subcategory are inventory/merchandising concepts that only make sense for a
+    // physical product - conditionally required so a service isn't forced to fabricate values for
+    // fields it has no real answer for.
+    cost: {
+      type: Number,
+      required: [function () { return this.type !== 'service'; }, 'Product cost is required'],
+    },
+    price: { type: Number, required: [true, 'Product price is rquired'], max: 250000 }, // Also doubles as the service's selling price when type === 'service'.
     priceAfterDiscount: { type: Number, default: null },
     totalSold: { type: Number, default: 0 },
     isAvailable: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
     season: { type: String, default: 'all', enum: ['summer', 'winter', 'spring', 'autumn', 'all'] },
-    category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
-    subcategory: { type: mongoose.Schema.ObjectId, ref: 'SubCategory', required: true },
+    category: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category',
+      required: [function () { return this.type !== 'service'; }, 'Category is required'],
+    },
+    subcategory: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'SubCategory',
+      required: [function () { return this.type !== 'service'; }, 'Subcategory is required'],
+    },
+    // Service-only fields. Deliberately flat (not nested under a `service: {}` object) to match
+    // this schema's existing flat style (season/price/etc. all live at the top level).
+    durationValue: {
+      type: Number,
+      min: 1,
+      required: [function () { return this.type === 'service'; }, 'Service duration is required'],
+    },
+    durationUnit: {
+      type: String,
+      enum: ['month'], // Only unit needed today; add more here (not a rewrite) if a future phase needs them.
+      default: function () { return this.type === 'service' ? 'month' : undefined; },
+    },
     colors: [colorSchema],
     variants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Variant' }],
     createdBy: { type: mongoose.Schema.ObjectId, ref: 'User' },
@@ -129,6 +160,18 @@ productSchema.post('init', function (doc) {
 productSchema.pre('save', function (next) {
   if (Array.isArray(this.tags)) {
     this.tags = normalizeTags(this.tags);
+  }
+  next();
+});
+
+// Defense-in-depth: variant creation is already blocked for services at the controller level
+// (see varaintController.js#createVariant), but this guards the invariant at the model layer too
+// (e.g. against a future/internal script pushing straight into `variants`) - a service must never
+// carry real stock-tracked variants, since every inventory/stock report and PO/SO line item reads
+// stock exclusively off Variant documents (see docs/entities/products.md).
+productSchema.pre('save', function (next) {
+  if (this.type === 'service' && Array.isArray(this.variants) && this.variants.length > 0) {
+    return next(new Error('A service cannot have inventory variants.'));
   }
   next();
 });

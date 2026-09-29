@@ -1720,13 +1720,21 @@ exports.getBestSellingGovernorates = asyncHandler(async (req, res) => {
 exports.getProductAvailabilityAnalysis = asyncHandler(async (req, res) => {
   const { warehouseId } = req.query;
 
+  // A service (type: 'service') has no inventory by design - it must be excluded from every
+  // count/aggregation here, otherwise it inflates `totalProducts` while contributing zero stock,
+  // silently depressing the reported "availability %" for a reason that has nothing to do with
+  // actual inventory health. `$ne: 'service'` (not `type: 'product'`) also matches any legacy
+  // document that predates this field entirely, since Mongo doesn't retroactively apply schema
+  // defaults to already-stored documents.
+  const excludeServicesFilter = { type: { $ne: 'service' } };
+
   // 1. Get total number of active products
-  const totalProducts = await Product.countDocuments({ isDeleted: false });
+  const totalProducts = await Product.countDocuments({ isDeleted: false, ...excludeServicesFilter });
 
   // 2. Get available products and total stock with warehouse filter
   const stockAnalysis = await Product.aggregate([
     {
-      $match: { isDeleted: false },
+      $match: { isDeleted: false, ...excludeServicesFilter },
     },
     {
       $lookup: {

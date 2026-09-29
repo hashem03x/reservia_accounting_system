@@ -4,10 +4,13 @@ import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { notifySuccess } from "@/utils/helpers/notifiers";
+import { isService } from "@/utils/constants/product-types";
 import { Button, Tooltip } from "@mantine/core";
 import { outlineIcons } from "@/components/icons";
 import ErrorAlert from "@/components/ui/error-alert";
+import TypeSelection from "./_components/type-selection";
 import GeneralInformation from "./_components/general-information";
+import ServiceInformation from "./_components/service-information";
 import CategoriesInformation from "./_components/categoreies-information";
 import ColorsInformation from "./_components/colors-information";
 import TagsInformation from "./_components/tags-information";
@@ -20,6 +23,9 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
   const { language, translate } = useLanguage();
 
   const {
+    type,
+    durationValue,
+    durationUnit,
     titleEn,
     titleAr,
     descriptionEn,
@@ -40,6 +46,8 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
     canIUpdateProducts,
   } = useProduct();
 
+  const productIsService = isService(type);
+
   const updatingStatus = currentProduct ? true : false;
 
   const [moreOptionsOpened, setMoreOptionsOpened] = useState(false);
@@ -51,7 +59,22 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
     e.preventDefault();
     handleRequest(language, setLoading, setError, async () => {
       const vaildationError = validation(
-        { titleEn, titleAr, descriptionEn, descriptionAr, cost, price, priceAfterDiscount, category, subcategory, colors, tags },
+        {
+          type,
+          titleEn,
+          titleAr,
+          descriptionEn,
+          descriptionAr,
+          cost,
+          price,
+          priceAfterDiscount,
+          category,
+          subcategory,
+          colors,
+          tags,
+          durationValue,
+          durationUnit,
+        },
         language,
       );
 
@@ -61,37 +84,45 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
       }
 
       const formData = new FormData();
+      formData.append("type", type);
       formData.append("title[en]", titleEn);
       formData.append("title[ar]", titleAr);
       formData.append("description[en]", descriptionEn);
       formData.append("description[ar]", descriptionAr);
-      formData.append("cost", cost.toString());
       formData.append("price", price.toString());
       priceAfterDiscount !== "" && formData.append("priceAfterDiscount", priceAfterDiscount.toString());
       formData.append("isAvailable", isAvailable.toString());
       formData.append("season", season);
-      formData.append("category", category as string);
-      formData.append("subcategory", subcategory as string);
-      formData.append(
-        "colors",
-        JSON.stringify(
-          colors.map((color) => {
-            return { name: color.name, code: color.code, deleteImages: color.deleteImages?.join(",") }; // In case of updating, "deleteImages" field is to delete old images.
-          }),
-        ),
-      );
-      // Append new images of each color (File objects)
-      colors.forEach((color, index) => {
-        color.images.forEach((image) => {
-          if (image instanceof File) formData.append(`colorImages${index}`, image);
+
+      if (productIsService) {
+        // A service has no cost/category/subcategory/colors - see docs/entities/products.md.
+        formData.append("durationValue", durationValue.toString());
+        formData.append("durationUnit", durationUnit);
+      } else {
+        formData.append("cost", cost.toString());
+        formData.append("category", category as string);
+        formData.append("subcategory", subcategory as string);
+        formData.append(
+          "colors",
+          JSON.stringify(
+            colors.map((color) => {
+              return { name: color.name, code: color.code, deleteImages: color.deleteImages?.join(",") }; // In case of updating, "deleteImages" field is to delete old images.
+            }),
+          ),
+        );
+        // Append new images of each color (File objects)
+        colors.forEach((color, index) => {
+          color.images.forEach((image) => {
+            if (image instanceof File) formData.append(`colorImages${index}`, image);
+          });
         });
-      });
+      }
       formData.append("tags", JSON.stringify(tags));
 
       const response = await privateRequest({
         url: updatingStatus ? `products/${currentProduct?._id}` : "products",
         method: updatingStatus ? "PUT" : "POST",
-        params: { colors: colors.length },
+        params: { colors: productIsService ? 0 : colors.length },
         data: formData,
         language,
       });
@@ -108,7 +139,8 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
           : translate("Product added successfully", "تم اضافة المنتج بنجاح"),
       });
 
-      !updatingStatus && canIUpdateProducts && navMethods.variants();
+      // A service has no Variants tab to jump to (see docs/entities/products.md).
+      !updatingStatus && !productIsService && canIUpdateProducts && navMethods.variants();
     });
   }
 
@@ -119,31 +151,35 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
       : priceAfterDiscount === "" && currentProduct.priceAfterDiscount !== null
     : false;
 
-  // To disable the save button if no data changed in case of updating
+  // To disable the save button if no data changed in case of updating. Product-only and
+  // service-only fields are each only compared when relevant - `type` is read-only after
+  // creation, so this never has to reconcile a product's diff against a service's fields.
   const dataChanged = currentProduct
     ? titleEn !== currentProduct.title.en ||
       titleAr !== currentProduct.title.ar ||
       descriptionEn !== currentProduct.description.en ||
       descriptionAr !== currentProduct.description.ar ||
-      cost !== currentProduct.cost ||
       price !== currentProduct.price ||
       priceAfterDiscountChanged ||
       isAvailable !== currentProduct.isAvailable ||
       season !== currentProduct.season ||
-      category !== currentProduct.category ||
-      subcategory !== currentProduct.subcategory ||
-      colors.length !== currentProduct.colors.length ||
-      colors.some((color, index) => color.name !== currentProduct.colors[index].name) ||
-      colors.some((color, index) => color.code !== currentProduct.colors[index].code) ||
-      colors.some((color, index) => color.images.length !== currentProduct.colors[index].images.length) ||
-      colors.some((color, index) =>
-        color.images.some((image, imageIndex) => {
-          if (image instanceof File) return true;
-          if (image._id !== currentProduct.colors[index].images[imageIndex]._id) return true;
-        }),
-      ) ||
       tags.length !== currentProduct.tags.length ||
-      tags.some((tag, index) => tag !== currentProduct.tags[index])
+      tags.some((tag, index) => tag !== currentProduct.tags[index]) ||
+      (productIsService
+        ? durationValue !== currentProduct.durationValue || durationUnit !== currentProduct.durationUnit
+        : cost !== currentProduct.cost ||
+          category !== currentProduct.category ||
+          subcategory !== currentProduct.subcategory ||
+          colors.length !== currentProduct.colors.length ||
+          colors.some((color, index) => color.name !== currentProduct.colors[index].name) ||
+          colors.some((color, index) => color.code !== currentProduct.colors[index].code) ||
+          colors.some((color, index) => color.images.length !== currentProduct.colors[index].images.length) ||
+          colors.some((color, index) =>
+            color.images.some((image, imageIndex) => {
+              if (image instanceof File) return true;
+              if (image._id !== currentProduct.colors[index].images[imageIndex]._id) return true;
+            }),
+          ))
     : false;
 
   const dataChanedText = translate("Unsaved changes detected", "توجد تغييرات لم يتم حفظها");
@@ -187,18 +223,28 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
 
         {error && <ErrorAlert error={error} fade />}
 
+        <TypeSelection />
+
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-6">
           <div className="lg:col-span-4">
             <GeneralInformation />
           </div>
-          <div className="lg:col-span-2">
-            <CategoriesInformation />
-          </div>
+          {!productIsService && (
+            <div className="lg:col-span-2">
+              <CategoriesInformation />
+            </div>
+          )}
         </div>
 
-        <TagsInformation />
-
-        <ColorsInformation />
+        {productIsService ? (
+          <ServiceInformation />
+        ) : (
+          <>
+            <TagsInformation />
+            <ColorsInformation />
+          </>
+        )}
+        {productIsService && <TagsInformation />}
       </form>
 
       {/* Temporary Hide the deleting option */}

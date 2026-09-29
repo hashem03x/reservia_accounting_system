@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useContext, useState } from "react";
-import { Color, Product, Season, Variant } from "@/types/product";
+import { Color, Product, ProductType, Season, Variant } from "@/types/product";
+import { DurationUnit } from "@/utils/constants/product-types";
 import { UploadedImage } from "@/types/global";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
@@ -14,6 +15,12 @@ export type ProductColorInput = {
 
 type ProductContextProps = {
   // For the Input Fields
+  type: ProductType;
+  setType: React.Dispatch<React.SetStateAction<ProductType>>;
+  durationValue: string | number;
+  setDurationValue: React.Dispatch<React.SetStateAction<string | number>>;
+  durationUnit: DurationUnit;
+  setDurationUnit: React.Dispatch<React.SetStateAction<DurationUnit>>;
   titleEn: string;
   setTitleEn: React.Dispatch<React.SetStateAction<string>>;
   titleAr: string;
@@ -52,6 +59,12 @@ type ProductContextProps = {
 };
 
 export const ProductContext = createContext<ProductContextProps>({
+  type: "product",
+  setType: () => {},
+  durationValue: "",
+  setDurationValue: () => {},
+  durationUnit: "month",
+  setDurationUnit: () => {},
   titleEn: "",
   setTitleEn: () => {},
   titleAr: "",
@@ -88,6 +101,9 @@ export const ProductContext = createContext<ProductContextProps>({
 });
 
 export default function ProductFormProvider({ product, children }: { product?: Product; children: ReactNode }) {
+  const [type, setType] = useState<ProductType>(product?.type || "product");
+  const [durationValue, setDurationValue] = useState<string | number>(product?.durationValue || "");
+  const [durationUnit, setDurationUnit] = useState<DurationUnit>(product?.durationUnit || "month");
   const [titleEn, setTitleEn] = useState(product?.title.en || "");
   const [titleAr, setTitleAr] = useState(product?.title.ar || "");
   const [descriptionEn, setDescriptionEn] = useState(product?.description.en || "");
@@ -112,6 +128,12 @@ export default function ProductFormProvider({ product, children }: { product?: P
   return (
     <ProductContext.Provider
       value={{
+        type,
+        setType,
+        durationValue,
+        setDurationValue,
+        durationUnit,
+        setDurationUnit,
         titleEn,
         setTitleEn,
         titleAr,

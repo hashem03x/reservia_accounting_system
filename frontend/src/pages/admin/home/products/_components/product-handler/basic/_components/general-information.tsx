@@ -1,6 +1,7 @@
 import { useUser } from "@/context/UserContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { isAdmin } from "@/utils/constants/roles";
+import { isService } from "@/utils/constants/product-types";
 import { NumberInput, Textarea, TextInput, Checkbox, createTheme, MantineProvider } from "@mantine/core";
 import { useProduct } from "../../context";
 
@@ -34,6 +35,7 @@ export default function GeneralInformation() {
     setPriceAfterDiscount,
     currentProduct,
     readOnly,
+    type,
   } = useProduct();
 
   return (
@@ -87,8 +89,9 @@ export default function GeneralInformation() {
           readOnly={readOnly}
         />
       </div>
-      {/* Cost - Available for admins when creating and updating, and available for others only when creating */}
-      {((!!loggedInUser && isAdmin(loggedInUser.role)) || !currentProduct) && (
+      {/* Cost - a service has no inventory cost (see docs/entities/products.md). Otherwise available
+          for admins when creating and updating, and available for others only when creating */}
+      {!isService(type) && ((!!loggedInUser && isAdmin(loggedInUser.role)) || !currentProduct) && (
         <NumberInput
           label={translate("Cost", "التكلفة")}
           placeholder={translate("Cost in EGP", "التكلفة بالجنيه")}

@@ -7,6 +7,7 @@ import vendorTypes, { vendorTypesArray } from "@/utils/constants/vendor-types";
 import { Button, Select, TextInput } from "@mantine/core";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
+import BusinessDocumentsSection from "@/components/global/business-documents-section";
 
 export default function VendorModal({
   opened,
@@ -26,13 +27,21 @@ export default function VendorModal({
   const [phone, setPhone] = useState(vendorToUpdate?.contact.phone || "");
   const [email, setEmail] = useState(vendorToUpdate?.contact.email || "");
   const [country, setCountry] = useState(vendorToUpdate?.address?.country || "");
+  const [taxRegistrationNumber, setTaxRegistrationNumber] = useState(vendorToUpdate?.taxInfo?.taxRegistrationNumber || "");
+  const [commercialRegistrationNumber, setCommercialRegistrationNumber] = useState(
+    vendorToUpdate?.taxInfo?.commercialRegistrationNumber || "",
+  );
   const [bankName, setBankName] = useState(vendorToUpdate?.bankInfo?.bankName || "");
-  const [bankBranchName, setBankBranchName] = useState(vendorToUpdate?.bankInfo?.branchName || "");
+  const [branch, setBranch] = useState(vendorToUpdate?.bankInfo?.branch || "");
   const [bankAccountNumber, setBankAccountNumber] = useState(vendorToUpdate?.bankInfo?.accountNumber || "");
   const [bankIbanNumber, setBankIbanNumber] = useState(vendorToUpdate?.bankInfo?.iban || "");
   const [city, setCity] = useState(vendorToUpdate?.address?.city || "");
   const [street, setStreet] = useState(vendorToUpdate?.address?.street || "");
   const [postalCode, setPostalCode] = useState(vendorToUpdate?.address?.postalCode || "");
+
+  // See customer-modal/index.tsx's identical pattern: holds the persisted record after a create so
+  // the Documents section (which needs a real _id) becomes usable without closing the modal.
+  const [savedVendor, setSavedVendor] = useState<Vendor | undefined>(vendorToUpdate);
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
@@ -41,12 +50,12 @@ export default function VendorModal({
     handleRequest(language, setLoading, setError, async () => {
       const res = await privateRequest({
         language,
-        method: vendorToUpdate ? "PUT" : "POST",
-        url: vendorToUpdate ? `vendors/${vendorToUpdate._id}` : "vendors",
+        method: savedVendor ? "PUT" : "POST",
+        url: savedVendor ? `vendors/${savedVendor._id}` : "vendors",
         data: {
           name,
           type,
-          balance: vendorToUpdate ? vendorToUpdate.balance : 0,
+          balance: savedVendor ? savedVendor.balance : 0,
           contact: { phone, email: email || undefined },
           address: {
             country: country || undefined,
@@ -54,11 +63,17 @@ export default function VendorModal({
             street: street || undefined,
             postalCode: postalCode || undefined,
           },
+          taxInfo: { taxRegistrationNumber: taxRegistrationNumber || undefined, commercialRegistrationNumber: commercialRegistrationNumber || undefined },
+          bankInfo: { bankName: bankName || undefined, branch: branch || undefined, accountNumber: bankAccountNumber || undefined, iban: bankIbanNumber || undefined },
         }, // I send them as undefined instead of empty string to avoid a backend issue.
       });
 
+      setSavedVendor(res.data);
       callback(res.data);
-      handleClose();
+      // Deliberately does NOT auto-close on create (unlike this form's previous behavior) - the
+      // Documents section requires a real _id to upload against, so we keep the modal open (now
+      // in "update" mode via `savedVendor`) and let the user add documents before dismissing via
+      // the Close button.
     });
   }
 
@@ -73,6 +88,13 @@ export default function VendorModal({
       setCity(vendorToUpdate?.address?.city || "");
       setStreet(vendorToUpdate?.address?.street || "");
       setPostalCode(vendorToUpdate?.address?.postalCode || "");
+      setTaxRegistrationNumber(vendorToUpdate?.taxInfo?.taxRegistrationNumber || "");
+      setCommercialRegistrationNumber(vendorToUpdate?.taxInfo?.commercialRegistrationNumber || "");
+      setBankName(vendorToUpdate?.bankInfo?.bankName || "");
+      setBranch(vendorToUpdate?.bankInfo?.branch || "");
+      setBankAccountNumber(vendorToUpdate?.bankInfo?.accountNumber || "");
+      setBankIbanNumber(vendorToUpdate?.bankInfo?.iban || "");
+      setSavedVendor(vendorToUpdate);
       setError("");
     }, 250);
   }
@@ -82,16 +104,22 @@ export default function VendorModal({
     `${vendorToUpdate ? "تحديث البائع" : "إضافة بائع"}`,
   );
 
-  const dataChanged = vendorToUpdate
-    ? name !== vendorToUpdate.name ||
-      type !== vendorToUpdate.type ||
-      phone !== vendorToUpdate.contact.phone ||
-      (email || undefined) !== vendorToUpdate.contact.email ||
-      (country || undefined) !== vendorToUpdate.address?.country ||
-      (city || undefined) !== vendorToUpdate.address?.city ||
-      (street || undefined) !== vendorToUpdate.address?.street ||
-      (postalCode || undefined) !== vendorToUpdate.address?.postalCode
-    : false;
+  const dataChanged = savedVendor
+    ? name !== savedVendor.name ||
+      type !== savedVendor.type ||
+      phone !== savedVendor.contact.phone ||
+      (email || undefined) !== savedVendor.contact.email ||
+      (country || undefined) !== savedVendor.address?.country ||
+      (city || undefined) !== savedVendor.address?.city ||
+      (street || undefined) !== savedVendor.address?.street ||
+      (postalCode || undefined) !== savedVendor.address?.postalCode ||
+      (taxRegistrationNumber || undefined) !== savedVendor.taxInfo?.taxRegistrationNumber ||
+      (commercialRegistrationNumber || undefined) !== savedVendor.taxInfo?.commercialRegistrationNumber ||
+      (bankName || undefined) !== savedVendor.bankInfo?.bankName ||
+      (branch || undefined) !== savedVendor.bankInfo?.branch ||
+      (bankAccountNumber || undefined) !== savedVendor.bankInfo?.accountNumber ||
+      (bankIbanNumber || undefined) !== savedVendor.bankInfo?.iban
+    : true;
 
   return (
     <Modal opened={opened} onClose={handleClose} title={title} size="lg">
@@ -168,8 +196,28 @@ export default function VendorModal({
             />
           </div>
         </section>
+
+        {/* Tax Info */}
         <section className="flex flex-col gap-2">
-          <h4>{translate("Bank Info", "البيانات البنكية")}</h4>
+          <h4>{translate("Tax Info (Optional)", "البيانات الضريبية (اختياري)")}</h4>
+          <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+            <TextInput
+              value={taxRegistrationNumber}
+              onChange={(e) => setTaxRegistrationNumber(e.target.value)}
+              label={translate("Tax Registration Number", "الرقم الضريبي")}
+              placeholder={translate("Enter Tax Registration Number", "أدخل الرقم الضريبي")}
+            />
+            <TextInput
+              value={commercialRegistrationNumber}
+              onChange={(e) => setCommercialRegistrationNumber(e.target.value)}
+              label={translate("Commercial Registration Number", "رقم السجل التجاري")}
+              placeholder={translate("Enter Commercial Registration Number", "أدخل رقم السجل التجاري")}
+            />
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-2">
+          <h4>{translate("Bank Info (Optional)", "البيانات البنكية (اختياري)")}</h4>
           <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
             <TextInput
               value={bankName}
@@ -178,10 +226,10 @@ export default function VendorModal({
               placeholder={translate("Enter Bank Name", "ادخل اسم البنك")}
             />
             <TextInput
-              value={bankBranchName}
-              onChange={(e) => setBankBranchName(e.target.value)}
-              label={translate("Branch Name", "إسم الفرع")}
-              placeholder={translate("Enter Branch Name", "ادخل اسم الفرع")}
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              label={translate("Branch", "الفرع")}
+              placeholder={translate("Enter Branch", "ادخل الفرع")}
             />
             <TextInput
               value={bankAccountNumber}
@@ -198,17 +246,25 @@ export default function VendorModal({
           </div>
         </section>
 
+        <BusinessDocumentsSection
+          entityType="vendors"
+          entityId={savedVendor?._id}
+          documents={savedVendor?.documents || []}
+          onChange={(documents) => {
+            const updated = savedVendor ? { ...savedVendor, documents } : undefined;
+            if (updated) {
+              setSavedVendor(updated);
+              callback(updated);
+            }
+          }}
+        />
+
         <div className="flex gap-2">
           <Button onClick={handleClose} variant="light" color="dark" fullWidth>
-            {translations.cancel}
+            {savedVendor ? translate("Close", "إغلاق") : translations.cancel}
           </Button>
-          <Button
-            type="submit"
-            loading={loading}
-            disabled={!name || !type || !phone || (!!vendorToUpdate && !dataChanged)}
-            fullWidth
-          >
-            {title}
+          <Button type="submit" loading={loading} disabled={!name || !type || !phone || !dataChanged} fullWidth>
+            {savedVendor ? translate("Save", "حفظ") : title}
           </Button>
         </div>
 

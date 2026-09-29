@@ -44,6 +44,13 @@ exports.createVariant = asyncHandler(async (req, res, next) => {
   const product = await Product.findById(productId);
   if (!product) return next(new AppError('Product not found', 404));
 
+  // A service has no inventory - it must never receive stock-tracked variants (see
+  // docs/entities/products.md for why: variants are the sole source of truth for stock
+  // everywhere in this codebase - PO receipt, sales orders, transfers, all stock reports).
+  if (product.type === 'service') {
+    return next(new AppError('Cannot create variants for a service. Services do not carry inventory.', 400));
+  }
+
   // Ensure variants is an array
   variants = Array.isArray(variants) ? variants : [variants];
 
@@ -217,6 +224,11 @@ exports.updateVariant = asyncHandler(async (req, res, next) => {
   // Check if the product exists
   const product = await Product.findById(productId);
   if (!product) return next(new AppError('Product not found', 404));
+
+  // See createVariant's identical guard above - a service must never carry stock-tracked variants.
+  if (product.type === 'service') {
+    return next(new AppError('Cannot update variants for a service. Services do not carry inventory.', 400));
+  }
 
   // Ensure variants is an array
   variants = Array.isArray(variants) ? variants : [variants];

@@ -1,6 +1,9 @@
 const factory = require('../handlersFactory');
 
 const Vendor = require('../../models/vendor/vendor');
+const { createDocumentHandlers } = require('../documentController');
+
+const { uploadDocument: uploadVendorDocument, deleteDocument: deleteVendorDocument } = createDocumentHandlers(Vendor, 'Vendor');
 
 /**
  * @module
@@ -88,4 +91,6 @@ module.exports = {
   getVendor,
   updateVendor,
   deleteVendor,
+  uploadVendorDocument,
+  deleteVendorDocument,
 };

@@ -179,11 +179,13 @@ export default function Customers() {
               <Table className="text-nowrap" verticalSpacing="xs" highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
+                    <Table.Th>{translate("Customer Number", "رقم العميل")}</Table.Th>
                     <Table.Th>{translate("Name", "الاسم")}</Table.Th>
                     <Table.Th>{translate("Phone", "الهاتف")}</Table.Th>
                     <Table.Th>{translate("Additionl Phone", "هاتف اضافي")}</Table.Th>
                     <Table.Th>{translate("Email", "البريد الإلكتروني")}</Table.Th>
                     <Table.Th>{translate("Type", "النوع")}</Table.Th>
+                    <Table.Th>{translate("Tax Info", "البيانات الضريبية")}</Table.Th>
                     <AdminGaurd>
                       <Table.Th>{translate("Balance", "الرصيد")}</Table.Th>
                     </AdminGaurd>
@@ -197,11 +199,13 @@ export default function Customers() {
                       className="cursor-pointer text-gray-600"
                       onClick={() => navigate(`${customer._id}`)}
                     >
+                      <Table.Td>{customer.customerNumber ?? "-"}</Table.Td>
                       <Table.Td className="font-semibold text-gray-800">{customer.name}</Table.Td>
                       <Table.Td>{customer.phone || ""}</Table.Td>
                       <Table.Td>{customer.additionalPhone || ""}</Table.Td>
                       <Table.Td>{customer.email || ""}</Table.Td>
                       <Table.Td>{getCustomerTypeLabel(customer.type, language)}</Table.Td>
+                      <Table.Td>{customer.taxInfo?.taxRegistrationNumber || "-"}</Table.Td>
                       <AdminGaurd>
                         <Table.Td className="font-semibold text-gray-800">
                           {customer.balance.toFixed(2)} {translations.currency}
@@ -245,6 +249,15 @@ export default function Customers() {
         callback={(response) => {
           setPaginatedCustomers((prev) => {
             if (!prev) return null;
+            // Upsert, not always-prepend: this modal now stays open after creating a customer (so
+            // documents can be attached), so `callback` can fire again for the SAME customer -
+            // a naive prepend would insert a duplicate row for every subsequent save/document change.
+            const existingIndex = prev.data.findIndex((customer) => customer._id === response._id);
+            if (existingIndex >= 0) {
+              const updated = [...prev.data];
+              updated[existingIndex] = response;
+              return { ...prev, data: updated };
+            }
             return { ...prev, data: [response, ...prev.data] };
           });
         }}

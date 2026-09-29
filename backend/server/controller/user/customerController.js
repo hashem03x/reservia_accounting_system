@@ -4,6 +4,11 @@ const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const factory = require('../handlersFactory');
 const User = require('../../models/userModel');
+const { createDocumentHandlers } = require('../documentController');
+
+const { uploadDocument: uploadCustomerDocument, deleteDocument: deleteCustomerDocument } = createDocumentHandlers(User, 'Customer');
+exports.uploadCustomerDocument = uploadCustomerDocument;
+exports.deleteCustomerDocument = deleteCustomerDocument;
 /**
  *  @description Create offline customer
  *  @route       POST /api/v1/users/offline
@@ -26,9 +31,14 @@ exports.createCustomer = asyncHandler(async (req, res, next) => {
     additionalPhone,
     email: email || undefined,
     offlineAddress: req.body.offlineAddress,
+    taxInfo: req.body.taxInfo,
+    bankInfo: req.body.bankInfo,
     role: 'user',
     isOffline: true,
     type: 'offline',
+    // customerNumber is deliberately NOT taken from req.body - it is always server-generated
+    // (see userModel.js's pre('save') hook + customerNumberService.js), so a client can never
+    // set or influence it by sending the field in the request body.
   });
 
   res.json(apiResponse('Offline customer created successfully', true, customer));
@@ -63,6 +73,16 @@ exports.updateCustomer = asyncHandler(async (req, res, next) => {
     if (city) existingCustomer.offlineAddress.city = city;
     if (state) existingCustomer.offlineAddress.state = state;
     if (postalCode) existingCustomer.offlineAddress.postalCode = postalCode;
+  }
+
+  // Field-by-field merge (not a wholesale `existingCustomer.taxInfo = req.body.taxInfo`
+  // replacement) so updating one bank/tax field from the edit form never wipes a sibling field
+  // that simply wasn't included in this particular request body.
+  if (req.body.taxInfo) {
+    existingCustomer.taxInfo = { ...(existingCustomer.taxInfo?.toObject() || {}), ...req.body.taxInfo };
+  }
+  if (req.body.bankInfo) {
+    existingCustomer.bankInfo = { ...(existingCustomer.bankInfo?.toObject() || {}), ...req.body.bankInfo };
   }
 
   if (phone) existingCustomer.phone = phone;

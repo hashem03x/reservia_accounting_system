@@ -19,6 +19,7 @@ import { getProductFinalPrice } from "@/utils/helpers/product-helpers";
 import { seasonsArray } from "@/utils/constants/seasons";
 import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
 import { getSeasonLabel } from "@/utils/constants/seasons";
+import { getProductTypeLabel, isService } from "@/utils/constants/product-types";
 import { formatDate } from "@/utils/helpers/date-formaters";
 import { Badge, Button, Select, Table, TagsInput, TextInput } from "@mantine/core";
 import { solidIcons, outlineIcons } from "@/components/icons";
@@ -344,6 +345,7 @@ export default function Products() {
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>{translate("Title", "العنوان")}</Table.Th>
+                    <Table.Th>{translate("Type", "النوع")}</Table.Th>
                     <Table.Th>{translate("Price", "السعر")}</Table.Th>
                     <Table.Th>{translate("After Discount", "بعد الخصم")}</Table.Th>
                     {renderIfAdmin(<Table.Th>{translate("Cost", "التكلفة")}</Table.Th>)}
@@ -366,7 +368,10 @@ export default function Products() {
                       0,
                     );
 
-                    const totalAmount = product.cost * totalQuantity;
+                    // A service has no cost/inventory (see docs/entities/products.md) - `cost` is
+                    // undefined for one, so this must not blindly call .toFixed() on it.
+                    const productIsService = isService(product.type);
+                    const totalAmount = productIsService ? 0 : (product.cost || 0) * totalQuantity;
 
                     return (
                       <Table.Tr
@@ -378,6 +383,18 @@ export default function Products() {
                           {translate(product.title.en, product.title.ar)}
                         </Table.Td>
                         <Table.Td>
+                          <div className="flex flex-col gap-0.5">
+                            <Badge size="sm" variant="light" color={productIsService ? "grape" : "blue"} radius="sm">
+                              {getProductTypeLabel(product.type, language)}
+                            </Badge>
+                            {productIsService && product.durationValue && (
+                              <span className="text-xs text-gray-500">
+                                {product.durationValue} {translate("months", "شهر")}
+                              </span>
+                            )}
+                          </div>
+                        </Table.Td>
+                        <Table.Td>
                           {product.price.toFixed(2)} {translations.currency}
                         </Table.Td>
                         <Table.Td className="font-semibold text-gray-800">
@@ -386,19 +403,19 @@ export default function Products() {
                         </Table.Td>
                         {renderIfAdmin(
                           <Table.Td>
-                            {product.cost.toFixed(2)} {translations.currency}
+                            {productIsService ? "-" : `${(product.cost || 0).toFixed(2)} ${translations.currency}`}
                           </Table.Td>,
                         )}
-                        <Table.Td>{totalQuantity}</Table.Td>
+                        <Table.Td>{productIsService ? "-" : totalQuantity}</Table.Td>
                         {renderIfAdmin(
                           <Table.Td className="font-semibold text-gray-800">
-                            {totalAmount.toFixed(2)} {translations.currency}
+                            {productIsService ? "-" : `${totalAmount.toFixed(2)} ${translations.currency}`}
                           </Table.Td>,
                         )}
                         <Table.Td>{product.totalSold}</Table.Td>
-                        <Table.Td>{getSeasonLabel(product.season, language)}</Table.Td>
-                        <Table.Td>{getMainCategoryNameById(product.category)}</Table.Td>
-                        <Table.Td>{getSubcategoryNameById(product.subcategory)}</Table.Td>
+                        <Table.Td>{productIsService ? "-" : getSeasonLabel(product.season, language)}</Table.Td>
+                        <Table.Td>{productIsService ? "-" : getMainCategoryNameById(product.category || "")}</Table.Td>
+                        <Table.Td>{productIsService ? "-" : getSubcategoryNameById(product.subcategory || "")}</Table.Td>
                         <Table.Td>
                           {product.tags?.length > 0 ? (
                             <div className="flex flex-wrap gap-1">

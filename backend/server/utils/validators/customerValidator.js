@@ -2,8 +2,20 @@ const { body } = require('express-validator');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const User = require('../../models/userModel');
 
+// Shared by create/update - every field is optional (tax/bank info is optional business data),
+// only their shape/length is checked when provided.
+const taxAndBankInfoValidators = [
+  body('taxInfo.taxRegistrationNumber').optional().isString().trim().isLength({ max: 50 }),
+  body('taxInfo.commercialRegistrationNumber').optional().isString().trim().isLength({ max: 50 }),
+  body('bankInfo.bankName').optional().isString().trim().isLength({ max: 100 }),
+  body('bankInfo.branch').optional().isString().trim().isLength({ max: 100 }),
+  body('bankInfo.accountNumber').optional().isString().trim().isLength({ max: 50 }),
+  body('bankInfo.iban').optional().isString().trim().isLength({ max: 50 }),
+];
+
 exports.createCustomerValidate = [
   body('name').notEmpty().withMessage('Name is required'),
+  ...taxAndBankInfoValidators,
 
   body('contact.phone')
     .notEmpty()
@@ -68,6 +80,7 @@ exports.createCustomerValidate = [
 
 exports.updateCustomerValidate = [
   body('name').optional(),
+  ...taxAndBankInfoValidators,
   body('contact.phone')
     .optional()
     .custom(async (val, { req }) => {

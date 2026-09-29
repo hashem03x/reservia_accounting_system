@@ -44,6 +44,11 @@ const REVERSIA_MODELS = [
   { name: 'PurchaseOrder', require: () => require('../../models/vendor/purchaseOrder'), purpose: 'Vendor purchase orders' },
   { name: 'PurchaseOrderReturn', require: () => require('../../models/vendor/purchaseOrderReturn'), purpose: 'Purchase order returns' },
   { name: 'Vendor', require: () => require('../../models/vendor/vendor'), purpose: 'Vendor/supplier records' },
+  {
+    name: 'Counter',
+    require: () => require('../../models/config/counterModel'),
+    purpose: 'Atomic sequence counters (currently: customer numbers) - see docs/entities/customers.md',
+  },
 ];
 
 // Model names that only ever existed in the old Leopard storefront or its Shopify integration -

@@ -5,6 +5,7 @@ const Category = require('../../models/categoryModel');
 const Product = require('../../models/inventory/productModel')
 const SubCategory = require('../../models/subCategoryModel');
 const { normalizeTags } = require('../helper');
+const { validateProductTypeFields } = require('../productTypeValidation');
 
 // Shared by create/update: accepts either a real array (JSON body) or a JSON-stringified array
 // (multipart form field, same convention `req.body.colors` already uses - see
@@ -27,6 +28,22 @@ function validateAndNormalizeTags(value, { req }) {
   return true;
 }
 
+// A product's `type` decides which fields below are actually required - validateProductTypeFields
+// (see utils/productTypeValidation.js) is the single source of truth for that branching, shared by
+// create and update so the rules can't drift between the two (see docs/entities/products.md).
+function validateTypeSpecificFields(value, { req }) {
+  const error = validateProductTypeFields({
+    type: req.body.type || 'product',
+    cost: req.body.cost,
+    category: req.body.category,
+    subcategory: req.body.subcategory,
+    durationValue: req.body.durationValue,
+    durationUnit: req.body.durationUnit,
+  });
+  if (error) throw new Error(error);
+  return true;
+}
+
 exports.createProductValidator = [
   check('title').custom((value, { req }) => {
     req.body.createdBy = req.user._id;
@@ -37,6 +54,8 @@ exports.createProductValidator = [
     if (!value.en || !value.ar) throw new Error('description arabic or english not valid');
     return true;
   }),
+  check('type').optional().isIn(['product', 'service']).withMessage('type must be either "product" or "service"'),
+  check('type').custom(validateTypeSpecificFields),
   // check('quantity').notEmpty().withMessage('product quantity is is required').isNumeric().withMessage('Product quantity must be number'),
   check('sold').optional().isNumeric().withMessage('product sales must be number'),
   check('price').notEmpty().withMessage('Product price is required ').isNumeric().withMessage('Product price must be number').isLength({ max: 20 }).withMessage('Too long price'),
@@ -101,6 +120,25 @@ exports.updateProductValidator = [
       if (!value.en || !value.ar) throw new Error('invalid_input');
       return true;
     }),
+  // `updateProduct` uses a raw findByIdAndUpdate (see productController.js), which does NOT run
+  // document middleware - so the model-level "a service can't have variants" guard
+  // (productModel.js's pre('save') hook) never fires here. This is the only place that invariant
+  // is enforced for updates, so it must stay even though the frontend already makes `type`
+  // read-only after creation once a product exists.
+  check('type')
+    .optional()
+    .isIn(['product', 'service'])
+    .withMessage('type must be either "product" or "service"')
+    .custom(async (value, { req }) => {
+      if (value !== 'service') return true;
+      const product = await Product.findById(req.params.id);
+      if (product && Array.isArray(product.variants) && product.variants.length > 0) {
+        throw new Error('Cannot convert a product with existing variants into a service.');
+      }
+      return true;
+    }),
+  check('durationValue').optional().isFloat({ gt: 0 }).withMessage('durationValue must be a positive number'),
+  check('durationUnit').optional().isIn(['month']).withMessage('durationUnit must be "month"'),
     check('priceAfterDiscount')
     .optional()
     .custom(async (value, { req }) => {

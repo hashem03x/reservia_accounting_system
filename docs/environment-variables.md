@@ -32,6 +32,8 @@ Templates: [`backend/.env.example`](../backend/.env.example) · [`frontend/.env.
 | `DEV_URL` | Conditional (dev only) | No | Dev-mode redirect target | `server/controller/PO/purchaseOrderController.js` |
 | `PROD_URL` | Conditional (prod only) | No | Prod-mode redirect target | same |
 | `Bahrain_DB` | Optional, likely obsolete | **Secret** if set (connection string) | Only read by the standalone `GET /api/v1/bahrain-db-health` ping endpoint - unrelated to the main `DB_URI` connection; unclear original purpose, kept for now, see "Potentially obsolete" below | `server/routes/databaseHealth.js` |
+| `CUSTOMER_NUMBER_RANGE_START` | Optional (defaults 1000) | No | Seeds the atomic customer-number counter's minimum, the first time it's ever created | `server/services/customer/customerNumberService.js` |
+| `CUSTOMER_NUMBER_RANGE_END` | Optional (defaults 999999) | No | Seeds the atomic customer-number counter's maximum, the first time it's ever created - see `docs/entities/customers.md` for how to widen it later without redeploying | same |
 
 **Removed in the Shopify-removal pass** (previously documented here, no longer read by any code):
 `SHOPIFY_SHOP_DOMAIN`, `SHOPIFY_ADMIN_API_ACCESS_TOKEN`, `SHOPIFY_API_VERSION`,

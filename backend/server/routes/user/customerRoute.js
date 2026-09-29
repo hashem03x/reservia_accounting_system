@@ -5,7 +5,9 @@ const {
   getCustomerById,
   createCustomer,
   updateCustomer,
-  deleteCustomer
+  deleteCustomer,
+  uploadCustomerDocument,
+  deleteCustomerDocument,
 } = require('../../controller/user/customerController');
 
 const { createCustomerValidate, updateCustomerValidate } = require('../../utils/validators/customerValidator');
@@ -13,6 +15,7 @@ const { createCustomerValidate, updateCustomerValidate } = require('../../utils/
 const authController = require('../../controller/user/authController');
 const { checkUserPermissions } = require('../../middleware/hasPermission');
 const { Actions, Resources } = require('../../utils/appConstant');
+const { uploadSingleDocument } = require('../../middleware/documentUploadMiddleware');
 
 
 const router = express.Router();
@@ -45,4 +48,19 @@ router.route('/:id')
     checkUserPermissions({ resource: Resources.customers, action: Actions.delete }),
     deleteCustomer
   )
+
+// Optional PDF business documents (commercial registration, tax card, etc.)
+router.route('/:id/documents')
+  .post(
+    checkUserPermissions({ resource: Resources.customers, action: Actions.update }),
+    uploadSingleDocument('customers', 'document'),
+    uploadCustomerDocument
+  );
+
+router.route('/:id/documents/:documentType')
+  .delete(
+    checkUserPermissions({ resource: Resources.customers, action: Actions.update }),
+    deleteCustomerDocument
+  );
+
 module.exports = router;

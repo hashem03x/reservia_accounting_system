@@ -3,8 +3,20 @@ const { check } = require('express-validator');
 const Vendor = require('../../models/vendor/vendor');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 
+// Shared by create/update - tax/bank info is optional business data; only shape/length is
+// checked when provided (mirrors customerValidator.js's identical shared block).
+const taxAndBankInfoValidators = [
+    check('taxInfo.taxRegistrationNumber').optional().isString().trim().isLength({ max: 50 }),
+    check('taxInfo.commercialRegistrationNumber').optional().isString().trim().isLength({ max: 50 }),
+    check('bankInfo.bankName').optional().isString().trim().isLength({ max: 100 }),
+    check('bankInfo.branch').optional().isString().trim().isLength({ max: 100 }),
+    check('bankInfo.accountNumber').optional().isString().trim().isLength({ max: 50 }),
+    check('bankInfo.iban').optional().isString().trim().isLength({ max: 50 }),
+];
+
 // CREATE: Validate required fields for creating a new vendor
 const createVendorValidators = [
+    ...taxAndBankInfoValidators,
 
     check('name')
         .notEmpty().withMessage('Name is required')
@@ -81,7 +93,9 @@ const updateVendorValidators = [
     check('name').optional().notEmpty().withMessage('Name cannot be empty'),
     check('email').optional().isEmail().withMessage('Please provide a valid email'),
     check('phone').optional({ nullable: true }).isMobilePhone().withMessage('Please provide a valid phone number'),
+    ...taxAndBankInfoValidators,
     // Add other validators as needed
+    validatorMiddleware,
   ];
   
 // DELETE: Only require the vendor ID to delete a vendor

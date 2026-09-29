@@ -19,11 +19,12 @@ const {
   getAllVendors,
   getVendor,
   updateVendor,
-  deleteVendor }
+  deleteVendor,
+  uploadVendorDocument,
+  deleteVendorDocument }
   = require('../../controller/user/vendorController');
 
-
-
+const { uploadSingleDocument } = require('../../middleware/documentUploadMiddleware');
 
 const { checkUserPermissions } = require('../../middleware/hasPermission');
 
@@ -58,5 +59,16 @@ router.route('/:id')
     deleteVendorValidators,
     deleteVendor);
 
+// Optional PDF business documents (commercial registration, tax card, etc.)
+router.route('/:id/documents')
+  .post(
+    checkUserPermissions({ resource: 'vendors', action: 'update' }),
+    uploadSingleDocument('vendors', 'document'),
+    uploadVendorDocument);
+
+router.route('/:id/documents/:documentType')
+  .delete(
+    checkUserPermissions({ resource: 'vendors', action: 'update' }),
+    deleteVendorDocument);
 
 module.exports = router;

@@ -1,9 +1,12 @@
 import { Language } from "@/types/language";
 import translate from "@/utils/helpers/translate";
+import { ProductType } from "@/types/product";
+import { DurationUnit, isService } from "@/utils/constants/product-types";
 import { ProductColorInput } from "../../context";
 
 export default function validation(
   {
+    type,
     titleEn,
     titleAr,
     descriptionEn,
@@ -15,7 +18,10 @@ export default function validation(
     subcategory,
     colors,
     tags,
+    durationValue,
+    durationUnit,
   }: {
+    type: ProductType;
     titleEn: string;
     titleAr: string;
     descriptionEn: string;
@@ -27,6 +33,8 @@ export default function validation(
     subcategory: string | null;
     colors: ProductColorInput[];
     tags: string[];
+    durationValue: string | number;
+    durationUnit: DurationUnit;
   },
   language: Language,
 ) {
@@ -34,7 +42,6 @@ export default function validation(
   if (!titleAr) return translate(language, "Please provide a title in Arabic.", "يرجى إدخال عنوان بالعربية.");
   if (!descriptionEn) return translate(language, "An English description is required.", "مطلوب وصف بالإنجليزية.");
   if (!descriptionAr) return translate(language, "An Arabic description is required.", "مطلوب وصف بالعربية.");
-  if (!cost) return translate(language, "Please specify a cost for the product.", "يرجى تحديد تكلفة للمنتج.");
   if (!price) return translate(language, "Please specify a price for the product.", "يرجى تحديد سعر للمنتج.");
   // priceAfterDiscount is optional, It can be a number between 0 and the original price. Or an empty string (which will be null in the server)
   if (priceAfterDiscount !== "") {
@@ -51,19 +58,30 @@ export default function validation(
         "يجب أن يكون سعر المنتج بعد الخصم أقل من السعر الأصلي.",
       );
   }
-  if (!category)
-    return translate(language, "Please specify a the main category for the product.", "يرجى تحديد الفئة الرئيسية للمنتج.");
-  if (!subcategory)
-    return translate(language, "Please specify a subcategory for the product.", "يرجى تحديد الفئة الفرعية للمنتج.");
-  if (colors.length === 0)
-    return translate(
-      language,
-      "Please specify at least one color for the product.",
-      "يرجى تحديد على الأقل لون واحد للمنتج.",
-    );
-  for (const color of colors) {
-    if (!color.name) return translate(language, "Please provide a name for all colors.", "يرجى إدخال اسم لجميع الألوان.");
-    if (!color.code) return translate(language, "Please provide a code for all colors.", "يرجى إدخال كود لجميع الألوان.");
+
+  // Service vs. product: a service has no inventory concept (cost/category/colors) but does need
+  // a duration; a product needs the reverse. See docs/entities/products.md.
+  if (isService(type)) {
+    if (!durationValue || +durationValue <= 0)
+      return translate(language, "Please specify a valid service duration.", "يرجى تحديد مدة صالحة للخدمة.");
+    if (durationUnit !== "month")
+      return translate(language, "Duration unit must be months.", "يجب أن تكون وحدة المدة بالأشهر.");
+  } else {
+    if (!cost) return translate(language, "Please specify a cost for the product.", "يرجى تحديد تكلفة للمنتج.");
+    if (!category)
+      return translate(language, "Please specify a the main category for the product.", "يرجى تحديد الفئة الرئيسية للمنتج.");
+    if (!subcategory)
+      return translate(language, "Please specify a subcategory for the product.", "يرجى تحديد الفئة الفرعية للمنتج.");
+    if (colors.length === 0)
+      return translate(
+        language,
+        "Please specify at least one color for the product.",
+        "يرجى تحديد على الأقل لون واحد للمنتج.",
+      );
+    for (const color of colors) {
+      if (!color.name) return translate(language, "Please provide a name for all colors.", "يرجى إدخال اسم لجميع الألوان.");
+      if (!color.code) return translate(language, "Please provide a code for all colors.", "يرجى إدخال كود لجميع الألوان.");
+    }
   }
 
   // TagsInput already prevents empty/duplicate entries and enforces maxTags client-side (see

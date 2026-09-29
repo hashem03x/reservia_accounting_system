@@ -8,7 +8,12 @@ const excel = require('exceljs');
 
 // Helper function to build product query based on filters
 const buildProductQuery = queryParams => {
-  const query = { isDeleted: false };
+  // This report is specifically about stock levels/inventory movement - a service (type:
+  // 'service') has no stock by design and must not be lumped in with real out-of-stock/low-stock
+  // products (see docs/entities/products.md). `$ne: 'service'` (not `type: 'product'`) also
+  // matches legacy documents that predate this field, since Mongo doesn't retroactively apply
+  // schema defaults to already-stored documents.
+  const query = { isDeleted: false, type: { $ne: 'service' } };
 
   // Handle category filter
   if (queryParams.category) {

@@ -23,6 +23,7 @@ import {
   HiOutlineHome,
   HiOutlineCurrencyDollar,
   HiOutlineExclamationCircle,
+  HiOutlineDocumentText,
 } from "react-icons/hi2";
 import {
   FaCircleExclamation,
@@ -112,6 +113,7 @@ export const outlineIcons = {
   Edit: TbEdit,
   Trash: HiOutlineTrash,
   Photo: HiOutlinePhoto,
+  Document: HiOutlineDocumentText,
   ChartBar: HiOutlineChartBar,
   Computer: HiOutlineComputerDesktop,
   Squares: HiOutlineSquares2X2,
