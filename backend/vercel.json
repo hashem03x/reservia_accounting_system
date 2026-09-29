@@ -1,8 +1,10 @@
 {
-  "functions": {
-    "api/index.js": {
-      "includeFiles": "locales/**"
+  "builds": [
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node",
+      "config": { "includeFiles": "locales/**" }
     }
-  },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
+  ],
+  "routes": [{ "src": "/(.*)", "dest": "api/index.js" }]
 }

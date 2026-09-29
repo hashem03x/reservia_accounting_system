@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Backend API for the Reversia Accounting System",
   "type": "commonjs",
-  "main": "server.js",
+  "main": "api/index.js",
   "scripts": {
     "test": "node --test server/test/**/*.test.js",
     "db:init": "node server/scripts/initDb.js",
