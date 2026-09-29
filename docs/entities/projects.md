@@ -13,7 +13,32 @@ New entity for Phase 2 (see [`../reversia-roadmap.md`](../reversia-roadmap.md) a
 | `executor` (المنفذ) | Ref `User` | Reuses the existing `User` model (staff accounts) rather than duplicating name/contact fields - same precedent as `createdBy: ref User` elsewhere in this codebase. |
 | `contract` | Single optional subdocument (not an array) | `{ url, publicId, filename, mimeType, uploadedAt, uploadedBy }`. Reuses the existing PDF upload pipeline (`middleware/documentUploadMiddleware.js`, Cloudinary `resource_type: 'raw'`) built for Customer/Vendor documents in Phase 1, but as a single "current contract" slot with replace semantics rather than the `documents[]` typed-array shape (`businessPartnerSchemas.js`) - a project has one current contract, not several typed document categories. |
 | `status` | User input | `active \| completed \| cancelled \| on_hold`. |
+| `department` | User input, optional | `'Villa' \| 'Industrials' \| null`. See "Department" below. |
 | `isDeleted` | Soft delete | Same convention as Customer/Vendor/Product - never a real `deleteOne`. |
+
+## Department
+
+Centralized in **one place per side** - `backend/server/utils/accountingConstants.js`'s
+`ProjectDepartments` array (currently `['Villa', 'Industrials']`), mirrored in
+`frontend/src/utils/constants/accounting.ts`'s `ProjectDepartments`. Adding a third department is a
+one-line change in each of those two files - never hardcode a department string anywhere else
+(model, validator, or a frontend form/table).
+
+`department` is optional and **explicitly nullable in the schema's own enum** (`enum: {values:
+[...ProjectDepartments, null]}`) rather than left to default via an absent key - this matters
+specifically for clearing a previously-set department through `PATCH /projects/:id`: assigning
+`undefined` to an existing Mongoose document path does not reliably unset it on `.save()` (Mongoose
+treats `undefined` as "no change" when computing what to persist), but assigning `null` does. Both
+`createProject` and `updateProject` normalize an empty/falsy incoming value to `null` before
+touching the document for this reason. Projects created before this field existed simply have the
+key absent, which reads identically to `null` everywhere it's used - no migration was run or
+needed.
+
+**No duplicate journal entries are created because of department**, and none of the automatic
+project-creation accounting logic changed - `department` is a plain attribute of `Project` only.
+The existing `JournalEntry.project` reference is sufficient for a future report to join through to
+a project's department (e.g. "revenue by department"), so nothing needed to be denormalized onto
+`JournalEntry` itself for this phase.
 
 ## Remaining money - how it's actually computed today
 

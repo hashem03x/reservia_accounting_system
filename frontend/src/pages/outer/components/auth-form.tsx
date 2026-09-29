@@ -54,7 +54,7 @@ export default function AuthForm({
           {leave && (
             <p className="flex items-center justify-center gap-1">
               <span>{leave.hint}</span>
-              <Link to={leave.to} style={{ fontWeight: 500 }} className="text-blue-500 hover:text-blue-600">
+              <Link to={leave.to} style={{ fontWeight: 500 }} className="text-teal-600 hover:text-teal-700">
                 {leave.label}
               </Link>
             </p>

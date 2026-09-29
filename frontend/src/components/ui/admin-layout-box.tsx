@@ -18,10 +18,10 @@ export default function AdminLayoutBox({
   const backLinkRef = typeof header?.backLink === "string" ? header.backLink : -1;
 
   return (
-    <div className="root-flex-1 flex min-h-full flex-col gap-4 rounded-xl bg-white p-4 shadow-lg sm:p-[18px]">
+    <div className="root-flex-1 flex min-h-full flex-col gap-5 rounded-lg border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
       {header && (
-        <header className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-col gap-2">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
               {header.backLink && (
                 <Button
@@ -37,7 +37,7 @@ export default function AdminLayoutBox({
                   <solidIcons.ArrowLeft style={{ transform: `rotateY(${translate("0", "180deg")})` }} />
                 </Button>
               )}
-              <h1>{header.title}</h1>
+              <h1 className="tracking-tight">{header.title}</h1>
             </div>
             {header.subTitle && <p>{header.subTitle}</p>}
           </div>
@@ -45,7 +45,7 @@ export default function AdminLayoutBox({
         </header>
       )}
 
-      {header?.border && <hr />}
+      {header?.border && <hr className="border-gray-100" />}
 
       {children}
     </div>

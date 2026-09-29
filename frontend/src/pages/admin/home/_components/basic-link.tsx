@@ -14,12 +14,14 @@ export default function BasicLink({
   return (
     <Link
       to={to}
-      className="flex w-full items-center gap-6 rounded-lg border bg-gray-100 px-6 py-5 transition-colors hover:border-sky-200 hover:bg-sky-100"
+      className="flex w-full items-center gap-4 rounded-lg border border-gray-100 bg-white px-5 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md"
     >
-      <Img src={img} alt={title} width="35px" />
+      <div className="flex-center h-12 w-12 shrink-0 rounded-lg bg-teal-50">
+        <Img src={img} alt={title} width="26px" />
+      </div>
       <div className="flex flex-col gap-[2px]">
         <p className="font-medium text-gray-800">{title}</p>
-        {subTitle && <span className="text-xs text-gray-600 sm:text-sm">{subTitle}</span>}
+        {subTitle && <span className="text-xs text-gray-500 sm:text-sm">{subTitle}</span>}
       </div>
     </Link>
   );

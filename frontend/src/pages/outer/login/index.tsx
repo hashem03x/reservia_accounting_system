@@ -70,7 +70,7 @@ export default function Login() {
       />
       <div className="flex items-center justify-between">
         <Checkbox label={translate("Remember me", "تذكرني")} checked={remember} onChange={() => setRemember(!remember)} />
-        <Link to={`/${paths.forgotPassword}`} className="text-blue-500 hover:text-blue-600">
+        <Link to={`/${paths.forgotPassword}`} className="text-teal-600 hover:text-teal-700">
           {translate("Forgot password?", "نسيت كلمة المرور؟")}
         </Link>
       </div>

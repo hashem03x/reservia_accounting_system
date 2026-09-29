@@ -5,7 +5,7 @@ const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { getNextJournalEntryNumber } = require('../../services/accounting/journalEntryNumberService');
-const { logAccountingEvent } = require('../../utils/accountingLogger');
+const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
 
 const createJournalEntry = asyncHandler(async (req, res) => {
   const { date, description, reference, project, lines } = req.body;
@@ -97,6 +97,10 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
   const original = await JournalEntry.findById(req.params.id);
   if (!original) return next(new ApiError('No journal entry found with that id', 404));
 
+  // Cheap pre-check outside any transaction - fails fast for the ordinary case (nothing racing)
+  // without paying for a session/transaction on an obviously-invalid request. This is NOT the
+  // only check - see the re-check inside the transaction below, which is the one that actually
+  // closes the race window between two concurrent reversal requests for the same entry.
   if (original.status !== 'posted') {
     return next(new ApiError('Only posted journal entries can be reversed.', 400));
   }
@@ -105,11 +109,22 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
   }
 
   const { reversalDate, reference } = req.body;
+  const startedAt = Date.now();
 
   const session = await mongoose.startSession();
   try {
     let reversal;
     await session.withTransaction(async () => {
+      // Re-fetch INSIDE the transaction's own snapshot and re-check - the pre-check above has a
+      // window between two concurrent requests for the same entry (both could read "not reversed
+      // yet" before either writes). Whichever request's transaction commits first wins; the loser
+      // sees `reversedByEntry` already set here and fails cleanly with a normal business error
+      // instead of racing to create two reversal entries for the same original.
+      const currentOriginal = await JournalEntry.findById(original._id).session(session);
+      if (!currentOriginal || currentOriginal.status !== 'posted' || currentOriginal.reversedByEntry) {
+        throw new ApiError('This journal entry has already been reversed.', 400);
+      }
+
       const entryNumber = await getNextJournalEntryNumber(session);
 
       const [created] = await JournalEntry.create(
@@ -117,14 +132,14 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
           {
             entryNumber,
             date: reversalDate,
-            description: `Reversal of entry #${original.entryNumber}${original.description ? ` - ${original.description}` : ''}`,
+            description: `Reversal of entry #${currentOriginal.entryNumber}${currentOriginal.description ? ` - ${currentOriginal.description}` : ''}`,
             reference,
-            project: original.project,
-            source: original.source,
+            project: currentOriginal.project,
+            source: currentOriginal.source,
             sourceType: null,
             sourceId: null,
             status: 'posted',
-            lines: original.lines.map(line => ({
+            lines: currentOriginal.lines.map(line => ({
               account: line.account._id || line.account,
               subAccount: line.subAccount?._id || line.subAccount || null,
               project: line.project?._id || line.project || null,
@@ -134,7 +149,7 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
               description: line.description,
               unearnedRevenue: 0,
             })),
-            reversalOfEntry: original._id,
+            reversalOfEntry: currentOriginal._id,
             createdBy: req.user._id,
             postedBy: req.user._id,
             postedAt: new Date(),
@@ -144,16 +159,36 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
       );
       reversal = created;
 
-      original.reversedByEntry = reversal._id;
-      original.reversedBy = req.user._id;
-      original.reversedAt = new Date();
-      original.status = 'reversed';
-      await original.save({ session });
+      currentOriginal.reversedByEntry = reversal._id;
+      currentOriginal.reversedBy = req.user._id;
+      currentOriginal.reversedAt = new Date();
+      currentOriginal.status = 'reversed';
+      await currentOriginal.save({ session });
     });
 
-    logAccountingEvent('JOURNAL_ENTRY_REVERSED', { journalEntryId: original._id, reversalEntryId: reversal._id, requestId: req.id });
+    logAccountingEvent('JOURNAL_ENTRY_REVERSED', {
+      journalEntryId: original._id,
+      entryNumber: original.entryNumber,
+      reversalEntryId: reversal._id,
+      reversalEntryNumber: reversal.entryNumber,
+      durationMs: Date.now() - startedAt,
+      requestId: req.id,
+    });
 
     res.status(201).json(apiResponse('Journal entry reversed successfully', true, reversal));
+  } catch (err) {
+    // Enough to diagnose a transaction failure (operation, which entry, how long it ran, the
+    // Mongo error's own code/name/labels) without ever logging connection strings, credentials,
+    // or request bodies.
+    logAccountingError('JOURNAL_ENTRY_REVERSAL_FAILED', err, {
+      journalEntryId: original._id,
+      entryNumber: original.entryNumber,
+      durationMs: Date.now() - startedAt,
+      mongoErrorCode: err.code,
+      mongoErrorLabels: typeof err.errorLabels === 'function' ? err.errorLabels() : err.errorLabels,
+      requestId: req.id,
+    });
+    throw err;
   } finally {
     session.endSession();
   }

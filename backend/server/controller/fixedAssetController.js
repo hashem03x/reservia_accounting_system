@@ -5,7 +5,7 @@ const Payment = require('../models/vendor/paymentModel');
 const JournalEntry = require('../models/accounting/journalEntryModel');
 const factory = require('./handlersFactory');
 const { getNextJournalEntryNumber } = require('../services/accounting/journalEntryNumberService');
-const { logAccountingEvent } = require('../utils/accountingLogger');
+const { logAccountingEvent, logAccountingError } = require('../utils/accountingLogger');
 
 // Get all fixed assets
 exports.getFixedAssets = factory.getAll(FixedAsset);
@@ -19,6 +19,7 @@ exports.createFixedAsset = asyncHandler(async (req, res) => {
   // caller to send three near-duplicate numbers.
   const resolvedBookValue = bookValue ?? price;
   const resolvedFairValue = fairValue ?? price;
+  const startedAt = Date.now();
 
   const session = await mongoose.startSession();
   try {
@@ -88,13 +89,26 @@ exports.createFixedAsset = asyncHandler(async (req, res) => {
       }
     });
 
-    logAccountingEvent('FIXED_ASSET_CREATED', { fixedAssetId: fixedAsset._id, journalEntryId: journalEntry?._id, requestId: req.id });
+    logAccountingEvent('FIXED_ASSET_CREATED', {
+      fixedAssetId: fixedAsset._id,
+      journalEntryId: journalEntry?._id,
+      durationMs: Date.now() - startedAt,
+      requestId: req.id,
+    });
 
     res.status(201).json({
       status: 'success',
       data: fixedAsset,
       journalEntry,
     });
+  } catch (err) {
+    logAccountingError('FIXED_ASSET_CREATION_FAILED', err, {
+      durationMs: Date.now() - startedAt,
+      mongoErrorCode: err.code,
+      mongoErrorLabels: typeof err.errorLabels === 'function' ? err.errorLabels() : err.errorLabels,
+      requestId: req.id,
+    });
+    throw err;
   } finally {
     session.endSession();
   }

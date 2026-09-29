@@ -25,12 +25,13 @@ export default function Modal({
       onClose={onClose}
       withCloseButton={false}
       centered
-      radius={20}
+      radius="lg"
+      shadow="xl"
       dir={translate(language, "ltr", "rtl")}
       size={size}
     >
       <div className="p-[10px]">
-        {title && <h3 className={`mb-[10px] ${centerTitle ? "text-center" : ""}`}>{title}</h3>}
+        {title && <h3 className={`mb-3 pb-3 border-b border-gray-100 ${centerTitle ? "text-center" : ""}`}>{title}</h3>}
         {children}
       </div>
     </M>

@@ -86,6 +86,33 @@ No second, independently-maintained balance/ledger structure - `getAccountBalanc
 read time. This is the "single source of truth" the master spec required: if it isn't a posted
 journal line, it isn't in the ledger.
 
+**Balance sign convention: `balance = debit - credit`, unconditionally, for every account
+regardless of type.** An earlier version of `getAccountBalance` flipped the sign for
+liability/equity/revenue accounts to show a "natural" positive balance (e.g. a liability with more
+credits than debits displayed as positive); that was replaced with plain `debit - credit` per a
+confirmed requirement with worked examples (an Unearned Revenue account carrying more credits than
+debits must display as **negative**, e.g. `-100,000`). `getTrialBalance()`'s rows each carry this
+same `balance` field. Draft/unposted entries are excluded from both (`{ $match: { status: 'posted'
+} }` is the first aggregation stage in each).
+
+**Journal Entry line `Balance` (UI-only) vs Chart of Accounts `Balance` (this service) are two
+different numbers, not to be confused:**
+- A journal entry *line's* Balance (`frontend/src/pages/admin/journal-entries/[id]/index.tsx`,
+  column right after Credit) is `debit - credit` for **that one line only** - purely a display
+  computation in the frontend, no backend field, no persistence.
+- An *account's* Balance (this service, and the Chart of Accounts page) is the sum of `debit -
+  credit` across **every posted line that touches that account**, i.e. the actual running ledger
+  balance.
+
+**Total ledger balance is always 0 for internally-consistent data**, because every individual
+posted entry is required to be balanced before it can be posted (see above) - summing
+`debit - credit` across every account therefore telescopes to `totalDebits - totalCredits` across
+the whole ledger, which is 0 by construction. The Chart of Accounts page
+(`frontend/src/pages/admin/accounts/index.tsx`) and the Trial Balance modal both compute and
+display this sum explicitly (green if zero, red with a warning if not) rather than hiding a
+potential imbalance - it should never be non-zero in practice, and if it ever is, that is a real
+bug or a direct database write bypassing this app, not something to silently paper over.
+
 ## Automatic accounting entry on Project creation
 
 **Confirmed accounting policy for this phase** (this was NOT inferable from the pre-existing

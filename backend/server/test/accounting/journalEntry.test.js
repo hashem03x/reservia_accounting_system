@@ -9,6 +9,7 @@ let ChartOfAccount;
 let getNextJournalEntryNumber;
 let cash;
 let revenue;
+let transactionsSupported = true;
 
 before(async () => {
   await mongoose.connect(DB_URI);
@@ -19,6 +20,18 @@ before(async () => {
   // See chartOfAccount.test.js's before() comment - avoids racing the unique index builds
   // (entryNumber, and the sourceType+sourceId partial index) under concurrent test-file load.
   await Promise.all([JournalEntry.init(), ChartOfAccount.init()]);
+
+  const probeSession = await mongoose.startSession();
+  try {
+    await probeSession.withTransaction(async () => {
+      await mongoose.connection.collection('__txn_probe').insertOne({ ok: 1 }, { session: probeSession });
+    });
+    await mongoose.connection.collection('__txn_probe').drop().catch(() => {});
+  } catch (err) {
+    transactionsSupported = false;
+  } finally {
+    probeSession.endSession();
+  }
 });
 
 after(async () => {
@@ -237,4 +250,54 @@ test('the reverseJournalEntryValidators reject a missing or invalid reversalDate
 
   const valid = await runValidators({ reversalDate: '2026-09-20' });
   assert.equal(valid.isEmpty(), true, 'a request with a valid ISO reversalDate must pass validation');
+});
+
+// Regression for journalEntryController.js#reverseJournalEntry's in-transaction re-check: two
+// concurrent requests could both read `reversedByEntry: null` before either writes (the classic
+// TOCTOU race). Mirrors the controller's actual guard - re-fetching the original INSIDE the
+// transaction's own session/snapshot and re-checking there - directly, the same way
+// projectAccounting.test.js mirrors controller transaction logic rather than needing an HTTP layer.
+test('re-checking reversal eligibility inside the transaction rejects an entry that was reversed by a concurrent request, without creating a duplicate reversal', async t => {
+  if (!transactionsSupported) return t.skip('local MongoDB is a standalone instance, not a replica set - transactions unavailable (works against the real Atlas cluster)');
+
+  const entryNumber = await getNextJournalEntryNumber();
+  const original = await JournalEntry.create({
+    entryNumber,
+    status: 'posted',
+    lines: [
+      { account: cash._id, debit: 100, credit: 0 },
+      { account: revenue._id, debit: 0, credit: 100 },
+    ],
+  });
+
+  // Simulates "another request already won the race and reversed it" happening between this
+  // request's initial (pre-transaction) read and its in-transaction re-check.
+  const firstReversalNumber = await getNextJournalEntryNumber();
+  const firstReversal = await JournalEntry.create({
+    entryNumber: firstReversalNumber,
+    status: 'posted',
+    reversalOfEntry: original._id,
+    lines: [
+      { account: cash._id, debit: 0, credit: 100 },
+      { account: revenue._id, debit: 100, credit: 0 },
+    ],
+  });
+  await JournalEntry.updateOne({ _id: original._id }, { $set: { reversedByEntry: firstReversal._id, status: 'reversed' } });
+
+  const session = await mongoose.startSession();
+  await assert.rejects(
+    () =>
+      session.withTransaction(async () => {
+        const currentOriginal = await JournalEntry.findById(original._id).session(session);
+        if (!currentOriginal || currentOriginal.status !== 'posted' || currentOriginal.reversedByEntry) {
+          throw new Error('This journal entry has already been reversed.');
+        }
+      }),
+    /already been reversed/,
+    'the in-transaction re-check must reject a second reversal attempt on an entry another request just reversed'
+  );
+  session.endSession();
+
+  const allReversalsOfOriginal = await JournalEntry.find({ reversalOfEntry: original._id });
+  assert.equal(allReversalsOfOriginal.length, 1, 'only the first, legitimate reversal must exist - no duplicate reversal entry');
 });

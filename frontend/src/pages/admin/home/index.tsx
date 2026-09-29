@@ -72,25 +72,27 @@ export default function Home() {
   return (
     <AdminLayoutBox
       header={{
-        title: translate("Reversia Accounting System", "نظام حسابات ريفيرسيا"),
+        title: translate("Reservia Integrated Energy", "ريزيرفيا للطاقة المتكاملة"),
         subTitle: translate(
           "Centralized control for managing products, orders, vendors, customers, and more.",
           "التحكم المركزي لإدارة المنتجات والطلبات والبائعين والعملاء والمزيد.",
         ),
       }}
     >
-      <div className="root-flex-1 flex h-full flex-col justify-between gap-6">
-        <div className="flex flex-col gap-3">
+      <div className="root-flex-1 flex h-full flex-col justify-between gap-8">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {links.map((link) => (
             <BasicLink key={link.to} link={link} />
           ))}
         </div>
 
-        <div className="flex flex-col gap-2">
-          <p>{translate("More Options..", "المزيد من الخيارات..")}</p>
-          {moreOptions.map((link) => (
-            <BasicLink key={link.to} link={link} />
-          ))}
+        <div className="flex flex-col gap-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{translate("More Options", "المزيد من الخيارات")}</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {moreOptions.map((link) => (
+              <BasicLink key={link.to} link={link} />
+            ))}
+          </div>
         </div>
       </div>
     </AdminLayoutBox>

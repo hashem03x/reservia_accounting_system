@@ -9,6 +9,7 @@ import "@mantine/dates/styles.css";
 import "@mantine/notifications/styles.css";
 import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
+import theme from "@/theme";
 
 import RememberUser from "@/pages/routes/remeber-user.tsx";
 import LanguageProvider from "@/context/LanguageContext.tsx";
@@ -20,7 +21,7 @@ import GovernorateProvider from "@/context/GovernorateContext.tsx";
 import AboutProvider from "@/context/AboutContext.tsx";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <MantineProvider forceColorScheme="light">
+  <MantineProvider theme={theme} forceColorScheme="light">
     <Notifications />
     <LanguageProvider>
       <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>

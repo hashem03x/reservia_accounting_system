@@ -72,7 +72,7 @@ export default function LanguageProvider({ children }: { children: React.ReactNo
     dir: translate("ltr", "rtl"),
     language: translate("English", "العربية"),
     toggleLanguage: translate("Toggle Language", "تغيير اللغة"),
-    appName: translate("Reversia", "ريفيرسيا"),
+    appName: translate("Reservia Integrated Energy", "ريزيرفيا للطاقة المتكاملة"),
     adminPanel: translate("Admin Panel", "لوحة التحكم"),
     underConstruction: translate("Under Construction", "تحت الإنشاء"),
     currency: translate("EGP", "جنيه"),

@@ -16,6 +16,7 @@ const { logAccountingEvent, logAccountingError } = require('../../utils/accounti
 // leaving a project that exists with no accounting behind it.
 const createProject = asyncHandler(async (req, res, next) => {
   const { projectNumber, name, description, projectAmount, executor, status, department } = req.body;
+  const startedAt = Date.now();
 
   const session = await mongoose.startSession();
   try {
@@ -44,7 +45,7 @@ const createProject = asyncHandler(async (req, res, next) => {
       journalEntry = await createProjectCreationJournalEntry(project, session, req.user._id);
     });
 
-    logAccountingEvent('PROJECT_CREATED', { projectId: project._id, projectNumber: project.projectNumber, requestId: req.id });
+    logAccountingEvent('PROJECT_CREATED', { projectId: project._id, projectNumber: project.projectNumber, durationMs: Date.now() - startedAt, requestId: req.id });
 
     res.status(201).json(
       apiResponse('Project created successfully. Journal entry created successfully.', true, {
@@ -56,7 +57,13 @@ const createProject = asyncHandler(async (req, res, next) => {
     if (err.code === 11000) {
       return next(new ApiError('Project number already exists.', 400));
     }
-    logAccountingError('PROJECT_ACCOUNTING_ENTRY_FAILED', err, { projectNumber, requestId: req.id });
+    logAccountingError('PROJECT_ACCOUNTING_ENTRY_FAILED', err, {
+      projectNumber,
+      durationMs: Date.now() - startedAt,
+      mongoErrorCode: err.code,
+      mongoErrorLabels: typeof err.errorLabels === 'function' ? err.errorLabels() : err.errorLabels,
+      requestId: req.id,
+    });
     return next(err instanceof ApiError ? err : new ApiError('Project could not be completed because its accounting entry could not be created.', 400));
   } finally {
     session.endSession();
