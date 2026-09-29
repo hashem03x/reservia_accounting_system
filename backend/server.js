@@ -1,131 +1,41 @@
-const path = require('path');
-const express = require('express');
-const cookieParser = require('cookie-parser');
-const kleur = require('kleur'); // Import kleur for colored logs
-const morgan = require('morgan');
-const mongoSanitize = require('express-mongo-sanitize');
-const xss = require('xss-clean');
-const cors = require('cors');
-const compression = require('compression');
-// const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-// the i18next module is used to handle internationalization and localization in the application
-const i18next = require('i18next');
-// the i18next-fs-backend module is used to load translations
-const Backend = require('i18next-fs-backend');
-// the i18next-http-middleware module is used to handle internationalization and localization by detecting the language
-const i18nextMiddleware = require('i18next-http-middleware');
-
+// Local-dev / traditional-server entry point. NOT used on Vercel - see api/index.js, which
+// imports server/app.js directly and never calls app.listen(). Keeping this file's job narrow
+// (connect DB, start the backup scheduler, listen on a port, wire process signal handlers) is
+// what makes server/app.js safely reusable by both entry points without duplicating the actual
+// application logic.
 const { loadEnv } = require('./server/config/env');
 loadEnv();
-const ApiError = require('./server/utils/apiError');
-const globalError = require('./server/middleware/errorMiddleware');
-const dbConnection = require('./server/database/dbConnection');
-//  Routes
-const mountRoutes = require('./server/routes');
+
+console.log('[STARTUP] Configuration loaded.');
+
+const connectDB = require('./server/database/dbConnection');
 const backupScheduler = require('./server/backup/backup.scheduler');
+const app = require('./server/app');
 
-// Connect to db
-dbConnection();
+console.log('[STARTUP] Database configuration loaded.');
 
-// express app
-const app = express();
-
-// Enable other domains to access your application
-app.use(
-  cors({
-    origin: true,
-    credentials: true,
-    exposedHeaders: ['set-cookie', 'Content-Disposition'],
-  }),
-);
-// Compress all responses
-app.use(compression());
-// HTTP security headers for express
-// app.use(
-//   helmet({
-//     contentSecurityPolicy: false,
-//   })
-// );
-app.use(cookieParser());
-
-// Middlewares
-app.use(express.json({ limit: '20mb' }));
-
-// Define custom Morgan token for remote address
-morgan.token('x-forwarded-for', req => {
-  return req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+// Local/traditional-server behavior: a bad or missing DB_URI is fatal at boot, same as before this
+// file was split - this is intentionally NOT the behavior of api/index.js (Vercel), where killing
+// the whole process on a DB error would take down every route, including ones that don't need the
+// database (see server/database/dbConnection.js's comment for why process.exit() was removed from
+// the shared connection logic itself).
+connectDB().catch(err => {
+  console.error(`[STARTUP] Fatal: database connection failed (${err.name || err.message}). Exiting.`);
+  process.exit(1);
 });
 
-// Define custom Morgan format with Kleur
-const morganFmt = (tokens, req, res) => {
-  const remoteAddress = tokens['x-forwarded-for'](req);
-  const requestTime = tokens.date(req, res, 'iso'); // ISO 8601 format
-  return `===>>> ${kleur.magenta(requestTime)} | ${kleur.cyan(remoteAddress)}`;
-};
-app.use(morgan(morganFmt));
-app.use(morgan('dev'));
-
-const limiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minutes
-  max: 1000, // Limit each IP to 1000 requests
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    error: 'Too many requests. Please try again later.',
-  },
-});
-app.use(mongoSanitize());
-app.use(xss());
-
-i18next
-  .use(Backend)
-  .use(i18nextMiddleware.LanguageDetector)
-  .init({
-    backend: {
-      loadPath: path.join(__dirname, 'locales/{{lng}}/translation.json'),
-      addPath: path.join(__dirname, 'locales/missing.json'),
-    },
-    fallbackLng: process.env.DEFAULT_LANGUAGE || 'en',
-    saveMissing: true,
-    detection: {
-      order: ['header', 'cookie'],
-      lookupHeader: 'accept-language',
-      lookupCookie: 'accept-language',
-      caches: ['cookie'],
-    },
-  });
-
-app.use(i18nextMiddleware.handle(i18next));
-
-app.use('/', limiter);
-
-app.use('/', express.static(path.join(__dirname, 'uploads')));
-// app.use('/', express.static(path.join(__dirname, 'uploads')));
-
-// Mount Routes
-mountRoutes(app);
-
-// Auto-start the daily backup cron (loads time from settings.json)
+// Cron/fs-based background jobs only make sense on a persistent process - see
+// server/backup/backup.scheduler.js for why this is skipped entirely on Vercel.
 backupScheduler.init();
-
-app.all('*', (req, res, next) => {
-  next(new ApiError(`Can't find this route: ${req.originalUrl}`, 404));
-});
-
-// Global error handling middleware for express
-app.use(globalError);
 
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
-  console.log(`App is running on port ${PORT}`);
+  console.log(`[STARTUP] Application ready - listening on port ${PORT}`);
 });
 
-// Increase timeout (e.g. 10 min = 600000 ms)
+// Increase timeout (e.g. 10 min = 600000 ms) - meaningless on Vercel (which enforces its own
+// per-invocation limit), only relevant to this persistent-server entry point.
 server.setTimeout(600000);
-
-// Handling error ouside express
 
 process.on('SIGINT', () => {
   console.log('👋 SIGINT received. Shutting down gracefully...');

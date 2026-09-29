@@ -16,6 +16,8 @@ Templates: [`backend/.env.example`](../backend/.env.example) · [`frontend/.env.
 | `PORT` | Optional (defaults 5000) | No | HTTP port the server listens on | `server.js` |
 | `DB_URI` | Required | **Secret** | MongoDB connection string | `server/database/dbConnection.js` |
 | `BASE_URL` | Required | No | This server's own public URL; used to build absolute asset URLs (brand/category/subcategory/logo images) | `server/models/brandModel.js`, `categoryModel.js`, `subCategoryModel.js` |
+| `FRONTEND_URL` | Required (production) | No | The exact deployed frontend origin (no trailing slash) - the one production origin CORS allows for cross-origin, credentialed requests. Must be set in the Vercel project's own dashboard for production; local dev origins are always allowed in addition, unconditionally | `server/app.js` |
+| `VERCEL` | N/A - platform-provided, never set manually | No | Set automatically to `"1"` by the Vercel runtime/build. Used to skip the cron-based backup scheduler (which cannot work in a serverless environment) and to disable i18next's `saveMissing` filesystem write - see `docs/deployment-vercel.md` | `server/backup/backup.scheduler.js`, `server/app.js` |
 | `JWT_SECRET_KEY` | Required | **Secret** | Signs access-token JWTs | `server/utils/createToken.js`, `server/controller/user/authController.js` |
 | `JWT_EXPIRES_IN` | Optional | No | Access-token TTL | `server/utils/createToken.js` |
 | `REFRESH_TOKEN_SECRET_KEY` | Required | **Secret** | Signs refresh-token JWTs | `server/utils/createToken.js`, `server/controller/user/authController.js` |

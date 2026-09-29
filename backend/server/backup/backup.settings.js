@@ -11,6 +11,21 @@ const DEFAULTS = {
   maxFiles: 10,
 };
 
+// Best-effort persistence: on a read-only filesystem (Vercel, outside /tmp) this logs and returns
+// false instead of throwing - the backup feature's write-through settings cache degrading to
+// in-memory-only defaults is an acceptable, visible limitation; an uncaught EROFS crashing the
+// whole request (or, when called from the scheduler's module-scope init(), the whole function) is
+// not. See backup.scheduler.js's init() for the module-load-time crash this was actually causing.
+function _tryWrite(data) {
+  try {
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2), 'utf8');
+    return true;
+  } catch (err) {
+    console.error(`[Backup] Could not persist settings.json (${err.code || err.name}) - continuing with in-memory defaults.`);
+    return false;
+  }
+}
+
 /**
  * Reads settings.json from disk.
  * Auto-creates the file with defaults if it does not exist.
@@ -18,7 +33,7 @@ const DEFAULTS = {
  */
 function getSettings() {
   if (!fs.existsSync(SETTINGS_PATH)) {
-    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(DEFAULTS, null, 2), 'utf8');
+    _tryWrite(DEFAULTS);
     return { ...DEFAULTS };
   }
 
@@ -29,7 +44,7 @@ function getSettings() {
     return { ...DEFAULTS, ...parsed };
   } catch {
     // Corrupted file → reset to defaults
-    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(DEFAULTS, null, 2), 'utf8');
+    _tryWrite(DEFAULTS);
     return { ...DEFAULTS };
   }
 }
@@ -41,7 +56,7 @@ function getSettings() {
 function updateTime(time) {
   const settings = getSettings();
   settings.backupTime = time;
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf8');
+  _tryWrite(settings);
 }
 
 module.exports = { getSettings, updateTime, SETTINGS_PATH };
