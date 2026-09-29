@@ -19,6 +19,7 @@ import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import CustomerModal from "@/components/global/customer-modal";
+import BusinessDocumentsSection from "@/components/global/business-documents-section";
 import DeleteCustomerModal from "./_components/delete-customer-modal";
 import UpdateBalanceModal from "./_components/update-balance-modal";
 import CustomerOrdersHistory from "./_components/customer-orders-history";
@@ -146,6 +147,12 @@ export default function Customer() {
                 </span>
               </div>
 
+              {/* Customer Number - server-generated, see docs/entities/customers.md */}
+              <div className="flex items-center gap-1">
+                <p className="text-sm">{translate("Customer Number", "رقم العميل")}:</p>
+                <p className="text-sm font-semibold text-gray-800">{customer.customerNumber ?? "-"}</p>
+              </div>
+
               <h2 className="text-3xl font-bold tracking-tight sm:text-5xl">{customer.name}</h2>
 
               <AdminGaurd>
@@ -206,6 +213,61 @@ export default function Customer() {
                 {customer.offlineAddress.country && <p>{customer.offlineAddress.country}</p>}
               </section>
             )}
+
+            {/* Tax Info */}
+            {(customer.taxInfo?.taxRegistrationNumber || customer.taxInfo?.commercialRegistrationNumber) && (
+              <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
+                <h4>{translate("Tax Info", "البيانات الضريبية")}</h4>
+                {customer.taxInfo?.taxRegistrationNumber && (
+                  <p>
+                    {translate("Tax Registration Number", "الرقم الضريبي")}: {customer.taxInfo.taxRegistrationNumber}
+                  </p>
+                )}
+                {customer.taxInfo?.commercialRegistrationNumber && (
+                  <p>
+                    {translate("Commercial Registration Number", "رقم السجل التجاري")}:{" "}
+                    {customer.taxInfo.commercialRegistrationNumber}
+                  </p>
+                )}
+              </section>
+            )}
+
+            {/* Bank Info */}
+            {(customer.bankInfo?.bankName || customer.bankInfo?.branch || customer.bankInfo?.accountNumber || customer.bankInfo?.iban) && (
+              <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
+                <h4>{translate("Bank Info", "البيانات البنكية")}</h4>
+                {customer.bankInfo?.bankName && (
+                  <p>
+                    {translate("Bank Name", "إسم البنك")}: {customer.bankInfo.bankName}
+                  </p>
+                )}
+                {customer.bankInfo?.branch && (
+                  <p>
+                    {translate("Branch", "الفرع")}: {customer.bankInfo.branch}
+                  </p>
+                )}
+                {customer.bankInfo?.accountNumber && (
+                  <p>
+                    {translate("Account Number", "رقم الحساب")}: {customer.bankInfo.accountNumber}
+                  </p>
+                )}
+                {customer.bankInfo?.iban && (
+                  <p>
+                    {translate("IBAN", "رقم ال IBAN")}: {customer.bankInfo.iban}
+                  </p>
+                )}
+              </section>
+            )}
+
+            {/* Documents - manageable directly from here, not only from the edit modal */}
+            <div className="rounded-md bg-gray-100 p-4">
+              <BusinessDocumentsSection
+                entityType="customers"
+                entityId={customer._id}
+                documents={customer.documents}
+                onChange={(documents) => setCustomer({ ...customer, documents })}
+              />
+            </div>
 
             {/* Order History */}
             {canIReadSalesOrders && customerSalesOrders.length > 0 && (

@@ -18,6 +18,7 @@ import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import VendorModal from "@/components/global/vendor-modal";
+import BusinessDocumentsSection from "@/components/global/business-documents-section";
 import DeleteVendorModal from "./_components/delete-vendor-modal";
 import UpdateBalanceModal from "./_components/update-balance-modal";
 import VendorOrdersHistory from "./_components/vendor-orders-history";
@@ -198,6 +199,61 @@ export default function Vendor() {
                 {vendor.address.country && <p>{vendor.address.country}</p>}
               </section>
             )}
+
+            {/* Tax Info */}
+            {(vendor.taxInfo?.taxRegistrationNumber || vendor.taxInfo?.commercialRegistrationNumber) && (
+              <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
+                <h4>{translate("Tax Info", "البيانات الضريبية")}</h4>
+                {vendor.taxInfo?.taxRegistrationNumber && (
+                  <p>
+                    {translate("Tax Registration Number", "الرقم الضريبي")}: {vendor.taxInfo.taxRegistrationNumber}
+                  </p>
+                )}
+                {vendor.taxInfo?.commercialRegistrationNumber && (
+                  <p>
+                    {translate("Commercial Registration Number", "رقم السجل التجاري")}:{" "}
+                    {vendor.taxInfo.commercialRegistrationNumber}
+                  </p>
+                )}
+              </section>
+            )}
+
+            {/* Bank Info */}
+            {(vendor.bankInfo?.bankName || vendor.bankInfo?.branch || vendor.bankInfo?.accountNumber || vendor.bankInfo?.iban) && (
+              <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
+                <h4>{translate("Bank Info", "البيانات البنكية")}</h4>
+                {vendor.bankInfo?.bankName && (
+                  <p>
+                    {translate("Bank Name", "إسم البنك")}: {vendor.bankInfo.bankName}
+                  </p>
+                )}
+                {vendor.bankInfo?.branch && (
+                  <p>
+                    {translate("Branch", "الفرع")}: {vendor.bankInfo.branch}
+                  </p>
+                )}
+                {vendor.bankInfo?.accountNumber && (
+                  <p>
+                    {translate("Account Number", "رقم الحساب")}: {vendor.bankInfo.accountNumber}
+                  </p>
+                )}
+                {vendor.bankInfo?.iban && (
+                  <p>
+                    {translate("IBAN", "رقم ال IBAN")}: {vendor.bankInfo.iban}
+                  </p>
+                )}
+              </section>
+            )}
+
+            {/* Documents - manageable directly from here, not only from the edit modal */}
+            <div className="rounded-md bg-gray-100 p-4">
+              <BusinessDocumentsSection
+                entityType="vendors"
+                entityId={vendor._id}
+                documents={vendor.documents}
+                onChange={(documents) => setVendor({ ...vendor, documents })}
+              />
+            </div>
 
             {/* Order History */}
             {canIReadPurchaseOrders && vendorPurchaseOrders.length > 0 && (
