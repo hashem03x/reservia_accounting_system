@@ -19,7 +19,10 @@ export function notifySuccess({ language, title, message }: { language: Language
   notifications.show({
     title: title || false,
     message,
-    color: "teal",
+    // Success semantics specifically - not the same "teal" used for primary CTA buttons
+    // elsewhere (see theme.ts), which now resolves to the accent gold and would be the wrong
+    // color for a success toast.
+    color: "green",
     dir: translate(language, "ltr", "rtl"),
     position: translate(language, "bottom-right", "bottom-left") as NotificationPosition,
     radius: "md",

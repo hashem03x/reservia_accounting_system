@@ -15,9 +15,27 @@
   }
 }
 
+/* Typography: Inter for Latin/English content, Cairo for Arabic/RTL content - swapped at runtime
+   via the `dir` attribute LanguageContext.tsx sets on <html> whenever the language toggles.
+   Redefining --mantine-font-family(-headings) here (not just plain `font-family`) is what makes
+   this reach Mantine's own components too, including ones rendered into a portal outside this
+   subtree (Modal, Notifications, dropdowns) - Mantine's CSS references that variable directly
+   rather than relying on ordinary inherited `font-family`, and CSS custom properties still follow
+   normal DOM-tree inheritance, so setting it on <html> covers portaled content as well. */
+html[dir="ltr"] {
+  font-family: "Inter", sans-serif;
+  --mantine-font-family: "Inter", sans-serif;
+  --mantine-font-family-headings: "Inter", sans-serif;
+}
+html[dir="rtl"] {
+  font-family: "Cairo", sans-serif;
+  --mantine-font-family: "Cairo", sans-serif;
+  --mantine-font-family-headings: "Cairo", sans-serif;
+}
+
 @layer base {
   * {
-    @apply font-tajawal !important;
+    font-family: inherit;
   }
   h1,
   h2,

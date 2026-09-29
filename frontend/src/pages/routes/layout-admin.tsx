@@ -10,7 +10,7 @@ export default function AdminLayout() {
     <div className="block h-full">
       <div className="flex min-h-full flex-col">
         <AdminHeader height="80px" />
-        <div className="flex flex-1 flex-col bg-gray-100 p-4">
+        <div className="flex flex-1 flex-col bg-gray-50 p-4">
           <Outlet />
         </div>
       </div>
@@ -19,7 +19,7 @@ export default function AdminLayout() {
     <div className="block h-full">
       <div className="flex min-h-full flex-row">
         <AdminAside width="250px" />
-        <div className="flex-1 overflow-hidden bg-gray-100 p-6">
+        <div className="flex-1 overflow-hidden bg-gray-50 p-6">
           <Outlet />
         </div>
       </div>

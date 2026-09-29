@@ -14,9 +14,9 @@ export default function BasicLink({
   return (
     <Link
       to={to}
-      className="flex w-full items-center gap-4 rounded-lg border border-gray-100 bg-white px-5 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md"
+      className="flex w-full items-center gap-4 rounded-lg border border-gray-100 bg-white px-5 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent-200 hover:shadow-md"
     >
-      <div className="flex-center h-12 w-12 shrink-0 rounded-lg bg-teal-50">
+      <div className="flex-center h-12 w-12 shrink-0 rounded-lg bg-accent-50">
         <Img src={img} alt={title} width="26px" />
       </div>
       <div className="flex flex-col gap-[2px]">

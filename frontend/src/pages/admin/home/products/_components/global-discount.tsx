@@ -73,7 +73,7 @@ export default function GlobalDiscount({ singleProduct = null }: { singleProduct
           )}
 
           {success ? (
-            <Alert color="teal" icon={<solidIcons.CheckCircle />}>
+            <Alert color="green" icon={<solidIcons.CheckCircle />}>
               {translate(language, "Discount has been applied successfully", "تم تطبيق الخصم بنجاح")}
             </Alert>
           ) : (

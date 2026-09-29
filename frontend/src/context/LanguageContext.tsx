@@ -1,6 +1,6 @@
 import { LocalizedLabel } from "@/types/global";
 import { Language, LanguageContextProps } from "@/types/language";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import resources from "@/utils/constants/resources";
 import { Resource } from "@/types/user";
 
@@ -67,6 +67,17 @@ export default function LanguageProvider({ children }: { children: React.ReactNo
   function translate(english: string, arabic: string): string {
     return language === "ar-EG" ? arabic : english;
   }
+
+  // Sets dir/lang on <html> (not just the app-root div layout.tsx already scopes with `dir`), so
+  // the language-driven font switch (Inter for LTR, Cairo for RTL - see index.css) reaches every
+  // element in the document, including Mantine's portaled content (Modal, Notifications, Menu/
+  // Select dropdowns render into a node appended to <body>, outside the React tree) - CSS
+  // inheritance follows the real DOM tree, and portals are still descendants of <html>, so this is
+  // the one place that reliably covers all of them.
+  useEffect(() => {
+    document.documentElement.dir = language === "ar-EG" ? "rtl" : "ltr";
+    document.documentElement.lang = language === "ar-EG" ? "ar" : "en";
+  }, [language]);
 
   const translations = {
     dir: translate("ltr", "rtl"),
