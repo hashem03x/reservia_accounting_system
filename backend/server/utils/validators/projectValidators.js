@@ -2,7 +2,7 @@ const { check } = require('express-validator');
 const Project = require('../../models/project/projectModel');
 const User = require('../../models/userModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
-const { ProjectStatuses } = require('../accountingConstants');
+const { ProjectStatuses, ProjectDepartments } = require('../accountingConstants');
 
 const createProjectValidators = [
   check('projectNumber')
@@ -36,6 +36,11 @@ const createProjectValidators = [
 
   check('status').optional().isIn(ProjectStatuses),
 
+  check('department')
+    .optional({ nullable: true })
+    .isIn(ProjectDepartments)
+    .withMessage(`Department must be one of: ${ProjectDepartments.join(', ')}`),
+
   validatorMiddleware,
 ];
 
@@ -54,6 +59,11 @@ const updateProjectValidators = [
       })
     ),
   check('status').optional().isIn(ProjectStatuses),
+
+  check('department')
+    .optional({ nullable: true })
+    .isIn(ProjectDepartments)
+    .withMessage(`Department must be one of: ${ProjectDepartments.join(', ')}`),
 
   validatorMiddleware,
 ];

@@ -1,5 +1,5 @@
 const { Schema, model } = require('mongoose');
-const { ProjectStatuses } = require('../../utils/accountingConstants');
+const { ProjectStatuses, ProjectDepartments } = require('../../utils/accountingConstants');
 
 // Contract attachment - a single optional document, not the `documents[]` array shape used by
 // Customer/Vendor (businessPartnerSchemas.js's businessDocumentSchema), since a project has at
@@ -63,6 +63,22 @@ const projectSchema = new Schema(
       ref: 'User',
       required: [true, 'Executor is required'],
     },
+    // Optional - `null` is explicitly included in the enum's own value list (Mongoose's built-in
+    // enum validator otherwise rejects an explicit `null`), so "no department" is a real, settable
+    // value rather than something that only works by leaving the key out of the request body -
+    // that matters for updateProject, where a client must be able to clear a previously-set
+    // department (assigning `undefined` to an existing document path does not reliably unset it on
+    // save, since Mongoose's change-tracking treats `undefined` as "no change"; `null` does).
+    // Projects created before this field existed simply have it absent, which reads the same as
+    // `null` everywhere it's used (see docs/entities/projects.md - "no destructive migration").
+    // New departments are added in ONE place - utils/accountingConstants.js's `ProjectDepartments`
+    // (mirrored in frontend/src/utils/constants/accounting.ts) - never hardcoded here or in a
+    // validator.
+    department: {
+      type: String,
+      enum: { values: [...ProjectDepartments, null], message: '{VALUE} is not a valid department' },
+      default: null,
+    },
     status: {
       type: String,
       enum: { values: ProjectStatuses, message: '{VALUE} is not a valid project status' },
@@ -87,6 +103,7 @@ const projectSchema = new Schema(
 projectSchema.index({ executor: 1 });
 projectSchema.index({ status: 1 });
 projectSchema.index({ createdAt: 1 });
+projectSchema.index({ department: 1 });
 
 projectSchema.pre(/^find/, function (next) {
   this.where({ isDeleted: { $ne: true } })

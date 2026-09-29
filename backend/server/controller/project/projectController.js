@@ -15,7 +15,7 @@ const { logAccountingEvent, logAccountingError } = require('../../utils/accounti
 // required default accounts aren't seeded) rolls the Project creation back too, instead of
 // leaving a project that exists with no accounting behind it.
 const createProject = asyncHandler(async (req, res, next) => {
-  const { projectNumber, name, description, projectAmount, executor, status } = req.body;
+  const { projectNumber, name, description, projectAmount, executor, status, department } = req.body;
 
   const session = await mongoose.startSession();
   try {
@@ -33,6 +33,7 @@ const createProject = asyncHandler(async (req, res, next) => {
             remainingMoney: projectAmount,
             executor,
             status,
+            department: department || null,
             createdBy: req.user._id,
           },
         ],
@@ -74,11 +75,12 @@ const updateProject = asyncHandler(async (req, res, next) => {
   // is immutable business-key data (see master spec), remainingMoney is always derived (see
   // projectAccountingService.js#recalculateRemainingMoney). Both are silently ignored rather than
   // rejected, matching updateCustomer's existing partial-update convention.
-  const { name, description, projectAmount, executor, status } = req.body;
+  const { name, description, projectAmount, executor, status, department } = req.body;
   if (name !== undefined) project.name = name;
   if (description !== undefined) project.description = description;
   if (executor !== undefined) project.executor = executor;
   if (status !== undefined) project.status = status;
+  if (department !== undefined) project.department = department || null;
 
   const amountChanged = projectAmount !== undefined && projectAmount !== project.projectAmount;
   if (projectAmount !== undefined) project.projectAmount = projectAmount;

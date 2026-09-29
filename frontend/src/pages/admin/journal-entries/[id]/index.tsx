@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
@@ -15,6 +16,7 @@ import ErrorSection from "@/components/ui/sections/error";
 import ErrorAlert from "@/components/ui/error-alert";
 import paths from "@/utils/constants/paths";
 import { JournalEntry } from "@/types/journal-entry";
+import ReverseJournalEntryModal from "../_components/reverse-journal-entry-modal";
 
 const statusColors: Record<string, string> = { draft: "yellow", posted: "green", reversed: "gray" };
 
@@ -57,12 +59,10 @@ export default function JournalEntryDetail() {
     });
   }
 
-  async function handleReverse() {
-    if (!confirm(translate("Reverse this journal entry? This creates a new balanced entry with debits/credits swapped.", "عكس هذا القيد؟ سيتم إنشاء قيد جديد متوازن بمبادلة المدين/الدائن."))) return;
-    handleRequest(language, setActionLoading, setActionError, async () => {
-      const res = await privateRequest({ url: `journal-entries/${id}/reverse`, method: "POST", language });
-      navigate(`/${paths.admin}/${paths.journalEntries}/${res.data._id}`);
-    });
+  const [reverseModalOpened, { open: openReverseModal, close: closeReverseModal }] = useDisclosure();
+
+  function handleReversed(reversal: JournalEntry) {
+    navigate(`/${paths.admin}/${paths.journalEntries}/${reversal._id}`);
   }
 
   if (loading) return <LoadingSection message={translate("Loading journal entry...", "جاري تحميل القيد...")} />;
@@ -88,7 +88,7 @@ export default function JournalEntryDetail() {
               </Button>
             )}
             {canUpdate && entry.status === "posted" && !entry.reversedByEntry && (
-              <Button variant="light" color="red" loading={actionLoading} onClick={handleReverse}>
+              <Button variant="light" color="red" onClick={openReverseModal}>
                 {translate("Reverse", "عكس")}
               </Button>
             )}
@@ -115,39 +115,49 @@ export default function JournalEntryDetail() {
               <Table.Th>{translate("Description", "الوصف")}</Table.Th>
               <Table.Th>{translate("Debit", "مدين")}</Table.Th>
               <Table.Th>{translate("Credit", "دائن")}</Table.Th>
+              <Table.Th>{translate("Balance", "الرصيد")}</Table.Th>
               <Table.Th>{translate("Unearned Revenue", "إيرادات غير مكتسبة")}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {entry.lines.map((line, i) => (
-              <Table.Tr key={i}>
-                <Table.Td>
-                  {line.account.code} - {line.account.name}
-                </Table.Td>
-                <Table.Td>{line.subAccount ? `${line.subAccount.code} - ${line.subAccount.name}` : "-"}</Table.Td>
-                <Table.Td>{line.projectNumber || "-"}</Table.Td>
-                <Table.Td>{line.description || "-"}</Table.Td>
-                <Table.Td>{line.debit ? line.debit.toLocaleString() : "-"}</Table.Td>
-                <Table.Td>{line.credit ? line.credit.toLocaleString() : "-"}</Table.Td>
-                <Table.Td>{line.unearnedRevenue ? line.unearnedRevenue.toLocaleString() : "-"}</Table.Td>
-              </Table.Tr>
-            ))}
+            {entry.lines.map((line, i) => {
+              // Balance = Debit - Credit for this line (credit lines are therefore negative) -
+              // NOT the same thing as a Chart of Accounts running balance, which sums this across
+              // every posted line for the account - see docs/entities/accounting.md.
+              const lineBalance = Math.round(((line.debit || 0) - (line.credit || 0)) * 100) / 100;
+              return (
+                <Table.Tr key={i}>
+                  <Table.Td>
+                    {line.account.code} - {line.account.name}
+                  </Table.Td>
+                  <Table.Td>{line.subAccount ? `${line.subAccount.code} - ${line.subAccount.name}` : "-"}</Table.Td>
+                  <Table.Td>{line.projectNumber || "-"}</Table.Td>
+                  <Table.Td>{line.description || "-"}</Table.Td>
+                  <Table.Td>{line.debit ? line.debit.toLocaleString() : "-"}</Table.Td>
+                  <Table.Td>{line.credit ? line.credit.toLocaleString() : "-"}</Table.Td>
+                  <Table.Td className={lineBalance < 0 ? "text-red-600" : ""}>{lineBalance.toLocaleString()}</Table.Td>
+                  <Table.Td>{line.unearnedRevenue ? line.unearnedRevenue.toLocaleString() : "-"}</Table.Td>
+                </Table.Tr>
+              );
+            })}
           </Table.Tbody>
           <Table.Tfoot>
             <Table.Tr className="font-bold">
               <Table.Td colSpan={4}>{translate("Total", "الإجمالي")}</Table.Td>
               <Table.Td>{entry.totalDebit.toLocaleString()}</Table.Td>
               <Table.Td>{entry.totalCredit.toLocaleString()}</Table.Td>
-              <Table.Td />
+              <Table.Td colSpan={2} />
             </Table.Tr>
             <Table.Tr>
-              <Table.Td colSpan={6} className={difference !== 0 ? "text-red-600" : "text-green-600"}>
+              <Table.Td colSpan={7} className={difference !== 0 ? "text-red-600" : "text-green-600"}>
                 {translate("Difference", "الفرق")}: {difference}
               </Table.Td>
             </Table.Tr>
           </Table.Tfoot>
         </Table>
       </div>
+
+      <ReverseJournalEntryModal opened={reverseModalOpened} close={closeReverseModal} entry={entry} onReversed={handleReversed} />
     </AdminLayoutBox>
   );
 }

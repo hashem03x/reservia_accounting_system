@@ -164,10 +164,14 @@ test('at most one journal entry can exist per (sourceType, sourceId) pair', asyn
   );
 });
 
-test('reversing a posted entry creates a balanced mirrored entry and marks the original as reversed', async () => {
+test('reversing a posted entry creates a balanced mirrored entry on the admin-chosen date, and marks the original as reversed without altering its own date', async () => {
+  const originalDate = new Date('2026-09-01T00:00:00.000Z');
+  const adminChosenReversalDate = new Date('2026-09-20T00:00:00.000Z');
+
   const entryNumber = await getNextJournalEntryNumber();
   const original = await JournalEntry.create({
     entryNumber,
+    date: originalDate,
     status: 'posted',
     lines: [
       { account: cash._id, debit: 100, credit: 0 },
@@ -178,10 +182,14 @@ test('reversing a posted entry creates a balanced mirrored entry and marks the o
   // Mirrors journalEntryController.js#reverseJournalEntry's line-swapping logic directly against
   // the model (that handler additionally wraps this in a session/transaction, which this test
   // deliberately does not require - see projectAccounting.test.js for the transaction-dependent
-  // coverage and why it's conditionally skipped on a non-replica-set local MongoDB).
+  // coverage and why it's conditionally skipped on a non-replica-set local MongoDB). Critically,
+  // `date` is set to the admin-supplied `adminChosenReversalDate` - never `new Date()` (today) and
+  // never `original.date` - matching the requirement that the admin must explicitly choose the
+  // reversal date rather than it being defaulted (see docs/entities/accounting.md).
   const reversalEntryNumber = await getNextJournalEntryNumber();
   const reversal = await JournalEntry.create({
     entryNumber: reversalEntryNumber,
+    date: adminChosenReversalDate,
     status: 'posted',
     reversalOfEntry: original._id,
     lines: original.lines.map(line => ({
@@ -198,8 +206,35 @@ test('reversing a posted entry creates a balanced mirrored entry and marks the o
   assert.equal(reversal.totalDebit, original.totalCredit, 'reversal debit total must mirror the original credit total');
   assert.equal(reversal.totalCredit, original.totalDebit, 'reversal credit total must mirror the original debit total');
   assert.equal(reversal.isBalanced(), true);
+  assert.equal(reversal.date.toISOString(), adminChosenReversalDate.toISOString(), 'the reversal entry must be dated on the admin-chosen reversal date, not today or the original date');
 
   const updatedOriginal = await JournalEntry.findById(original._id);
   assert.equal(updatedOriginal.status, 'reversed');
+  assert.equal(updatedOriginal.date.toISOString(), originalDate.toISOString(), 'reversing an entry must never change its own original date');
   assert.equal(updatedOriginal.reversedByEntry._id.toString(), reversal._id.toString());
+});
+
+test('the reverseJournalEntryValidators reject a missing or invalid reversalDate, and accept a valid one', async () => {
+  const { validationResult } = require('express-validator');
+  const { reverseJournalEntryValidators } = require('../../utils/validators/journalEntryValidators');
+
+  async function runValidators(body) {
+    const req = { body, params: {}, query: {} };
+    // Only actual express-validator ValidationChain entries expose `.run` - the final array
+    // element (validatorMiddleware, a plain (req,res,next) function) does not, so this naturally
+    // skips it rather than needing a brittle arity/type check.
+    for (const middleware of reverseJournalEntryValidators) {
+      if (typeof middleware.run === 'function') await middleware.run(req);
+    }
+    return validationResult(req);
+  }
+
+  const missing = await runValidators({});
+  assert.equal(missing.isEmpty(), false, 'a request with no reversalDate must fail validation');
+
+  const invalid = await runValidators({ reversalDate: 'not-a-date' });
+  assert.equal(invalid.isEmpty(), false, 'a request with an invalid reversalDate must fail validation');
+
+  const valid = await runValidators({ reversalDate: '2026-09-20' });
+  assert.equal(valid.isEmpty(), true, 'a request with a valid ISO reversalDate must pass validation');
 });

@@ -112,6 +112,7 @@ export default function Projects() {
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{translate("Project Number", "رقم المشروع")}</Table.Th>
+                  <Table.Th>{translate("Department", "القسم")}</Table.Th>
                   <Table.Th>{translate("Name", "الاسم")}</Table.Th>
                   <Table.Th>{translate("Amount", "المبلغ")}</Table.Th>
                   <Table.Th>{translate("Remaining", "المتبقي")}</Table.Th>
@@ -126,6 +127,7 @@ export default function Projects() {
                 {paginatedProjects.data.map((project) => (
                   <Table.Tr key={project._id} className="cursor-pointer" onClick={() => navigate(project._id)}>
                     <Table.Td className="font-medium">{project.projectNumber}</Table.Td>
+                    <Table.Td>{project.department || "-"}</Table.Td>
                     <Table.Td>{project.name || "-"}</Table.Td>
                     <Table.Td>
                       {project.projectAmount.toLocaleString()} {translations.currency}

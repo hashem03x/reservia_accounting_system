@@ -13,7 +13,7 @@ const {
   postJournalEntry,
   reverseJournalEntry,
 } = require('../../controller/accounting/journalEntryController');
-const { createJournalEntryValidators, updateJournalEntryValidators } = require('../../utils/validators/journalEntryValidators');
+const { createJournalEntryValidators, updateJournalEntryValidators, reverseJournalEntryValidators } = require('../../utils/validators/journalEntryValidators');
 
 router.use(authController.protect);
 
@@ -30,6 +30,6 @@ router
   .patch(checkUserPermissions({ resource: Resources.journalEntries, action: Actions.update }), updateJournalEntryValidators, updateJournalEntry);
 
 router.post('/:id/post', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.update }), postJournalEntry);
-router.post('/:id/reverse', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.update }), reverseJournalEntry);
+router.post('/:id/reverse', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.update }), reverseJournalEntryValidators, reverseJournalEntry);
 
 module.exports = router;

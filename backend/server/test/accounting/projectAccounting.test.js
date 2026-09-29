@@ -160,3 +160,42 @@ test('project retrieval and update', async t => {
   // projectNumber must remain unchanged through a normal update path.
   assert.equal(updated.projectNumber, 'PRJ-006');
 });
+
+test('a project can be created with department "Villa"', async () => {
+  const project = await Project.create({ projectNumber: 'PRJ-DEPT-01', projectAmount: 1000, executor: user._id, department: 'Villa' });
+  const found = await Project.findById(project._id);
+  assert.equal(found.department, 'Villa');
+});
+
+test('a project can be created with department "Industrials"', async () => {
+  const project = await Project.create({ projectNumber: 'PRJ-DEPT-02', projectAmount: 1000, executor: user._id, department: 'Industrials' });
+  const found = await Project.findById(project._id);
+  assert.equal(found.department, 'Industrials');
+});
+
+test('an invalid department value is rejected', async () => {
+  await assert.rejects(
+    () => Project.create({ projectNumber: 'PRJ-DEPT-03', projectAmount: 1000, executor: user._id, department: 'Marketing' }),
+    /not a valid department/
+  );
+});
+
+test('a project created without a department defaults to null and remains readable (backward compatibility)', async () => {
+  const project = await Project.create({ projectNumber: 'PRJ-DEPT-04', projectAmount: 1000, executor: user._id });
+  assert.equal(project.department, null);
+
+  const found = await Project.findById(project._id);
+  assert.equal(found.department, null, 'a project with no department must read back cleanly, not throw a cast/enum error');
+});
+
+test('department can be updated after creation, and cleared back to null', async () => {
+  const project = await Project.create({ projectNumber: 'PRJ-DEPT-05', projectAmount: 1000, executor: user._id, department: 'Villa' });
+
+  project.department = 'Industrials';
+  await project.save();
+  assert.equal((await Project.findById(project._id)).department, 'Industrials');
+
+  project.department = null;
+  await project.save();
+  assert.equal((await Project.findById(project._id)).department, null, 'explicitly setting department to null must actually clear it in the database');
+});

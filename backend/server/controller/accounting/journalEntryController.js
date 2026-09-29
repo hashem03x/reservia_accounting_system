@@ -86,6 +86,13 @@ const postJournalEntry = asyncHandler(async (req, res, next) => {
 // "Journal Entry Posting" + "Accounting Safety" sections). A reversal is a new, fully-posted
 // entry with every line's debit/credit swapped relative to the original, linked both ways so the
 // UI can navigate from either entry to the other.
+//
+// The reversal entry's `date` is the admin-supplied `reversalDate` - NEVER today's date, the
+// original entry's date, or the server clock. This is deliberate (confirmed requirement, not a
+// default): a reversal posted today for an entry originally dated weeks ago may need to land on a
+// specific accounting date (e.g. period-end), and silently defaulting it would get that wrong.
+// `reverseJournalEntryValidators` (utils/validators/journalEntryValidators.js) rejects the request
+// before this handler ever runs if `reversalDate` is missing or not a valid date.
 const reverseJournalEntry = asyncHandler(async (req, res, next) => {
   const original = await JournalEntry.findById(req.params.id);
   if (!original) return next(new ApiError('No journal entry found with that id', 404));
@@ -97,6 +104,8 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
     return next(new ApiError('This journal entry has already been reversed.', 400));
   }
 
+  const { reversalDate, reference } = req.body;
+
   const session = await mongoose.startSession();
   try {
     let reversal;
@@ -107,9 +116,9 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
         [
           {
             entryNumber,
-            date: new Date(),
+            date: reversalDate,
             description: `Reversal of entry #${original.entryNumber}${original.description ? ` - ${original.description}` : ''}`,
-            reference: req.body.reference,
+            reference,
             project: original.project,
             source: original.source,
             sourceType: null,

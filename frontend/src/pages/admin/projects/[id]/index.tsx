@@ -18,6 +18,7 @@ import paths from "@/utils/constants/paths";
 import { Project } from "@/types/project";
 import { JournalEntry } from "@/types/journal-entry";
 import ProjectContractSection from "../_components/project-contract-section";
+import { ProjectDepartments } from "@/utils/constants/accounting";
 
 const statusColors: Record<string, string> = { active: "green", completed: "blue", cancelled: "red", on_hold: "yellow" };
 const statusOptions = ["active", "completed", "cancelled", "on_hold"];
@@ -60,6 +61,7 @@ export default function ProjectDetail() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("");
+  const [department, setDepartment] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -68,6 +70,7 @@ export default function ProjectDetail() {
     setName(project.name || "");
     setDescription(project.description || "");
     setStatus(project.status);
+    setDepartment(project.department || "");
     setEditing(true);
   }
 
@@ -76,7 +79,7 @@ export default function ProjectDetail() {
       const res = await privateRequest({
         url: `projects/${id}`,
         method: "PATCH",
-        data: { name, description, status },
+        data: { name, description, status, department: department || null },
         language,
       });
       setProject(res.data);
@@ -101,10 +104,11 @@ export default function ProjectDetail() {
         ),
       }}
     >
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <SummaryCard label={translate("Project Amount", "قيمة المشروع")} value={`${project.projectAmount.toLocaleString()} ${translations.currency}`} />
         <SummaryCard label={translate("Remaining", "المتبقي")} value={`${project.remainingMoney.toLocaleString()} ${translations.currency}`} />
         <SummaryCard label={translate("Executor", "المنفذ")} value={project.executor?.name || "-"} />
+        <SummaryCard label={translate("Department", "القسم")} value={project.department || "-"} />
         <SummaryCard
           label={translate("Status", "الحالة")}
           value={<Badge color={statusColors[project.status] || "gray"}>{project.status}</Badge>}
@@ -121,6 +125,13 @@ export default function ProjectDetail() {
             value={status}
             onChange={(v) => setStatus(v || "active")}
             data={statusOptions.map((s) => ({ value: s, label: s }))}
+          />
+          <Select
+            label={translate("Department", "القسم")}
+            value={department}
+            onChange={(v) => setDepartment(v || "")}
+            data={ProjectDepartments.map((d) => ({ value: d, label: d }))}
+            clearable
           />
           <div className="flex gap-2">
             <Button loading={saving} onClick={handleSave}>

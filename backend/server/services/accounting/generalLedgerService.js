@@ -10,9 +10,15 @@ const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 
 /**
  * Sum of posted debit/credit for a single account (matched by either the line's main `account`
- * or its `subAccount`), and the resulting balance. Sign convention: asset/expense accounts carry
- * a natural debit balance (debit - credit); liability/equity/revenue accounts carry a natural
- * credit balance (credit - debit).
+ * or its `subAccount`), and the resulting balance.
+ *
+ * Sign convention: `balance = debit - credit`, unconditionally - NOT flipped by account type. A
+ * liability/equity/revenue account with more credits than debits (its normal state) therefore
+ * shows a NEGATIVE balance here. This is a deliberate, explicit requirement (confirmed with
+ * worked examples showing e.g. Unearned Revenue at -100,000), not an oversight - see
+ * docs/entities/accounting.md. An earlier version of this function flipped the sign for
+ * liability/equity/revenue accounts to show a "natural" positive balance; that convention was
+ * replaced by this one.
  */
 async function getAccountBalance(accountId) {
   const account = await ChartOfAccount.findById(accountId);
@@ -27,13 +33,22 @@ async function getAccountBalance(accountId) {
 
   const debit = totals?.debit || 0;
   const credit = totals?.credit || 0;
-  const naturalDebit = ['asset', 'expense'].includes(account.type);
-  const balance = round2(naturalDebit ? debit - credit : credit - debit);
 
-  return { account: { _id: account._id, code: account.code, name: account.name, type: account.type }, debit: round2(debit), credit: round2(credit), balance };
+  return {
+    account: { _id: account._id, code: account.code, name: account.name, type: account.type },
+    debit: round2(debit),
+    credit: round2(credit),
+    balance: round2(debit - credit),
+  };
 }
 
-/** Trial balance - every account with at least one posted line, per-account debit/credit totals. */
+/**
+ * Trial balance - every account with at least one posted line, per-account debit/credit totals
+ * and `balance` (`debit - credit`, same unconditional sign convention as getAccountBalance).
+ * A single aggregation query, not one query per account, so this scales with the number of
+ * distinct accounts touched rather than the number of accounts that exist or the number of
+ * journal entries posted.
+ */
 async function getTrialBalance() {
   const rows = await JournalEntry.aggregate([
     { $match: { status: 'posted' } },
@@ -52,7 +67,7 @@ async function getTrialBalance() {
     },
   ]);
 
-  return rows.map(row => ({ ...row, debit: round2(row.debit), credit: round2(row.credit) }));
+  return rows.map(row => ({ ...row, debit: round2(row.debit), credit: round2(row.credit), balance: round2(row.debit - row.credit) }));
 }
 
 module.exports = { getAccountBalance, getTrialBalance };

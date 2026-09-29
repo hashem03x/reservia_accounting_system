@@ -40,4 +40,13 @@ const updateJournalEntryValidators = [
   validatorMiddleware,
 ];
 
-module.exports = { createJournalEntryValidators, updateJournalEntryValidators };
+// The reversal date is never defaulted to today/the original entry's date/the server clock - the
+// admin must explicitly choose it (see docs/entities/accounting.md's "Reversal" section). Required
+// here, not optional, so a request missing it is rejected before the controller ever runs.
+const reverseJournalEntryValidators = [
+  check('reversalDate').notEmpty().withMessage('Reversal date is required').isISO8601().withMessage('Invalid reversal date'),
+  check('reference').optional().isString().trim().isLength({ max: 100 }),
+  validatorMiddleware,
+];
+
+module.exports = { createJournalEntryValidators, updateJournalEntryValidators, reverseJournalEntryValidators };

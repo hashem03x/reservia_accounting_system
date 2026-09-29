@@ -15,6 +15,12 @@ exports.JournalEntrySources = ['manual', 'project_creation', 'fixed_asset_purcha
 
 exports.ProjectStatuses = ['active', 'completed', 'cancelled', 'on_hold'];
 
+// Centralized so a new department is a one-line addition here (plus its mirror in
+// frontend/src/utils/constants/accounting.ts), not a hardcoded string scattered across the model,
+// validators, and every frontend form/table. `null` (no department) stays valid for projects
+// created before this field existed - see docs/entities/projects.md.
+exports.ProjectDepartments = ['Villa', 'Industrials'];
+
 exports.FixedAssetStatuses = ['active', 'disposed', 'under_maintenance'];
 
 // Well-known account codes the automatic accounting entries (project creation, fixed asset

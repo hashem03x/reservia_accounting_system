@@ -8,7 +8,7 @@ import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 
-type TrialBalanceRow = { account: { _id: string; code: string; name: string; type: string }; debit: number; credit: number };
+type TrialBalanceRow = { account: { _id: string; code: string; name: string; type: string }; debit: number; credit: number; balance: number };
 
 export default function TrialBalanceModal({ opened, close }: { opened: boolean; close: () => void }) {
   const { translate, language } = useLanguage();
@@ -27,6 +27,7 @@ export default function TrialBalanceModal({ opened, close }: { opened: boolean; 
 
   const totalDebit = rows.reduce((sum, r) => sum + r.debit, 0);
   const totalCredit = rows.reduce((sum, r) => sum + r.credit, 0);
+  const totalBalance = Math.round(rows.reduce((sum, r) => sum + r.balance, 0) * 100) / 100;
 
   return (
     <Modal opened={opened} onClose={close} title={translate("Trial Balance", "ميزان المراجعة")} size="lg">
@@ -43,6 +44,7 @@ export default function TrialBalanceModal({ opened, close }: { opened: boolean; 
               <Table.Th>{translate("Account", "الحساب")}</Table.Th>
               <Table.Th>{translate("Debit", "مدين")}</Table.Th>
               <Table.Th>{translate("Credit", "دائن")}</Table.Th>
+              <Table.Th>{translate("Balance", "الرصيد")}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -53,6 +55,7 @@ export default function TrialBalanceModal({ opened, close }: { opened: boolean; 
                 </Table.Td>
                 <Table.Td>{row.debit.toLocaleString()}</Table.Td>
                 <Table.Td>{row.credit.toLocaleString()}</Table.Td>
+                <Table.Td className={row.balance < 0 ? "text-red-600" : ""}>{row.balance.toLocaleString()}</Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
@@ -61,6 +64,7 @@ export default function TrialBalanceModal({ opened, close }: { opened: boolean; 
               <Table.Td>{translate("Total", "الإجمالي")}</Table.Td>
               <Table.Td>{totalDebit.toLocaleString()}</Table.Td>
               <Table.Td>{totalCredit.toLocaleString()}</Table.Td>
+              <Table.Td className={totalBalance !== 0 ? "text-red-600" : "text-green-600"}>{totalBalance.toLocaleString()}</Table.Td>
             </Table.Tr>
           </Table.Tfoot>
         </Table>

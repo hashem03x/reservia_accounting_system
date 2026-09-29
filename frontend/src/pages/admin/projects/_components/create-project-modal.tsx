@@ -9,6 +9,7 @@ import handleRequest from "@/utils/helpers/handle-request";
 import { Project } from "@/types/project";
 import { JournalEntry } from "@/types/journal-entry";
 import { outlineIcons } from "@/components/icons";
+import { ProjectDepartments } from "@/utils/constants/accounting";
 
 type StaffOption = { _id: string; name: string; role: string };
 
@@ -29,6 +30,7 @@ export default function CreateProjectModal({
   const [description, setDescription] = useState("");
   const [projectAmount, setProjectAmount] = useState<string | number>("");
   const [executor, setExecutor] = useState("");
+  const [department, setDepartment] = useState("");
   const [staff, setStaff] = useState<StaffOption[]>([]);
 
   const { privateRequest: fetchStaffRequest } = useDataHandler({ initialData: null });
@@ -51,7 +53,7 @@ export default function CreateProjectModal({
         language,
         method: "POST",
         url: "projects",
-        data: { projectNumber, name, description, projectAmount, executor },
+        data: { projectNumber, name, description, projectAmount, executor, department: department || undefined },
       });
 
       setResult(res.data);
@@ -66,6 +68,7 @@ export default function CreateProjectModal({
       setDescription("");
       setProjectAmount("");
       setExecutor("");
+      setDepartment("");
       setError("");
       setResult(null);
     }, 250);
@@ -151,6 +154,15 @@ export default function CreateProjectModal({
             data={staff.map((s) => ({ value: s._id, label: s.name }))}
             searchable
             required
+          />
+
+          <Select
+            label={translate("Department", "القسم")}
+            placeholder={translate("Select department (optional)", "اختر القسم (اختياري)")}
+            value={department}
+            onChange={(value) => setDepartment(value || "")}
+            data={ProjectDepartments.map((d) => ({ value: d, label: d }))}
+            clearable
           />
 
           <Button type="submit" loading={loading} mt="md">

@@ -61,6 +61,16 @@ revenue).
   (`reversalOfEntry`/`reversedByEntry`), and flips the original to `status: 'reversed'`. The
   model's `pre('save')` hook also refuses any attempt to modify `lines` on an already-posted
   document directly (defense-in-depth beyond the controller's `status !== 'draft'` check).
+- **Reversal date is admin-chosen, never defaulted.** `POST /journal-entries/:id/reverse` requires
+  a `reversalDate` in the request body (`reverseJournalEntryValidators` in
+  `utils/validators/journalEntryValidators.js` - `notEmpty().isISO8601()`) and uses it as the new
+  reversal entry's `date`. It is **never** set to `new Date()` (today), and never copied from
+  `original.date` - a confirmed requirement, since a reversal posted today may need to land on a
+  specific accounting date (e.g. period-end) unrelated to either. The original entry's own `date`
+  is never touched by a reversal. Frontend:
+  `frontend/src/pages/admin/journal-entries/_components/reverse-journal-entry-modal.tsx` - shows
+  the original entry number/date/total and requires the admin to pick the reversal date before the
+  "Confirm Reversal" button is enabled.
 - **Idempotency**: a partial unique index on `(sourceType, sourceId)` (only applies when `sourceId`
   is an ObjectId) means at most one system-generated entry can exist per source event - e.g. only
   one `PROJECT_CREATION` entry per project, even under a duplicated/retried request.
