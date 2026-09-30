@@ -190,3 +190,37 @@ test('a project created before this phase (no startDate/deliveryDate) remains re
   assert.equal(legacyProject.startDate, undefined);
   assert.equal(legacyProject.deliveryDate, undefined);
 });
+
+test('a project created before the projectAmount/executor/department rename (not yet migrated) is readable with contractValue/projectManager undefined, not throwing', async () => {
+  // Regression test for the reported frontend crash: "Cannot read properties of undefined
+  // (reading 'toLocaleString')" on the Projects page. Root cause was that a pre-rename document
+  // (raw MongoDB field `projectAmount`, not `contractValue`) had never been run through
+  // scripts/migrateProjectFieldRenames.js - Mongoose only exposes schema-defined paths, so
+  // `contractValue`/`projectManager` come back `undefined` for such a document, which the
+  // frontend's `.toLocaleString()` calls didn't guard against. This test locks in that reading
+  // such a document (a) never throws at the model layer, and (b) leaves the old raw field
+  // untouched (nothing silently deletes it), so migrateProjectFieldRenames.js still has something
+  // to migrate later.
+  await mongoose.connection.collection('projects').insertOne({
+    projectNumber: 'PRJ-UNMIGRATED-01',
+    projectAmount: 4200, // old field name - deliberately NOT contractValue
+    remainingMoney: 4200,
+    executor: user._id, // old field name - deliberately NOT projectManager
+    department: 'Villa', // old field name - deliberately NOT sector
+    status: 'active',
+    isDeleted: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  const unmigrated = await Project.findOne({ projectNumber: 'PRJ-UNMIGRATED-01' });
+  assert.ok(unmigrated, 'an unmigrated legacy project must still be readable, not throw');
+  assert.equal(unmigrated.contractValue, undefined, 'contractValue is genuinely undefined until migrated - this is what the frontend must render as "-", never as 0');
+  assert.equal(unmigrated.projectManager, undefined);
+  assert.equal(unmigrated.remainingMoney, 4200, 'remainingMoney was never renamed, so it survives untouched even before migration');
+
+  const { recalculateRemainingMoney } = require('../../services/project/projectAccountingService');
+  await recalculateRemainingMoney(unmigrated._id);
+  const afterRecalc = await Project.findById(unmigrated._id);
+  assert.equal(afterRecalc.remainingMoney, 4200, 'recalculateRemainingMoney must skip (not overwrite with NaN) when contractValue is missing');
+});

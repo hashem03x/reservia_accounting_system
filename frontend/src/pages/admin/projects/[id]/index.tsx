@@ -115,8 +115,18 @@ export default function ProjectDetail() {
       }}
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard label={translate("Contract Value", "قيمة العقد")} value={`${project.contractValue.toLocaleString()} ${translations.currency}`} />
-        <SummaryCard label={translate("Remaining", "المتبقي")} value={`${project.remainingMoney.toLocaleString()} ${translations.currency}`} />
+        {/* contractValue/remainingMoney can be missing on a project created before the
+            projectAmount->contractValue rename that hasn't been through
+            migrateProjectFieldRenames.js yet - shown as "-", never fabricated as 0 (that would
+            misrepresent a real contract's value). */}
+        <SummaryCard
+          label={translate("Contract Value", "قيمة العقد")}
+          value={project.contractValue != null ? `${project.contractValue.toLocaleString()} ${translations.currency}` : "-"}
+        />
+        <SummaryCard
+          label={translate("Remaining", "المتبقي")}
+          value={project.remainingMoney != null ? `${project.remainingMoney.toLocaleString()} ${translations.currency}` : "-"}
+        />
         <SummaryCard label={translate("Project Manager", "مدير المشروع")} value={project.projectManager?.name || "-"} />
         <SummaryCard label={translate("Sector", "القطاع")} value={project.sector || "-"} />
         <SummaryCard label={translate("Start Date", "تاريخ البدء")} value={project.startDate ? formatDate(project.startDate, language) : "-"} />

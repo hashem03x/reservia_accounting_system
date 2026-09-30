@@ -21,6 +21,12 @@ async function recalculateRemainingMoney(projectId, session) {
   const project = await Project.findById(projectId).session(session);
   if (!project) return;
 
+  // A project created before the projectAmount->contractValue rename, and not yet run through
+  // scripts/migrateProjectFieldRenames.js, has no contractValue at all - `undefined - x` is NaN,
+  // which would otherwise get written straight into remainingMoney. Skip the recompute rather than
+  // persist a NaN; there is nothing correct to calculate until that project's data is migrated.
+  if (typeof project.contractValue !== 'number') return;
+
   const totals = await Payment.aggregate([{ $match: { projectId: project._id } }, { $group: { _id: '$type', total: { $sum: '$amountPaid' } } }]).session(session);
   const inTotal = totals.find(t => t._id === 'in')?.total || 0;
   const outTotal = totals.find(t => t._id === 'out')?.total || 0;

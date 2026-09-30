@@ -131,10 +131,14 @@ export default function Projects() {
                     <Table.Td>{project.sector || "-"}</Table.Td>
                     <Table.Td>{project.name || "-"}</Table.Td>
                     <Table.Td>
-                      {project.contractValue.toLocaleString()} {translations.currency}
+                      {/* Missing only for a project created before the projectAmount->contractValue
+                          rename that hasn't been through migrateProjectFieldRenames.js yet - shown
+                          as "-", never fabricated as 0, since that would misrepresent a real
+                          contract's value. */}
+                      {project.contractValue != null ? `${project.contractValue.toLocaleString()} ${translations.currency}` : "-"}
                     </Table.Td>
                     <Table.Td>
-                      {project.remainingMoney.toLocaleString()} {translations.currency}
+                      {project.remainingMoney != null ? `${project.remainingMoney.toLocaleString()} ${translations.currency}` : "-"}
                     </Table.Td>
                     <Table.Td>{project.projectManager?.name || "-"}</Table.Td>
                     <Table.Td>{project.startDate ? formatDate(project.startDate, language) : "-"}</Table.Td>
