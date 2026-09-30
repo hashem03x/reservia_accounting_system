@@ -19,6 +19,7 @@ const i18nextMiddleware = require('i18next-http-middleware');
 
 const ApiError = require('./utils/apiError');
 const globalError = require('./middleware/errorMiddleware');
+const ensureDbConnected = require('./middleware/ensureDbConnected');
 const mountRoutes = require('./routes');
 
 console.log('[STARTUP] Building Express application...');
@@ -114,6 +115,12 @@ app.get('/', (req, res) => {
 app.get('/api/v1/health', (req, res) => {
   res.status(200).json({ success: true, status: 'ok', uptime: process.uptime() });
 });
+
+// Every route below this point can touch the database, so every route below this point waits for
+// a real connection first - see middleware/ensureDbConnected.js for exactly what problem this
+// fixes and why it's mounted here specifically (after the two health checks above, which must keep
+// working even when the database is down).
+app.use(ensureDbConnected);
 
 mountRoutes(app);
 
