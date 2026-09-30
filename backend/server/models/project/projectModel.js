@@ -1,5 +1,5 @@
 const { Schema, model } = require('mongoose');
-const { ProjectStatuses, ProjectDepartments } = require('../../utils/accountingConstants');
+const { ProjectStatuses, ProjectSectors } = require('../../utils/accountingConstants');
 
 // Contract attachment - a single optional document, not the `documents[]` array shape used by
 // Customer/Vendor (businessPartnerSchemas.js's businessDocumentSchema), since a project has at
@@ -36,47 +36,52 @@ const projectSchema = new Schema(
       type: String,
       trim: true,
     },
-    // Contract/project value. Plain Number, matching this codebase's existing monetary convention
-    // (Product.price, PurchaseOrder.totalAmount, Payment.amountPaid all use Number, not
-    // Decimal128 - see reversia-business-logic.md) - introducing a different money representation
-    // only for Project would make it the one field that can't be arithmetic'd against the rest of
-    // the app's money fields without a conversion step.
-    projectAmount: {
+    // Signed contract value. Renamed from `projectAmount` - see docs/entities/projects.md. Plain
+    // Number, matching this codebase's existing monetary convention (Product.price,
+    // PurchaseOrder.totalAmount, Payment.amountPaid all use Number, not Decimal128).
+    contractValue: {
       type: Number,
-      required: [true, 'Project amount is required'],
-      min: [0.01, 'Project amount must be greater than 0'],
+      required: [true, 'Contract value is required'],
+      min: [0.01, 'Contract value must be greater than 0'],
     },
-    // Automatically derived (projectAmount minus confirmed Payment receipts linked to this
+    // Automatically derived (contractValue minus confirmed Payment receipts linked to this
     // project via Payment.projectId - see paymentModel.js) - never accepted from request bodies.
-    // Defaults to the full projectAmount at creation since no payments exist yet. See
+    // Defaults to the full contractValue at creation since no payments exist yet. See
     // services/project/projectAccountingService.js#recalculateRemainingMoney.
     remainingMoney: {
       type: Number,
       default: 0,
       min: 0,
     },
-    // المنفذ (executor) - a reference to an existing staff User rather than duplicating
-    // name/contact info on the Project document, consistent with how PurchaseOrder/Expense
-    // reference `createdBy: ref User` instead of embedding staff details.
-    executor: {
+    // Renamed from `executor` - see docs/entities/projects.md. A reference to an existing staff
+    // User rather than duplicating name/contact info on the Project document, consistent with how
+    // PurchaseOrder/Expense reference `createdBy: ref User` instead of embedding staff details.
+    projectManager: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: [true, 'Executor is required'],
+      required: [true, 'Project manager is required'],
     },
-    // Optional - `null` is explicitly included in the enum's own value list (Mongoose's built-in
-    // enum validator otherwise rejects an explicit `null`), so "no department" is a real, settable
-    // value rather than something that only works by leaving the key out of the request body -
-    // that matters for updateProject, where a client must be able to clear a previously-set
-    // department (assigning `undefined` to an existing document path does not reliably unset it on
-    // save, since Mongoose's change-tracking treats `undefined` as "no change"; `null` does).
-    // Projects created before this field existed simply have it absent, which reads the same as
-    // `null` everywhere it's used (see docs/entities/projects.md - "no destructive migration").
-    // New departments are added in ONE place - utils/accountingConstants.js's `ProjectDepartments`
-    // (mirrored in frontend/src/utils/constants/accounting.ts) - never hardcoded here or in a
-    // validator.
-    department: {
+    startDate: {
+      type: Date,
+      required: [true, 'Start date is required'],
+    },
+    deliveryDate: {
+      type: Date,
+      required: [true, 'Delivery date is required'],
+    },
+    // Renamed from `department` - see docs/entities/projects.md. Optional - `null` is explicitly
+    // included in the enum's own value list (Mongoose's built-in enum validator otherwise rejects
+    // an explicit `null`), so "no sector" is a real, settable value rather than something that
+    // only works by leaving the key out of the request body - that matters for updateProject,
+    // where a client must be able to clear a previously-set sector (assigning `undefined` to an
+    // existing document path does not reliably unset it on save, since Mongoose's change-tracking
+    // treats `undefined` as "no change"; `null` does). Projects created before this field existed
+    // simply have it absent, which reads the same as `null` everywhere it's used. New sectors are
+    // added in ONE place - utils/accountingConstants.js's `ProjectSectors` (mirrored in
+    // frontend/src/utils/constants/accounting.ts) - never hardcoded here or in a validator.
+    sector: {
       type: String,
-      enum: { values: [...ProjectDepartments, null], message: '{VALUE} is not a valid department' },
+      enum: { values: [...ProjectSectors, null], message: '{VALUE} is not a valid sector' },
       default: null,
     },
     status: {
@@ -100,14 +105,24 @@ const projectSchema = new Schema(
   { timestamps: true }
 );
 
-projectSchema.index({ executor: 1 });
+projectSchema.index({ projectManager: 1 });
 projectSchema.index({ status: 1 });
 projectSchema.index({ createdAt: 1 });
-projectSchema.index({ department: 1 });
+projectSchema.index({ sector: 1 });
+
+// Runs before the schema's own `required` checks - only compares when both dates are actually
+// present, so a request missing one of them still gets that field's own clear "is required"
+// message instead of this check's, and doesn't false-positive on `undefined < undefined`.
+projectSchema.pre('validate', function (next) {
+  if (this.startDate && this.deliveryDate && this.deliveryDate < this.startDate) {
+    return next(new Error('Delivery date cannot be before the start date.'));
+  }
+  next();
+});
 
 projectSchema.pre(/^find/, function (next) {
   this.where({ isDeleted: { $ne: true } })
-    .populate({ path: 'executor', select: 'name email role' })
+    .populate({ path: 'projectManager', select: 'name email role' })
     .populate({ path: 'createdBy', select: 'name' })
     .populate({ path: 'contract.uploadedBy', select: 'name' });
   next();

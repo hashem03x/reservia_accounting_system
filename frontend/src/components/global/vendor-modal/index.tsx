@@ -8,6 +8,7 @@ import { Button, Select, TextInput } from "@mantine/core";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
 import BusinessDocumentsSection from "@/components/global/business-documents-section";
+import { isValidEgyptianIban } from "@/utils/helpers/validate-bank-info";
 
 export default function VendorModal({
   opened,
@@ -35,6 +36,15 @@ export default function VendorModal({
   const [branch, setBranch] = useState(vendorToUpdate?.bankInfo?.branch || "");
   const [bankAccountNumber, setBankAccountNumber] = useState(vendorToUpdate?.bankInfo?.accountNumber || "");
   const [bankIbanNumber, setBankIbanNumber] = useState(vendorToUpdate?.bankInfo?.iban || "");
+  const [swiftCode, setSwiftCode] = useState(vendorToUpdate?.bankInfo?.swiftCode || "");
+
+  const ibanError =
+    bankIbanNumber && !isValidEgyptianIban(bankIbanNumber)
+      ? translate(
+          'IBAN must start with "EG" and be exactly 29 characters (letters and numbers only).',
+          'يجب أن يبدأ رقم الآيبان بـ "EG" ويتكون من 29 حرفًا بالضبط (حروف وأرقام فقط).',
+        )
+      : undefined;
   const [city, setCity] = useState(vendorToUpdate?.address?.city || "");
   const [street, setStreet] = useState(vendorToUpdate?.address?.street || "");
   const [postalCode, setPostalCode] = useState(vendorToUpdate?.address?.postalCode || "");
@@ -64,7 +74,13 @@ export default function VendorModal({
             postalCode: postalCode || undefined,
           },
           taxInfo: { taxRegistrationNumber: taxRegistrationNumber || undefined, commercialRegistrationNumber: commercialRegistrationNumber || undefined },
-          bankInfo: { bankName: bankName || undefined, branch: branch || undefined, accountNumber: bankAccountNumber || undefined, iban: bankIbanNumber || undefined },
+          bankInfo: {
+            bankName: bankName || undefined,
+            branch: branch || undefined,
+            accountNumber: bankAccountNumber || undefined,
+            iban: bankIbanNumber || undefined,
+            swiftCode: swiftCode || undefined,
+          },
         }, // I send them as undefined instead of empty string to avoid a backend issue.
       });
 
@@ -94,6 +110,7 @@ export default function VendorModal({
       setBranch(vendorToUpdate?.bankInfo?.branch || "");
       setBankAccountNumber(vendorToUpdate?.bankInfo?.accountNumber || "");
       setBankIbanNumber(vendorToUpdate?.bankInfo?.iban || "");
+      setSwiftCode(vendorToUpdate?.bankInfo?.swiftCode || "");
       setSavedVendor(vendorToUpdate);
       setError("");
     }, 250);
@@ -118,7 +135,8 @@ export default function VendorModal({
       (bankName || undefined) !== savedVendor.bankInfo?.bankName ||
       (branch || undefined) !== savedVendor.bankInfo?.branch ||
       (bankAccountNumber || undefined) !== savedVendor.bankInfo?.accountNumber ||
-      (bankIbanNumber || undefined) !== savedVendor.bankInfo?.iban
+      (bankIbanNumber || undefined) !== savedVendor.bankInfo?.iban ||
+      (swiftCode || undefined) !== savedVendor.bankInfo?.swiftCode
     : true;
 
   return (
@@ -240,8 +258,15 @@ export default function VendorModal({
             <TextInput
               value={bankIbanNumber}
               onChange={(e) => setBankIbanNumber(e.target.value)}
-              label={translate("IBAN Number", "رقم ال IBAN")}
-              placeholder={translate("Enter IBAN Number", "أدخل رقم ال IBAN")}
+              label={translate("IBAN", "رقم الآيبان (IBAN)")}
+              placeholder={translate("EGxxxxxxxxxxxxxxxxxxxxxxxxxxx", "EGxxxxxxxxxxxxxxxxxxxxxxxxxxx")}
+              error={ibanError}
+            />
+            <TextInput
+              value={swiftCode}
+              onChange={(e) => setSwiftCode(e.target.value.toUpperCase())}
+              label={translate("SWIFT Code", "رمز السويفت (SWIFT)")}
+              placeholder={translate("Enter SWIFT Code", "أدخل رمز السويفت")}
             />
           </div>
         </section>
@@ -263,7 +288,7 @@ export default function VendorModal({
           <Button onClick={handleClose} variant="light" color="dark" fullWidth>
             {savedVendor ? translate("Close", "إغلاق") : translations.cancel}
           </Button>
-          <Button type="submit" loading={loading} disabled={!name || !type || !phone || !dataChanged} fullWidth>
+          <Button type="submit" loading={loading} disabled={!name || !type || !phone || !dataChanged || !!ibanError} fullWidth>
             {savedVendor ? translate("Save", "حفظ") : title}
           </Button>
         </div>

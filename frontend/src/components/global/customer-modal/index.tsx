@@ -10,6 +10,7 @@ import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
 import BusinessDocumentsSection from "@/components/global/business-documents-section";
 import { notifySuccess } from "@/utils/helpers/notifiers";
+import { isValidEgyptianIban } from "@/utils/helpers/validate-bank-info";
 
 export default function CustomerModal({
   opened,
@@ -40,6 +41,15 @@ export default function CustomerModal({
   const [branch, setBranch] = useState(customerToUpdate?.bankInfo?.branch || "");
   const [accountNumber, setAccountNumber] = useState(customerToUpdate?.bankInfo?.accountNumber || "");
   const [iban, setIban] = useState(customerToUpdate?.bankInfo?.iban || "");
+  const [swiftCode, setSwiftCode] = useState(customerToUpdate?.bankInfo?.swiftCode || "");
+
+  const ibanError =
+    iban && !isValidEgyptianIban(iban)
+      ? translate(
+          'IBAN must start with "EG" and be exactly 29 characters (letters and numbers only).',
+          'يجب أن يبدأ رقم الآيبان بـ "EG" ويتكون من 29 حرفًا بالضبط (حروف وأرقام فقط).',
+        )
+      : undefined;
 
   // Once a customer is created (or when editing an existing one), this holds the persisted record
   // so the Customer Number + Documents section become available without closing the modal - a
@@ -68,7 +78,13 @@ export default function CustomerModal({
             postalCode: postalCode || undefined,
           },
           taxInfo: { taxRegistrationNumber: taxRegistrationNumber || undefined, commercialRegistrationNumber: commercialRegistrationNumber || undefined },
-          bankInfo: { bankName: bankName || undefined, branch: branch || undefined, accountNumber: accountNumber || undefined, iban: iban || undefined },
+          bankInfo: {
+            bankName: bankName || undefined,
+            branch: branch || undefined,
+            accountNumber: accountNumber || undefined,
+            iban: iban || undefined,
+            swiftCode: swiftCode || undefined,
+          },
         }, // I send them as undefined instead of empty string to avoid a backend issue.
       });
 
@@ -102,6 +118,7 @@ export default function CustomerModal({
       setBranch(customerToUpdate?.bankInfo?.branch || "");
       setAccountNumber(customerToUpdate?.bankInfo?.accountNumber || "");
       setIban(customerToUpdate?.bankInfo?.iban || "");
+      setSwiftCode(customerToUpdate?.bankInfo?.swiftCode || "");
       setSavedCustomer(customerToUpdate);
       setError("");
     }, 250);
@@ -126,7 +143,8 @@ export default function CustomerModal({
       (bankName || undefined) !== savedCustomer.bankInfo?.bankName ||
       (branch || undefined) !== savedCustomer.bankInfo?.branch ||
       (accountNumber || undefined) !== savedCustomer.bankInfo?.accountNumber ||
-      (iban || undefined) !== savedCustomer.bankInfo?.iban
+      (iban || undefined) !== savedCustomer.bankInfo?.iban ||
+      (swiftCode || undefined) !== savedCustomer.bankInfo?.swiftCode
     : true;
 
   return (
@@ -268,8 +286,15 @@ export default function CustomerModal({
             <TextInput
               value={iban}
               onChange={(e) => setIban(e.target.value)}
-              label={translate("IBAN", "رقم ال IBAN")}
-              placeholder={translate("Enter IBAN", "أدخل رقم ال IBAN")}
+              label={translate("IBAN", "رقم الآيبان (IBAN)")}
+              placeholder={translate("EGxxxxxxxxxxxxxxxxxxxxxxxxxxx", "EGxxxxxxxxxxxxxxxxxxxxxxxxxxx")}
+              error={ibanError}
+            />
+            <TextInput
+              value={swiftCode}
+              onChange={(e) => setSwiftCode(e.target.value.toUpperCase())}
+              label={translate("SWIFT Code", "رمز السويفت (SWIFT)")}
+              placeholder={translate("Enter SWIFT Code", "أدخل رمز السويفت")}
             />
           </div>
         </section>
@@ -291,7 +316,7 @@ export default function CustomerModal({
           <Button onClick={handleClose} variant="light" color="dark" fullWidth>
             {savedCustomer ? translate("Close", "إغلاق") : translations.cancel}
           </Button>
-          <Button type="submit" loading={loading} disabled={!name || !phone || !dataChanged} fullWidth>
+          <Button type="submit" loading={loading} disabled={!name || !phone || !dataChanged || !!ibanError} fullWidth>
             {savedCustomer ? translate("Save", "حفظ") : title}
           </Button>
         </div>

@@ -7,19 +7,25 @@ exports.AccountTypes = ['asset', 'liability', 'equity', 'revenue', 'expense'];
 
 exports.JournalEntryStatus = ['draft', 'posted', 'reversed'];
 
-// "source" identifies what business event produced a journal entry. `project_creation` is used
-// for the automatic entry required by this phase; `manual` covers everything an accountant enters
-// by hand via the Journal Entries UI. Extra values can be appended later (e.g.
-// `fixed_asset_purchase`) without touching existing entries.
+// "source" identifies what business event produced a journal entry. `manual` covers everything an
+// accountant enters by hand via the Journal Entries UI (the only source new entries use today -
+// automatic journal-entry creation on project creation was removed, see
+// docs/entities/projects.md). `project_creation` is kept in this list (not removed) purely so any
+// pre-existing journal entries created by that now-removed automatic flow remain valid on save -
+// Mongoose re-validates every enum path on save, including unmodified ones, so removing a value
+// still in use by historical documents would break something as unrelated as reversing one of
+// them. `fixed_asset_purchase` is still actively used by the optional fixed-asset journal entry.
 exports.JournalEntrySources = ['manual', 'project_creation', 'fixed_asset_purchase'];
 
 exports.ProjectStatuses = ['active', 'completed', 'cancelled', 'on_hold'];
 
-// Centralized so a new department is a one-line addition here (plus its mirror in
+// Centralized so a new sector is a one-line addition here (plus its mirror in
 // frontend/src/utils/constants/accounting.ts), not a hardcoded string scattered across the model,
-// validators, and every frontend form/table. `null` (no department) stays valid for projects
-// created before this field existed - see docs/entities/projects.md.
-exports.ProjectDepartments = ['Villa', 'Industrials'];
+// validators, and every frontend form/table. `null` (no sector) stays valid for projects created
+// before this field existed - see docs/entities/projects.md. Renamed from `ProjectDepartments`
+// (the field itself was renamed `department` -> `sector`) - the values themselves (Villa,
+// Industrials) are unchanged.
+exports.ProjectSectors = ['Villa', 'Industrials'];
 
 exports.FixedAssetStatuses = ['active', 'disposed', 'under_maintenance'];
 

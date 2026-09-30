@@ -6,30 +6,21 @@ const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_te
 
 let Project;
 let JournalEntry;
-let ChartOfAccount;
 let User;
-let createProjectCreationJournalEntry;
 let user;
-let transactionsSupported = true;
 
-// Mirrors projectController.js#createProject's transaction shape (Project.create + the automatic
-// journal entry, one session) without needing an HTTP layer - this codebase's existing tests
-// (customerNumberService.test.js, productServiceModel.test.js) all exercise models/services
-// directly rather than spinning up Express, so this follows the same convention.
-async function createProjectWithAccounting(data, createdBy) {
-  const session = await mongoose.startSession();
-  try {
-    let project;
-    let journalEntry;
-    await session.withTransaction(async () => {
-      const [created] = await Project.create([{ ...data, remainingMoney: data.projectAmount, createdBy }], { session });
-      project = created;
-      journalEntry = await createProjectCreationJournalEntry(project, session, createdBy);
-    });
-    return { project, journalEntry };
-  } finally {
-    session.endSession();
-  }
+// Project.create() no longer takes a session/journal-entry step - creating a project only ever
+// creates the Project document (automatic journal-entry creation on project creation was removed,
+// see docs/entities/projects.md). `startDate`/`deliveryDate` are now required on every project.
+function baseProjectData(overrides = {}) {
+  return {
+    projectNumber: 'PRJ-000',
+    contractValue: 1000,
+    projectManager: user._id,
+    startDate: new Date('2026-01-01'),
+    deliveryDate: new Date('2026-06-01'),
+    ...overrides,
+  };
 }
 
 before(async () => {
@@ -37,29 +28,8 @@ before(async () => {
   await mongoose.connection.dropDatabase();
   Project = require('../../models/project/projectModel');
   JournalEntry = require('../../models/accounting/journalEntryModel');
-  ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
   User = require('../../models/userModel');
-  ({ createProjectCreationJournalEntry } = require('../../services/project/projectAccountingService'));
-  // See chartOfAccount.test.js's before() comment - avoids racing the unique index builds
-  // (projectNumber, entryNumber) under concurrent test-file load.
-  await Promise.all([Project.init(), JournalEntry.init(), ChartOfAccount.init()]);
-
-  // Multi-document transactions require a replica set/mongos - the real deployment (Atlas
-  // mongodb+srv://) always is one, but a bare local `mongod` Windows service is not by default
-  // (see docs/database-initialization.md and reversia-roadmap.md). Detect this once so the
-  // transaction-dependent tests below can skip with a clear message instead of failing with an
-  // opaque driver error when run against a plain local instance.
-  const probeSession = await mongoose.startSession();
-  try {
-    await probeSession.withTransaction(async () => {
-      await mongoose.connection.collection('__txn_probe').insertOne({ ok: 1 }, { session: probeSession });
-    });
-    await mongoose.connection.collection('__txn_probe').drop().catch(() => {});
-  } catch (err) {
-    transactionsSupported = false;
-  } finally {
-    probeSession.endSession();
-  }
+  await Promise.all([Project.init(), JournalEntry.init()]);
 });
 
 after(async () => {
@@ -70,132 +40,153 @@ after(async () => {
 beforeEach(async () => {
   await Project.deleteMany({});
   await JournalEntry.deleteMany({});
-  await ChartOfAccount.deleteMany({});
   await User.deleteMany({});
-  await mongoose.connection.collection('counters').deleteMany({});
 
-  user = await User.create({ name: 'Test Admin', email: `admin-${Date.now()}@example.com`, role: 'admin', type: 'online' });
-  await ChartOfAccount.create({ code: '1100', name: 'Accounts Receivable', type: 'asset' });
-  await ChartOfAccount.create({ code: '2400', name: 'Unearned Revenue', type: 'liability' });
+  user = await User.create({ name: 'Test Manager', email: `manager-${Date.now()}@example.com`, role: 'admin', type: 'online' });
 });
 
-test('creating a project also creates exactly one balanced automatic journal entry', async t => {
-  if (!transactionsSupported) return t.skip('local MongoDB is a standalone instance, not a replica set - transactions unavailable (works against the real Atlas cluster)');
-  const { project, journalEntry } = await createProjectWithAccounting({ projectNumber: 'PRJ-001', projectAmount: 5000, executor: user._id }, user._id);
+test('creating a project does NOT create any journal entry', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-001' }));
 
   const foundProject = await Project.findById(project._id);
   assert.ok(foundProject, 'project should exist');
   assert.equal(foundProject.projectNumber, 'PRJ-001');
-  assert.equal(foundProject.projectAmount, 5000);
+  assert.equal(foundProject.contractValue, 1000);
 
   const entries = await JournalEntry.find({ project: project._id });
-  assert.equal(entries.length, 1, 'exactly one automatic journal entry must exist for the project');
+  assert.equal(entries.length, 0, 'creating a project must not create any journal entry (automatic accounting was removed)');
 
-  const entry = entries[0];
-  assert.equal(String(entry.project._id || entry.project), String(project._id));
-  assert.equal(entry.lines.some(l => l.projectNumber === 'PRJ-001'), true);
-  assert.equal(entry.totalDebit, 5000);
-  assert.equal(entry.totalCredit, 5000);
-  assert.equal(entry.status, 'posted');
-  assert.equal(journalEntry._id.toString(), entry._id.toString());
+  const anyEntries = await JournalEntry.countDocuments({});
+  assert.equal(anyEntries, 0, 'no journal entry should exist anywhere as a side effect of project creation');
 });
 
-test('a retried/duplicated automatic journal entry request does not create a duplicate (idempotency)', async t => {
-  if (!transactionsSupported) return t.skip('local MongoDB is a standalone instance, not a replica set - transactions unavailable (works against the real Atlas cluster)');
-  const { project } = await createProjectWithAccounting({ projectNumber: 'PRJ-002', projectAmount: 1200, executor: user._id }, user._id);
+test('remainingMoney defaults to the full contractValue at creation (no payments yet)', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-002', contractValue: 5000, remainingMoney: 5000 }));
+  assert.equal(project.remainingMoney, 5000);
+});
 
-  const session = await mongoose.startSession();
+test('duplicate project numbers are rejected', async () => {
+  await Project.create(baseProjectData({ projectNumber: 'PRJ-003' }));
+
+  await assert.rejects(() => Project.create(baseProjectData({ projectNumber: 'PRJ-003' })), err => err.code === 11000);
+
+  const entries = await JournalEntry.find({});
+  assert.equal(entries.length, 0, 'a rejected duplicate must not leave any journal entry behind');
+});
+
+test('an invalid (zero/negative) contract value is rejected', async () => {
+  await assert.rejects(() => Project.create(baseProjectData({ projectNumber: 'PRJ-004', contractValue: 0 })), /greater than 0/);
+  await assert.rejects(() => Project.create(baseProjectData({ projectNumber: 'PRJ-005', contractValue: -100 })), /greater than 0/);
+});
+
+test('startDate and deliveryDate are required', async () => {
   await assert.rejects(
-    () => session.withTransaction(() => createProjectCreationJournalEntry(project, session, user._id)),
-    err => err.code === 11000,
-    'a second attempt to create the PROJECT_CREATION entry for the same project must fail on the idempotency index'
+    () => Project.create({ projectNumber: 'PRJ-006', contractValue: 1000, projectManager: user._id, deliveryDate: new Date('2026-06-01') }),
+    /Start date is required/
   );
-  session.endSession();
-
-  const entries = await JournalEntry.find({ project: project._id });
-  assert.equal(entries.length, 1, 'no duplicate automatic journal entry should exist after the retried request');
+  await assert.rejects(
+    () => Project.create({ projectNumber: 'PRJ-007', contractValue: 1000, projectManager: user._id, startDate: new Date('2026-01-01') }),
+    /Delivery date is required/
+  );
 });
 
-test('duplicate project numbers are rejected', async t => {
-  if (!transactionsSupported) return t.skip('local MongoDB is a standalone instance, not a replica set - transactions unavailable (works against the real Atlas cluster)');
-  await createProjectWithAccounting({ projectNumber: 'PRJ-003', projectAmount: 1000, executor: user._id }, user._id);
-
-  await assert.rejects(() => createProjectWithAccounting({ projectNumber: 'PRJ-003', projectAmount: 2000, executor: user._id }, user._id), err => err.code === 11000);
-
-  const entries = await JournalEntry.find({});
-  assert.equal(entries.filter(e => e.lines.some(l => l.projectNumber === 'PRJ-003')).length, 1, 'the rejected duplicate must not leave a stray journal entry behind');
+test('deliveryDate cannot be before startDate', async () => {
+  await assert.rejects(
+    () =>
+      Project.create(
+        baseProjectData({
+          projectNumber: 'PRJ-008',
+          startDate: new Date('2026-06-01'),
+          deliveryDate: new Date('2026-01-01'),
+        })
+      ),
+    /Delivery date cannot be before the start date/
+  );
 });
 
-test('an invalid (zero/negative) project amount is rejected', async () => {
-  await assert.rejects(() => Project.create({ projectNumber: 'PRJ-004', projectAmount: 0, executor: user._id, remainingMoney: 0 }), /greater than 0/);
-  await assert.rejects(() => Project.create({ projectNumber: 'PRJ-005', projectAmount: -100, executor: user._id, remainingMoney: -100 }), /greater than 0/);
+test('deliveryDate equal to startDate is accepted (not "before")', async () => {
+  const sameDay = new Date('2026-03-01');
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-009', startDate: sameDay, deliveryDate: sameDay }));
+  assert.ok(project._id);
 });
 
-test('if the automatic journal entry cannot be created, the project creation is rolled back (transaction atomicity)', async t => {
-  if (!transactionsSupported) return t.skip('local MongoDB is a standalone instance, not a replica set - transactions unavailable (works against the real Atlas cluster)');
-  // Remove the accounts the automatic entry depends on, simulating an accounting-side failure.
-  await ChartOfAccount.deleteMany({});
-
-  await assert.rejects(() => createProjectWithAccounting({ projectNumber: 'PRJ-ROLLBACK', projectAmount: 900, executor: user._id }, user._id), /accounting entry could not be created/);
-
-  const project = await Project.findOne({ projectNumber: 'PRJ-ROLLBACK' });
-  assert.equal(project, null, 'the project must not exist after its accounting entry creation failed');
-
-  const entries = await JournalEntry.find({});
-  assert.equal(entries.length, 0, 'no orphan journal entry should exist either');
+test('a project can be created with sector "Villa"', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-SECTOR-01', sector: 'Villa' }));
+  const found = await Project.findById(project._id);
+  assert.equal(found.sector, 'Villa');
 });
 
-test('project retrieval and update', async t => {
-  if (!transactionsSupported) return t.skip('local MongoDB is a standalone instance, not a replica set - transactions unavailable (works against the real Atlas cluster)');
-  const { project } = await createProjectWithAccounting({ projectNumber: 'PRJ-006', projectAmount: 3000, name: 'Initial name', executor: user._id }, user._id);
+test('a project can be created with sector "Industrials"', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-SECTOR-02', sector: 'Industrials' }));
+  const found = await Project.findById(project._id);
+  assert.equal(found.sector, 'Industrials');
+});
+
+test('an invalid sector value is rejected', async () => {
+  await assert.rejects(() => Project.create(baseProjectData({ projectNumber: 'PRJ-SECTOR-03', sector: 'Marketing' })), /not a valid sector/);
+});
+
+test('a project created without a sector defaults to null and remains readable (backward compatibility)', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-SECTOR-04' }));
+  assert.equal(project.sector, null);
+
+  const found = await Project.findById(project._id);
+  assert.equal(found.sector, null, 'a project with no sector must read back cleanly, not throw a cast/enum error');
+});
+
+test('sector can be updated after creation, and cleared back to null', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-SECTOR-05', sector: 'Villa' }));
+
+  project.sector = 'Industrials';
+  await project.save();
+  assert.equal((await Project.findById(project._id)).sector, 'Industrials');
+
+  project.sector = null;
+  await project.save();
+  assert.equal((await Project.findById(project._id)).sector, null, 'explicitly setting sector to null must actually clear it in the database');
+});
+
+test('project retrieval and update (name, contractValue, projectManager, dates)', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-010', name: 'Initial name' }));
 
   const found = await Project.findById(project._id);
   assert.equal(found.name, 'Initial name');
+  assert.equal(found.projectManager._id.toString(), user._id.toString());
 
   found.name = 'Updated name';
+  found.contractValue = 2000;
   await found.save();
 
   const updated = await Project.findById(project._id);
   assert.equal(updated.name, 'Updated name');
+  assert.equal(updated.contractValue, 2000);
   // projectNumber must remain unchanged through a normal update path.
-  assert.equal(updated.projectNumber, 'PRJ-006');
+  assert.equal(updated.projectNumber, 'PRJ-010');
+
+  // Updating still creates no journal entry.
+  const entries = await JournalEntry.find({ project: project._id });
+  assert.equal(entries.length, 0);
 });
 
-test('a project can be created with department "Villa"', async () => {
-  const project = await Project.create({ projectNumber: 'PRJ-DEPT-01', projectAmount: 1000, executor: user._id, department: 'Villa' });
-  const found = await Project.findById(project._id);
-  assert.equal(found.department, 'Villa');
-});
+test('a project created before this phase (no startDate/deliveryDate) remains readable (backward compatibility)', async () => {
+  // Simulates a pre-existing document written before startDate/deliveryDate existed - bypasses
+  // Mongoose validation entirely (raw collection insert), the same way real historical data would
+  // predate the new required fields. Reading it back must not throw, even though `required` would
+  // reject creating a NEW document without these fields - Mongoose only enforces `required` on
+  // write, never retroactively on read.
+  await mongoose.connection.collection('projects').insertOne({
+    projectNumber: 'PRJ-LEGACY-01',
+    contractValue: 750,
+    remainingMoney: 750,
+    projectManager: user._id,
+    status: 'active',
+    isDeleted: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
 
-test('a project can be created with department "Industrials"', async () => {
-  const project = await Project.create({ projectNumber: 'PRJ-DEPT-02', projectAmount: 1000, executor: user._id, department: 'Industrials' });
-  const found = await Project.findById(project._id);
-  assert.equal(found.department, 'Industrials');
-});
-
-test('an invalid department value is rejected', async () => {
-  await assert.rejects(
-    () => Project.create({ projectNumber: 'PRJ-DEPT-03', projectAmount: 1000, executor: user._id, department: 'Marketing' }),
-    /not a valid department/
-  );
-});
-
-test('a project created without a department defaults to null and remains readable (backward compatibility)', async () => {
-  const project = await Project.create({ projectNumber: 'PRJ-DEPT-04', projectAmount: 1000, executor: user._id });
-  assert.equal(project.department, null);
-
-  const found = await Project.findById(project._id);
-  assert.equal(found.department, null, 'a project with no department must read back cleanly, not throw a cast/enum error');
-});
-
-test('department can be updated after creation, and cleared back to null', async () => {
-  const project = await Project.create({ projectNumber: 'PRJ-DEPT-05', projectAmount: 1000, executor: user._id, department: 'Villa' });
-
-  project.department = 'Industrials';
-  await project.save();
-  assert.equal((await Project.findById(project._id)).department, 'Industrials');
-
-  project.department = null;
-  await project.save();
-  assert.equal((await Project.findById(project._id)).department, null, 'explicitly setting department to null must actually clear it in the database');
+  const legacyProject = await Project.findOne({ projectNumber: 'PRJ-LEGACY-01' });
+  assert.ok(legacyProject, 'a legacy project document missing the new required date fields must still be readable');
+  assert.equal(legacyProject.startDate, undefined);
+  assert.equal(legacyProject.deliveryDate, undefined);
 });

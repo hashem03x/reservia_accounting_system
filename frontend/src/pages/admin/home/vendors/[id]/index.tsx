@@ -219,7 +219,7 @@ export default function Vendor() {
             )}
 
             {/* Bank Info */}
-            {(vendor.bankInfo?.bankName || vendor.bankInfo?.branch || vendor.bankInfo?.accountNumber || vendor.bankInfo?.iban) && (
+            {(vendor.bankInfo?.bankName || vendor.bankInfo?.branch || vendor.bankInfo?.accountNumber || vendor.bankInfo?.iban || vendor.bankInfo?.swiftCode) && (
               <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
                 <h4>{translate("Bank Info", "البيانات البنكية")}</h4>
                 {vendor.bankInfo?.bankName && (
@@ -239,7 +239,12 @@ export default function Vendor() {
                 )}
                 {vendor.bankInfo?.iban && (
                   <p>
-                    {translate("IBAN", "رقم ال IBAN")}: {vendor.bankInfo.iban}
+                    {translate("IBAN", "رقم الآيبان (IBAN)")}: {vendor.bankInfo.iban}
+                  </p>
+                )}
+                {vendor.bankInfo?.swiftCode && (
+                  <p>
+                    {translate("SWIFT Code", "رمز السويفت (SWIFT)")}: {vendor.bankInfo.swiftCode}
                   </p>
                 )}
               </section>

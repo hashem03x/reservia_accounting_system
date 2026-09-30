@@ -8,12 +8,21 @@ rationale and the Customer Number concurrency design.
 ```text
 customerNumber  Number, unique, sparse, immutable   server-generated only, role: "user" only
 taxInfo         { taxRegistrationNumber, commercialRegistrationNumber }
-bankInfo        { bankName, branch, accountNumber, iban }
+bankInfo        { bankName, branch, accountNumber, iban, swiftCode }
 documents[]     { documentType, url, publicId, filename, mimeType, uploadedAt }
 ```
 
 (`taxInfo`/`bankInfo` schemas are shared with Vendor - see
 `backend/server/models/shared/businessPartnerSchemas.js`.)
+
+`bankInfo.iban` must be a valid Egyptian IBAN if provided - `EG` followed by exactly 27
+alphanumeric characters (29 total), enforced both at the Mongoose schema level
+(`businessPartnerSchemas.js`'s `EGYPTIAN_IBAN_REGEX`, normalized to uppercase via the schema's
+`uppercase: true`) and in `customerValidator.js`/`vendorValidators.js`'s express-validator chains -
+the backend is the source of truth, the frontend check is only a UX nicety. `bankInfo.swiftCode` is
+optional, validated against the standard 8/11-character SWIFT/BIC format when provided. There is no
+separate "company settings" bank-info entity in this codebase - only Customer and Vendor have
+`bankInfo`, both via this one shared schema.
 
 ## Customer Number
 

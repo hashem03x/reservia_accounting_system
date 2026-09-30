@@ -26,4 +26,5 @@ export type BankInfo = {
   branch?: string;
   accountNumber?: string;
   iban?: string;
+  swiftCode?: string;
 };

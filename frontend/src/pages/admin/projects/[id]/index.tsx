@@ -9,6 +9,7 @@ import { formatDate } from "@/utils/helpers/date-formaters";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
 import { Badge, Button, Select, Table, Textarea, TextInput } from "@mantine/core";
+import { DateInput } from "@mantine/dates";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
@@ -18,7 +19,7 @@ import paths from "@/utils/constants/paths";
 import { Project } from "@/types/project";
 import { JournalEntry } from "@/types/journal-entry";
 import ProjectContractSection from "../_components/project-contract-section";
-import { ProjectDepartments } from "@/utils/constants/accounting";
+import { ProjectSectors } from "@/utils/constants/accounting";
 
 const statusColors: Record<string, string> = { active: "green", completed: "blue", cancelled: "red", on_hold: "yellow" };
 const statusOptions = ["active", "completed", "cancelled", "on_hold"];
@@ -61,16 +62,25 @@ export default function ProjectDetail() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("");
-  const [department, setDepartment] = useState("");
+  const [sector, setSector] = useState("");
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [deliveryDate, setDeliveryDate] = useState<Date | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+
+  const editDeliveryBeforeStartError =
+    startDate && deliveryDate && deliveryDate < startDate
+      ? translate("Delivery date cannot be before the start date.", "لا يمكن أن يكون تاريخ التسليم قبل تاريخ البدء.")
+      : undefined;
 
   function startEdit() {
     if (!project) return;
     setName(project.name || "");
     setDescription(project.description || "");
     setStatus(project.status);
-    setDepartment(project.department || "");
+    setSector(project.sector || "");
+    setStartDate(project.startDate ? new Date(project.startDate) : null);
+    setDeliveryDate(project.deliveryDate ? new Date(project.deliveryDate) : null);
     setEditing(true);
   }
 
@@ -79,7 +89,7 @@ export default function ProjectDetail() {
       const res = await privateRequest({
         url: `projects/${id}`,
         method: "PATCH",
-        data: { name, description, status, department: department || null },
+        data: { name, description, status, sector: sector || null, startDate, deliveryDate },
         language,
       });
       setProject(res.data);
@@ -104,11 +114,13 @@ export default function ProjectDetail() {
         ),
       }}
     >
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <SummaryCard label={translate("Project Amount", "قيمة المشروع")} value={`${project.projectAmount.toLocaleString()} ${translations.currency}`} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryCard label={translate("Contract Value", "قيمة العقد")} value={`${project.contractValue.toLocaleString()} ${translations.currency}`} />
         <SummaryCard label={translate("Remaining", "المتبقي")} value={`${project.remainingMoney.toLocaleString()} ${translations.currency}`} />
-        <SummaryCard label={translate("Executor", "المنفذ")} value={project.executor?.name || "-"} />
-        <SummaryCard label={translate("Department", "القسم")} value={project.department || "-"} />
+        <SummaryCard label={translate("Project Manager", "مدير المشروع")} value={project.projectManager?.name || "-"} />
+        <SummaryCard label={translate("Sector", "القطاع")} value={project.sector || "-"} />
+        <SummaryCard label={translate("Start Date", "تاريخ البدء")} value={project.startDate ? formatDate(project.startDate, language) : "-"} />
+        <SummaryCard label={translate("Delivery Date", "تاريخ التسليم")} value={project.deliveryDate ? formatDate(project.deliveryDate, language) : "-"} />
         <SummaryCard
           label={translate("Status", "الحالة")}
           value={<Badge color={statusColors[project.status] || "gray"}>{project.status}</Badge>}
@@ -127,14 +139,28 @@ export default function ProjectDetail() {
             data={statusOptions.map((s) => ({ value: s, label: s }))}
           />
           <Select
-            label={translate("Department", "القسم")}
-            value={department}
-            onChange={(v) => setDepartment(v || "")}
-            data={ProjectDepartments.map((d) => ({ value: d, label: d }))}
+            label={translate("Sector", "القطاع")}
+            value={sector}
+            onChange={(v) => setSector(v || "")}
+            data={ProjectSectors.map((s) => ({ value: s, label: s }))}
             clearable
           />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <DateInput
+              label={translate("Start Date", "تاريخ البدء")}
+              value={startDate}
+              onChange={setStartDate}
+            />
+            <DateInput
+              label={translate("Delivery Date", "تاريخ التسليم")}
+              value={deliveryDate}
+              onChange={setDeliveryDate}
+              minDate={startDate || undefined}
+              error={editDeliveryBeforeStartError}
+            />
+          </div>
           <div className="flex gap-2">
-            <Button loading={saving} onClick={handleSave}>
+            <Button loading={saving} disabled={!!editDeliveryBeforeStartError} onClick={handleSave}>
               {translations.confirm}
             </Button>
             <Button variant="light" color="dark" onClick={() => setEditing(false)}>

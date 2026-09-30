@@ -233,7 +233,7 @@ export default function Customer() {
             )}
 
             {/* Bank Info */}
-            {(customer.bankInfo?.bankName || customer.bankInfo?.branch || customer.bankInfo?.accountNumber || customer.bankInfo?.iban) && (
+            {(customer.bankInfo?.bankName || customer.bankInfo?.branch || customer.bankInfo?.accountNumber || customer.bankInfo?.iban || customer.bankInfo?.swiftCode) && (
               <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
                 <h4>{translate("Bank Info", "البيانات البنكية")}</h4>
                 {customer.bankInfo?.bankName && (
@@ -253,7 +253,12 @@ export default function Customer() {
                 )}
                 {customer.bankInfo?.iban && (
                   <p>
-                    {translate("IBAN", "رقم ال IBAN")}: {customer.bankInfo.iban}
+                    {translate("IBAN", "رقم الآيبان (IBAN)")}: {customer.bankInfo.iban}
+                  </p>
+                )}
+                {customer.bankInfo?.swiftCode && (
+                  <p>
+                    {translate("SWIFT Code", "رمز السويفت (SWIFT)")}: {customer.bankInfo.swiftCode}
                   </p>
                 )}
               </section>

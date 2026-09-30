@@ -112,14 +112,15 @@ export default function Projects() {
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{translate("Project Number", "رقم المشروع")}</Table.Th>
-                  <Table.Th>{translate("Department", "القسم")}</Table.Th>
+                  <Table.Th>{translate("Sector", "القطاع")}</Table.Th>
                   <Table.Th>{translate("Name", "الاسم")}</Table.Th>
-                  <Table.Th>{translate("Amount", "المبلغ")}</Table.Th>
+                  <Table.Th>{translate("Contract Value", "قيمة العقد")}</Table.Th>
                   <Table.Th>{translate("Remaining", "المتبقي")}</Table.Th>
-                  <Table.Th>{translate("Executor", "المنفذ")}</Table.Th>
+                  <Table.Th>{translate("Project Manager", "مدير المشروع")}</Table.Th>
+                  <Table.Th>{translate("Start Date", "تاريخ البدء")}</Table.Th>
+                  <Table.Th>{translate("Delivery Date", "تاريخ التسليم")}</Table.Th>
                   <Table.Th>{translate("Status", "الحالة")}</Table.Th>
                   <Table.Th>{translate("Contract", "العقد")}</Table.Th>
-                  <Table.Th>{translate("Created", "تاريخ الإنشاء")}</Table.Th>
                   <Table.Th>{translate("Actions", "الإجراءات")}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -127,15 +128,17 @@ export default function Projects() {
                 {paginatedProjects.data.map((project) => (
                   <Table.Tr key={project._id} className="cursor-pointer" onClick={() => navigate(project._id)}>
                     <Table.Td className="font-medium">{project.projectNumber}</Table.Td>
-                    <Table.Td>{project.department || "-"}</Table.Td>
+                    <Table.Td>{project.sector || "-"}</Table.Td>
                     <Table.Td>{project.name || "-"}</Table.Td>
                     <Table.Td>
-                      {project.projectAmount.toLocaleString()} {translations.currency}
+                      {project.contractValue.toLocaleString()} {translations.currency}
                     </Table.Td>
                     <Table.Td>
                       {project.remainingMoney.toLocaleString()} {translations.currency}
                     </Table.Td>
-                    <Table.Td>{project.executor?.name || "-"}</Table.Td>
+                    <Table.Td>{project.projectManager?.name || "-"}</Table.Td>
+                    <Table.Td>{project.startDate ? formatDate(project.startDate, language) : "-"}</Table.Td>
+                    <Table.Td>{project.deliveryDate ? formatDate(project.deliveryDate, language) : "-"}</Table.Td>
                     <Table.Td>
                       <Badge color={statusColors[project.status] || "gray"} variant="light">
                         {project.status}
@@ -148,7 +151,6 @@ export default function Projects() {
                         <span className="text-xs text-gray-400">{translate("None", "لا يوجد")}</span>
                       )}
                     </Table.Td>
-                    <Table.Td>{formatDate(project.createdAt, language)}</Table.Td>
                     <Table.Td>
                       <Button
                         variant="light"

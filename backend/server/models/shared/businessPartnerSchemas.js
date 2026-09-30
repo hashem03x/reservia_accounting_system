@@ -14,12 +14,41 @@ const taxInfoSchema = new Schema(
   { _id: false }
 );
 
+// Egyptian IBAN: "EG" followed by exactly 27 alphanumeric characters (29 characters total).
+// Exported so both the schema-level validator below and the express-validator chains
+// (utils/validators/customerValidator.js, utils/validators/vendorValidators.js) check the exact
+// same rule - the backend is the source of truth; the frontend's copy of this check is only a UX
+// nicety, never the actual enforcement.
+const EGYPTIAN_IBAN_REGEX = /^EG[A-Za-z0-9]{27}$/;
+
+// SWIFT/BIC: 4-letter bank code + 2-letter country code + 2-alphanumeric location code, with an
+// optional 3-alphanumeric branch code (8 or 11 characters total) - the standard ISO 9362 format.
+const SWIFT_CODE_REGEX = /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/;
+
 const bankInfoSchema = new Schema(
   {
     bankName: { type: String, trim: true },
     branch: { type: String, trim: true },
     accountNumber: { type: String, trim: true },
-    iban: { type: String, trim: true },
+    iban: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      validate: {
+        // Optional field - only validated when a value is actually provided.
+        validator: v => !v || EGYPTIAN_IBAN_REGEX.test(v),
+        message: props => `"${props.value}" is not a valid Egyptian IBAN - it must start with "EG", be exactly 29 characters long, and contain only letters and numbers.`,
+      },
+    },
+    swiftCode: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      validate: {
+        validator: v => !v || SWIFT_CODE_REGEX.test(v),
+        message: props => `"${props.value}" is not a valid SWIFT/BIC code.`,
+      },
+    },
   },
   { _id: false }
 );
@@ -45,4 +74,4 @@ const businessDocumentSchema = new Schema({
   uploadedAt: { type: Date, default: Date.now },
 });
 
-module.exports = { taxInfoSchema, bankInfoSchema, businessDocumentSchema, DOCUMENT_TYPES };
+module.exports = { taxInfoSchema, bankInfoSchema, businessDocumentSchema, DOCUMENT_TYPES, EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX };

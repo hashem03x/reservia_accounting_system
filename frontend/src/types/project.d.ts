@@ -1,4 +1,4 @@
-import type { ProjectDepartment } from "@/utils/constants/accounting";
+import type { ProjectSector } from "@/utils/constants/accounting";
 
 export type ProjectStatus = "active" | "completed" | "cancelled" | "on_hold";
 
@@ -16,10 +16,12 @@ export interface Project {
   projectNumber: string;
   name?: string;
   description?: string;
-  projectAmount: number;
+  contractValue: number;
   remainingMoney: number;
-  executor: { _id: string; name: string; email?: string; role?: string };
-  department?: ProjectDepartment | null;
+  projectManager: { _id: string; name: string; email?: string; role?: string };
+  startDate: string;
+  deliveryDate: string;
+  sector?: ProjectSector | null;
   status: ProjectStatus;
   contract?: ProjectContract | null;
   createdBy?: { _id: string; name: string };

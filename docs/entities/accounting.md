@@ -113,26 +113,27 @@ display this sum explicitly (green if zero, red with a warning if not) rather th
 potential imbalance - it should never be non-zero in practice, and if it ever is, that is a real
 bug or a direct database write bypassing this app, not something to silently paper over.
 
-## Automatic accounting entry on Project creation
+## Automatic accounting entry on Project creation - REMOVED
 
-**Confirmed accounting policy for this phase** (this was NOT inferable from the pre-existing
-codebase - there was no Project/contract-revenue concept anywhere before this phase, so the policy
-was asked for explicitly rather than invented):
+Project creation used to automatically post:
 
 ```
-Dr Accounts Receivable    projectAmount
-Cr Unearned Revenue       projectAmount
+Dr Accounts Receivable    contractValue (then named projectAmount)
+Cr Unearned Revenue       contractValue
 ```
 
-Posted immediately (not left as a draft) - also a confirmed choice for this phase, not a default.
-Implemented in `services/project/projectAccountingService.js#createProjectCreationJournalEntry`,
-called from `controller/project/projectController.js#createProject` inside the same
-`mongoose.startSession()`/transaction that creates the `Project` document - see
-[`projects.md`](projects.md) for the transaction-atomicity detail.
+posted immediately, via `services/project/projectAccountingService.js#createProjectCreationJournalEntry`
+called from `controller/project/projectController.js#createProject`. **This automatic-accounting
+behavior was deliberately removed** in a later requirement - creating a project now only ever
+creates the Project document, full stop. See [`projects.md`](projects.md)'s "No automatic
+accounting" section for exactly what was removed vs. deliberately left in place (the
+`'project_creation'` journal-entry source value is kept, unused for new entries, solely so any
+pre-existing auto-generated entries remain valid on save).
 
-If a future phase changes the revenue-recognition policy (e.g. earning unearned revenue over time,
-milestone billing), extend `projectAccountingService.js` rather than hardcoding a second policy
-elsewhere - it is the one place this decision is made.
+If a future phase wants project-linked accounting again, use the Journal Entries module's existing
+manual-entry flow (`POST /journal-entries` with `project` set), or reintroduce a purpose-built
+service the same way this one worked - don't assume this removed function is safe to resurrect
+as-is, since `Project.projectAmount` no longer exists (renamed to `contractValue`).
 
 ## Fixed Assets - extended, not replaced
 

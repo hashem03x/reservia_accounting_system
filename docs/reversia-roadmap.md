@@ -97,10 +97,15 @@ Implemented in this pass - full detail in [`entities/accounting.md`](entities/ac
   balances/trial-balance directly from posted journal lines at read time - no second, independently
   maintained balance structure.
 - **Projects** (`Project`): `projectNumber` (user-supplied, unique, effectively immutable),
-  `projectAmount`, derived `remainingMoney`, `executor` (ref `User`), single-slot `contract`
-  attachment (reusing the Phase 1 PDF upload pipeline). Creating a project **automatically posts** a
-  journal entry (Dr Accounts Receivable / Cr Unearned Revenue) in the same database transaction as
-  the Project document - confirmed accounting policy, not inferred (see `entities/accounting.md`).
+  `contractValue`, derived `remainingMoney`, `projectManager` (ref `User`), `startDate`/
+  `deliveryDate` (required, delivery cannot precede start), optional `sector`, single-slot
+  `contract` attachment (reusing the Phase 1 PDF upload pipeline). **Renamed from
+  `projectAmount`/`executor`/`department` respectively** - see `entities/projects.md`'s "Field
+  rename history" for the migration script. Creating a project **no longer creates any journal
+  entry** - an earlier version of this phase automatically posted one (Dr Accounts Receivable / Cr
+  Unearned Revenue); that automatic-accounting behavior was deliberately removed in a later
+  requirement (see `entities/projects.md`'s "No automatic accounting"). Manual journal entries can
+  still be linked to a project.
 - **Fixed Assets** (`FixedAsset`, pre-existing model): extended additively with `price`,
   `assetAccountId` (ref `ChartOfAccount`), `acquisitionDate`, `status`, `notes` - all optional at
   the schema level so existing documents stay valid. Optionally posts a journal entry on creation,

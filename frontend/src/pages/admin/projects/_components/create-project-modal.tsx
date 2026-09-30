@@ -2,14 +2,13 @@ import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
-import { Alert, Button, NumberInput, Select, Textarea, TextInput } from "@mantine/core";
+import { Button, NumberInput, Select, Textarea, TextInput } from "@mantine/core";
+import { DateInput } from "@mantine/dates";
 import useDataHandler from "@/hooks/useDataHandler";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
 import handleRequest from "@/utils/helpers/handle-request";
 import { Project } from "@/types/project";
-import { JournalEntry } from "@/types/journal-entry";
-import { outlineIcons } from "@/components/icons";
-import { ProjectDepartments } from "@/utils/constants/accounting";
+import { ProjectSectors } from "@/utils/constants/accounting";
 
 type StaffOption = { _id: string; name: string; role: string };
 
@@ -28,15 +27,15 @@ export default function CreateProjectModal({
   const [projectNumber, setProjectNumber] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [projectAmount, setProjectAmount] = useState<string | number>("");
-  const [executor, setExecutor] = useState("");
-  const [department, setDepartment] = useState("");
+  const [contractValue, setContractValue] = useState<string | number>("");
+  const [projectManager, setProjectManager] = useState("");
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [deliveryDate, setDeliveryDate] = useState<Date | null>(null);
+  const [sector, setSector] = useState("");
   const [staff, setStaff] = useState<StaffOption[]>([]);
 
   const { privateRequest: fetchStaffRequest } = useDataHandler({ initialData: null });
   const { loading, setLoading, error, setError } = useDataHandler({ initialData: null });
-
-  const [result, setResult] = useState<{ project: Project; journalEntry: JournalEntry } | null>(null);
 
   useEffect(() => {
     if (!opened) return;
@@ -44,6 +43,11 @@ export default function CreateProjectModal({
       .then((res) => setStaff((res.data || []).filter((u: StaffOption) => u.role !== "user")))
       .catch(() => {});
   }, [opened]);
+
+  const deliveryBeforeStartError =
+    startDate && deliveryDate && deliveryDate < startDate
+      ? translate("Delivery date cannot be before the start date.", "لا يمكن أن يكون تاريخ التسليم قبل تاريخ البدء.")
+      : undefined;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,10 +57,11 @@ export default function CreateProjectModal({
         language,
         method: "POST",
         url: "projects",
-        data: { projectNumber, name, description, projectAmount, executor, department: department || undefined },
+        data: { projectNumber, name, description, contractValue, projectManager, startDate, deliveryDate, sector: sector || undefined },
       });
 
-      setResult(res.data);
+      onCreated(res.data);
+      handleClose();
     });
   }
 
@@ -66,110 +71,98 @@ export default function CreateProjectModal({
       setProjectNumber("");
       setName("");
       setDescription("");
-      setProjectAmount("");
-      setExecutor("");
-      setDepartment("");
+      setContractValue("");
+      setProjectManager("");
+      setStartDate(null);
+      setDeliveryDate(null);
+      setSector("");
       setError("");
-      setResult(null);
     }, 250);
   }
 
-  const title = result ? translate("Project Created", "تم إنشاء المشروع") : translate("Create Project", "إنشاء مشروع");
+  const title = translate("Create Project", "إنشاء مشروع");
 
   return (
     <Modal opened={opened} onClose={handleClose} title={title} size="lg">
-      {result ? (
-        <div className="flex flex-col gap-4">
-          <Alert color="green" icon={<outlineIcons.ShieldCheck />}>
-            {translate("Project created successfully.", "تم إنشاء المشروع بنجاح.")}
-            <br />
-            {translate(
-              `Journal entry #${result.journalEntry.entryNumber} created successfully.`,
-              `تم إنشاء القيد اليومي رقم ${result.journalEntry.entryNumber} بنجاح.`,
-            )}
-          </Alert>
-          <div className="flex gap-2">
-            <Button
-              variant="light"
-              fullWidth
-              onClick={() => {
-                onCreated(result.project);
-                handleClose();
-              }}
-            >
-              {translate("View Project", "عرض المشروع")}
-            </Button>
-          </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {error && <ErrorAlert error={error} />}
+
+        <TextInput
+          label={translate("Project Number", "رقم المشروع")}
+          placeholder={translate("Enter a unique project number", "أدخل رقم مشروع فريد")}
+          value={projectNumber}
+          onChange={(e) => setProjectNumber(e.target.value)}
+          required
+        />
+
+        <TextInput
+          label={translate("Project Name", "اسم المشروع")}
+          placeholder={translate("Enter project name (optional)", "أدخل اسم المشروع (اختياري)")}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+
+        <Textarea
+          label={translate("Description", "الوصف")}
+          placeholder={translate("Enter description (optional)", "أدخل الوصف (اختياري)")}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          autosize
+          minRows={2}
+        />
+
+        <NumberInput
+          label={translate("Contract Value", "قيمة العقد")}
+          placeholder={translate("Enter contract value", "أدخل قيمة العقد")}
+          value={contractValue}
+          onChange={setContractValue}
+          min={0.01}
+          decimalScale={2}
+          required
+        />
+
+        <Select
+          label={translate("Project Manager", "مدير المشروع")}
+          placeholder={translate("Select project manager", "اختر مدير المشروع")}
+          value={projectManager}
+          onChange={(value) => setProjectManager(value || "")}
+          data={staff.map((s) => ({ value: s._id, label: s.name }))}
+          searchable
+          required
+        />
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <DateInput
+            label={translate("Start Date", "تاريخ البدء")}
+            placeholder={translate("Select start date", "اختر تاريخ البدء")}
+            value={startDate}
+            onChange={setStartDate}
+            required
+          />
+          <DateInput
+            label={translate("Delivery Date", "تاريخ التسليم")}
+            placeholder={translate("Select delivery date", "اختر تاريخ التسليم")}
+            value={deliveryDate}
+            onChange={setDeliveryDate}
+            minDate={startDate || undefined}
+            error={deliveryBeforeStartError}
+            required
+          />
         </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {error && <ErrorAlert error={error} />}
 
-          <Alert color="blue" variant="light">
-            {translate(
-              "Creating a project will also automatically post its accounting journal entry (Dr Accounts Receivable / Cr Unearned Revenue).",
-              "سيؤدي إنشاء المشروع أيضًا إلى ترحيل قيد يومية محاسبي تلقائيًا (مدين ذمم مدينة / دائن إيرادات غير مكتسبة).",
-            )}
-          </Alert>
+        <Select
+          label={translate("Sector", "القطاع")}
+          placeholder={translate("Select sector (optional)", "اختر القطاع (اختياري)")}
+          value={sector}
+          onChange={(value) => setSector(value || "")}
+          data={ProjectSectors.map((s) => ({ value: s, label: s }))}
+          clearable
+        />
 
-          <TextInput
-            label={translate("Project Number", "رقم المشروع")}
-            placeholder={translate("Enter a unique project number", "أدخل رقم مشروع فريد")}
-            value={projectNumber}
-            onChange={(e) => setProjectNumber(e.target.value)}
-            required
-          />
-
-          <TextInput
-            label={translate("Project Name", "اسم المشروع")}
-            placeholder={translate("Enter project name (optional)", "أدخل اسم المشروع (اختياري)")}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-
-          <Textarea
-            label={translate("Description", "الوصف")}
-            placeholder={translate("Enter description (optional)", "أدخل الوصف (اختياري)")}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            autosize
-            minRows={2}
-          />
-
-          <NumberInput
-            label={translate("Project Amount", "قيمة المشروع")}
-            placeholder={translate("Enter contract amount", "أدخل قيمة العقد")}
-            value={projectAmount}
-            onChange={setProjectAmount}
-            min={0.01}
-            decimalScale={2}
-            required
-          />
-
-          <Select
-            label={translate("Executor (المنفذ)", "المنفذ")}
-            placeholder={translate("Select executor", "اختر المنفذ")}
-            value={executor}
-            onChange={(value) => setExecutor(value || "")}
-            data={staff.map((s) => ({ value: s._id, label: s.name }))}
-            searchable
-            required
-          />
-
-          <Select
-            label={translate("Department", "القسم")}
-            placeholder={translate("Select department (optional)", "اختر القسم (اختياري)")}
-            value={department}
-            onChange={(value) => setDepartment(value || "")}
-            data={ProjectDepartments.map((d) => ({ value: d, label: d }))}
-            clearable
-          />
-
-          <Button type="submit" loading={loading} mt="md">
-            {translate("Create Project", "إنشاء مشروع")}
-          </Button>
-        </form>
-      )}
+        <Button type="submit" loading={loading} disabled={!!deliveryBeforeStartError} mt="md">
+          {translate("Create Project", "إنشاء مشروع")}
+        </Button>
+      </form>
     </Modal>
   );
 }

@@ -1,72 +1,46 @@
 const asyncHandler = require('express-async-handler');
-const mongoose = require('mongoose');
 const factory = require('../handlersFactory');
 const Project = require('../../models/project/projectModel');
 const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { destroyDocument } = require('../../middleware/documentUploadMiddleware');
-const { createProjectCreationJournalEntry, recalculateRemainingMoney } = require('../../services/project/projectAccountingService');
-const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
+const { recalculateRemainingMoney } = require('../../services/project/projectAccountingService');
+const { logAccountingEvent } = require('../../utils/accountingLogger');
 
-// Project creation + its automatic accounting entry are one logical operation (see master spec's
-// "TRANSACTION ATOMICITY" section) - a session/transaction is used exactly like
-// expenseController.js's createExpense, so a failure creating the journal entry (e.g. the
-// required default accounts aren't seeded) rolls the Project creation back too, instead of
-// leaving a project that exists with no accounting behind it.
+// Creating a project ONLY creates the Project document - it deliberately does NOT create any
+// journal entry (an earlier version of this app automatically posted a Dr Accounts Receivable /
+// Cr Unearned Revenue entry here; that automatic-accounting behavior was removed per a later
+// requirement - see docs/entities/projects.md). No session/transaction is needed any more since
+// this is a single-document write; manual journal entries for a project (if any accounting
+// treatment is wanted) are created separately via the Journal Entries module, unaffected by this
+// change.
 const createProject = asyncHandler(async (req, res, next) => {
-  const { projectNumber, name, description, projectAmount, executor, status, department } = req.body;
-  const startedAt = Date.now();
+  const { projectNumber, name, description, contractValue, projectManager, startDate, deliveryDate, status, sector } = req.body;
 
-  const session = await mongoose.startSession();
   try {
-    let project;
-    let journalEntry;
-
-    await session.withTransaction(async () => {
-      const [createdProject] = await Project.create(
-        [
-          {
-            projectNumber,
-            name,
-            description,
-            projectAmount,
-            remainingMoney: projectAmount,
-            executor,
-            status,
-            department: department || null,
-            createdBy: req.user._id,
-          },
-        ],
-        { session }
-      );
-      project = createdProject;
-
-      journalEntry = await createProjectCreationJournalEntry(project, session, req.user._id);
+    const project = await Project.create({
+      projectNumber,
+      name,
+      description,
+      contractValue,
+      remainingMoney: contractValue,
+      projectManager,
+      startDate,
+      deliveryDate,
+      status,
+      sector: sector || null,
+      createdBy: req.user._id,
     });
 
-    logAccountingEvent('PROJECT_CREATED', { projectId: project._id, projectNumber: project.projectNumber, durationMs: Date.now() - startedAt, requestId: req.id });
+    logAccountingEvent('PROJECT_CREATED', { projectId: project._id, projectNumber: project.projectNumber, requestId: req.id });
 
-    res.status(201).json(
-      apiResponse('Project created successfully. Journal entry created successfully.', true, {
-        project,
-        journalEntry,
-      })
-    );
+    res.status(201).json(apiResponse('Project created successfully', true, project));
   } catch (err) {
     if (err.code === 11000) {
       return next(new ApiError('Project number already exists.', 400));
     }
-    logAccountingError('PROJECT_ACCOUNTING_ENTRY_FAILED', err, {
-      projectNumber,
-      durationMs: Date.now() - startedAt,
-      mongoErrorCode: err.code,
-      mongoErrorLabels: typeof err.errorLabels === 'function' ? err.errorLabels() : err.errorLabels,
-      requestId: req.id,
-    });
-    return next(err instanceof ApiError ? err : new ApiError('Project could not be completed because its accounting entry could not be created.', 400));
-  } finally {
-    session.endSession();
+    throw err;
   }
 });
 
@@ -82,19 +56,21 @@ const updateProject = asyncHandler(async (req, res, next) => {
   // is immutable business-key data (see master spec), remainingMoney is always derived (see
   // projectAccountingService.js#recalculateRemainingMoney). Both are silently ignored rather than
   // rejected, matching updateCustomer's existing partial-update convention.
-  const { name, description, projectAmount, executor, status, department } = req.body;
+  const { name, description, contractValue, projectManager, startDate, deliveryDate, status, sector } = req.body;
   if (name !== undefined) project.name = name;
   if (description !== undefined) project.description = description;
-  if (executor !== undefined) project.executor = executor;
+  if (projectManager !== undefined) project.projectManager = projectManager;
+  if (startDate !== undefined) project.startDate = startDate;
+  if (deliveryDate !== undefined) project.deliveryDate = deliveryDate;
   if (status !== undefined) project.status = status;
-  if (department !== undefined) project.department = department || null;
+  if (sector !== undefined) project.sector = sector || null;
 
-  const amountChanged = projectAmount !== undefined && projectAmount !== project.projectAmount;
-  if (projectAmount !== undefined) project.projectAmount = projectAmount;
+  const contractValueChanged = contractValue !== undefined && contractValue !== project.contractValue;
+  if (contractValue !== undefined) project.contractValue = contractValue;
 
   await project.save();
 
-  if (amountChanged) {
+  if (contractValueChanged) {
     await recalculateRemainingMoney(project._id);
   }
 

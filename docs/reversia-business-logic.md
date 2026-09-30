@@ -21,11 +21,14 @@ Vendor
    └─ ref'd by Payment.vendorId
 
 Project (Phase 2 - see entities/projects.md)
-   │  ──remainingMoney (derived from Payment.projectId, currently always = projectAmount since
+   │  ──remainingMoney (derived from Payment.projectId, currently always = contractValue since
    │                     no payment-collection UI sets projectId yet)
    │  ──contract (single subdocument, own PDF upload)
+   │  ──contractValue / projectManager / sector (renamed from projectAmount / executor / department)
+   │  ──startDate / deliveryDate (required; deliveryDate cannot be before startDate)
    │
-   ├─ ref'd by JournalEntry.project (automatic entry posted on creation - see entities/accounting.md)
+   ├─ ref'd by JournalEntry.project (manual entries only - automatic entry-on-creation was removed,
+   │                                 see entities/accounting.md / entities/projects.md)
    └─ ref'd by Payment.projectId (optional, not yet used by any UI flow)
 
 ChartOfAccount (Phase 2 - see entities/accounting.md)

@@ -9,6 +9,7 @@
     "db:init": "node server/scripts/initDb.js",
     "db:reset": "node server/scripts/resetDb.js",
     "db:seed-accounts": "node server/scripts/seedChartOfAccounts.js",
+    "db:migrate-project-fields": "node server/scripts/migrateProjectFieldRenames.js",
     "db:create-admin": "node server/scripts/createAdminUser.js",
     "start": "node server.js",
     "dev": "cross-env NODE_ENV=development nodemon server.js",
