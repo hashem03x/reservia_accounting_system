@@ -6,6 +6,7 @@ import generateRandomNumber from "@/utils/helpers/generateRandomNumber";
 import { Button, NumberInput, TextInput } from "@mantine/core";
 import { useProduct } from "../../context";
 import PrintProductBarcode from "./print-product-barcode";
+import { Link } from "react-router-dom";
 
 // A Product carries its own sku/barcode/stock directly now - there is no separate Variant to hold
 // this data (see docs/entities/products.md).
@@ -99,6 +100,11 @@ export default function InventoryInformation() {
               ))}
             </tbody>
           </table>
+          <div>
+            <Link style={{textDecoration:'underline'}} to={`/admin/home/products/${currentProduct._id}/transactions`}>
+              View Transactions
+            </Link>
+          </div>
         </div>
       )}
     </div>

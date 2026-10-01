@@ -106,6 +106,7 @@ export default function ProductBasicInfo() {
         if (sku) formData.append("sku", sku);
         if (barcode) formData.append("barcode", barcode);
         formData.append("stock", JSON.stringify(stock.map((item) => ({ warehouse: item.warehouse, quantity: item.quantity || 0 }))));
+        
       }
       if (capacity.value !== "" || capacity.unit) {
         formData.append("capacity", JSON.stringify({ value: capacity.value === "" ? undefined : +capacity.value, unit: capacity.unit || undefined }));
