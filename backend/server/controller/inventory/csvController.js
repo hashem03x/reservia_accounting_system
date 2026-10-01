@@ -25,8 +25,6 @@ const storeData = async (product, req, res, next) => {
   try {
     let { variants, ...productData } = product;
 
-    productData.colors = JSON.parse(productData.colors);
-
     productData = await validateProductData(productData);
 
     // Products no longer have separate Variants (see docs/entities/products.md) - a product is

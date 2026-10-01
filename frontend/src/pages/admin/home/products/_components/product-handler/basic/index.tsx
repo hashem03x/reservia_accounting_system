@@ -12,9 +12,8 @@ import TypeSelection from "./_components/type-selection";
 import GeneralInformation from "./_components/general-information";
 import ServiceInformation from "./_components/service-information";
 import CategoriesInformation from "./_components/categoreies-information";
-import ColorsInformation from "./_components/colors-information";
+import CapacityInformation from "./_components/capacity-information";
 import InventoryInformation from "./_components/inventory-information";
-import TagsInformation from "./_components/tags-information";
 import DeleteProductModal from "./_components/delete-product-modal";
 import validation from "./_utils/validation";
 import { useProduct } from "../context";
@@ -37,10 +36,8 @@ export default function ProductBasicInfo() {
     season,
     category,
     subcategory,
-    colors,
-    setColors,
-    tags,
-    setTags,
+    capacity,
+    setCapacity,
     sku,
     setSku,
     barcode,
@@ -76,8 +73,7 @@ export default function ProductBasicInfo() {
           priceAfterDiscount,
           category,
           subcategory,
-          colors,
-          tags,
+          capacity,
           durationValue,
           durationUnit,
         },
@@ -101,48 +97,34 @@ export default function ProductBasicInfo() {
       formData.append("season", season);
 
       if (productIsService) {
-        // A service has no cost/category/subcategory/colors/stock - see docs/entities/products.md.
+        // A service has no cost/category/subcategory/stock - see docs/entities/products.md.
         formData.append("durationValue", durationValue.toString());
         formData.append("durationUnit", durationUnit);
       } else {
         formData.append("cost", cost.toString());
         formData.append("category", category as string);
         formData.append("subcategory", subcategory as string);
-        formData.append(
-          "colors",
-          JSON.stringify(
-            colors.map((color) => {
-              return { name: color.name, code: color.code, deleteImages: color.deleteImages?.join(",") }; // In case of updating, "deleteImages" field is to delete old images.
-            }),
-          ),
-        );
-        // Append new images of each color (File objects)
-        colors.forEach((color, index) => {
-          color.images.forEach((image) => {
-            if (image instanceof File) formData.append(`colorImages${index}`, image);
-          });
-        });
 
         if (sku) formData.append("sku", sku);
         if (barcode) formData.append("barcode", barcode);
         formData.append("stock", JSON.stringify(stock.map((item) => ({ warehouse: item.warehouse, quantity: item.quantity || 0 }))));
       }
-      formData.append("tags", JSON.stringify(tags));
+      if (capacity.value !== "" || capacity.unit) {
+        formData.append("capacity", JSON.stringify({ value: capacity.value === "" ? undefined : +capacity.value, unit: capacity.unit || undefined }));
+      }
 
       const response = await privateRequest({
         url: updatingStatus ? `products/${currentProduct?._id}` : "products",
         method: updatingStatus ? "PUT" : "POST",
-        params: { colors: productIsService ? 0 : colors.length },
         data: formData,
         language,
       });
 
       setCurrentProduct(response.data);
-      setColors(JSON.parse(JSON.stringify(response.data.colors))); // To replace File objects with UploadedImage objects
-      setTags(response.data.tags || []); // Reflects the server's normalized (trimmed/deduped) tags
       setSku(response.data.sku || "");
       setBarcode(response.data.barcode || ""); // Reflects the server-generated default when left empty
       setStock(response.data.stock ? JSON.parse(JSON.stringify(response.data.stock)) : []);
+      setCapacity({ value: response.data.capacity?.value ?? "", unit: response.data.capacity?.unit || "" });
 
       notifySuccess({
         language,
@@ -173,23 +155,13 @@ export default function ProductBasicInfo() {
       priceAfterDiscountChanged ||
       isAvailable !== currentProduct.isAvailable ||
       season !== currentProduct.season ||
-      tags.length !== currentProduct.tags.length ||
-      tags.some((tag, index) => tag !== currentProduct.tags[index]) ||
+      (capacity.value?.toString() || "") !== (currentProduct.capacity?.value?.toString() || "") ||
+      capacity.unit !== (currentProduct.capacity?.unit || "") ||
       (productIsService
         ? durationValue !== currentProduct.durationValue || durationUnit !== currentProduct.durationUnit
         : cost !== currentProduct.cost ||
           category !== currentProduct.category ||
           subcategory !== currentProduct.subcategory ||
-          colors.length !== currentProduct.colors.length ||
-          colors.some((color, index) => color.name !== currentProduct.colors[index].name) ||
-          colors.some((color, index) => color.code !== currentProduct.colors[index].code) ||
-          colors.some((color, index) => color.images.length !== currentProduct.colors[index].images.length) ||
-          colors.some((color, index) =>
-            color.images.some((image, imageIndex) => {
-              if (image instanceof File) return true;
-              if (image._id !== currentProduct.colors[index].images[imageIndex]._id) return true;
-            }),
-          ) ||
           sku !== (currentProduct.sku || "") ||
           barcode !== (currentProduct.barcode || "") ||
           stock.some((stockItem) => {
@@ -252,16 +224,8 @@ export default function ProductBasicInfo() {
           )}
         </div>
 
-        {productIsService ? (
-          <ServiceInformation />
-        ) : (
-          <>
-            <TagsInformation />
-            <ColorsInformation />
-            <InventoryInformation />
-          </>
-        )}
-        {productIsService && <TagsInformation />}
+        {productIsService ? <ServiceInformation /> : <InventoryInformation />}
+        <CapacityInformation />
       </form>
 
       {/* Temporary Hide the deleting option */}

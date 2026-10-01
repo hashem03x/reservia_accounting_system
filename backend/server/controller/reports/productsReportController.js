@@ -181,7 +181,6 @@ const buildProcessedProducts = async (stockAnalysis, warehouse) =>
         season: product.season,
         category: product.category,
         subcategory: product.subcategory,
-        colors: product.colors,
         createdAt: product.createdAt,
         sku: product.sku,
         barcode: product.barcode,

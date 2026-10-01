@@ -4,95 +4,80 @@ const transformFileDataToProductData = require('../utils/transformFileDataToProd
 
 function csvRow(overrides) {
   return {
-    'title.en': 'Classic T-Shirt',
-    'title.ar': 'تي شيرت كلاسيك',
-    'description.en': 'Premium cotton',
-    'description.ar': 'قطن ممتاز',
+    'title.en': 'Solar Inverter',
+    'title.ar': 'عاكس شمسي',
+    'description.en': 'Grid-tied inverter',
+    'description.ar': 'عاكس متصل بالشبكة',
     cost: '50',
     price: '120',
     priceAfterDiscount: '100',
     category: 'c1',
     subcategory: 'sc1',
     season: 'all',
-    'color.name': 'white',
-    'color.isDefault': 'true',
     sku: '',
-    size: 'S',
     quantity: '10',
     warehouse: '',
     ...overrides,
   };
 }
 
-test('groups multiple rows with a unique per-row SKU into ONE product with all variants - regression for the reported "variants skipped entirely" bug', () => {
+test('groups multiple rows with a unique per-row SKU into ONE product with all rows - regression for the reported "rows skipped entirely" bug', () => {
   // Reproduces the real-world shape: same title on every row, a DIFFERENT sku per row (one per
-  // variant) - this used to be misread as 12 separate single-variant "products" (grouping by sku
+  // warehouse batch) - this used to be misread as separate single-row "products" (grouping by sku
   // instead of title), all but the first of which were silently dropped when they collided on the
   // product schema's unique title index.
   const rows = [
-    csvRow({ 'color.name': 'white', sku: 'TS-WHT-S', size: 'S', quantity: '10' }),
-    csvRow({ 'color.name': 'white', sku: 'TS-WHT-M', size: 'M', quantity: '15' }),
-    csvRow({ 'color.name': 'navy', 'color.isDefault': 'false', sku: 'TS-NVY-S', size: 'S', quantity: '8' }),
-    csvRow({ 'color.name': 'navy', 'color.isDefault': 'false', sku: 'TS-NVY-M', size: 'M', quantity: '12' }),
+    csvRow({ sku: 'INV-001', quantity: '10' }),
+    csvRow({ sku: 'INV-002', quantity: '15' }),
   ];
 
   const products = transformFileDataToProductData(rows);
 
-  assert.equal(products.length, 1, 'all four rows must become ONE product, not four');
+  assert.equal(products.length, 1, 'both rows must become ONE product, not two');
   const product = products[0];
-  assert.equal(product.variants.length, 4, 'no variant should be silently dropped');
+  assert.equal(product.rows.length, 2, 'no row should be silently dropped');
   assert.deepEqual(
-    product.variants.map(v => v.sku).sort(),
-    ['TS-NVY-M', 'TS-NVY-S', 'TS-WHT-M', 'TS-WHT-S']
-  );
-  assert.equal(product.colors.length, 2, 'both colors must be present (not just the first row\'s)');
-});
-
-test('collects barcode per variant when the CSV supplies one', () => {
-  const rows = [csvRow({ sku: 'TS-WHT-S', barcode: '1234567890123' })];
-  const products = transformFileDataToProductData(rows);
-  assert.equal(products[0].variants[0].barcode, '1234567890123');
-});
-
-test('collects and dedupes images per color, preserving order, from a pipe-delimited images column', () => {
-  const rows = [
-    csvRow({
-      'color.name': 'white',
-      sku: 'TS-WHT-S',
-      images: 'https://cdn.example.com/white-1.jpg|https://cdn.example.com/white-2.jpg',
-    }),
-    csvRow({
-      'color.name': 'white',
-      sku: 'TS-WHT-M',
-      images: 'https://cdn.example.com/white-2.jpg|https://cdn.example.com/white-3.jpg', // white-2 repeated
-    }),
-  ];
-
-  const products = transformFileDataToProductData(rows);
-  const whiteColor = products[0].colors.find(c => c.name === 'white');
-  assert.deepEqual(
-    whiteColor.images.map(img => img.url),
-    ['https://cdn.example.com/white-1.jpg', 'https://cdn.example.com/white-2.jpg', 'https://cdn.example.com/white-3.jpg']
+    product.rows.map(r => r.sku).sort(),
+    ['INV-001', 'INV-002']
   );
 });
 
-test('keeps the accounting warehouse id from the CSV row on each variant (not silently discarded)', () => {
-  const rows = [csvRow({ sku: 'TS-WHT-S', warehouse: '67ab687c6df96bbd4b3f4887' })];
+test('collects barcode per row when the CSV supplies one', () => {
+  const rows = [csvRow({ sku: 'INV-001', barcode: '1234567890123' })];
   const products = transformFileDataToProductData(rows);
-  assert.equal(products[0].variants[0].warehouse, '67ab687c6df96bbd4b3f4887');
+  assert.equal(products[0].rows[0].barcode, '1234567890123');
 });
 
-test('does not silently drop a row missing color/size - it is simply not turned into a variant, product still created', () => {
-  const rows = [csvRow({ 'color.name': '', size: '' })];
+test('captures capacity value/unit from the CSV when supplied', () => {
+  const rows = [csvRow({ sku: 'INV-001', 'capacity.value': '100', 'capacity.unit': 'kW' })];
+  const products = transformFileDataToProductData(rows);
+  assert.deepEqual(products[0].capacity, { value: 100, unit: 'kW' });
+});
+
+test('leaves capacity unset when the CSV does not supply it', () => {
+  const rows = [csvRow({ sku: 'INV-001' })];
+  const products = transformFileDataToProductData(rows);
+  assert.equal(products[0].capacity, undefined);
+});
+
+test('keeps the accounting warehouse id from the CSV row on each row (not silently discarded)', () => {
+  const rows = [csvRow({ sku: 'INV-001', warehouse: '67ab687c6df96bbd4b3f4887' })];
+  const products = transformFileDataToProductData(rows);
+  assert.equal(products[0].rows[0].warehouse, '67ab687c6df96bbd4b3f4887');
+});
+
+test('a row with no quantity still becomes a stock row (quantity 0), product still created', () => {
+  const rows = [csvRow({ quantity: '' })];
   const products = transformFileDataToProductData(rows);
   assert.equal(products.length, 1);
-  assert.equal(products[0].variants.length, 0);
+  assert.equal(products[0].rows.length, 1);
+  assert.equal(products[0].rows[0].quantity, 0);
 });
 
 test('two genuinely different products (different titles) stay separate', () => {
   const rows = [
-    csvRow({ 'title.en': 'Classic T-Shirt', sku: 'TS-WHT-S' }),
-    csvRow({ 'title.en': 'Denim Jeans', sku: 'DJ-BLU-30', 'color.name': 'blue', size: '30' }),
+    csvRow({ 'title.en': 'Solar Inverter', sku: 'INV-001' }),
+    csvRow({ 'title.en': 'Battery Pack', sku: 'BAT-030' }),
   ];
   const products = transformFileDataToProductData(rows);
   assert.equal(products.length, 2);

@@ -4,29 +4,7 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const Category = require('../../models/categoryModel');
 const Product = require('../../models/inventory/productModel')
 const SubCategory = require('../../models/subCategoryModel');
-const { normalizeTags } = require('../helper');
 const { validateProductTypeFields } = require('../productTypeValidation');
-
-// Shared by create/update: accepts either a real array (JSON body) or a JSON-stringified array
-// (multipart form field, same convention `req.body.colors` already uses - see
-// productController.js's uploadProductImages/updateProductImages), validates every entry is a
-// string, then normalizes in place so the controller's unfiltered `$set: req.body` persists the
-// already-normalized array (trimmed, deduped, empty values dropped - see helper.js normalizeTags).
-function validateAndNormalizeTags(value, { req }) {
-  let tags = value;
-  if (typeof tags === 'string') {
-    try {
-      tags = JSON.parse(tags);
-    } catch (err) {
-      throw new Error('tags must be an array of strings');
-    }
-  }
-  if (!Array.isArray(tags) || tags.some(tag => typeof tag !== 'string')) {
-    throw new Error('tags must be an array of strings');
-  }
-  req.body.tags = normalizeTags(tags);
-  return true;
-}
 
 // A product's `type` decides which fields below are actually required - validateProductTypeFields
 // (see utils/productTypeValidation.js) is the single source of truth for that branching, shared by
@@ -70,7 +48,6 @@ exports.createProductValidator = [
       }
       return true;
     }),
-  // check('colors').optional().isArray().withMessage('colors shoude be array of string'),
   // check('sizes').notEmpty().withMessage('sizes is required').isArray().withMessage('sizes should be array of string'),
   check('imageCover').optional(),
   // check('images').optional().isArray().withMessage('images should be array of string'),
@@ -96,7 +73,8 @@ exports.createProductValidator = [
     }),
 
   check('brand').optional().isMongoId().withMessage('Invalid brand id formate'),
-  check('tags').optional().custom(validateAndNormalizeTags),
+  check('capacity.value').optional({ nullable: true }).isNumeric().withMessage('Capacity value must be a number'),
+  check('capacity.unit').optional({ nullable: true }).isString().withMessage('Capacity unit must be a string'),
   check('ratingAverage')
     .optional()
     .isNumeric()
@@ -149,7 +127,8 @@ exports.updateProductValidator = [
           }
           return true;
     }),
-  check('tags').optional().custom(validateAndNormalizeTags),
+  check('capacity.value').optional({ nullable: true }).isNumeric().withMessage('Capacity value must be a number'),
+  check('capacity.unit').optional({ nullable: true }).isString().withMessage('Capacity unit must be a string'),
   validatorMiddleware,
 ];
 

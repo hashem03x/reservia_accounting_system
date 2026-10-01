@@ -9,7 +9,6 @@ import useHandlePreviousFilters from "@/hooks/useHandlePreviousFilters";
 import useDataHandler from "@/hooks/useDataHandler";
 import useHasPermission from "@/hooks/useHasPermission";
 import handleRequest from "@/utils/helpers/handle-request";
-import apiRequest from "@/utils/helpers/api-request";
 import { Product } from "@/types/product";
 import { PaginatedData } from "@/types/global";
 import paths from "@/utils/constants/paths";
@@ -21,7 +20,7 @@ import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
 import { getSeasonLabel } from "@/utils/constants/seasons";
 import { getProductTypeLabel, isService } from "@/utils/constants/product-types";
 import { formatDate } from "@/utils/helpers/date-formaters";
-import { Badge, Button, Select, Table, TagsInput, TextInput } from "@mantine/core";
+import { Badge, Button, Select, Table, TextInput } from "@mantine/core";
 import { solidIcons, outlineIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import ImportButton from "@/components/global/import-button";
@@ -60,14 +59,8 @@ export default function Products() {
   const [seasonFilter, setSeasonFilter] = useState(searchParams.get("season") || "");
   const [mainCategoryFilter, setMainCategoryFilter] = useState(searchParams.get("mainCategoryId") || "");
   const [subcategoryFilter, setSubcategoryFilter] = useState(searchParams.get("subCategories") || "");
-  const [tagsFilter, setTagsFilter] = useState<string[]>(
-    searchParams.get("tags")?.split(",").filter(Boolean) || [],
-  );
-  const [distinctTags, setDistinctTags] = useState<string[]>([]);
 
   const [showFilters, setShowFilters] = useState(false);
-
-  const tagsFilterParam = tagsFilter.join(",");
 
   const params = {
     page: activePage.toString(),
@@ -75,7 +68,6 @@ export default function Products() {
     ...(seasonFilter ? { season: seasonFilter } : {}),
     ...(mainCategoryFilter ? { mainCategoryId: mainCategoryFilter } : {}),
     ...(subcategoryFilter ? { subCategories: subcategoryFilter } : {}),
-    ...(tagsFilterParam ? { tags: tagsFilterParam } : {}),
   };
 
   // Track the previous filters and check if they have changed to reset the active page to 1.
@@ -84,7 +76,6 @@ export default function Products() {
     seasonFilter,
     mainCategoryFilter,
     subcategoryFilter,
-    tagsFilterParam,
   });
 
   const {
@@ -125,7 +116,7 @@ export default function Products() {
     setSearchParams(params, { replace: true });
 
     // If the filters have changed, reset the active page to 1.
-    const newFilters = { debouncedKeyword, seasonFilter, mainCategoryFilter, subcategoryFilter, tagsFilterParam };
+    const newFilters = { debouncedKeyword, seasonFilter, mainCategoryFilter, subcategoryFilter };
     if (filtersChanged(newFilters)) {
       updatePreviousFilters(newFilters);
       if (activePage !== 1) {
@@ -138,22 +129,7 @@ export default function Products() {
 
     const cancelRequest = handleLoadProducts(); // This will send the request and return the function to cancel it.
     return cancelRequest; // This will be called when the component unmounts.
-  }, [activePage, debouncedKeyword, seasonFilter, mainCategoryFilter, subcategoryFilter, tagsFilterParam]);
-
-  // Distinct tags across the catalog, fetched once for the tags filter's autocomplete suggestions.
-  useEffect(() => {
-    let canceled = false;
-    apiRequest({ url: "products/tags/distinct", language })
-      .then((response) => {
-        if (!canceled) setDistinctTags(response.data || []);
-      })
-      .catch(() => {
-        // Suggestions are a nice-to-have - the filter still works with free-typed tags.
-      });
-    return () => {
-      canceled = true;
-    };
-  }, []);
+  }, [activePage, debouncedKeyword, seasonFilter, mainCategoryFilter, subcategoryFilter]);
 
   const canICreateProducts = useRef(useHasPermission(resources.products, actions.create)).current; // Ref to avoid re-renders
   const AmIAdmin = loggedInUser && useRef(isAdmin(loggedInUser.role)).current; // Ref to avoid re-renders
@@ -200,7 +176,7 @@ export default function Products() {
         </div>
 
         {/* Clear All Filters */}
-        {(debouncedKeyword || seasonFilter || mainCategoryFilter || subcategoryFilter || tagsFilter.length > 0) && (
+        {(debouncedKeyword || seasonFilter || mainCategoryFilter || subcategoryFilter) && (
           <Button
             color="red"
             variant="light"
@@ -209,7 +185,6 @@ export default function Products() {
               setSeasonFilter("");
               setMainCategoryFilter("");
               setSubcategoryFilter("");
-              setTagsFilter([]);
             }}
             title={translate("Clear All Filters", "مسح جميع الفلاتر")}
           >
@@ -228,7 +203,7 @@ export default function Products() {
           </Button>
 
           {/* Highlight the filter button if any filter is active */}
-          {seasonFilter || mainCategoryFilter || subcategoryFilter || tagsFilter.length > 0 ? (
+          {seasonFilter || mainCategoryFilter || subcategoryFilter ? (
             <span
               className={`absolute -top-[6px] ${translate("-right-[6px]", "-left-[6px]")} h-[15px] w-[15px] rounded-full bg-blue-500`}
             ></span>
@@ -290,18 +265,6 @@ export default function Products() {
               rightSection={subcategoryFilter ? <solidIcons.Check color="green" size={12} /> : null}
             />
           )}
-
-          {/* Tags - matches on ANY of the selected tags (backend $in filter) */}
-          <TagsInput
-            value={tagsFilter}
-            onChange={setTagsFilter}
-            data={distinctTags}
-            splitChars={[","]}
-            label={translate("Tags", "الوسوم")}
-            placeholder={translate("Filter by tags", "تصفية حسب الوسوم")}
-            className="min-w-[220px] flex-1 whitespace-normal"
-            rightSection={tagsFilter.length > 0 ? <solidIcons.Check color="green" size={12} /> : null}
-          />
         </div>
       )}
 
@@ -345,7 +308,7 @@ export default function Products() {
                     <Table.Th>{translate("Season", "الموسم")}</Table.Th>
                     <Table.Th>{translate("Category", "الفئة")}</Table.Th>
                     <Table.Th>{translate("Subcategory", "الفئة الفرعية")}</Table.Th>
-                    <Table.Th>{translate("Tags", "الوسوم")}</Table.Th>
+                    <Table.Th>{translate("Capacity", "السعة")}</Table.Th>
                     <Table.Th>{translate("Created On", "أنشئ في")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
@@ -403,22 +366,9 @@ export default function Products() {
                         <Table.Td>{productIsService ? "-" : getMainCategoryNameById(product.category || "")}</Table.Td>
                         <Table.Td>{productIsService ? "-" : getSubcategoryNameById(product.subcategory || "")}</Table.Td>
                         <Table.Td>
-                          {product.tags?.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {product.tags.slice(0, 2).map((tag) => (
-                                <Badge key={tag} size="sm" variant="light" color="grape" radius="sm">
-                                  {tag}
-                                </Badge>
-                              ))}
-                              {product.tags.length > 2 && (
-                                <Badge size="sm" variant="outline" color="gray" radius="sm">
-                                  +{product.tags.length - 2}
-                                </Badge>
-                              )}
-                            </div>
-                          ) : (
-                            "-"
-                          )}
+                          {product.capacity?.value != null && product.capacity?.unit
+                            ? `${product.capacity.value} ${product.capacity.unit}`
+                            : "-"}
                         </Table.Td>
                         <Table.Td>{formatDate(product.createdAt, language)}</Table.Td>
                       </Table.Tr>

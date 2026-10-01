@@ -137,7 +137,6 @@ exports.getTopSellingProducts = asyncHandler(async (req, res) => {
         totalSold: { $ifNull: ['$salesInfo.totalSold', 0] },
         revenue: { $ifNull: ['$salesInfo.revenue', 0] },
         stockEntriesCount: { $size: { $ifNull: ['$stock', []] } },
-        availableColors: { $size: '$colors' },
       },
     },
     {

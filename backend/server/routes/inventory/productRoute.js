@@ -15,18 +15,14 @@ const {
   updateProductImages,
   updateProduct,
   parseProductStock,
+  parseProductCapacity,
   deleteProductImage,
   resizeProductImages,
   createFilterObject,
-  getProductsColorsSizes,
   applyDiscount,
   applyDiscountToProduct,
-  handleColorsImage,
-  addImagesToProduct,
-  updateColorOfImages,
   getFilteredProducts,
   getProductsByIds,
-  getDistinctTags,
   getOrdersByProductCode,
   getProductHistoryByCode,
   getProductByCode,
@@ -39,9 +35,6 @@ const { Resources, Actions } = require('../../utils/appConstant');
 const { uploadSingleFileONCloudinary } = require('../../middleware/fileUploadMiddleware');
 const { saveSingleFileMiddleware } = require('../../middleware/saveFileMiddleware');
 
-// get all products sizes and colors that is available in the store
-// router.get('/filter', getProductsColorsSizes);
-
 router
   .route('/')
   .get(createFilterObject, getProducts) // get all products and make is global
@@ -53,6 +46,7 @@ router
     uploadProductImages,
     handleProductImages,
     parseProductStock,
+    parseProductCapacity,
     createProductValidator,
     createProduct
   );
@@ -60,8 +54,6 @@ router
 router.get('/filtered', getFilteredProducts);
 
 router.get('/by-ids', getProductsByIds);
-
-router.get('/tags/distinct', getDistinctTags);
 
 // Barcode lookups - replace the removed Variant module's code-based endpoints, now resolving
 // against Product.barcode.
@@ -84,6 +76,7 @@ router
     uploadProductImages,
     updateProductImages,
     parseProductStock,
+    parseProductCapacity,
     updateProductValidator,
     updateProduct
   )
@@ -127,27 +120,6 @@ module.exports = router;
  * /api/v1/products:
  * get:
  * summary: Get all products
- * tags: [Product]
- * responses:
- * 200:
- * description: Success
- * 400:
- * description: Bad Request
- * 401:
- * description: Unauthorized
- * 403:
- * description: Forbidden
- * 404:
- * description: Not Found
- * 500:
- * description: Internal Server Error
- */
-
-/**
- * @swagger
- * /api/v1/products/filter:
- * get:
- * summary: Get all products sizes and colors that is available in the store
  * tags: [Product]
  * responses:
  * 200:

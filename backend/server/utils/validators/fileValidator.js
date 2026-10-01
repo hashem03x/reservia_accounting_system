@@ -6,7 +6,6 @@ exports.validateProductData = async (data) => {
     const { title,
          price,
          description,
-         colors,
          category,
          subcategory,
          barcode,
@@ -34,9 +33,6 @@ exports.validateProductData = async (data) => {
       }
       if (!price) {
         throw new Error('Product validation failed. Missing required field: price');
-      }
-      if (!colors || colors.length === 0) {
-        throw new Error('Product validation failed. Missing required field: colors');
       }
       if (!category) {
         throw new Error('Product validation failed. Missing required field: category');

@@ -76,16 +76,6 @@ class ApiFeatures {
               $options: 'i',
             },
           },
-          // Lets a search-box keyword also match a tag (e.g. typing "cotton" finds every
-          // product tagged "Cotton") - $regex against an array field matches if any element
-          // matches, so this is a substring match, complementing the exact-match `tags=a,b,c`
-          // filter in productController.js's createFilterObject.
-          {
-            tags: {
-              $regex: this.queryString.keyword,
-              $options: 'i',
-            },
-          },
         ];
       } else {
         query.$or = [

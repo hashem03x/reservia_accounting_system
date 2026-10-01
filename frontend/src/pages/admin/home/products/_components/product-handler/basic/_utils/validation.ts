@@ -2,7 +2,7 @@ import { Language } from "@/types/language";
 import translate from "@/utils/helpers/translate";
 import { ProductType } from "@/types/product";
 import { DurationUnit, isService } from "@/utils/constants/product-types";
-import { ProductColorInput } from "../../context";
+import { ProductCapacityInput } from "../../context";
 
 export default function validation(
   {
@@ -16,8 +16,7 @@ export default function validation(
     priceAfterDiscount,
     category,
     subcategory,
-    colors,
-    tags,
+    capacity,
     durationValue,
     durationUnit,
   }: {
@@ -31,8 +30,7 @@ export default function validation(
     priceAfterDiscount: string | number;
     category: string | null;
     subcategory: string | null;
-    colors: ProductColorInput[];
-    tags: string[];
+    capacity: ProductCapacityInput;
     durationValue: string | number;
     durationUnit: DurationUnit;
   },
@@ -59,8 +57,8 @@ export default function validation(
       );
   }
 
-  // Service vs. product: a service has no inventory concept (cost/category/colors) but does need
-  // a duration; a product needs the reverse. See docs/entities/products.md.
+  // Service vs. product: a service has no inventory concept (cost/category) but does need a
+  // duration; a product needs the reverse. See docs/entities/products.md.
   if (isService(type)) {
     if (!durationValue || +durationValue <= 0)
       return translate(language, "Please specify a valid service duration.", "يرجى تحديد مدة صالحة للخدمة.");
@@ -72,28 +70,13 @@ export default function validation(
       return translate(language, "Please specify a the main category for the product.", "يرجى تحديد الفئة الرئيسية للمنتج.");
     if (!subcategory)
       return translate(language, "Please specify a subcategory for the product.", "يرجى تحديد الفئة الفرعية للمنتج.");
-    if (colors.length === 0)
-      return translate(
-        language,
-        "Please specify at least one color for the product.",
-        "يرجى تحديد على الأقل لون واحد للمنتج.",
-      );
-    for (const color of colors) {
-      if (!color.name) return translate(language, "Please provide a name for all colors.", "يرجى إدخال اسم لجميع الألوان.");
-      if (!color.code) return translate(language, "Please provide a code for all colors.", "يرجى إدخال كود لجميع الألوان.");
-    }
   }
 
-  // TagsInput already prevents empty/duplicate entries and enforces maxTags client-side (see
-  // tags-information.tsx) - this is a defense-in-depth check for the same rules, matching how
-  // colors are validated here even though colors-information.tsx also guards its own inputs.
-  if (tags.length > 20) return translate(language, "A product can have at most 20 tags.", "لا يمكن أن يتجاوز المنتج 20 وسمًا.");
-  if (tags.some((tag) => tag.trim().length === 0))
-    return translate(language, "Tags cannot be empty.", "لا يمكن أن يكون الوسم فارغًا.");
-  if (tags.some((tag) => tag.length > 30))
-    return translate(language, "Tags must be 30 characters or fewer.", "يجب ألا يتجاوز الوسم 30 حرفًا.");
-  if (new Set(tags.map((tag) => tag.trim().toLowerCase())).size !== tags.length)
-    return translate(language, "Duplicate tags are not allowed.", "لا يُسمح بوجود وسوم مكررة.");
+  // Capacity is optional - only validate it when the user has actually entered one of its parts.
+  if (capacity.value !== "" && (isNaN(+capacity.value) || +capacity.value < 0))
+    return translate(language, "Capacity value must be a positive number.", "يجب أن تكون قيمة السعة رقمًا موجبًا.");
+  if (capacity.value !== "" && !capacity.unit)
+    return translate(language, "Please specify a unit for the capacity.", "يرجى تحديد وحدة للسعة.");
 
   return "";
 }

@@ -1,16 +1,13 @@
 import { createContext, ReactNode, useContext, useState } from "react";
-import { Color, Product, ProductType, Season } from "@/types/product";
+import { Product, ProductType, Season } from "@/types/product";
 import { DurationUnit } from "@/utils/constants/product-types";
-import { UploadedImage } from "@/types/global";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
 import useHasPermission from "@/hooks/useHasPermission";
 
-export type ProductColorInput = {
-  name: Color;
-  code: string;
-  images: (UploadedImage | File)[];
-  deleteImages?: string[];
+export type ProductCapacityInput = {
+  value: string | number;
+  unit: string;
 };
 
 export type ProductStockInput = {
@@ -48,10 +45,8 @@ type ProductContextProps = {
   setCategory: React.Dispatch<React.SetStateAction<string | null>>;
   subcategory: string | null;
   setSubcategory: React.Dispatch<React.SetStateAction<string | null>>;
-  colors: ProductColorInput[];
-  setColors: React.Dispatch<React.SetStateAction<ProductColorInput[]>>;
-  tags: string[];
-  setTags: React.Dispatch<React.SetStateAction<string[]>>;
+  capacity: ProductCapacityInput;
+  setCapacity: React.Dispatch<React.SetStateAction<ProductCapacityInput>>;
   // A Product is the sellable/stock-tracked item itself now - there is no separate Variant (see
   // docs/entities/products.md).
   sku: string;
@@ -98,10 +93,8 @@ export const ProductContext = createContext<ProductContextProps>({
   setCategory: () => {},
   subcategory: null,
   setSubcategory: () => {},
-  colors: [],
-  setColors: () => {},
-  tags: [],
-  setTags: () => {},
+  capacity: { value: "", unit: "" },
+  setCapacity: () => {},
   sku: "",
   setSku: () => {},
   barcode: "",
@@ -130,8 +123,10 @@ export default function ProductFormProvider({ product, children }: { product?: P
   const [season, setSeason] = useState<Season>(product?.season || "all");
   const [category, setCategory] = useState<string | null>(product?.category || null);
   const [subcategory, setSubcategory] = useState<string | null>(product?.subcategory || null);
-  const [colors, setColors] = useState<ProductColorInput[]>(product ? JSON.parse(JSON.stringify(product.colors)) : []);
-  const [tags, setTags] = useState<string[]>(product?.tags ? [...product.tags] : []);
+  const [capacity, setCapacity] = useState<ProductCapacityInput>({
+    value: product?.capacity?.value ?? "",
+    unit: product?.capacity?.unit || "",
+  });
   const [sku, setSku] = useState<string>(product?.sku || "");
   const [barcode, setBarcode] = useState<string>(product?.barcode || "");
   const [stock, setStock] = useState<ProductStockInput[]>(product?.stock ? JSON.parse(JSON.stringify(product.stock)) : []);
@@ -173,10 +168,8 @@ export default function ProductFormProvider({ product, children }: { product?: P
         setCategory,
         subcategory,
         setSubcategory,
-        colors,
-        setColors,
-        tags,
-        setTags,
+        capacity,
+        setCapacity,
         sku,
         setSku,
         barcode,

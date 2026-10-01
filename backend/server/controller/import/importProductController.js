@@ -60,54 +60,15 @@ exports.importProductAndVariant = catchAsync(async (req, res, next) => {
       return next(new ApiError('Validation failed', 400, { validationErrors: req.validationErrors }));
     }
 
-    // Transform data - SKUs will be auto-generated for variants if not provided
+    // Transform data - SKUs will be auto-generated for stock rows if not provided
     const transformedData = transformFileDataToProductData(fileData);
 
-    // Validate all products first
-    const productsToImport = [];
-    const colorErrors = [];
-
-    for (const productData of transformedData) {
-      try {
-        // Check if product has colors
-        if (!productData.colors || productData.colors.length === 0) {
-          // If no colors are defined but variants have colors, add those colors to the product
-          const variantColors = [...new Set(productData.variants.map(v => v.color).filter(Boolean))];
-          if (variantColors.length > 0) {
-            productData.colors = variantColors.map(color => ({
-              name: color,
-              isDefault: color === variantColors[0], // First color is default
-              images: [],
-            }));
-          }
-        }
-
-        // Add to list of products to import
-        productsToImport.push(productData);
-      } catch (error) {
-        // If there's an error with a specific product, log it and continue with others
-        console.error(`[importProductAndVariant] failed to prepare product for import`, {
-          sku: productData?.sku,
-          title: productData?.title?.en,
-          operation: 'prepare',
-          reason: error.message,
-          stack: error.stack,
-        });
-        colorErrors.push({
-          sku: productData.sku,
-          error: error.message,
-          details: error.errors || {},
-        });
-      }
-    }
+    const productsToImport = transformedData;
+    const importErrors = [];
 
     // If no valid products to import, return error
     if (productsToImport.length === 0) {
-      if (colorErrors.length > 0) {
-        return next(new ApiError('Failed to import any products', 400, { errors: colorErrors }));
-      } else {
-        return next(new ApiError('No valid products found to import', 400));
-      }
+      return next(new ApiError('No valid products found to import', 400));
     }
 
     // Import products one by one without using transactions
@@ -117,35 +78,34 @@ exports.importProductAndVariant = catchAsync(async (req, res, next) => {
     // Import each validated product
     for (const productData of productsToImport) {
       try {
-        // Products no longer have separate Variants (see docs/entities/products.md) - a product
-        // carries its own per-warehouse stock directly. Each transformed "variant" row (one per
-        // color+size combination) contributes a quantity to a warehouse; rows sharing a warehouse
-        // are summed into that warehouse's single stock entry. Honor the CSV's own warehouse
-        // column when it resolves to a real warehouse, falling back to the tenant's default
-        // warehouse when it's blank or doesn't match anything.
-        const { variants, ...productCreateData } = productData;
+        // A product carries its own per-warehouse stock directly. Each transformed CSV row
+        // contributes a quantity to a warehouse; rows sharing a warehouse are summed into that
+        // warehouse's single stock entry. Honor the CSV's own warehouse column when it resolves to
+        // a real warehouse, falling back to the tenant's default warehouse when it's blank or
+        // doesn't match anything.
+        const { rows, ...productCreateData } = productData;
         const stockByWarehouse = new Map();
         let barcodeFromCsv;
 
-        for (const variantData of variants) {
+        for (const row of rows) {
           let targetWarehouse = defaultWarehouse;
-          if (variantData.warehouse) {
-            const resolved = mongoose.Types.ObjectId.isValid(variantData.warehouse) ? await Warehouse.findById(variantData.warehouse) : null;
+          if (row.warehouse) {
+            const resolved = mongoose.Types.ObjectId.isValid(row.warehouse) ? await Warehouse.findById(row.warehouse) : null;
             if (resolved) {
               targetWarehouse = resolved;
             } else {
-              console.warn(`[importProductAndVariant] row warehouse "${variantData.warehouse}" not found - using default warehouse`, {
-                sku: variantData.sku,
+              console.warn(`[importProductAndVariant] row warehouse "${row.warehouse}" not found - using default warehouse`, {
+                sku: row.sku,
               });
             }
           }
 
           const warehouseId = targetWarehouse._id.toString();
-          stockByWarehouse.set(warehouseId, (stockByWarehouse.get(warehouseId) || 0) + (variantData.quantity || 0));
+          stockByWarehouse.set(warehouseId, (stockByWarehouse.get(warehouseId) || 0) + (row.quantity || 0));
 
           // A product has a single barcode now - keep the first one explicitly supplied by the CSV
           // (if any); otherwise the product falls back to its own auto-generated default.
-          if (!barcodeFromCsv && variantData.barcode) barcodeFromCsv = variantData.barcode;
+          if (!barcodeFromCsv && row.barcode) barcodeFromCsv = row.barcode;
         }
 
         const stock = Array.from(stockByWarehouse, ([warehouse, quantity]) => ({ warehouse, quantity }));
@@ -179,7 +139,7 @@ exports.importProductAndVariant = catchAsync(async (req, res, next) => {
           reason: error.message,
           stack: error.stack,
         });
-        colorErrors.push({
+        importErrors.push({
           sku: productData.sku,
           error: error.message,
           details: error.errors || {},
@@ -198,18 +158,18 @@ exports.importProductAndVariant = catchAsync(async (req, res, next) => {
         console.error('Error during rollback:', rollbackError);
       }
 
-      return next(new ApiError('Failed to import any products', 400, { errors: colorErrors }));
+      return next(new ApiError('Failed to import any products', 400, { errors: importErrors }));
     }
 
     // Send appropriate response
-    if (colorErrors.length > 0) {
+    if (importErrors.length > 0) {
       // Partial success
       res.status(207).json({
         status: 'partial_success',
         results: importedProducts.length,
         data: {
           products: importedProducts,
-          errors: colorErrors,
+          errors: importErrors,
         },
       });
     } else {

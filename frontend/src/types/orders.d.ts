@@ -1,6 +1,5 @@
 import { Customer } from "./customer";
 import { PaymentStatus } from "./payment";
-import { ProductColor } from "./product";
 import { Address } from "./user";
 
 export type DiscountType = "percentage" | "fixed";
@@ -90,7 +89,6 @@ export type SalesOrderItem = {
     title: { en: string; ar: string };
     price: number;
     priceAfterDiscount: number | null;
-    colors: ProductColor[];
     sku?: string;
     barcode?: string;
   };

@@ -9,8 +9,6 @@ export interface TopSellingProduct {
   totalSold: number;
   title: LocalizedText;
   revenue: number;
-  variantsCount: number;
-  availableColors: number;
 }
 
 export interface ProductPerformance {

@@ -5,7 +5,6 @@ const ApiError = require('../../apiError');
 const parseCsv = require('../../parseCsv');
 const transformFileDataToProductData = require('../../transformFileDataToProductData');
 const productModel = require('../../../models/inventory/productModel');
-const colors = require('../../enums/colors');
 
 const validateProduct = async product => {
   const errors = [];
@@ -77,54 +76,18 @@ const validateProduct = async product => {
     }
   }
 
-  // Validate colors array
-  if (!product.colors || !Array.isArray(product.colors) || product.colors.length === 0) {
-    errors.push('Product must have at least one color');
-  } else {
-    const validColors = colors.map(c => (c || '').toLowerCase().trim());
-    for (const color of product.colors) {
-      if (!color?.name) {
-        errors.push('Each color must have a name');
-      } else {
-        const normalizedColorName = (color.name || '').toLowerCase().trim();
-        if (!validColors.includes(normalizedColorName)) {
-          errors.push(`Invalid color. Valid colors are: ${colors.join(', ')}`);
-        }
-      }
-      if (typeof color?.isDefault !== 'boolean') {
-        errors.push('Each color must have an isDefault boolean value');
-      }
-      if (!Array.isArray(color?.images)) {
-        errors.push('Each color must have an images array');
-      }
-    }
+  // Validate capacity (optional)
+  if (product.capacity && product.capacity.value !== undefined && isNaN(product.capacity.value)) {
+    errors.push('Capacity value must be a number');
   }
 
-  // Validate variants
-  if (!product.variants || !Array.isArray(product.variants) || product.variants.length === 0) {
-    errors.push('Product must have at least one variant');
+  // Validate stock rows (each CSV row contributes a per-warehouse quantity)
+  if (!product.rows || !Array.isArray(product.rows) || product.rows.length === 0) {
+    errors.push('Product must have at least one stock row');
   } else {
-    const validColors = (product.colors || []).filter(c => c && c.name).map(c => c.name.toLowerCase().trim());
-
-    for (const variant of product.variants) {
-      // SKU is now optional as it will be auto-generated if not provided
-      // if (!variant?.sku) {
-      //   errors.push('Variant SKU is required');
-      // }
-
-      // Validate variant color
-      if (!variant?.color) {
-        errors.push('Variant color is required');
-      } else {
-        const normalizedVariantColor = variant.color.toLowerCase().trim();
-        if (!validColors.includes(normalizedVariantColor)) {
-          errors.push(`Variant color ${variant.color} must be one of the product colors: ${validColors.join(', ')}`);
-        }
-      }
-
-      // Validate variant size
-      if (!variant?.size) {
-        errors.push('Variant size is required');
+    for (const row of product.rows) {
+      if (row.quantity === undefined || row.quantity === null || isNaN(row.quantity) || row.quantity < 0) {
+        errors.push('Each stock row must have a non-negative quantity');
       }
     }
   }

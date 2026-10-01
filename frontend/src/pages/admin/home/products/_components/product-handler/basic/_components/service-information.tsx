@@ -3,7 +3,7 @@ import { durationUnitsArray, DurationUnit } from "@/utils/constants/product-type
 import { NumberInput, Select } from "@mantine/core";
 import { useProduct } from "../../context";
 
-/** Service-only fields - shown instead of Category/Colors/Cost when type === "service" (see
+/** Service-only fields - shown instead of Category/Cost when type === "service" (see
  * docs/entities/products.md). Deliberately does NOT ask for stock quantity/warehouse/inventory -
  * a service has none of those. */
 export default function ServiceInformation() {
