@@ -9,7 +9,6 @@ exports.validateProductData = async (data) => {
          category,
          subcategory,
          barcode,
-         season,
          imageCover,
          brand } = data;
 

@@ -32,11 +32,6 @@ const buildProductQuery = queryParams => {
     }
   }
 
-  // Handle season filter
-  if (queryParams.season) {
-    query.season = queryParams.season;
-  }
-
   // Date range filter for createdAt
   if (queryParams.startDate) {
     try {
@@ -178,7 +173,6 @@ const buildProcessedProducts = async (stockAnalysis, warehouse) =>
         priceAfterDiscount: product.priceAfterDiscount,
         totalSold: totalSold || 0,
         isAvailable: product.isAvailable,
-        season: product.season,
         category: product.category,
         subcategory: product.subcategory,
         createdAt: product.createdAt,
@@ -262,7 +256,6 @@ exports.exportProductsReportExcel = asyncHandler(async (req, res, next) => {
     { header: 'Price', key: 'price', width: 10 },
     { header: 'Total Sold', key: 'totalSold', width: 10 },
     { header: 'Total Stock', key: 'totalStock', width: 10 },
-    { header: 'Season', key: 'season', width: 10 },
     { header: 'Created At', key: 'createdAt', width: 20 },
   ];
 
@@ -293,7 +286,6 @@ exports.exportProductsReportExcel = asyncHandler(async (req, res, next) => {
       price: product.price || 0,
       totalSold: product.totalSold,
       totalStock: product.totalStock || 0,
-      season: product.season || '',
       createdAt: product.createdAt ? new Date(product.createdAt).toLocaleDateString() : '',
     });
   }

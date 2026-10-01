@@ -23,7 +23,6 @@ const productSchema = mongoose.Schema(
     totalSold: { type: Number, default: 0 },
     isAvailable: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
-    season: { type: String, default: 'all', enum: ['summer', 'winter', 'spring', 'autumn', 'all'] },
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Category',
@@ -41,7 +40,7 @@ const productSchema = mongoose.Schema(
       unit: { type: String, trim: true },
     },
     // Service-only fields. Deliberately flat (not nested under a `service: {}` object) to match
-    // this schema's existing flat style (season/price/etc. all live at the top level).
+    // this schema's existing flat style (price/cost/etc. all live at the top level).
     durationValue: {
       type: Number,
       min: 1,

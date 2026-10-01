@@ -21,7 +21,6 @@ const {
   createFilterObject,
   applyDiscount,
   applyDiscountToProduct,
-  getFilteredProducts,
   getProductsByIds,
   getOrdersByProductCode,
   getProductHistoryByCode,
@@ -51,15 +50,13 @@ router
     createProduct
   );
 
-router.get('/filtered', getFilteredProducts);
-
 router.get('/by-ids', getProductsByIds);
 
 // Barcode lookups - replace the removed Variant module's code-based endpoints, now resolving
 // against Product.barcode.
 router.get('/code/:code', getProductByCode);
 router.get('/orders/:code', getOrdersByProductCode);
-router.get('/history/:code', getProductHistoryByCode);
+router.get('/history/:code', authController.protect, checkUserPermissions({ resource: Resources.products, action: Actions.read }), getProductHistoryByCode);
 
 router.put('/discount', authController.protect, checkUserPermissions({ resource: Resources.products, action: Actions.update }), applyDiscount);
 

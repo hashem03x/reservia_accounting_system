@@ -10,7 +10,6 @@ const {
   getWarehousesBalance,
   getUserAcquisitionAndRetention,
   getOrderStatistics,
-  getWishlistAnalysis,
   getBestSellingGovernorates,
   getSalesByCategory,
   getSalesBySubCategory,
@@ -33,7 +32,6 @@ router.get('/sales-by-time-period', getSalesByTimePeriod);
 router.get('/product-performance', getProductPerformance);
 router.get('/user-acquisition-retention', getUserAcquisitionAndRetention);
 router.get('/order-statistics', getOrderStatistics);
-router.get('/wishlist-analysis', getWishlistAnalysis);
 
 router.get('/best-selling-governorates', getBestSellingGovernorates);
 router.get('/sales-by-category', getSalesByCategory);

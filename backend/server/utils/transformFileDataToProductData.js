@@ -76,7 +76,6 @@ const transformFileDataToProductData = fileData => {
         cost: cost,
         price: price,
         priceAfterDiscount: priceAfterDiscount,
-        season: (row.season || 'all').toLowerCase().trim(),
         category: row.category,
         subcategory: row.subcategory,
         ...(capacityValue !== undefined || capacityUnit ? { capacity: { value: capacityValue, unit: capacityUnit } } : {}),

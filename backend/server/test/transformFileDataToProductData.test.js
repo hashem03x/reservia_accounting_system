@@ -13,7 +13,6 @@ function csvRow(overrides) {
     priceAfterDiscount: '100',
     category: 'c1',
     subcategory: 'sc1',
-    season: 'all',
     sku: '',
     quantity: '10',
     warehouse: '',

@@ -8,7 +8,7 @@ const exportToExcel = require('../../utils/exportToExcel');
 
 // Helper function to build aggregation pipeline for profit by product report
 const buildProfitByProductPipeline = filters => {
-  const { startDate, endDate, season, mainCategory, subcategory, warehouse, online, sortBy, sortOrder } = filters;
+  const { startDate, endDate, mainCategory, subcategory, warehouse, online, sortBy, sortOrder } = filters;
   const pipeline = [];
 
   // Match stage for sales orders
@@ -79,10 +79,6 @@ const buildProfitByProductPipeline = filters => {
   // Apply product-level filters
   const productMatchStage = {};
 
-  if (season) {
-    productMatchStage['productDetails.season'] = season;
-  }
-
   if (mainCategory) {
     productMatchStage['productDetails.category'] = mongoose.Types.ObjectId(mainCategory);
   }
@@ -115,7 +111,6 @@ const buildProfitByProductPipeline = filters => {
       productName: { $first: { $ifNull: ['$productDetails.title.en', '$productDetails.title'] } },
       category: { $first: { $ifNull: ['$categoryDetails.name.en', '$categoryDetails.name'] } },
       subcategory: { $first: { $ifNull: ['$subcategoryDetails.name.en', '$subcategoryDetails.name'] } },
-      season: { $first: '$productDetails.season' },
       price: { $first: '$productDetails.price' },
       cost: { $first: '$productDetails.cost' },
       totalQuantity: { $sum: '$quantity' },
@@ -165,7 +160,6 @@ exports.getProfitByProductReport = asyncHandler(async (req, res) => {
       productName: 1,
       category: 1,
       subcategory: 1,
-      season: 1,
       totalQuantity: 1,
       totalSales: 1,
       costOfSales: 1,
@@ -204,7 +198,6 @@ exports.exportProfitByProductReport = asyncHandler(async (req, res) => {
     item.productName,
     item.category,
     item.subcategory,
-    item.season,
     item.totalQuantity,
     Number(item.totalSales.toFixed(2)),
     Number(item.costOfSales.toFixed(2)),
@@ -217,16 +210,15 @@ exports.exportProfitByProductReport = asyncHandler(async (req, res) => {
       'Total',
       '',
       '',
-      '',
-      acc[4] + item.totalQuantity,
-      Number((acc[5] + item.totalSales).toFixed(2)),
-      Number((acc[6] + item.costOfSales).toFixed(2)),
-      Number((acc[7] + item.grossProfit).toFixed(2)),
+      acc[3] + item.totalQuantity,
+      Number((acc[4] + item.totalSales).toFixed(2)),
+      Number((acc[5] + item.costOfSales).toFixed(2)),
+      Number((acc[6] + item.grossProfit).toFixed(2)),
     ],
-    ['Total', '', '', '', 0, 0, 0, 0]
+    ['Total', '', '', 0, 0, 0, 0]
   );
 
-  const headers = ['Product Name', 'Category', 'Subcategory', 'Season', 'Total Quantity', 'Total Sales', 'Cost of Sales', 'Gross Profit'];
+  const headers = ['Product Name', 'Category', 'Subcategory', 'Total Quantity', 'Total Sales', 'Cost of Sales', 'Gross Profit'];
 
   await exportToExcel(res, 'Profit_By_Product_Report', headers, excelData, {
     totalRow: totals,

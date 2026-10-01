@@ -4,13 +4,15 @@ const { v4: uuidv4 } = require('uuid');
 const asyncHandler = require('express-async-handler');
 const { Readable } = require('stream');
 const fs = require('fs');
-const { Parser } = require('json2csv');
 const ApiError = require('../../utils/apiError');
 const { uploadMixOfFiles } = require('../../middleware/uploadImageMiddleware');
 const Product = require('../../models/inventory/productModel');
 const PurchaseOrder = require('../../models/vendor/purchaseOrder');
 const SalesOrder = require('../../models/sales/salesOrderModel');
 const Transfer = require('../../models/inventory/transferModel');
+const PurchaseOrderReturn = require('../../models/vendor/purchaseOrderReturn');
+const SalesOrderReturn = require('../../models/sales/salesOrderReturnModel');
+const Movement = require('../../models/inventory/movementModel');
 const factory = require('../handlersFactory');
 const apiResponse = require('../../utils/apiResponse');
 const { default: mongoose } = require('mongoose');
@@ -218,73 +220,6 @@ exports.createFilterObject = asyncHandler(async (req, res, next) => {
 
 exports.getProducts = factory.getAll(Product, 'Products', ' ', false);
 
-exports.getFilteredProducts = asyncHandler(async (req, res, next) => {
-  const { format } = req.query; // Check if CSV format is requested
-  const allProducts = await Product.find().sort({ createdAt: -1 });
-
-  // A Product no longer has per-color variants to check stock against - a product now carries its
-  // own stock directly, so "has it got anything sellable" is just "does it have stock anywhere".
-  const filteredProducts = allProducts.map(product => product.toObject()).filter(product => product.type === 'service' || (product.stock || []).some(s => s.quantity > 0));
-
-  // If CSV format is requested
-  if (format === 'csv') {
-    try {
-      // Prepare data for CSV with only required fields
-      const csvData = filteredProducts.map(product => {
-        const imageUrl = product.imageCover?.url || '';
-
-        return {
-          id: product._id,
-          // No public storefront in the Reversia accounting app - product detail pages don't exist.
-          url: '',
-          title_en: product.title?.en || '',
-          title_ar: product.title?.ar || '',
-          description_en: product.description?.en || '',
-          description_ar: product.description?.ar || '',
-          price: product.price || 0,
-          priceAfterDiscount: product.priceAfterDiscount || product.price || 0,
-          image: imageUrl,
-          availability: product.isAvailable && !product.isDeleted ? 'In Stock' : 'Out of Stock',
-          condition: 'New',
-        };
-      });
-
-      // Define CSV fields
-      const fields = [
-        { label: 'id', value: 'id' },
-        { label: 'link', value: 'url' },
-        { label: 'title', value: 'title_en' },
-        // { label: 'title', value: 'title_ar' },
-        { label: 'description', value: 'description_en' },
-        // { label: 'description', value: 'description_ar' },
-        { label: 'price', value: 'price' },
-        { label: 'price_after_discount', value: 'priceAfterDiscount' },
-        { label: 'image_link', value: 'image' },
-        { label: 'availability', value: 'availability' },
-        { label: 'condition', value: 'condition' },
-      ];
-
-      // Create CSV parser
-      const json2csvParser = new Parser({ fields });
-      const csv = json2csvParser.parse(csvData);
-
-      // Set headers for CSV download
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="products-${Date.now()}.csv"`);
-
-      return res.status(200).send(csv);
-    } catch (error) {
-      return next(new ApiError(`Error generating CSV: ${error.message}`, 500));
-    }
-  }
-
-  // Default JSON response
-  res.json({
-    length: filteredProducts.length,
-    data: filteredProducts,
-  });
-});
-
 exports.getProduct = factory.getOne(Product);
 
 exports.getProductsByIds = asyncHandler(async (req, res, next) => {
@@ -486,18 +421,35 @@ exports.getOrdersByProductCode = asyncHandler(async (req, res, next) => {
   });
 });
 
+// Slices an already-fully-computed history array into one page, while leaving the array itself
+// (and anything summed from it) representing the FULL dataset - summary totals below are always
+// computed before this runs, so pagination never skews them.
+const paginateHistory = (items, page, limit) => ({
+  data: items.slice((page - 1) * limit, page * limit),
+  total: items.length,
+  page,
+  limit,
+  totalPages: Math.max(Math.ceil(items.length / limit), 1),
+});
+
 /**
- * @description Get comprehensive purchase/sale/transfer history of a product by its barcode
+ * @description Get comprehensive purchase/sale/return/transfer/movement history of a product by
+ * its barcode - the evidence behind "why is this product's current stock what it is".
  * @route GET /api/v1/products/history/:code
  * @access Private
  * Ported from the removed Variant module's getVariantHistoryByCode. Same response shape and
  * balance calculation, now built directly from Product (and PO/SO/Transfer, which reference
- * Product directly) instead of resolving a Variant first.
+ * Product directly) instead of resolving a Variant first. Extended with actual Purchase/Sales
+ * Return records (PurchaseOrderReturn/SalesOrderReturn - previously only an aggregate
+ * `returnedQuantity` counter was exposed) and Movement records, plus pagination and
+ * category/subcategory/capacity on the product payload.
  */
 exports.getProductHistoryByCode = asyncHandler(async (req, res, next) => {
   const { code } = req.params;
+  const page = Math.max(parseInt(req.query.page) || 1, 1);
+  const limit = Math.max(parseInt(req.query.limit) || 10, 1);
 
-  const product = await Product.findOne({ barcode: code }).select('title sku barcode cost price priceAfterDiscount stock');
+  const product = await Product.findOne({ barcode: code }).select('title sku barcode cost price priceAfterDiscount capacity category subcategory stock');
   if (!product) {
     return next(new ApiError('Product not found with this code', 404));
   }
@@ -578,13 +530,56 @@ exports.getProductHistoryByCode = asyncHandler(async (req, res, next) => {
     });
   });
 
+  // Purchase return history for this product - real return records (not just the aggregate
+  // `items.returnedQuantity` counter already folded into purchaseOrdersHistory above).
+  const purchaseReturns = await PurchaseOrderReturn.find({ productId: product._id }).sort({ createdAt: 1 });
+  const purchaseReturnsHistory = purchaseReturns.map(r => ({
+    returnId: r._id,
+    type: 'purchase_return',
+    purchaseOrderId: r.purchaseOrderId,
+    warehouse: r.warehouseId,
+    quantityReturned: r.returnedQuantity || 0,
+    returnedAmount: r.returnedAmount || 0,
+    notes: r.notes,
+    date: r.createdAt,
+  }));
+
+  // Sales return history for this product - real return records.
+  const salesReturns = await SalesOrderReturn.find({ productId: product._id }).sort({ createdAt: 1 });
+  const salesReturnsHistory = salesReturns.map(r => ({
+    returnId: r._id,
+    type: 'sales_return',
+    salesOrderId: r.salesOrderId,
+    warehouse: r.warehouseId,
+    quantityReturned: r.returnedQuantity || 0,
+    returnedAmount: r.returnedAmount || 0,
+    notes: r.notes,
+    date: r.createdAt,
+  }));
+
+  // Manual stock movements (adjustments/sales/returns logged directly against this product,
+  // distinct from warehouse-to-warehouse Transfers above).
+  const movements = await Movement.find({ product: product._id, isDeleted: false }).sort({ date: 1 });
+  const movementsHistory = movements.map(m => ({
+    movementId: m._id,
+    type: m.movementType,
+    fromLocation: m.fromLocation,
+    toLocation: m.toLocation,
+    quantity: m.quantity || 0,
+    date: m.date,
+  }));
+
   const totalPurchased = purchaseOrdersHistory.reduce((sum, po) => sum + po.quantityPurchased, 0);
-  const totalPurchaseReturned = purchaseOrdersHistory.reduce((sum, po) => sum + po.quantityReturned, 0);
+  const totalPurchaseReturned = purchaseReturnsHistory.reduce((sum, r) => sum + r.quantityReturned, 0);
   const totalSold = salesOrdersHistory.reduce((sum, so) => sum + so.quantitySold, 0);
-  const totalSalesReturned = salesOrdersHistory.reduce((sum, so) => sum + so.quantityReturned, 0);
+  const totalSalesReturned = salesReturnsHistory.reduce((sum, r) => sum + r.quantityReturned, 0);
   const totalTransferred = transfersHistory.reduce((sum, t) => sum + t.quantityTransferred, 0);
 
   const currentStock = product.stock.reduce((total, stockItem) => total + (stockItem.quantity || 0), 0);
+
+  // Existing, proven balance formula (unchanged) - transfers net to zero across warehouses for a
+  // single product's company-wide total, so they're intentionally excluded here.
+  const calculatedStock = starterQuantity + totalPurchased - totalPurchaseReturned - totalSold + totalSalesReturned;
 
   res.status(200).json({
     status: 'success',
@@ -597,6 +592,9 @@ exports.getProductHistoryByCode = asyncHandler(async (req, res, next) => {
         cost: product.cost,
         price: product.price,
         priceAfterDiscount: product.priceAfterDiscount,
+        capacity: product.capacity,
+        category: product.category,
+        subcategory: product.subcategory,
         stock: product.stock,
         currentStock,
       },
@@ -607,12 +605,19 @@ exports.getProductHistoryByCode = asyncHandler(async (req, res, next) => {
         totalSold,
         totalSalesReturned,
         totalTransferred,
+        calculatedStock,
+        actualStock: currentStock,
+        difference: currentStock - calculatedStock,
+        // Kept for backward compatibility with the pre-existing field name.
+        calculatedBalance: calculatedStock,
         currentStock,
-        calculatedBalance: starterQuantity + totalPurchased - totalPurchaseReturned - totalSold + totalSalesReturned,
       },
-      purchaseOrders: purchaseOrdersHistory,
-      salesOrders: salesOrdersHistory,
-      transfers: transfersHistory,
+      purchaseOrders: paginateHistory(purchaseOrdersHistory, page, limit),
+      salesOrders: paginateHistory(salesOrdersHistory, page, limit),
+      purchaseReturns: paginateHistory(purchaseReturnsHistory, page, limit),
+      salesReturns: paginateHistory(salesReturnsHistory, page, limit),
+      transfers: paginateHistory(transfersHistory, page, limit),
+      movements: paginateHistory(movementsHistory, page, limit),
     },
   });
 });

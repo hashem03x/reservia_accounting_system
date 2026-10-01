@@ -211,7 +211,6 @@ exports.getRevenueByCategory = asyncHandler(async (req, res) => {
             price: '$productInfo.price',
             priceAfterDiscount: '$productInfo.priceAfterDiscount',
             isAvailable: '$productInfo.isAvailable',
-            season: '$productInfo.season',
             quantitySold: {
               $sum: { $subtract: ['$items.starterQuantity', '$items.returnedQuantity'] },
             },
@@ -1237,55 +1236,6 @@ exports.getOrderStatistics = asyncHandler(async (req, res) => {
         start,
         end,
       },
-    },
-  });
-});
-
-// Get Wishlist Analysis
-exports.getWishlistAnalysis = asyncHandler(async (req, res) => {
-  const topWishlistedProducts = await User.aggregate([
-    { $unwind: '$wishlist' },
-    {
-      $group: {
-        _id: '$wishlist',
-        count: { $sum: 1 },
-      },
-    },
-    { $sort: { count: -1 } },
-    { $limit: 10 },
-    {
-      $lookup: {
-        from: 'products',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'product',
-      },
-    },
-    { $unwind: '$product' },
-    {
-      $project: {
-        _id: 1,
-        count: 1,
-        productTitle: '$product.title',
-        productPrice: '$product.price',
-      },
-    },
-  ]);
-
-  const averageWishlistSize = await User.aggregate([
-    {
-      $group: {
-        _id: null,
-        averageSize: { $avg: { $size: '$wishlist' } },
-      },
-    },
-  ]);
-
-  res.status(200).json({
-    status: 'success',
-    data: {
-      topWishlistedProducts,
-      averageWishlistSize: averageWishlistSize[0].averageSize,
     },
   });
 });
