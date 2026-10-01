@@ -11,7 +11,6 @@ import CustomerInsights from "./components/customer-insights";
 import TopSellingProducts from "./components/top-selling-products";
 import ProductsPerformance from "./components/products-performance";
 import MainCategoriesRevenue from "./components/main-categories-revenue";
-import WishlistAnalysis from "./components/wishlist-analysis";
 import SalesBySubCategoryChart from "./components/sales-by-sub-category";
 import ProductAvailability from "./components/product-availability";
 import WarehousesBalance from "./components/warehouses-balance";
@@ -39,7 +38,6 @@ export default function Analytics() {
         productPerformance,
         salesBySubCategory,
         customerInsights,
-        wishlistAnalysis,
         orderStatistics,
         salesByTimePeriod,
         productAvailability,
@@ -61,11 +59,6 @@ export default function Analytics() {
         }),
         privateRequest({
           url: "analytics/customer-insights",
-          signal: controller.signal,
-          language,
-        }),
-        privateRequest({
-          url: "analytics/wishlist-analysis",
           signal: controller.signal,
           language,
         }),
@@ -114,7 +107,6 @@ export default function Analytics() {
           },
         },
         customerInsights: customerInsights.data,
-        wishlistAnalysis: wishlistAnalysis.data,
         orderStatistics: orderStatistics.data,
         salesByTimePeriod: salesByTimePeriod.data,
         productAvailability: productAvailability.data,
@@ -170,8 +162,7 @@ export default function Analytics() {
         <SalesBySubCategoryChart height="500px" />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <WishlistAnalysis height="auto" />
+      <div className="grid grid-cols-1 gap-6">
         <ProductAvailability height="auto" />
       </div>
 

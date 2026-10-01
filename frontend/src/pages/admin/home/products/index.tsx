@@ -15,9 +15,7 @@ import paths from "@/utils/constants/paths";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
 import { getProductFinalPrice } from "@/utils/helpers/product-helpers";
-import { seasonsArray } from "@/utils/constants/seasons";
 import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
-import { getSeasonLabel } from "@/utils/constants/seasons";
 import { getProductTypeLabel, isService } from "@/utils/constants/product-types";
 import { formatDate } from "@/utils/helpers/date-formaters";
 import { Badge, Button, Select, Table, TextInput } from "@mantine/core";
@@ -56,7 +54,6 @@ export default function Products() {
   const [activePage, setActivePage] = useState(parseInt(searchParams.get("page") || "1"));
   const [keyword, setKeyword] = useState(searchParams.get("keyword") || "");
   const [debouncedKeyword] = useDebounce(keyword, 350);
-  const [seasonFilter, setSeasonFilter] = useState(searchParams.get("season") || "");
   const [mainCategoryFilter, setMainCategoryFilter] = useState(searchParams.get("mainCategoryId") || "");
   const [subcategoryFilter, setSubcategoryFilter] = useState(searchParams.get("subCategories") || "");
 
@@ -65,7 +62,6 @@ export default function Products() {
   const params = {
     page: activePage.toString(),
     ...(debouncedKeyword ? { keyword: debouncedKeyword } : {}),
-    ...(seasonFilter ? { season: seasonFilter } : {}),
     ...(mainCategoryFilter ? { mainCategoryId: mainCategoryFilter } : {}),
     ...(subcategoryFilter ? { subCategories: subcategoryFilter } : {}),
   };
@@ -73,7 +69,6 @@ export default function Products() {
   // Track the previous filters and check if they have changed to reset the active page to 1.
   const { filtersChanged, updatePreviousFilters } = useHandlePreviousFilters({
     debouncedKeyword,
-    seasonFilter,
     mainCategoryFilter,
     subcategoryFilter,
   });
@@ -116,7 +111,7 @@ export default function Products() {
     setSearchParams(params, { replace: true });
 
     // If the filters have changed, reset the active page to 1.
-    const newFilters = { debouncedKeyword, seasonFilter, mainCategoryFilter, subcategoryFilter };
+    const newFilters = { debouncedKeyword, mainCategoryFilter, subcategoryFilter };
     if (filtersChanged(newFilters)) {
       updatePreviousFilters(newFilters);
       if (activePage !== 1) {
@@ -129,7 +124,7 @@ export default function Products() {
 
     const cancelRequest = handleLoadProducts(); // This will send the request and return the function to cancel it.
     return cancelRequest; // This will be called when the component unmounts.
-  }, [activePage, debouncedKeyword, seasonFilter, mainCategoryFilter, subcategoryFilter]);
+  }, [activePage, debouncedKeyword, mainCategoryFilter, subcategoryFilter]);
 
   const canICreateProducts = useRef(useHasPermission(resources.products, actions.create)).current; // Ref to avoid re-renders
   const AmIAdmin = loggedInUser && useRef(isAdmin(loggedInUser.role)).current; // Ref to avoid re-renders
@@ -176,13 +171,12 @@ export default function Products() {
         </div>
 
         {/* Clear All Filters */}
-        {(debouncedKeyword || seasonFilter || mainCategoryFilter || subcategoryFilter) && (
+        {(debouncedKeyword || mainCategoryFilter || subcategoryFilter) && (
           <Button
             color="red"
             variant="light"
             onClick={() => {
               setKeyword("");
-              setSeasonFilter("");
               setMainCategoryFilter("");
               setSubcategoryFilter("");
             }}
@@ -203,7 +197,7 @@ export default function Products() {
           </Button>
 
           {/* Highlight the filter button if any filter is active */}
-          {seasonFilter || mainCategoryFilter || subcategoryFilter ? (
+          {mainCategoryFilter || subcategoryFilter ? (
             <span
               className={`absolute -top-[6px] ${translate("-right-[6px]", "-left-[6px]")} h-[15px] w-[15px] rounded-full bg-blue-500`}
             ></span>
@@ -214,22 +208,6 @@ export default function Products() {
       {/* Filters */}
       {showFilters && (
         <div className="flex items-center gap-2 whitespace-nowrap">
-          {/* Season */}
-          <Select
-            value={seasonFilter}
-            onChange={(value) => setSeasonFilter(value as string)}
-            label={translate("Season", "الموسم")}
-            data={[
-              { value: "", label: translate(noFilterLabel.en, noFilterLabel.ar) },
-              ...seasonsArray.map((season) => ({
-                value: season.value,
-                label: translate(season.label.en, season.label.ar),
-              })),
-            ]}
-            allowDeselect={false}
-            rightSection={seasonFilter ? <solidIcons.Check color="green" size={12} /> : null}
-          />
-
           {/* Main Category */}
           <Select
             value={mainCategoryFilter}
@@ -305,7 +283,6 @@ export default function Products() {
                     <Table.Th>{translate("Quantity", "الكمية")}</Table.Th>
                     {renderIfAdmin(<Table.Th>{translate("Total Cost", "التكلفة الكلية")}</Table.Th>)}
                     <Table.Th>{translate("Sold", "المباع")}</Table.Th>
-                    <Table.Th>{translate("Season", "الموسم")}</Table.Th>
                     <Table.Th>{translate("Category", "الفئة")}</Table.Th>
                     <Table.Th>{translate("Subcategory", "الفئة الفرعية")}</Table.Th>
                     <Table.Th>{translate("Capacity", "السعة")}</Table.Th>
@@ -355,14 +332,28 @@ export default function Products() {
                             {productIsService ? "-" : `${(product.cost || 0).toFixed(2)} ${translations.currency}`}
                           </Table.Td>,
                         )}
-                        <Table.Td>{productIsService ? "-" : totalQuantity}</Table.Td>
+                        <Table.Td>
+                          {productIsService ? (
+                            "-"
+                          ) : (
+                            <div className="flex flex-col gap-0.5">
+                              <span>{totalQuantity}</span>
+                              <Link
+                                to={`${product._id}/${paths.transactions}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-xs text-primary-600 hover:underline"
+                              >
+                                {translate("View Transactions", "عرض الحركات")}
+                              </Link>
+                            </div>
+                          )}
+                        </Table.Td>
                         {renderIfAdmin(
                           <Table.Td className="font-semibold text-gray-800">
                             {productIsService ? "-" : `${totalAmount.toFixed(2)} ${translations.currency}`}
                           </Table.Td>,
                         )}
                         <Table.Td>{product.totalSold}</Table.Td>
-                        <Table.Td>{productIsService ? "-" : getSeasonLabel(product.season, language)}</Table.Td>
                         <Table.Td>{productIsService ? "-" : getMainCategoryNameById(product.category || "")}</Table.Td>
                         <Table.Td>{productIsService ? "-" : getSubcategoryNameById(product.subcategory || "")}</Table.Td>
                         <Table.Td>

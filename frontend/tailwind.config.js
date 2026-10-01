@@ -1,6 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./src/**/*.{js,jsx,ts,tsx}"],
+  // Toggled by syncing a `dark` class onto <html> (see index.html's inline script and
+  // src/hooks/useColorScheme.ts) in lockstep with Mantine's own `data-mantine-color-scheme`.
+  darkMode: "class",
   theme: {
     extend: {
       fontSize: {

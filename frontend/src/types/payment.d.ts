@@ -10,11 +10,6 @@ export type PaymentMethod =
   | "shopify-payments"
   | "main-bank";
 
-// export type CardPaymentMethod = "card";
-// export type WebsitePaymentMethod = Extract<PaymentMethod, "card" | "wallet">;
-
-export type WebsitePaymentMethod = "card" | "wallet" | "cod";
-
 export type PaymentType = "in" | "out";
 export type PaymentCategory =
   | "purchase"

@@ -183,7 +183,7 @@ export default function BalanceSheetReport() {
                 {renderRow("Accounts Receivable", data.assets.currentAssets.accountsReceivable, false, true)}
                 {renderRow("Total Current Assets", data.assets.currentAssets.total, true)}
 
-                <Table.Tr style={{ backgroundColor: "#e2e8f0" }}>
+                <Table.Tr className="bg-gray-100">
                   <Table.Td className="text-lg font-bold text-blue-700">
                     {translate("Total Assets", "إجمالي الأصول")}
                   </Table.Td>
@@ -230,7 +230,7 @@ export default function BalanceSheetReport() {
                 )}
                 {renderRow("Total Liabilities", data.liabilitiesAndEquity.liabilities.total, true)}
 
-                <Table.Tr style={{ backgroundColor: "#e2e8f0" }}>
+                <Table.Tr className="bg-gray-100">
                   <Table.Td className="text-lg font-bold text-blue-700">
                     {translate("Total Liabilities and Equity", "إجمالي الالتزامات وحقوق الملكية")}
                   </Table.Td>

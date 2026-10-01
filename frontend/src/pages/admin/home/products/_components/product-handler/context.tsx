@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useState } from "react";
-import { Product, ProductType, Season } from "@/types/product";
+import { Product, ProductType } from "@/types/product";
 import { DurationUnit } from "@/utils/constants/product-types";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
@@ -39,8 +39,6 @@ type ProductContextProps = {
   setPriceAfterDiscount: React.Dispatch<React.SetStateAction<string | number>>;
   isAvailable: boolean;
   setIsAvailable: React.Dispatch<React.SetStateAction<boolean>>;
-  season: Season;
-  setSeason: React.Dispatch<React.SetStateAction<Season>>;
   category: string | null;
   setCategory: React.Dispatch<React.SetStateAction<string | null>>;
   subcategory: string | null;
@@ -87,8 +85,6 @@ export const ProductContext = createContext<ProductContextProps>({
   setPriceAfterDiscount: () => {},
   isAvailable: true,
   setIsAvailable: () => {},
-  season: "all",
-  setSeason: () => {},
   category: null,
   setCategory: () => {},
   subcategory: null,
@@ -120,7 +116,6 @@ export default function ProductFormProvider({ product, children }: { product?: P
   const [price, setPrice] = useState<string | number>(product?.price || "");
   const [priceAfterDiscount, setPriceAfterDiscount] = useState<string | number>(product?.priceAfterDiscount || "");
   const [isAvailable, setIsAvailable] = useState<boolean>(product ? product.isAvailable : true);
-  const [season, setSeason] = useState<Season>(product?.season || "all");
   const [category, setCategory] = useState<string | null>(product?.category || null);
   const [subcategory, setSubcategory] = useState<string | null>(product?.subcategory || null);
   const [capacity, setCapacity] = useState<ProductCapacityInput>({
@@ -162,8 +157,6 @@ export default function ProductFormProvider({ product, children }: { product?: P
         setPriceAfterDiscount,
         isAvailable,
         setIsAvailable,
-        season,
-        setSeason,
         category,
         setCategory,
         subcategory,

@@ -347,7 +347,7 @@ export default function IncomeStatementReport() {
 
 
                 {/* Net Profit */}
-                <Table.Tr className="font-semibold text-lg" style={{ backgroundColor: "#f3f4f6" }}>
+                <Table.Tr className="bg-gray-100 text-lg font-semibold">
                   <Table.Td>{translate("Net Profit", "صافي الربح")}</Table.Td>
                   <Table.Td 
                     style={{ 

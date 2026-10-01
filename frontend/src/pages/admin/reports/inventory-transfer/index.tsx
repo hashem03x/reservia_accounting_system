@@ -238,7 +238,7 @@ export default function InventoryTransferReport() {
                   ))}
                   
                   {/* Total Row */}
-                  <Table.Tr className="font-semibold text-gray-800" style={{ backgroundColor: "#f3f4f6" }}>
+                  <Table.Tr className="bg-gray-100 font-semibold text-gray-800">
                     <Table.Td colSpan={2} className="text-right">{translate("Total", "المجموع")}</Table.Td>
                     <Table.Td>{data.transfers.reduce((acc, transfer) => acc + transfer.totalQuantity, 0)}</Table.Td>
                     <Table.Td colSpan={3} />

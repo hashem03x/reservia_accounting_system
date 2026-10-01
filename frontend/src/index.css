@@ -15,6 +15,92 @@
   }
 }
 
+/* ===================== Dark mode =====================
+   Reversia's light theme is built almost entirely from a small, consistent set of Tailwind
+   utility classes (bg-white for cards/surfaces, bg-gray-50/100 for page/section backgrounds,
+   text-gray-800/600/500 for text, plain `border`/border-gray-* for dividers - see
+   tailwind.config.js's comment on the `gray` palette). Retrofitting dark mode by overriding these
+   exact shared classes under `html.dark` (toggled by useColorScheme.ts in lockstep with Mantine's
+   own color scheme) gives every page/card/table/form built from them real dark styling without
+   editing each of those files individually - this is the existing design-token system, not a new
+   abstraction. Mantine's own components (Modal, Drawer, Select dropdown, Notifications, Tooltip,
+   buttons, inputs) already ship complete dark-mode styling out of the box once the app stops
+   forcing a light color scheme (see index.tsx) - no manual overrides needed for those. */
+
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #0f1419;
+  color: #e6e9ec;
+}
+
+html.dark .bg-white {
+  background-color: #161b22;
+}
+
+html.dark .bg-gray-50 {
+  background-color: #11151a;
+}
+
+html.dark .bg-gray-100 {
+  background-color: #1c232c;
+}
+
+html.dark .product-details-box {
+  background-color: #161b22;
+}
+
+html.dark h1,
+html.dark h2,
+html.dark h3,
+html.dark h4,
+html.dark h5,
+html.dark h6,
+html.dark .text-gray-800 {
+  color: #e6e9ec;
+}
+
+html.dark p,
+html.dark .text-gray-600 {
+  color: #a8b3bd;
+}
+
+html.dark .text-gray-500 {
+  color: #8b97a3;
+}
+
+html.dark .text-gray-400 {
+  color: #6b7683;
+}
+
+html.dark .border,
+html.dark .border-x,
+html.dark .border-y,
+html.dark .border-t,
+html.dark .border-b,
+html.dark .border-l,
+html.dark .border-r,
+html.dark .border-gray-100,
+html.dark .border-gray-200,
+html.dark hr {
+  border-color: #2a323c;
+}
+
+html.dark .shadow,
+html.dark .shadow-sm,
+html.dark .shadow-md,
+html.dark .shadow-lg,
+html.dark .shadow-xl {
+  --tw-shadow-color: rgba(0, 0, 0, 0.45);
+  box-shadow: var(--tw-shadow, 0 1px 3px 0 rgba(0, 0, 0, 0.45));
+}
+
+/* Table header tint used across admin tables/reports (e.g. `bg-gray-100 text-gray-800` on
+   Table.Thead) is already covered by the rules above; hovered table rows use Tailwind's
+   `highlightOnHover` via Mantine CSS vars, which already adapt to the color scheme. */
+
 /* Typography: Inter for Latin/English content, Cairo for Arabic/RTL content - swapped at runtime
    via the `dir` attribute LanguageContext.tsx sets on <html> whenever the language toggles.
    Redefining --mantine-font-family(-headings) here (not just plain `font-family`) is what makes

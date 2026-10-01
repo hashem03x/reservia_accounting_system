@@ -18,7 +18,7 @@ export default function AdminLayout() {
   ) : (
     <div className="block h-full">
       <div className="flex min-h-full flex-row">
-        <AdminAside width="250px" />
+        <AdminAside />
         <div className="flex-1 overflow-hidden bg-gray-50 p-6">
           <Outlet />
         </div>

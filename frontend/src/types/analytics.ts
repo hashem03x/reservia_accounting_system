@@ -102,18 +102,6 @@ export interface CustomerInsights {
   customerMetrics: CustomerMetrics;
 }
 
-export interface WishlistedProduct {
-  _id: string;
-  count: number;
-  productTitle: LocalizedText;
-  productPrice: number;
-}
-
-export interface WishlistAnalysis {
-  topWishlistedProducts: WishlistedProduct[];
-  averageWishlistSize: number;
-}
-
 export interface OrderStats {
   _id: null;
   totalOrders: number;
@@ -212,7 +200,6 @@ export interface AnalyticsData {
   productPerformance: ProductPerformance[];
   salesBySubCategory: SalesBySubCategory;
   customerInsights: CustomerInsights;
-  wishlistAnalysis: WishlistAnalysis;
   orderStatistics: OrderStatistics;
   salesByTimePeriod: SalesByTimePeriod;
   productAvailability: ProductAvailability;

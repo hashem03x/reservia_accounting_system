@@ -6,8 +6,6 @@ import { useWarehouses } from "@/context/WarehousesContext";
 import useCategoryHelpers from "@/hooks/useCategoryHelpers";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
-import { Season } from "@/types/product";
-import { getSeasonLabel } from "@/utils/constants/seasons";
 import { DateTimePicker } from "@mantine/dates";
 import { Button, Select, Table, Group, Stack } from "@mantine/core";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
@@ -25,7 +23,6 @@ interface ProductProfitData {
   productName: string;
   category: string;
   subcategory: string;
-  season: Season;
   totalQuantity: number;
   totalSales: number;
   costOfSales: number;
@@ -40,7 +37,6 @@ interface ReportData {
   data: ProductProfitData[];
 }
 
-type SeasonOption = Season;
 type SortByOption = "totalSales" | "costOfSales" | "grossProfit" | "createdAt" | "price";
 type SortOrderOption = "asc" | "desc";
 
@@ -60,7 +56,6 @@ export default function ProfitByProductReport() {
 
   const startDate = startDateParam ? new Date(startDateParam) : null;
   const endDate = endDateParam ? new Date(endDateParam) : null;
-  const season = (searchParams.get("season") || "all") as SeasonOption;
   const mainCategory = searchParams.get("mainCategory") || "";
   const subcategory = searchParams.get("subcategory") || "";
   const warehouse = searchParams.get("warehouse") || "";
@@ -79,10 +74,6 @@ export default function ProfitByProductReport() {
 
   const setEndDate = (date: Date | null) =>
     updateFilter("endDate", date?.toISOString() || "");
-
-  const setSeason = (value: string | null) => {
-    updateFilter("season", value || "all");
-  };
 
   const setWarehouse = (value: string | null) => {
     updateFilter("warehouse", value);
@@ -257,17 +248,6 @@ export default function ProfitByProductReport() {
             clearable
           />
           <Select
-            label={translate("Season", "الموسم")}
-            value={season}
-            onChange={setSeason}
-            data={[
-              { value: "all", label: translate("Both", "كلاهما") },
-              { value: "summer", label: translate("Summer", "صيفي") },
-              { value: "winter", label: translate("Winter", "شتوي") }
-            ]}
-            clearable
-          />
-          <Select
             label={translate("Main Category", "القسم الرئيسي")}
             value={mainCategory}
             onChange={setMainCategory}
@@ -339,7 +319,6 @@ export default function ProfitByProductReport() {
                   <Table.Th>{translate("Product Name", "اسم المنتج")}</Table.Th>
                   <Table.Th>{translate("Category", "القسم")}</Table.Th>
                   <Table.Th>{translate("Subcategory", "القسم الفرعي")}</Table.Th>
-                  <Table.Th>{translate("Season", "الموسم")}</Table.Th>
                   <Table.Th style={{ textAlign: "right" }}>{translate("Total Quantity", "الكمية الإجمالية")}</Table.Th>
                   <Table.Th style={{ textAlign: "right" }}>{translate("Price", "السعر")}</Table.Th>
                   <Table.Th style={{ textAlign: "right" }}>{translate("Cost", "التكلفة")}</Table.Th>
@@ -354,7 +333,6 @@ export default function ProfitByProductReport() {
                     <Table.Td className="font-semibold text-gray-800">{item.productName}</Table.Td>
                     <Table.Td>{item.category}</Table.Td>
                     <Table.Td>{item.subcategory}</Table.Td>
-                    <Table.Td>{getSeasonLabel(item.season, language)}</Table.Td>
                     <Table.Td style={{ textAlign: "right" }}>{item.totalQuantity}</Table.Td>
                     <Table.Td style={{ textAlign: "right" }}>{item.price.toFixed(2)}</Table.Td>
                     <Table.Td style={{ textAlign: "right" }}>{item.cost.toFixed(2)}</Table.Td>
@@ -373,8 +351,8 @@ export default function ProfitByProductReport() {
                 ))}
 
                 {/* Total Row */}
-                <Table.Tr className="font-semibold text-gray-800" style={{ backgroundColor: "#f3f4f6" }}>
-                  <Table.Td colSpan={7}>{translate("Total", "المجموع")}</Table.Td>
+                <Table.Tr className="bg-gray-100 font-semibold text-gray-800">
+                  <Table.Td colSpan={6}>{translate("Total", "المجموع")}</Table.Td>
                   <Table.Td style={{ textAlign: "right" }}>
                     {data.data.reduce((sum, item) => sum + item.totalSales, 0).toFixed(2)}
                   </Table.Td>

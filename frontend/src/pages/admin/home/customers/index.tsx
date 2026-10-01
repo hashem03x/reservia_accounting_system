@@ -232,8 +232,8 @@ export default function Customers() {
         <solidIcons.ExclamationCircle className="text-yellow-500" size={15} />
         <p className="text-xs md:text-sm">
           {translate(
-            "You can also view customers who registered on the website (online customers) in the",
-            "يمكنك أيضًا عرض العملاء الذين سجلوا عبر الموقع الإلكتروني (عملاء الإنترنت) في",
+            "You can also view online customers in the",
+            "يمكنك أيضًا عرض عملاء الإنترنت في",
           )}
           {` `}
           <Link to={`/${paths.admin}/${paths.users}?role=user`} className="text-blue-500 underline">

@@ -33,7 +33,6 @@ export default function ProductBasicInfo() {
     price,
     priceAfterDiscount,
     isAvailable,
-    season,
     category,
     subcategory,
     capacity,
@@ -94,7 +93,6 @@ export default function ProductBasicInfo() {
       formData.append("price", price.toString());
       priceAfterDiscount !== "" && formData.append("priceAfterDiscount", priceAfterDiscount.toString());
       formData.append("isAvailable", isAvailable.toString());
-      formData.append("season", season);
 
       if (productIsService) {
         // A service has no cost/category/subcategory/stock - see docs/entities/products.md.
@@ -154,7 +152,6 @@ export default function ProductBasicInfo() {
       price !== currentProduct.price ||
       priceAfterDiscountChanged ||
       isAvailable !== currentProduct.isAvailable ||
-      season !== currentProduct.season ||
       (capacity.value?.toString() || "") !== (currentProduct.capacity?.value?.toString() || "") ||
       capacity.unit !== (currentProduct.capacity?.unit || "") ||
       (productIsService

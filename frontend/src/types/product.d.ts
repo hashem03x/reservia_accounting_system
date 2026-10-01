@@ -26,7 +26,6 @@ export type Product = {
   isDeleted: boolean;
   isAvailable: boolean;
   totalSold: number;
-  season: Season;
   ratingsQuantity?: number;
   ratingsAverage?: number;
   createdAt: Date;
@@ -34,8 +33,6 @@ export type Product = {
 };
 
 // ============================================================================
-
-export type Season = "summer" | "winter" | "all";
 
 export type ProductCapacity = {
   value?: number;

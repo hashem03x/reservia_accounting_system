@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Navigate, Route, Routes } from "react-router-dom";
+import useColorScheme from "@/hooks/useColorScheme";
 import paths from "@/utils/constants/paths";
 import roles from "@/utils/constants/roles";
 import resources from "@/utils/constants/resources";
@@ -31,6 +32,7 @@ import AP_PurchaseOrder from "@/pages/admin/home/purchase-orders/[id]";
 import AP_NewPurchaseOrder from "@/pages/admin/home/purchase-orders/new";
 import AP_Products from "@/pages/admin/home/products";
 import AP_Product from "@/pages/admin/home/products/[id]";
+import AP_ProductTransactions from "@/pages/admin/home/products/[id]/transactions";
 import AP_NewProduct from "@/pages/admin/home/products/new";
 import AP_SalesOrders from "@/pages/admin/home/sales-orders";
 import AP_SalesOrder from "@/pages/admin/home/sales-orders/[id]";
@@ -79,6 +81,8 @@ import AP_JournalEntries from "@/pages/admin/journal-entries";
 import AP_JournalEntry from "@/pages/admin/journal-entries/[id]";
 
 export default function App() {
+  useColorScheme();
+
   return (
     <Router>
       <Routes>
@@ -121,6 +125,7 @@ export default function App() {
                     <Route element={<ResourceGuard resource={resources.products} action={actions.read} />}>
                       <Route path={paths.products} element={<AP_Products />} />
                       <Route path={paths.products + "/:id"} element={<AP_Product />} />
+                      <Route path={paths.products + "/:id/" + paths.transactions} element={<AP_ProductTransactions />} />
                       <Route element={<ResourceGuard resource={resources.products} action={actions.create} />}>
                         <Route path={paths.products + "/" + paths.new} element={<AP_NewProduct />} />
                       </Route>

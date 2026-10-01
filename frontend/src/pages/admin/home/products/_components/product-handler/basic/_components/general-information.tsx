@@ -139,10 +139,10 @@ export default function GeneralInformation() {
       <MantineProvider theme={theme}>
         <Checkbox
           mt={4}
-          label={translate("Available on the website", "متاح على الموقع الإلكتروني")}
+          label={translate("Available for Sale", "متاح للبيع")}
           title={translate(
-            "Choose whether the product is available on the website or not.",
-            "اختر ما إذا كان المنتج متاحًا على الموقع الإلكتروني أم لا.",
+            "Choose whether the product is available for sale or not.",
+            "اختر ما إذا كان المنتج متاحًا للبيع أم لا.",
           )}
           checked={isAvailable}
           onChange={(e) => setIsAvailable(e.currentTarget.checked)}

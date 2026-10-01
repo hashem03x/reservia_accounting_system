@@ -8,9 +8,8 @@ import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import paths from "@/utils/constants/paths";
 import { SortOrder } from "@/types/global";
-import { Product, Season } from "@/types/product";
+import { Product } from "@/types/product";
 import { sortOrdersArray } from "@/utils/constants/sort-order";
-import { getSeasonLabel, seasonsArray } from "@/utils/constants/seasons";
 import { getProductFinalPrice } from "@/utils/helpers/product-helpers";
 import { formatDate } from "@/utils/helpers/date-formaters";
 import { solidIcons } from "@/components/icons";
@@ -59,7 +58,6 @@ export default function ProductsReport() {
 
   const startDate = startDateParam ? new Date(startDateParam) : null;
   const endDate = endDateParam ? new Date(endDateParam) : null;
-  const season = (searchParams.get("season") || "") as Season | "";
   const category = searchParams.get("category") || "";
   const subcategory = searchParams.get("subcategory") || "";
   const warehouse = searchParams.get("warehouse") || "";
@@ -75,7 +73,6 @@ export default function ProductsReport() {
 
   const setStartDate = (startDate: string) => updateFilter("startDate", startDate);
   const setEndDate = (endDate: string) => updateFilter("endDate", endDate);
-  const setSeason = (season: Season | "") => updateFilter("season", season);
   const setCategory = (category: string) => updateFilter("category", category);
   const setSubcategory = (subcategory: string) => updateFilter("subcategory", subcategory);
   const setWarehouse = (warehouse: string) => updateFilter("warehouse", warehouse);
@@ -172,21 +169,6 @@ export default function ProductsReport() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-          {/* Season */}
-          <Select
-            clearable
-            value={season}
-            onChange={(value) => setSeason((value || "") as Season | "")}
-            label={translate("Season", "الموسم")}
-            placeholder={translate("Select Season", "اختر الموسم")}
-            data={[
-              ...seasonsArray.map((season) => ({
-                value: season.value,
-                label: translate(season.label.en, season.label.ar),
-              })),
-            ]}
-          />
-
           {/* Main Category */}
           <Select
             clearable
@@ -290,7 +272,6 @@ export default function ProductsReport() {
                   <Table.Th>{translate("Available", "متوفر")}</Table.Th>
                   <Table.Th>{translate("Total Amount", "المجموع الكلي")}</Table.Th>
                   <Table.Th>{translate("Sold", "المباع")}</Table.Th>
-                  <Table.Th>{translate("Season", "الموسم")}</Table.Th>
                   <Table.Th>{translate("Main Category", "الفئة الرئيسية")}</Table.Th>
                   <Table.Th>{translate("Subcategory", "الفئة الفرعية")}</Table.Th>
                   {/* <Table.Th>{translate("Warehouse", "المستودع")}</Table.Th> */}
@@ -318,7 +299,6 @@ export default function ProductsReport() {
                         {((product.cost || 0) * product.totalStock).toFixed(2)} {translations.currency}
                       </Table.Td>
                       <Table.Td>{product.totalSold}</Table.Td>
-                      <Table.Td>{getSeasonLabel(product.season, language)}</Table.Td>
                       <Table.Td>{product.categoryName.en}</Table.Td>
                       <Table.Td>{product.subcategoryName.en}</Table.Td>
                       {/* <Table.Td>{  getWarehouseNameById(product.warehouse) }</Table.Td> */}
@@ -328,7 +308,7 @@ export default function ProductsReport() {
                 })}
 
                 {/* Total Row */}
-                <Table.Tr className="font-semibold text-gray-800" style={{ backgroundColor: "#f3f4f6 " }}>
+                <Table.Tr className="bg-gray-100 font-semibold text-gray-800">
                   <Table.Td colSpan={0} className="text-right font-semibold">
                     {translate("Total", "الإجمالي")}
                   </Table.Td>
@@ -368,7 +348,6 @@ export default function ProductsReport() {
                   <Table.Td className="font-semibold">
                     {data.reduce((acc: number, product: ProductReport) => acc + product.totalSold, 0)}
                   </Table.Td>
-                  <Table.Td />
                   <Table.Td />
                   <Table.Td />
                   <Table.Td />

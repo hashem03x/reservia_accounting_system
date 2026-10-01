@@ -234,7 +234,7 @@ export default function ReturnsReport() {
                 ))}
 
                 {/* Total Row */}
-                <Table.Tr className="font-semibold text-gray-800" style={{ backgroundColor: "#f3f4f6" }}>
+                <Table.Tr className="bg-gray-100 font-semibold text-gray-800">
                   <Table.Td colSpan={8}>{translate("Total", "المجموع")}</Table.Td>
                   <Table.Td style={{ textAlign: "right" }}>
                     {data.data.reduce((sum, item) => sum + item.returnedQuantity, 0)}

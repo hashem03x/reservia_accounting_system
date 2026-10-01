@@ -195,7 +195,7 @@ export default function TreasuryBalanceReport() {
           </Table.Thead>
           <Table.Tbody>
             {treasury.paymentMethods.map(renderPaymentMethodRow)}
-            <Table.Tr className="font-semibold text-gray-800" style={{ backgroundColor: "#f3f4f6" }}>
+            <Table.Tr className="bg-gray-100 font-semibold text-gray-800">
               <Table.Td>{translate("Total", "المجموع")}</Table.Td>
               <Table.Td style={{ textAlign: 'right' }}>
                 {treasury.totals.inflow.toFixed(2)}

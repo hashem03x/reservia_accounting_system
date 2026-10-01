@@ -1,5 +1,6 @@
 import { IconType } from "react-icons";
 import { useNavigate } from "react-router-dom";
+import { useMantineColorScheme } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import { outlineIcons } from "@/components/icons";
 import paths from "@/utils/constants/paths";
@@ -8,10 +9,20 @@ import AdminNavLink from "./components/admin-nav-link";
 
 export type Link = { to: string; label: string; Icon?: IconType; nestedLinks?: Link[] };
 
-export default function AllAdminOptions({ closeDrawer }: { closeDrawer?: () => void }) {
+// Cycles Light -> Dark -> Auto (system) -> Light.
+const NEXT_COLOR_SCHEME = { light: "dark", dark: "auto", auto: "light" } as const;
+const COLOR_SCHEME_ICON = { light: outlineIcons.Sun, dark: outlineIcons.Moon, auto: outlineIcons.Computer };
+
+export default function AllAdminOptions({ closeDrawer, collapsed = false }: { closeDrawer?: () => void; collapsed?: boolean }) {
   const { translate, translations, toggleLanguage } = useLanguage();
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
 
   const navigate = useNavigate();
+
+  const colorSchemeLabel = translate(
+    { light: "Light Theme", dark: "Dark Theme", auto: "System Theme" }[colorScheme],
+    { light: "المظهر الفاتح", dark: "المظهر الداكن", auto: "مظهر النظام" }[colorScheme],
+  );
 
   const links: Link[] = [
     {
@@ -129,12 +140,18 @@ export default function AllAdminOptions({ closeDrawer }: { closeDrawer?: () => v
     <div className="flex h-full flex-col justify-between gap-2">
       <nav className="flex flex-1 flex-col py-2">
         {links.map((link) => (
-          <AdminNavLink key={link.to} link={link} onClick={closeDrawer} />
+          <AdminNavLink key={link.to} link={link} onClick={closeDrawer} collapsed={collapsed} />
         ))}
       </nav>
 
       <footer className="flex flex-col gap-1 py-2">
-        <AdminButton Icon={outlineIcons.Globe} label={translate("عربي", "English")} onClick={toggleLanguage} />
+        <AdminButton
+          Icon={COLOR_SCHEME_ICON[colorScheme]}
+          label={colorSchemeLabel}
+          onClick={() => setColorScheme(NEXT_COLOR_SCHEME[colorScheme])}
+          collapsed={collapsed}
+        />
+        <AdminButton Icon={outlineIcons.Globe} label={translate("عربي", "English")} onClick={toggleLanguage} collapsed={collapsed} />
         <hr />
         <AdminButton
           Icon={outlineIcons.ArrowUpCircle}
@@ -143,6 +160,7 @@ export default function AllAdminOptions({ closeDrawer }: { closeDrawer?: () => v
             closeDrawer && closeDrawer();
             navigate("/");
           }}
+          collapsed={collapsed}
         />
       </footer>
     </div>

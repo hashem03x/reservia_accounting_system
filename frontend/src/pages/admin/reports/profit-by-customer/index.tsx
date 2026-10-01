@@ -338,7 +338,7 @@ export default function ProfitByCustomerReport() {
               ))}
 
               {/* Total Row */}
-              <Table.Tr className="font-semibold text-gray-800" style={{ backgroundColor: "#f3f4f6" }}>
+              <Table.Tr className="bg-gray-100 font-semibold text-gray-800">
                 <Table.Td>{translate("Total", "المجموع")}</Table.Td>
                 <Table.Td></Table.Td>
                 <Table.Td></Table.Td>
