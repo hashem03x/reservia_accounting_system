@@ -1,23 +1,27 @@
 const mongoose = require('mongoose');
 const SalesOrder = require('../../models/sales/salesOrderModel');
-const Variant = require('../../models/inventory/variantModel');
 const Product = require('../../models/inventory/productModel');
 const ApiError = require('../../utils/apiError');
 
-async function updateStock(item, warehouseId, session) {
-  const { variant, starterQuantity } = item;
+// Decrements this product's stock in the sale's warehouse AND increments its totalSold in one
+// atomic update - previously two separate writes (decrement Variant.stock, then a second
+// Product.findByIdAndUpdate for totalSold once the variant's productId was resolved). With items
+// identifying their product directly, there's no variant to resolve and no reason for a second
+// write.
+async function updateStockAndSold(item, warehouseId, session) {
+  const { product: productId, starterQuantity } = item;
 
-  const result = await Variant.findOneAndUpdate(
-    { _id: variant, 'stock.warehouse': warehouseId },
-    { $inc: { 'stock.$.quantity': -starterQuantity } },
+  const result = await Product.findOneAndUpdate(
+    { _id: productId, 'stock.warehouse': warehouseId },
+    { $inc: { 'stock.$.quantity': -starterQuantity, totalSold: starterQuantity } },
     { new: true, session, runValidators: true }
   );
 
   if (!result) {
-    const foundVariant = await Variant.findById(variant).session(session);
-    if (!foundVariant) throw new ApiError(`Variant with ID ${variant} not found.`);
-    const stock = foundVariant.stock.find(s => s.warehouse.toString() === warehouseId);
-    if (!stock) throw new ApiError(`No stock found for variant ${foundVariant.variantCode} in warehouse ${warehouseId}`);
+    const foundProduct = await Product.findById(productId).session(session);
+    if (!foundProduct) throw new ApiError(`Product with ID ${productId} not found.`);
+    const stock = foundProduct.stock.find(s => s.warehouse.toString() === warehouseId);
+    if (!stock) throw new ApiError(`No stock found for product ${foundProduct.title} in warehouse ${warehouseId}`);
   }
 
   return result;
@@ -47,10 +51,9 @@ async function createSalesOrder(
   const run = async () => {
     const validItems = [];
     for (const item of items) {
-      const updatedVariant = await updateStock(item, resolvedWarehouse, session);
-      const product = await Product.findByIdAndUpdate(updatedVariant.productId, { $inc: { totalSold: item.starterQuantity } }, { new: true, session });
-      if (!product) throw new ApiError(`Product not found for variant ${item.variant}`);
-      validItems.push({ ...item, costWhenSold: product.cost });
+      const updatedProduct = await updateStockAndSold(item, resolvedWarehouse, session);
+      if (!updatedProduct) throw new ApiError(`Product not found for item ${item.product}`);
+      validItems.push({ ...item, costWhenSold: updatedProduct.cost });
     }
 
     salesOrder = new SalesOrder({

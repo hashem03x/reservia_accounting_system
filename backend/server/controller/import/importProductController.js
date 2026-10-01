@@ -2,7 +2,6 @@ const mongoose = require('mongoose');
 const fs = require('fs').promises;
 const xlsx = require('xlsx');
 const Product = require('../../models/inventory/productModel');
-const Variant = require('../../models/inventory/variantModel');
 const Warehouse = require('../../models/inventory/warehouseModel');
 const ApiError = require('../../utils/apiError');
 const catchAsync = require('express-async-handler');
@@ -83,13 +82,6 @@ exports.importProductAndVariant = catchAsync(async (req, res, next) => {
           }
         }
 
-        // Ensure each variant has a SKU
-        for (const variantData of productData.variants) {
-          if (!variantData.sku) {
-            variantData.sku = `${productData.sku || 'SKU'}-${variantData.color || 'CLR'}-${variantData.size || 'SZ'}-${Math.floor(Math.random() * 1000)}`;
-          }
-        }
-
         // Add to list of products to import
         productsToImport.push(productData);
       } catch (error) {
@@ -120,73 +112,59 @@ exports.importProductAndVariant = catchAsync(async (req, res, next) => {
 
     // Import products one by one without using transactions
     const importedProducts = [];
-    const createdIds = { products: [], variants: [] }; // Track created IDs for potential rollback
+    const createdIds = { products: [] }; // Track created IDs for potential rollback
 
     // Import each validated product
     for (const productData of productsToImport) {
       try {
-        // Create the product
-        const product = await Product.create({
-          ...productData,
-          variants: [], // Clear variants array as we'll populate it later
-        });
+        // Products no longer have separate Variants (see docs/entities/products.md) - a product
+        // carries its own per-warehouse stock directly. Each transformed "variant" row (one per
+        // color+size combination) contributes a quantity to a warehouse; rows sharing a warehouse
+        // are summed into that warehouse's single stock entry. Honor the CSV's own warehouse
+        // column when it resolves to a real warehouse, falling back to the tenant's default
+        // warehouse when it's blank or doesn't match anything.
+        const { variants, ...productCreateData } = productData;
+        const stockByWarehouse = new Map();
+        let barcodeFromCsv;
 
-        createdIds.products.push(product._id);
-        const productId = product._id;
-        
-        console.log(`[importProductAndVariant] created product`, { productId: String(productId), sku: product.sku, title: productData.title?.en });
-
-        const variantIds = [];
-
-        // Create variants with proper productId reference and warehouse
-        for (const variantData of productData.variants) {
-          // Honor the CSV's own warehouse column when it resolves to a real warehouse; only fall
-          // back to the tenant's default warehouse when it's blank or doesn't match anything.
-          // Previously every variant was forced onto defaultWarehouse regardless of what the CSV
-          // said, silently discarding a legitimately-supplied warehouse.
+        for (const variantData of variants) {
           let targetWarehouse = defaultWarehouse;
           if (variantData.warehouse) {
             const resolved = mongoose.Types.ObjectId.isValid(variantData.warehouse) ? await Warehouse.findById(variantData.warehouse) : null;
             if (resolved) {
               targetWarehouse = resolved;
             } else {
-              console.warn(`[importProductAndVariant] variant warehouse "${variantData.warehouse}" not found - using default warehouse`, {
+              console.warn(`[importProductAndVariant] row warehouse "${variantData.warehouse}" not found - using default warehouse`, {
                 sku: variantData.sku,
               });
             }
           }
 
-          const variant = await Variant.create({
-            ...variantData,
-            // barcode isn't a Variant schema field - variantCode (see generateBarcode()) is the
-            // schema's actual barcode-equivalent field. Only override the auto-generated default
-            // when the CSV explicitly supplied one.
-            variantCode: variantData.barcode || undefined,
-            barcode: undefined,
-            productId,
-            stock: [
-              {
-                warehouse: targetWarehouse._id,
-                quantity: variantData.quantity || 0,
-              },
-            ],
-          });
+          const warehouseId = targetWarehouse._id.toString();
+          stockByWarehouse.set(warehouseId, (stockByWarehouse.get(warehouseId) || 0) + (variantData.quantity || 0));
 
-          variantIds.push(variant._id);
-          createdIds.variants.push(variant._id);
-          console.log(`[importProductAndVariant] imported variant`, {
-            sku: variant.sku,
-            color: variant.color,
-            size: variant.size,
-            stock: variantData.quantity || 0,
-            warehouse: targetWarehouse.name,
-            imageCount: (productData.colors.find(c => c.name === variantData.color)?.images ?? []).length,
-            status: 'success',
-          });
+          // A product has a single barcode now - keep the first one explicitly supplied by the CSV
+          // (if any); otherwise the product falls back to its own auto-generated default.
+          if (!barcodeFromCsv && variantData.barcode) barcodeFromCsv = variantData.barcode;
         }
 
-        // Update product with variant references
-        await Product.findByIdAndUpdate(productId, { $push: { variants: { $each: variantIds } } });
+        const stock = Array.from(stockByWarehouse, ([warehouse, quantity]) => ({ warehouse, quantity }));
+
+        // Create the product with its aggregated stock
+        const product = await Product.create({
+          ...productCreateData,
+          stock,
+          ...(barcodeFromCsv ? { barcode: barcodeFromCsv } : {}),
+        });
+
+        createdIds.products.push(product._id);
+
+        console.log(`[importProductAndVariant] created product`, {
+          productId: String(product._id),
+          sku: product.sku,
+          title: productData.title?.en,
+          stockEntries: stock.length,
+        });
 
         importedProducts.push(product);
       } catch (error) {
@@ -211,11 +189,8 @@ exports.importProductAndVariant = catchAsync(async (req, res, next) => {
 
     // If no products were imported successfully, roll back any partial imports and return error
     if (importedProducts.length === 0 && createdIds.products.length > 0) {
-      // Attempt to clean up any created products and variants
+      // Attempt to clean up any created products
       try {
-        if (createdIds.variants.length > 0) {
-          await Variant.deleteMany({ _id: { $in: createdIds.variants } });
-        }
         if (createdIds.products.length > 0) {
           await Product.deleteMany({ _id: { $in: createdIds.products } });
         }

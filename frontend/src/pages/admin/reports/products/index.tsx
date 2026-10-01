@@ -8,7 +8,7 @@ import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import paths from "@/utils/constants/paths";
 import { SortOrder } from "@/types/global";
-import { Product, Season, Color } from "@/types/product";
+import { Product, Season } from "@/types/product";
 import { sortOrdersArray } from "@/utils/constants/sort-order";
 import { getSeasonLabel, seasonsArray } from "@/utils/constants/seasons";
 import { getProductFinalPrice } from "@/utils/helpers/product-helpers";
@@ -26,21 +26,8 @@ import { useWarehouses } from "@/context/WarehousesContext";
 const URL = "reports/products";
 const FILENAME = "products-report.xlsx";
 
-interface ProductVariant {
-  _id: string;
-  color: Color;
-  size: string;
-  sku: string;
-  stockLevel: number;
-  stockStatus: "in_stock" | "running_low" | "out_of_stock";
-  variantCode: string;
-  stock: { warehouse: string; quantity: number }[];
-  isDeleted: boolean;
-}
-
 interface ProductReport extends Product {
   totalStock: number;
-  variants: ProductVariant[];
   categoryName: {
     en: string;
     ar: string;

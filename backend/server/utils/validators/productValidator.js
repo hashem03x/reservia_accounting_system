@@ -121,7 +121,7 @@ exports.updateProductValidator = [
       return true;
     }),
   // `updateProduct` uses a raw findByIdAndUpdate (see productController.js), which does NOT run
-  // document middleware - so the model-level "a service can't have variants" guard
+  // document middleware - so the model-level "a service can't have inventory stock" guard
   // (productModel.js's pre('save') hook) never fires here. This is the only place that invariant
   // is enforced for updates, so it must stay even though the frontend already makes `type`
   // read-only after creation once a product exists.
@@ -132,8 +132,8 @@ exports.updateProductValidator = [
     .custom(async (value, { req }) => {
       if (value !== 'service') return true;
       const product = await Product.findById(req.params.id);
-      if (product && Array.isArray(product.variants) && product.variants.length > 0) {
-        throw new Error('Cannot convert a product with existing variants into a service.');
+      if (product && Array.isArray(product.stock) && product.stock.length > 0) {
+        throw new Error('Cannot convert a product with existing stock into a service.');
       }
       return true;
     }),

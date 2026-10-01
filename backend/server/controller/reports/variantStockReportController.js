@@ -1,5 +1,10 @@
 const asyncHandler = require('express-async-handler');
-const Variant = require('../../models/inventory/variantModel');
+const mongoose = require('mongoose');
+// Route/export names here still say "variant" (see routes/reportsRoute.js, which wires these exact
+// export names to the /reports/variant-stock endpoint) - the report itself is now a per-product
+// stock breakdown, since Product carries its own stock directly (see docs/entities/products.md)
+// and there's no separate Variant to report on.
+const Product = require('../../models/inventory/productModel');
 const Warehouse = require('../../models/inventory/warehouseModel');
 const exportToExcel = require('../../utils/exportToExcel');
 const ApiError = require('../../utils/apiError');
@@ -10,43 +15,22 @@ const getEnglishTitle = title => {
   return title.en || Object.values(title)[0] || 'Unknown Product';
 };
 
-// @desc    Get Variant Stock Report
+const getStockStatus = quantity => (quantity > 0 ? 'In Stock' : 'Out of Stock');
+
+// @desc    Get Product Stock Report
 // @route   GET /api/v1/reports/variant-stock
 // @access  Private
 exports.getVariantStockReport = asyncHandler(async (req, res) => {
-  const { warehouse, color, size, stockStatus } = req.query;
+  const { warehouse } = req.query;
 
-  // Build match stage
-  const matchStage = { isDeleted: false };
-  if (color) matchStage.color = color;
-  if (size) matchStage.size = size;
-  if (stockStatus) matchStage.stockStatus = stockStatus;
-
-  // Build warehouse filter if provided
-  const warehouseFilter = warehouse ? { 'stock.warehouse': warehouse } : {};
-
-  const variants = await Variant.aggregate([
+  const products = await Product.aggregate([
     {
-      $match: {
-        ...matchStage,
-        ...warehouseFilter,
-      },
-    },
-    {
-      $lookup: {
-        from: 'products',
-        localField: 'productId',
-        foreignField: '_id',
-        as: 'product',
-      },
-    },
-    {
-      $unwind: '$product',
+      $match: { isDeleted: false, ...(warehouse ? { 'stock.warehouse': new mongoose.Types.ObjectId(warehouse) } : {}) },
     },
     {
       $lookup: {
         from: 'categories',
-        localField: 'product.category',
+        localField: 'category',
         foreignField: '_id',
         as: 'category',
       },
@@ -54,7 +38,7 @@ exports.getVariantStockReport = asyncHandler(async (req, res) => {
     {
       $lookup: {
         from: 'subcategories',
-        localField: 'product.subcategory',
+        localField: 'subcategory',
         foreignField: '_id',
         as: 'subcategory',
       },
@@ -77,10 +61,7 @@ exports.getVariantStockReport = asyncHandler(async (req, res) => {
     {
       $project: {
         sku: 1,
-        color: 1,
-        size: 1,
-        variantCode: 1,
-        stockStatus: 1,
+        barcode: 1,
         totalStock: 1,
         stock: {
           $map: {
@@ -103,89 +84,59 @@ exports.getVariantStockReport = asyncHandler(async (req, res) => {
             },
           },
         },
-        'product.title': 1,
-        'product.price': 1,
-        'product.priceAfterDiscount': 1,
+        title: 1,
+        price: 1,
+        priceAfterDiscount: 1,
         categoryName: 1,
         subcategoryName: 1,
       },
     },
     {
-      $sort: { 'product.title.en': 1, color: 1, size: 1 },
+      $sort: { 'title.en': 1 },
     },
   ]);
+
+  const products2 = products.map(p => ({ ...p, stockStatus: getStockStatus(p.totalStock) }));
 
   // Get all warehouses for the summary
   const warehouses = await Warehouse.find({ isDeleted: false }).select('name location');
 
-  // Calculate summary statistics
   const summary = {
-    totalVariants: variants.length,
-    totalStock: variants.reduce((sum, v) => sum + v.totalStock, 0),
+    totalProducts: products2.length,
+    totalStock: products2.reduce((sum, p) => sum + p.totalStock, 0),
     byWarehouse: warehouses.map(wh => ({
       warehouse: wh.name,
       location: wh.location,
-      totalStock: variants.reduce((sum, v) => {
-        const warehouseStock = v.stock.find(s => s.warehouse?._id.toString() === wh._id.toString());
+      totalStock: products2.reduce((sum, p) => {
+        const warehouseStock = p.stock.find(s => s.warehouse?._id.toString() === wh._id.toString());
         return sum + (warehouseStock?.quantity || 0);
       }, 0),
     })),
-    byStockStatus: variants.reduce((acc, v) => {
-      acc[v.stockStatus] = (acc[v.stockStatus] || 0) + 1;
+    byStockStatus: products2.reduce((acc, p) => {
+      acc[p.stockStatus] = (acc[p.stockStatus] || 0) + 1;
       return acc;
     }, {}),
   };
 
   res.status(200).json({
     status: 'success',
-    results: variants.length,
+    results: products2.length,
     data: {
-      variants,
+      variants: products2,
       summary,
     },
   });
 });
 
-// @desc    Generate Variant Stock Report Excel
+// @desc    Generate Product Stock Report Excel
 // @route   POST /api/v1/reports/variant-stock
 // @access  Private
 exports.generateVariantStockReportExcel = asyncHandler(async (req, res) => {
-  const { warehouse, color, size, stockStatus } = req.body;
+  const { warehouse } = req.body;
 
-  // Build match stage
-  const matchStage = { isDeleted: false };
-  if (color) matchStage.color = color;
-  if (size) matchStage.size = size;
-  if (stockStatus) matchStage.stockStatus = stockStatus;
-
-  // Build warehouse filter if provided
-  const warehouseFilter = warehouse ? { 'stock.warehouse': warehouse } : {};
-
-  const variants = await Variant.aggregate([
+  const products = await Product.aggregate([
     {
-      $match: {
-        ...matchStage,
-        ...warehouseFilter,
-      },
-    },
-    {
-      $lookup: {
-        from: 'products',
-        localField: 'productId',
-        foreignField: '_id',
-        as: 'product',
-      },
-    },
-    {
-      $unwind: '$product',
-    },
-    {
-      $lookup: {
-        from: 'warehouses',
-        localField: 'stock.warehouse',
-        foreignField: '_id',
-        as: 'warehouseDetails',
-      },
+      $match: { isDeleted: false, ...(warehouse ? { 'stock.warehouse': new mongoose.Types.ObjectId(warehouse) } : {}) },
     },
     {
       $addFields: {
@@ -194,115 +145,67 @@ exports.generateVariantStockReportExcel = asyncHandler(async (req, res) => {
     },
   ]);
 
-  if (!variants.length) {
-    throw new ApiError('No variants found', 404);
+  if (!products.length) {
+    throw new ApiError('No products found', 404);
   }
 
   // Get all warehouses for columns
   const warehouses = await Warehouse.find({ isDeleted: false }).select('name location').sort('name');
 
   // Prepare headers
-  const headers = [
-    'Product Name',
-    'SKU',
-    'Color',
-    'Size',
-    'Variant Code',
-    'Total Stock',
-    'Stock Status',
-    ...warehouses.map(w => `${w.name} (${w.location})`),
-    'Regular Price',
-    'Discounted Price',
-  ];
+  const headers = ['Product Name', 'SKU', 'Barcode', 'Total Stock', 'Stock Status', ...warehouses.map(w => `${w.name} (${w.location})`), 'Regular Price', 'Discounted Price'];
 
   // Format numbers for better readability
   const formatNumber = num => (num || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // Transform data for excel format
-  const data = variants.map(variant => {
-    const baseData = [
-      getEnglishTitle(variant.product.title),
-      variant.sku,
-      variant.color,
-      variant.size,
-      variant.variantCode,
-      variant.totalStock,
-      variant.stockStatus,
-    ];
+  const data = products.map(product => {
+    const baseData = [getEnglishTitle(product.title), product.sku, product.barcode, product.totalStock, getStockStatus(product.totalStock)];
 
     // Add stock quantities for each warehouse
     const warehouseStocks = warehouses.map(wh => {
-      const stockItem = variant.stock.find(s => s.warehouse.toString() === wh._id.toString());
+      const stockItem = (product.stock || []).find(s => s.warehouse.toString() === wh._id.toString());
       return stockItem ? stockItem.quantity : 0;
     });
 
-    return [
-      ...baseData,
-      ...warehouseStocks,
-      formatNumber(variant.product.price),
-      variant.product.priceAfterDiscount ? formatNumber(variant.product.priceAfterDiscount) : 'N/A',
-    ];
+    return [...baseData, ...warehouseStocks, formatNumber(product.price), product.priceAfterDiscount ? formatNumber(product.priceAfterDiscount) : 'N/A'];
   });
 
   // Calculate totals
   const totals = {
-    totalVariants: variants.length,
-    totalStock: variants.reduce((sum, v) => sum + v.totalStock, 0),
+    totalProducts: products.length,
+    totalStock: products.reduce((sum, p) => sum + p.totalStock, 0),
     warehouseTotals: warehouses.map(wh => ({
       warehouse: wh.name,
-      total: variants.reduce((sum, v) => {
-        const stockItem = v.stock.find(s => s.warehouse.toString() === wh._id.toString());
+      total: products.reduce((sum, p) => {
+        const stockItem = (p.stock || []).find(s => s.warehouse.toString() === wh._id.toString());
         return sum + (stockItem ? stockItem.quantity : 0);
       }, 0),
     })),
   };
 
+  const emptyRow = Array(8).fill('');
+
   // Add summary rows
   const summaryRows = [
-    ['', '', '', '', '', '', '', '', '', ''], // Empty row
-    ['SUMMARY', '', '', '', '', '', '', '', '', ''],
-    ['Total Variants:', totals.totalVariants, '', '', '', '', '', '', '', ''],
-    ['Total Stock:', totals.totalStock, '', '', '', '', '', '', '', ''],
-    ['', '', '', '', '', '', '', '', '', ''], // Empty row
-    ['WAREHOUSE BREAKDOWN', '', '', '', '', '', '', '', '', ''],
-    ...totals.warehouseTotals.map(wt => [
-      `${wt.warehouse}:`,
-      wt.total,
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ]),
-    ['', '', '', '', '', '', '', '', '', ''], // Empty row
-    ['STOCK STATUS BREAKDOWN', '', '', '', '', '', '', '', '', ''],
+    emptyRow,
+    ['SUMMARY', ...emptyRow.slice(1)],
+    ['Total Products:', totals.totalProducts, ...emptyRow.slice(2)],
+    ['Total Stock:', totals.totalStock, ...emptyRow.slice(2)],
+    emptyRow,
+    ['WAREHOUSE BREAKDOWN', ...emptyRow.slice(1)],
+    ...totals.warehouseTotals.map(wt => [`${wt.warehouse}:`, wt.total, ...emptyRow.slice(2)]),
+    emptyRow,
+    ['STOCK STATUS BREAKDOWN', ...emptyRow.slice(1)],
     ...Object.entries(
-      variants.reduce((acc, v) => {
-        acc[v.stockStatus] = (acc[v.stockStatus] || 0) + 1;
+      products.reduce((acc, p) => {
+        const status = getStockStatus(p.totalStock);
+        acc[status] = (acc[status] || 0) + 1;
         return acc;
       }, {})
-    ).map(([status, count]) => [
-      `${status}:`,
-      count,
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ]),
+    ).map(([status, count]) => [`${status}:`, count, ...emptyRow.slice(2)]),
   ];
 
   // Export to Excel
-  await exportToExcel(
-    res,
-    'Variant_Stock_Report.xlsx',
-    headers,
-    [...data, ...summaryRows]
-  );
+  await exportToExcel(res, 'Product_Stock_Report.xlsx', headers, [...data, ...summaryRows]);
 });

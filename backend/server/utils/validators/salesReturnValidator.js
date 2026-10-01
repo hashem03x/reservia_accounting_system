@@ -7,7 +7,7 @@ const createReturnValidate = [
 
   body('warehouseId').isMongoId().withMessage('Warehouse ID must be a mongoID').notEmpty().withMessage('Warehouse ID is required'),
 
-  body('variantId').notEmpty().withMessage('Variant ID is required').isMongoId().withMessage('Variant ID must be a mongoID'),
+  body('productId').notEmpty().withMessage('Product ID is required').isMongoId().withMessage('Product ID must be a mongoID'),
 
   body('returnedQuantity').notEmpty().withMessage('Returned quantity is required').isInt({ gt: 0 }).withMessage('Returned quantity must be a positive integer'),
 

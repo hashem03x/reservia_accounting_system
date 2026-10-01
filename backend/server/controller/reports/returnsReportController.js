@@ -43,13 +43,9 @@ exports.getReturnsReport = asyncHandler(async (req, res) => {
         select: 'name',
       },
       {
-        path: 'variantId',
-        select: 'productId color size variantCode',
-        populate: {
-          path: 'productId',
-          select: 'title category subcategory',
-          populate: ['category', 'subcategory'],
-        },
+        path: 'productId',
+        select: 'title category subcategory sku barcode',
+        populate: ['category', 'subcategory'],
       },
       {
         path: 'createdBy',
@@ -65,12 +61,11 @@ exports.getReturnsReport = asyncHandler(async (req, res) => {
     customerName: item.salesOrderId?.customer?.name,
     customerPhone: item.salesOrderId?.customer?.phone,
     warehouse: item.warehouseId?.name,
-    product: item.variantId?.productId?.title?.en || item.variantId?.productId?.title,
-    category: item.variantId?.productId?.category?.name?.en,
-    subcategory: item.variantId?.productId?.subcategory?.name?.en,
-    variantCode: item.variantId?.variantCode,
-    color: item.variantId?.color,
-    size: item.variantId?.size,
+    product: item.productId?.title?.en || item.productId?.title,
+    category: item.productId?.category?.name?.en,
+    subcategory: item.productId?.subcategory?.name?.en,
+    sku: item.productId?.sku,
+    barcode: item.productId?.barcode,
     returnedQuantity: item.returnedQuantity,
     returnedAmount: item.returnedAmount,
     createdBy: item.createdBy?.name,
@@ -136,13 +131,9 @@ exports.exportReturnsReport = asyncHandler(async (req, res) => {
         select: 'name',
       },
       {
-        path: 'variantId',
-        select: 'productId color size variantCode',
-        populate: {
-          path: 'productId',
-          select: 'title category subcategory',
-          populate: ['category', 'subcategory'],
-        },
+        path: 'productId',
+        select: 'title category subcategory sku barcode',
+        populate: ['category', 'subcategory'],
       },
       {
         path: 'createdBy',
@@ -167,12 +158,11 @@ exports.exportReturnsReport = asyncHandler(async (req, res) => {
     customerName: item.salesOrderId?.customer?.name,
     customerPhone: item.salesOrderId?.customer?.phone,
     warehouse: item.warehouseId?.name,
-    product: item.variantId?.productId?.title?.en || item.variantId?.productId?.title,
-    category: item.variantId?.productId?.category?.name?.en,
-    subcategory: item.variantId?.productId?.subcategory?.name?.en,
-    variantCode: item.variantId?.variantCode,
-    color: item.variantId?.color,
-    size: item.variantId?.size,
+    product: item.productId?.title?.en || item.productId?.title,
+    category: item.productId?.category?.name?.en,
+    subcategory: item.productId?.subcategory?.name?.en,
+    sku: item.productId?.sku,
+    barcode: item.productId?.barcode,
     returnedQuantity: item.returnedQuantity,
     returnedAmount: item.returnedAmount,
     createdBy: item.createdBy?.name,
@@ -199,9 +189,8 @@ exports.exportReturnsReport = asyncHandler(async (req, res) => {
     item.product || '',
     item.category || '',
     item.subcategory || '',
-    item.variantCode || '',
-    item.color || '',
-    item.size || '',
+    item.sku || '',
+    item.barcode || '',
     item.returnedQuantity || 0,
     Number(item.returnedAmount?.toFixed(2)) || 0,
     item.createdBy || '',
@@ -218,28 +207,12 @@ exports.exportReturnsReport = asyncHandler(async (req, res) => {
     });
   }
 
-  const headers = [
-    'Order Number',
-    'Customer Name',
-    'Customer Phone',
-    'Warehouse',
-    'Product',
-    'Category',
-    'Subcategory',
-    'Variant Code',
-    'Color',
-    'Size',
-    'Returned Quantity',
-    'Returned Amount',
-    'Created By',
-    'Created At',
-    'Notes',
-  ];
+  const headers = ['Order Number', 'Customer Name', 'Customer Phone', 'Warehouse', 'Product', 'Category', 'Subcategory', 'SKU', 'Barcode', 'Returned Quantity', 'Returned Amount', 'Created By', 'Created At', 'Notes'];
 
   // Calculate totals
   const totals = returnsData.reduce(
-    (acc, item) => ['Total', '', '', '', '', '', '', '', '', '', acc[10] + (item.returnedQuantity || 0), Number((acc[11] + (item.returnedAmount || 0)).toFixed(2)), '', '', ''],
-    ['Total', '', '', '', '', '', '', '', '', '', 0, 0, '', '', '']
+    (acc, item) => ['Total', '', '', '', '', '', '', '', '', acc[9] + (item.returnedQuantity || 0), Number((acc[10] + (item.returnedAmount || 0)).toFixed(2)), '', '', ''],
+    ['Total', '', '', '', '', '', '', '', '', 0, 0, '', '', '']
   );
 
   await exportToExcel(res, 'Returns_Report', headers, excelData, {

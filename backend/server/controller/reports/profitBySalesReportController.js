@@ -44,7 +44,7 @@ exports.getProfitBySalesReport = asyncHandler(async (req, res) => {
 
   const sortConfig = getSortConfig(sortBy, sortOrder);
 
-  const salesOrders = await SalesOrder.find(query).populate('items.variant', 'name').populate('customer', 'name').sort(sortConfig);
+  const salesOrders = await SalesOrder.find(query).populate('items.product', 'title').populate('customer', 'name').sort(sortConfig);
 
   // Calculate profit metrics for each order
   const profitData = salesOrders.map(order => {
@@ -100,7 +100,7 @@ exports.exportProfitBySalesReport = asyncHandler(async (req, res) => {
 
   const sortConfig = getSortConfig(sortBy, sortOrder);
 
-  const salesOrders = await SalesOrder.find(query).populate('items.variant', 'name').populate('customer', 'name').sort(sortConfig);
+  const salesOrders = await SalesOrder.find(query).populate('items.product', 'title').populate('customer', 'name').sort(sortConfig);
 
   // Calculate profit metrics for each order
   const profitData = salesOrders.map(order => {

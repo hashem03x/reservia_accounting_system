@@ -1,7 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const Product = require('../../models/inventory/productModel');
-const Variant = require('../../models/inventory/variantModel');
 const SalesOrder = require('../../models/sales/salesOrderModel');
 const excel = require('exceljs');
 const ApiError = require('../../utils/apiError');
@@ -68,31 +67,85 @@ const getStockStatus = quantity => {
   return 'In Stock';
 };
 
-// Helper function to get total sold for variants in a specific warehouse
-const getVariantsTotalSold = async (variants, warehouse) => {
-  if (!variants || variants.length === 0) return 0;
+// Total sold for a product (optionally restricted to one warehouse) - items identify their
+// product directly, so this is one query per product with no Variant resolution step in between.
+const getProductTotalSold = async (productId, warehouse) => {
+  const match = { 'items.product': productId };
+  if (warehouse) match.warehouse = new mongoose.Types.ObjectId(warehouse);
 
-  const variantIds = variants.map(v => v._id.toString());
-  const query = {
-    'items.variant': { $in: variantIds },
-  };
-
-  if (warehouse) {
-    query.warehouse = new mongoose.Types.ObjectId(warehouse);
-  }
-
-  const salesOrders = await SalesOrder.find(query).populate('items.variant');
+  const salesOrders = await SalesOrder.find(match).select('items warehouse');
 
   let totalSold = 0;
   for (const order of salesOrders) {
     for (const item of order.items) {
-      const variantId = item.variant._id.toString();
-      if (variantIds.includes(variantId)) {
+      if (item.product && item.product._id.toString() === productId.toString()) {
         totalSold += item.starterQuantity - (item.returnedQuantity || 0);
       }
     }
   }
   return totalSold;
+};
+
+// A product carries its own per-warehouse stock directly now (see docs/entities/products.md) - no
+// separate Variant collection to join against. This stage computes each product's filtered stock
+// entries (and total) straight from the embedded `stock` array.
+const stockAggregationStages = warehouse => [
+  {
+    $lookup: {
+      from: 'categories',
+      localField: 'category',
+      foreignField: '_id',
+      as: 'categoryData',
+    },
+  },
+  {
+    $lookup: {
+      from: 'subcategories',
+      localField: 'subcategory',
+      foreignField: '_id',
+      as: 'subcategoryData',
+    },
+  },
+  {
+    $addFields: {
+      stockEntries: {
+        $filter: {
+          input: { $ifNull: ['$stock', []] },
+          as: 's',
+          cond: warehouse ? { $eq: ['$$s.warehouse', new mongoose.Types.ObjectId(warehouse)] } : true,
+        },
+      },
+      categoryName: { $arrayElemAt: ['$categoryData.name', 0] },
+      subcategoryName: { $arrayElemAt: ['$subcategoryData.name', 0] },
+    },
+  },
+  {
+    $addFields: {
+      totalStock: { $sum: '$stockEntries.quantity' },
+    },
+  },
+];
+
+const buildStockAnalysis = async (query, warehouse) => Product.aggregate([{ $match: query }, ...stockAggregationStages(warehouse)]);
+
+// Resolves the stockAnalysis result set with the same fallback behavior as before: retry without
+// an accidentally-future date filter, so an overly-narrow filter combo doesn't just return empty.
+const resolveStockAnalysis = async (baseQuery, filters, warehouse) => {
+  let stockAnalysis = await buildStockAnalysis(baseQuery, warehouse);
+  if (stockAnalysis.length > 0) return stockAnalysis;
+
+  if (filters.startDate) {
+    const startDate = new Date(filters.startDate);
+    const currentYear = new Date().getFullYear();
+
+    if (startDate.getFullYear() > currentYear) {
+      const baseQueryWithoutDate = { ...baseQuery };
+      delete baseQueryWithoutDate.createdAt;
+      stockAnalysis = await buildStockAnalysis(baseQueryWithoutDate, warehouse);
+    }
+  }
+
+  return stockAnalysis;
 };
 
 // @desc    Get Inventory Summary Report
@@ -101,193 +154,14 @@ const getVariantsTotalSold = async (variants, warehouse) => {
 exports.getInventorySummaryReport = asyncHandler(async (req, res) => {
   const { warehouse, stockStatus, sortBy = 'createdAt', sortOrder = 'desc', ...filters } = req.query;
 
-  // Build base query for product filtering
   const baseQuery = buildBaseQuery(filters);
-
-  // Get product stock data using aggregation (similar to analyticsController approach)
-  let stockAnalysis = await Product.aggregate([
-    {
-      $match: { ...baseQuery },
-    },
-    {
-      $lookup: {
-        from: 'variants',
-        localField: 'variants',
-        foreignField: '_id',
-        pipeline: [
-          { $match: { isDeleted: false } },
-          { $unwind: '$stock' },
-          ...(warehouse
-            ? [
-                {
-                  $match: { 'stock.warehouse': new mongoose.Types.ObjectId(warehouse) },
-                },
-              ]
-            : []),
-          {
-            $group: {
-              _id: '$_id',
-              stockQuantity: { $sum: '$stock.quantity' },
-              sku: { $first: '$sku' },
-              color: { $first: '$color' },
-              size: { $first: '$size' },
-              variantCode: { $first: '$variantCode' },
-            },
-          },
-        ],
-        as: 'variantStocks',
-      },
-    },
-    {
-      $lookup: {
-        from: 'categories',
-        localField: 'category',
-        foreignField: '_id',
-        as: 'categoryData',
-      },
-    },
-    {
-      $lookup: {
-        from: 'subcategories',
-        localField: 'subcategory',
-        foreignField: '_id',
-        as: 'subcategoryData',
-      },
-    },
-    {
-      $addFields: {
-        totalStock: { $sum: '$variantStocks.stockQuantity' },
-        categoryName: { $arrayElemAt: ['$categoryData.name', 0] },
-        subcategoryName: { $arrayElemAt: ['$subcategoryData.name', 0] },
-      },
-    },
-  ]);
-
-  // Check warehouse validity if a warehouse filter is applied and no results were found
-  if (stockAnalysis.length === 0 && warehouse) {
-    const warehouseCount = await mongoose.connection.db.collection('warehouses').countDocuments({
-      _id: new mongoose.Types.ObjectId(warehouse),
-    });
-
-    // Try to find variants in this warehouse
-    const variantsInWarehouse = await Variant.countDocuments({
-      'stock.warehouse': new mongoose.Types.ObjectId(warehouse),
-      isDeleted: false,
-    });
-  }
-
-  // If no results and filter conditions are restrictive, try a fallback approach
-  if (stockAnalysis.length === 0) {
-    // Try without the date filter if it's a future date
-    if (filters.startDate) {
-      const startDate = new Date(filters.startDate);
-      const currentYear = new Date().getFullYear();
-
-      if (startDate.getFullYear() > currentYear) {
-        const baseQueryWithoutDate = { ...baseQuery };
-        delete baseQueryWithoutDate.createdAt;
-
-        stockAnalysis = await Product.aggregate([
-          {
-            $match: baseQueryWithoutDate,
-          },
-          {
-            $lookup: {
-              from: 'variants',
-              localField: 'variants',
-              foreignField: '_id',
-              pipeline: [
-                { $match: { isDeleted: false } },
-                { $unwind: '$stock' },
-                ...(warehouse
-                  ? [
-                      {
-                        $match: { 'stock.warehouse': new mongoose.Types.ObjectId(warehouse) },
-                      },
-                    ]
-                  : []),
-                {
-                  $group: {
-                    _id: '$_id',
-                    stockQuantity: { $sum: '$stock.quantity' },
-                    sku: { $first: '$sku' },
-                    color: { $first: '$color' },
-                    size: { $first: '$size' },
-                    variantCode: { $first: '$variantCode' },
-                  },
-                },
-              ],
-              as: 'variantStocks',
-            },
-          },
-          {
-            $lookup: {
-              from: 'categories',
-              localField: 'category',
-              foreignField: '_id',
-              as: 'categoryData',
-            },
-          },
-          {
-            $lookup: {
-              from: 'subcategories',
-              localField: 'subcategory',
-              foreignField: '_id',
-              as: 'subcategoryData',
-            },
-          },
-          {
-            $addFields: {
-              totalStock: { $sum: '$variantStocks.stockQuantity' },
-              categoryName: { $arrayElemAt: ['$categoryData.name', 0] },
-              subcategoryName: { $arrayElemAt: ['$subcategoryData.name', 0] },
-            },
-          },
-        ]);
-      }
-    }
-  }
-
-  // Check if there are any products with the given date range, but without considering category/subcategory
-  if (stockAnalysis.length === 0 && (filters.category || filters.subCategory || filters.subcategory)) {
-    const dateOnlyQuery = { isDeleted: false };
-    if (filters.startDate && filters.endDate) {
-      const startDate = new Date(filters.startDate);
-      const endDate = new Date(filters.endDate);
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
-
-      dateOnlyQuery.createdAt = {
-        $gte: startDate,
-        $lte: endDate,
-      };
-    }
-
-    const productsWithDateOnly = await Product.countDocuments(dateOnlyQuery);
-
-    // Check if the category exists
-    if (filters.category) {
-      const categoryCount = await mongoose.connection.db.collection('categories').countDocuments({
-        _id: new mongoose.Types.ObjectId(filters.category),
-      });
-    }
-
-    // Check if the subcategory exists
-    const subcategoryValue = filters.subcategory || filters.subCategory;
-    if (subcategoryValue) {
-      const subcategoryCount = await mongoose.connection.db.collection('subcategories').countDocuments({
-        _id: new mongoose.Types.ObjectId(subcategoryValue),
-      });
-    }
-  }
+  const stockAnalysis = await resolveStockAnalysis(baseQuery, filters, warehouse);
 
   // Process products to include all required data
   const inventoryItems = await Promise.all(
     stockAnalysis.map(async product => {
-      // Calculate total sold
-      const totalSold = await getVariantsTotalSold(product.variantStocks, warehouse);
+      const totalSold = await getProductTotalSold(product._id, warehouse);
 
-      // Calculate value (handle nulls and zeroes)
       const stockLevel = product.totalStock || 0;
       const cost = product.cost || 0;
       const value = stockLevel * cost;
@@ -296,19 +170,17 @@ exports.getInventorySummaryReport = asyncHandler(async (req, res) => {
         _id: product._id,
         title: product.title,
         description: product.description,
-        sku: product.variantStocks.map(v => v.sku).join(', '),
+        sku: product.sku || '',
+        barcode: product.barcode || '',
         category: product.categoryName,
         subcategory: product.subcategoryName,
-        cost: cost,
+        cost,
         price: product.price,
-        stockLevel: stockLevel,
+        stockLevel,
         stockStatus: getStockStatus(stockLevel),
-        value: value,
-        totalSold: totalSold,
-        variants: product.variantStocks.map(v => ({
-          ...v,
-          variantCode: v.variantCode || '',
-        })),
+        value,
+        totalSold,
+        stock: product.stockEntries,
         createdAt: product.createdAt,
       };
     })
@@ -355,8 +227,8 @@ exports.getInventorySummaryReport = asyncHandler(async (req, res) => {
 
   const summary = {
     totalProducts: filteredInventory.length,
-    totalValue: formattedTotalValue, // Use the formatted value with commas
-    totalStock: totalStock, // Calculate from filteredInventory to match category breakdown
+    totalValue: formattedTotalValue,
+    totalStock,
     totalSold: filteredInventory.reduce((sum, item) => sum + (item.totalSold || 0), 0),
     byCategory: {},
     byStockStatus: {
@@ -367,7 +239,6 @@ exports.getInventorySummaryReport = asyncHandler(async (req, res) => {
 
   // Calculate category and status breakdowns
   filteredInventory.forEach(item => {
-    // Category breakdown
     const categoryName = item.category;
     if (!summary.byCategory[categoryName]) {
       summary.byCategory[categoryName] = {
@@ -382,7 +253,6 @@ exports.getInventorySummaryReport = asyncHandler(async (req, res) => {
     summary.byCategory[categoryName].stock += item.stockLevel;
     summary.byCategory[categoryName].sold += item.totalSold;
 
-    // Stock status breakdown
     summary.byStockStatus[item.stockStatus]++;
   });
 
@@ -403,214 +273,35 @@ exports.getInventorySummaryReport = asyncHandler(async (req, res) => {
 exports.generateInventorySummaryExcel = asyncHandler(async (req, res) => {
   const { warehouse, stockStatus, sortBy = 'createdAt', sortOrder = 'desc', ...filters } = req.query;
 
-  // Get inventory data using the same logic as the main report
   const baseQuery = buildBaseQuery(filters);
+  const stockAnalysis = await resolveStockAnalysis(baseQuery, filters, warehouse);
 
-  // Use aggregation pipeline for consistent stock calculation
-  let stockAnalysis = await Product.aggregate([
-    {
-      $match: { ...baseQuery },
-    },
-    {
-      $lookup: {
-        from: 'variants',
-        localField: 'variants',
-        foreignField: '_id',
-        pipeline: [
-          { $match: { isDeleted: false } },
-          { $unwind: '$stock' },
-          ...(warehouse
-            ? [
-                {
-                  $match: { 'stock.warehouse': new mongoose.Types.ObjectId(warehouse) },
-                },
-              ]
-            : []),
-          {
-            $group: {
-              _id: '$_id',
-              stockQuantity: { $sum: '$stock.quantity' },
-              sku: { $first: '$sku' },
-              color: { $first: '$color' },
-              size: { $first: '$size' },
-              variantCode: { $first: '$variantCode' },
-            },
-          },
-        ],
-        as: 'variantStocks',
-      },
-    },
-    {
-      $lookup: {
-        from: 'categories',
-        localField: 'category',
-        foreignField: '_id',
-        as: 'categoryData',
-      },
-    },
-    {
-      $lookup: {
-        from: 'subcategories',
-        localField: 'subcategory',
-        foreignField: '_id',
-        as: 'subcategoryData',
-      },
-    },
-    {
-      $addFields: {
-        totalStock: { $sum: '$variantStocks.stockQuantity' },
-        categoryName: { $arrayElemAt: ['$categoryData.name', 0] },
-        subcategoryName: { $arrayElemAt: ['$subcategoryData.name', 0] },
-      },
-    },
-  ]);
-
-  // Check warehouse validity if a warehouse filter is applied and no results were found
-  if (stockAnalysis.length === 0 && warehouse) {
-    const warehouseCount = await mongoose.connection.db.collection('warehouses').countDocuments({
-      _id: new mongoose.Types.ObjectId(warehouse),
-    });
-
-    // Try to find variants in this warehouse
-    const variantsInWarehouse = await Variant.countDocuments({
-      'stock.warehouse': new mongoose.Types.ObjectId(warehouse),
-      isDeleted: false,
-    });
-  }
-
-  // If no results and filter conditions are restrictive, try a fallback approach
-  if (stockAnalysis.length === 0) {
-    // Try without the date filter if it's a future date
-    if (filters.startDate) {
-      const startDate = new Date(filters.startDate);
-      const currentYear = new Date().getFullYear();
-
-      if (startDate.getFullYear() > currentYear) {
-        const baseQueryWithoutDate = { ...baseQuery };
-        delete baseQueryWithoutDate.createdAt;
-
-        stockAnalysis = await Product.aggregate([
-          {
-            $match: baseQueryWithoutDate,
-          },
-          {
-            $lookup: {
-              from: 'variants',
-              localField: 'variants',
-              foreignField: '_id',
-              pipeline: [
-                { $match: { isDeleted: false } },
-                { $unwind: '$stock' },
-                ...(warehouse
-                  ? [
-                      {
-                        $match: { 'stock.warehouse': new mongoose.Types.ObjectId(warehouse) },
-                      },
-                    ]
-                  : []),
-                {
-                  $group: {
-                    _id: '$_id',
-                    stockQuantity: { $sum: '$stock.quantity' },
-                    sku: { $first: '$sku' },
-                    color: { $first: '$color' },
-                    size: { $first: '$size' },
-                    variantCode: { $first: '$variantCode' },
-                  },
-                },
-              ],
-              as: 'variantStocks',
-            },
-          },
-          {
-            $lookup: {
-              from: 'categories',
-              localField: 'category',
-              foreignField: '_id',
-              as: 'categoryData',
-            },
-          },
-          {
-            $lookup: {
-              from: 'subcategories',
-              localField: 'subcategory',
-              foreignField: '_id',
-              as: 'subcategoryData',
-            },
-          },
-          {
-            $addFields: {
-              totalStock: { $sum: '$variantStocks.stockQuantity' },
-              categoryName: { $arrayElemAt: ['$categoryData.name', 0] },
-              subcategoryName: { $arrayElemAt: ['$subcategoryData.name', 0] },
-            },
-          },
-        ]);
-      }
-    }
-  }
-
-  // Check if there are any products with the given date range, but without considering category/subcategory
-  if (stockAnalysis.length === 0 && (filters.category || filters.subCategory || filters.subcategory)) {
-    const dateOnlyQuery = { isDeleted: false };
-    if (filters.startDate && filters.endDate) {
-      const startDate = new Date(filters.startDate);
-      const endDate = new Date(filters.endDate);
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
-
-      dateOnlyQuery.createdAt = {
-        $gte: startDate,
-        $lte: endDate,
-      };
-    }
-
-    const productsWithDateOnly = await Product.countDocuments(dateOnlyQuery);
-
-    // Check if the category exists
-    if (filters.category) {
-      const categoryCount = await mongoose.connection.db.collection('categories').countDocuments({
-        _id: new mongoose.Types.ObjectId(filters.category),
-      });
-    }
-
-    // Check if the subcategory exists
-    const subcategoryValue = filters.subcategory || filters.subCategory;
-    if (subcategoryValue) {
-      const subcategoryCount = await mongoose.connection.db.collection('subcategories').countDocuments({
-        _id: new mongoose.Types.ObjectId(subcategoryValue),
-      });
-    }
-  }
-
-  // Process products and create a flat array with one entry per variant
+  // Process products into a flat array with one row per per-warehouse stock entry (replaces the
+  // old one-row-per-variant layout - a product's stock is now tracked per warehouse directly,
+  // without a separate color/size breakdown).
   let flatInventory = [];
 
   await Promise.all(
     stockAnalysis.map(async product => {
-      // Calculate total sold
-      const totalSold = await getVariantsTotalSold(product.variantStocks, warehouse);
+      const totalSold = await getProductTotalSold(product._id, warehouse);
+      const stockEntries = product.stockEntries.length > 0 ? product.stockEntries : [{ quantity: 0, warehouse: null }];
 
-      // Create an entry for each variant
-      for (const variant of product.variantStocks) {
-        // Calculate value for this variant
-        const variantValue = variant.stockQuantity * product.cost;
-
+      for (const stockEntry of stockEntries) {
         flatInventory.push({
           _id: product._id,
-          variantCode: variant.variantCode || '',
+          barcode: product.barcode || '',
           title: product.title?.en || '',
           description: product.description?.en || '',
-          sku: variant.sku || '',
+          sku: product.sku || '',
           category: product.categoryName?.en || '',
           subcategory: product.subcategoryName?.en || '',
           cost: product.cost,
           price: product.price,
-          stockLevel: variant.stockQuantity,
-          stockStatus: getStockStatus(variant.stockQuantity),
-          value: variantValue,
-          totalSold: totalSold, // Using total sold for all variants
-          variantDetails: `${variant.color?.name || variant.color || ''} - ${variant.size || ''}`,
+          stockLevel: stockEntry.quantity || 0,
+          stockStatus: getStockStatus(stockEntry.quantity || 0),
+          value: (stockEntry.quantity || 0) * (product.cost || 0),
+          totalSold,
+          warehouse: stockEntry.warehouse || '',
           createdAt: product.createdAt,
         });
       }
@@ -626,32 +317,27 @@ exports.generateInventorySummaryExcel = asyncHandler(async (req, res) => {
   // Filter by stock status if specified
   const filteredInventory = stockStatus ? processedInventory.filter(item => item.stockStatus === stockStatus) : processedInventory;
 
-  if (filteredInventory.length === 0) {
-    // Instead of throwing an error, return a basic empty report
+  const columns = [
+    { header: 'Barcode', key: 'barcode', width: 15 },
+    { header: 'Title', key: 'title', width: 20 },
+    { header: 'Description', key: 'description', width: 30 },
+    { header: 'SKU', key: 'sku', width: 15 },
+    { header: 'Category', key: 'category', width: 15 },
+    { header: 'Subcategory', key: 'subcategory', width: 15 },
+    { header: 'Cost', key: 'cost', width: 10 },
+    { header: 'Price', key: 'price', width: 10 },
+    { header: 'Stock Level', key: 'stockLevel', width: 10 },
+    { header: 'Stock Status', key: 'stockStatus', width: 12 },
+    { header: 'Value', key: 'value', width: 12 },
+    { header: 'Total Sold', key: 'totalSold', width: 10 },
+    { header: 'Created At', key: 'createdAt', width: 20 },
+  ];
 
-    // Create Excel workbook with headers but no data
+  if (filteredInventory.length === 0) {
     const workbook = new excel.Workbook();
     const worksheet = workbook.addWorksheet('Inventory Summary');
+    worksheet.columns = columns;
 
-    // Define columns
-    worksheet.columns = [
-      { header: 'Variant Code', key: 'variantCode', width: 15 },
-      { header: 'Title', key: 'title', width: 20 },
-      { header: 'Description', key: 'description', width: 30 },
-      { header: 'SKU', key: 'sku', width: 15 },
-      { header: 'Category', key: 'category', width: 15 },
-      { header: 'Subcategory', key: 'subcategory', width: 15 },
-      { header: 'Variant Details', key: 'variantDetails', width: 15 },
-      { header: 'Cost', key: 'cost', width: 10 },
-      { header: 'Price', key: 'price', width: 10 },
-      { header: 'Stock Level', key: 'stockLevel', width: 10 },
-      { header: 'Stock Status', key: 'stockStatus', width: 12 },
-      { header: 'Value', key: 'value', width: 12 },
-      { header: 'Total Sold', key: 'totalSold', width: 10 },
-      { header: 'Created At', key: 'createdAt', width: 20 },
-    ];
-
-    // Add note about empty data
     const noteSheet = workbook.addWorksheet('Note');
     noteSheet.addRow(['No inventory data found matching these filter criteria:']);
     if (filters.startDate && filters.endDate) {
@@ -670,14 +356,11 @@ exports.generateInventorySummaryExcel = asyncHandler(async (req, res) => {
       noteSheet.addRow(['Stock Status:', stockStatus]);
     }
 
-    // Style header rows
     worksheet.getRow(1).font = { bold: true };
 
-    // Set response headers
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=inventory-summary-empty.xlsx');
 
-    // Write workbook to response
     await workbook.xlsx.write(res);
     return;
   }
@@ -689,7 +372,6 @@ exports.generateInventorySummaryExcel = asyncHandler(async (req, res) => {
       let aValue = a[sortBy];
       let bValue = b[sortBy];
 
-      // Handle nested properties like 'title.en'
       if (sortBy.includes('.')) {
         const parts = sortBy.split('.');
         aValue = parts.reduce((obj, key) => (obj && obj[key] !== undefined ? obj[key] : ''), a);
@@ -702,11 +384,9 @@ exports.generateInventorySummaryExcel = asyncHandler(async (req, res) => {
     });
   }
 
-  // Calculate summary statistics from filteredInventory to ensure consistency
   const totalStock = filteredInventory.reduce((sum, item) => sum + (item.stockLevel || 0), 0);
   const totalValue = filteredInventory.reduce((sum, item) => sum + (item.value || 0), 0);
 
-  // Format totalValue with comma as thousands separator
   const formattedTotalValue = totalValue.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -714,9 +394,9 @@ exports.generateInventorySummaryExcel = asyncHandler(async (req, res) => {
 
   const summary = {
     totalProducts: stockAnalysis.length,
-    totalVariants: filteredInventory.length,
-    totalValue: formattedTotalValue, // Use the formatted value with commas
-    totalStock: totalStock, // Calculate from filteredInventory to match category breakdown
+    totalStockEntries: filteredInventory.length,
+    totalValue: formattedTotalValue,
+    totalStock,
     totalSold: filteredInventory.reduce((sum, item) => sum + (item.totalSold || 0), 0),
     byCategory: {},
     byStockStatus: {
@@ -725,9 +405,7 @@ exports.generateInventorySummaryExcel = asyncHandler(async (req, res) => {
     },
   };
 
-  // Calculate category and status breakdowns
   filteredInventory.forEach(item => {
-    // Category breakdown
     const categoryName = item.category;
     if (!summary.byCategory[categoryName]) {
       summary.byCategory[categoryName] = {
@@ -742,42 +420,21 @@ exports.generateInventorySummaryExcel = asyncHandler(async (req, res) => {
     summary.byCategory[categoryName].stock += item.stockLevel;
     summary.byCategory[categoryName].sold += item.totalSold;
 
-    // Stock status breakdown
     summary.byStockStatus[item.stockStatus]++;
   });
 
-  // Create Excel workbook
   const workbook = new excel.Workbook();
   const worksheet = workbook.addWorksheet('Inventory Summary');
+  worksheet.columns = columns;
 
-  // Define columns
-  worksheet.columns = [
-    { header: 'Variant Code', key: 'variantCode', width: 15 },
-    { header: 'Title', key: 'title', width: 20 },
-    { header: 'Description', key: 'description', width: 30 },
-    { header: 'SKU', key: 'sku', width: 15 },
-    { header: 'Category', key: 'category', width: 15 },
-    { header: 'Subcategory', key: 'subcategory', width: 15 },
-    { header: 'Variant Details', key: 'variantDetails', width: 15 },
-    { header: 'Cost', key: 'cost', width: 10 },
-    { header: 'Price', key: 'price', width: 10 },
-    { header: 'Stock Level', key: 'stockLevel', width: 10 },
-    { header: 'Stock Status', key: 'stockStatus', width: 12 },
-    { header: 'Value', key: 'value', width: 12 },
-    { header: 'Total Sold', key: 'totalSold', width: 10 },
-    { header: 'Created At', key: 'createdAt', width: 20 },
-  ];
-
-  // Add data rows
   filteredInventory.forEach(item => {
     worksheet.addRow({
-      variantCode: item.variantCode,
+      barcode: item.barcode,
       title: item.title,
       description: item.description,
       sku: item.sku,
       category: item.category,
       subcategory: item.subcategory,
-      variantDetails: item.variantDetails,
       cost: item.cost,
       price: item.price,
       stockLevel: item.stockLevel,
@@ -788,12 +445,10 @@ exports.generateInventorySummaryExcel = asyncHandler(async (req, res) => {
     });
   });
 
-  // Add summary worksheet
   const summarySheet = workbook.addWorksheet('Summary');
 
-  // Add summary data
   summarySheet.addRow(['Total Products', summary.totalProducts]);
-  summarySheet.addRow(['Total Variants', summary.totalVariants]);
+  summarySheet.addRow(['Total Stock Entries', summary.totalStockEntries]);
   summarySheet.addRow(['Total Value', summary.totalValue]);
   summarySheet.addRow(['Total Stock', summary.totalStock]);
   summarySheet.addRow(['Total Sold', summary.totalSold]);
@@ -811,13 +466,10 @@ exports.generateInventorySummaryExcel = asyncHandler(async (req, res) => {
     summarySheet.addRow([category, data.count, data.value, data.stock, data.sold]);
   });
 
-  // Style header rows
   worksheet.getRow(1).font = { bold: true };
 
-  // Set response headers
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', 'attachment; filename=inventory-summary.xlsx');
 
-  // Write workbook to response
   await workbook.xlsx.write(res);
 });

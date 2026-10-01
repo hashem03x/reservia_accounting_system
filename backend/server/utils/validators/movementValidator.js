@@ -64,12 +64,6 @@ const createMovementValidate = [
     .notEmpty()
     .withMessage('Product is required'),
 
-  body('variant')
-    .isMongoId()
-    .withMessage('Variant must be a valid MongoDB ObjectId')
-    .notEmpty()
-    .withMessage('Variant is required'),
-
   validatorMiddleware
 ];
 

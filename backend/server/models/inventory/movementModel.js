@@ -6,11 +6,6 @@ const movementSchema = new mongoose.Schema({
     ref: 'Product',
     required: true
   },
-  variant: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Variant',
-    required: true
-  },
   quantity: {
     type: Number,
     required: true,

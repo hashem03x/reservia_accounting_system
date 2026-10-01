@@ -1,6 +1,5 @@
 import Barcode from "react-barcode";
 import { useLanguage } from "@/context/LanguageContext";
-import { getColorLabel } from "@/utils/constants/colors";
 import { formatDateAndTime } from "@/utils/helpers/date-formaters";
 import { RECEIPT_WIDTH } from "@/utils/constants";
 import { solidIcons } from "@/components/icons";
@@ -141,7 +140,6 @@ export default function PrintReceipt() {
               <thead>
                 <tr>
                   <th>Item Code</th>
-                  <th>Color</th>
                   <th>Qty</th>
                   <th>Price</th>
                   <th>Total</th>
@@ -150,8 +148,7 @@ export default function PrintReceipt() {
               <tbody>
                 {order.items.map((item, index) => (
                   <tr key={index}>
-                    <td>{item.variant.variantCode}</td>
-                    <td>{getColorLabel(item.variant.color, "en-US")}</td>
+                    <td>{item.product.sku}</td>
                     <td>{item.starterQuantity}</td>
                     <td>{item.unitPriceAfterDiscount.toFixed(0)}</td>
                     <td style={{ fontWeight: 500 }}>{item.starterSubtotal.toFixed(0)}</td>
@@ -160,7 +157,7 @@ export default function PrintReceipt() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={4}></td>
+                  <td colSpan={3}></td>
                   <td style={{ fontWeight: 600 }}>{order.starterTotalAmount.toFixed(0)}</td>
                 </tr>
               </tfoot>
@@ -182,8 +179,8 @@ export default function PrintReceipt() {
                 </thead>
                 <tbody>
                   {returnedItems.map((item) => (
-                    <tr key={item.variant._id}>
-                      <td>{item.variant.variantCode}</td>
+                    <tr key={item.product._id}>
+                      <td>{item.product.sku}</td>
                       <td>{item.returnedQuantity}</td>
                       <td style={{ fontWeight: 500 }}>{(item.unitPriceAfterDiscount * item.returnedQuantity).toFixed(0)}</td>
                     </tr>

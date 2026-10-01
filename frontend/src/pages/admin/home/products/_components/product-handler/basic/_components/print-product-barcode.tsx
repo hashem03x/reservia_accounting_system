@@ -1,40 +1,28 @@
-import Barcode from "react-barcode";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAbout } from "@/context/AboutContext";
 import { useSubcategories } from "@/context/SubcategoriesContext";
-import { getColorLabel } from "@/utils/constants/colors";
 import { BARCODE_HEIGHT, BARCODE_WIDTH } from "@/utils/constants";
 import { outlineIcons } from "@/components/icons";
 import PrintDocument from "@/components/ui/print-document";
-import { Product, Variant } from "@/types/product";
+import { Product } from "@/types/product";
+import Barcode from "react-barcode";
 
-export default function PrintVariantBarcode({
-  product,
-  variant,
-  buttonType,
-}: {
-  product: Product;
-  variant: Variant;
-  buttonType: "Menu" | "Button" | "Icon";
-}) {
+// A Product carries its own barcode directly now - there is no separate Variant to print a
+// barcode for (see docs/entities/products.md).
+export default function PrintProductBarcode({ product, buttonType }: { product: Product; buttonType: "Menu" | "Button" | "Icon" }) {
   const { translate } = useLanguage();
   const { data: aboutData } = useAbout();
   const { data: subcategories } = useSubcategories();
 
   const subcategory = subcategories.find((sub) => sub._id === product.subcategory);
 
-  // Build variant info based on barcode settings
-  const variantInfoParts: string[] = [];
+  const infoParts: string[] = [];
   if (aboutData?.barcodeSittings?.subcategory && subcategory) {
-    variantInfoParts.push(subcategory.name.en);
+    infoParts.push(subcategory.name.en);
   }
-  if (aboutData?.barcodeSittings?.color) {
-    variantInfoParts.push(getColorLabel(variant.color, "en-US"));
-  }
-  if (aboutData?.barcodeSittings?.size) {
-    variantInfoParts.push(variant.size);
-  }
-  const variantInfo = variantInfoParts.join(" - ");
+  const info = infoParts.join(" - ");
+
+  if (!product.barcode) return null;
 
   return (
     <PrintDocument
@@ -70,31 +58,19 @@ export default function PrintVariantBarcode({
         >
           {product.title.en}
         </div>
-        {/* Variant Info - Price */}
-        {variantInfo && (
-          <div
-            style={{
-              width: "100%",
-              textAlign: "center",
-              fontSize: "2.1mm",
-            }}
-          >
-            {variantInfo} - {product.price} EGP
-          </div>
-        )}
-        {!variantInfo && (
-          <div
-            style={{
-              width: "100%",
-              textAlign: "center",
-              fontSize: "2.1mm",
-            }}
-          >
-            {product.price} EGP
-          </div>
-        )}
+        {/* Info - Price */}
+        <div
+          style={{
+            width: "100%",
+            textAlign: "center",
+            fontSize: "2.1mm",
+          }}
+        >
+          {info ? `${info} - ` : ""}
+          {product.price} EGP
+        </div>
         {/* Barcode */}
-        <Barcode value={variant.variantCode} margin={0} width={1.65} height={32} fontSize={12.5} />
+        <Barcode value={product.barcode} margin={0} width={1.65} height={32} fontSize={12.5} />
       </div>
     </PrintDocument>
   );

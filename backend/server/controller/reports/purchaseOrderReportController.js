@@ -60,7 +60,7 @@ exports.getPurchaseOrderReport = asyncHandler(async (req, res) => {
 
   const purchaseOrders = await PurchaseOrder.find(query)
     .populate('vendorId', 'name email phone')
-    .populate('items.variantId', 'name')
+    .populate('items.productId', 'title')
     .sort(sortConfig);
 
   res.status(200).json({
@@ -99,7 +99,7 @@ exports.exportPurchaseOrderReportExcel = asyncHandler(async (req, res) => {
   const purchaseOrders = await PurchaseOrder.find(query)
     .populate('vendorId', 'name email phone')
     .populate('warehouseId', 'name')
-    .populate('items.variantId', 'name')
+    .populate('items.productId', 'title')
     .sort(sortConfig);
 
   if (purchaseOrders.length === 0) {

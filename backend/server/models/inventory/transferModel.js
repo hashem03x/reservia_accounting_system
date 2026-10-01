@@ -3,9 +3,14 @@ const mongooseI18n = require('mongoose-i18n-localize');
 
 const transferSchema = new Schema(
   {
+    // 'product' = move all available stock of the one `product` field below from source to
+    // target warehouse. 'products' = move specific quantities of one or more products, listed in
+    // `details`. (Previously three types - 'product'/'variant'/'variants' - distinguished by
+    // variant granularity; with Variant removed, 'variant' and 'variants' collapsed into this one
+    // 'products' type, since a single-entry `details` array already covers the old singular case.)
     type: {
       type: String,
-      enum: ['product', 'variant', 'variants'],
+      enum: ['product', 'products'],
       required: true,
     },
 
@@ -14,18 +19,11 @@ const transferSchema = new Schema(
       ref: 'Product',
       required: true,
     },
-    // variantId: {
-    //   type: Schema.Types.ObjectId,
-    //   ref: 'Variant',
-    //   required: function () {
-    //     return this.type === 'variant';
-    //   },
-    // },
     details: [
       {
-        variant: {
+        product: {
           type: Schema.Types.ObjectId,
-          ref: 'Variant',
+          ref: 'Product',
           required: true,
         },
         quantity: {
@@ -70,16 +68,6 @@ const transferSchema = new Schema(
   }
 );
 
-// virtual populate variantId to variant
-// transferSchema.virtual('variant').get(function () {
-//   return this.details.map((detail) => detail.variantId);
-// });
-
-// // virtual populate productId to product
-// transferSchema.virtual('product').get(function () {
-//   return this.productId;
-// });
-
 const totalQuantity = details => {
   return details.reduce((sum, item) => sum + item.quantity, 0);
 };
@@ -93,17 +81,14 @@ transferSchema.pre('save', function (next) {
 });
 
 transferSchema.pre(/^find/, function (next) {
-  // variants are not required to be populated
   this.populate({
     path: 'product',
-    select: 'title',
-    options: { populateVariants: false },
+    select: 'title barcode sku',
   });
 
   this.populate({
-    path: 'details.variant',
-    select: 'sku color size stockStatus stockLevel',
-    options: { populateProduct: false },
+    path: 'details.product',
+    select: 'title barcode sku',
   });
 
   this.populate({
@@ -113,22 +98,6 @@ transferSchema.pre(/^find/, function (next) {
 
   next();
 });
-
-// afeter save transfer
-// transferSchema.post('save', async function (doc, next) {
-// await this
-//     .populate({
-//       path: 'product',
-//       select: 'title', // Populate only the title field from Product
-//     })
-//     .populate({
-//       path: 'details.variant',
-//       select: 'size color sku', // Populate size, color, and SKU from Variant
-//     })
-//     .execPopulate();
-
-//   next();
-// });
 
 transferSchema.plugin(mongooseI18n, { locales: ['en', 'ar'], defaultLocale: process.env.DEFAULT_LANGUAGE });
 module.exports = model('Transfer', transferSchema);

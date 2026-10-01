@@ -8,92 +8,53 @@ const asyncHandler = require('express-async-handler');
 // const BASE_URL = process.env.NODE_ENV == 'production' ? process.env.PROD_URL : process.env.DEV_URL;
 
 const PO = require('../../models/vendor/purchaseOrder');
-const Variant = require('../../models/inventory/variantModel');
 const Product = require('../../models/inventory/productModel');
 const factory = require('../handlersFactory');
 const ApiError = require('../../utils/apiError'); // DEV_URL
 
-const updateStock = async (item, warehouseId, session) => {
-  const { variantId, starterQuantity } = item;
+// Applies a PO's items to the products they reference: recomputes each product's moving-average
+// cost (using stock levels BEFORE this purchase, same formula as before) and increments its stock
+// in the PO's warehouse - in ONE pass per distinct product (grouped up front, since a single PO can
+// have more than one line item for the same product), fetching and saving each product exactly
+// once. Previously this was two separate passes (calculateMovingAverage, then updateStock) that
+// each independently resolved variant -> product and re-fetched/re-saved per item; with items
+// identifying their product directly, there is no variant indirection left to resolve, and no
+// reason to touch the same product document twice.
+const applyPurchaseToProducts = async (purchaseOrder, warehouseId, session) => {
+  const itemsByProduct = new Map();
 
-  const variant = await Variant.findById(variantId).session(session);
-  if (!variant) throw new ApiError(`Variant with ID ${variantId} not found.`);
-
-  const updatedStock = variant.stock.find(s => s.warehouse.toString() === warehouseId);
-
-  if (updatedStock) {
-    updatedStock.quantity += starterQuantity;
-  } else {
-    variant.stock.push({ warehouse: warehouseId, quantity: starterQuantity });
+  for (const item of purchaseOrder.items) {
+    const productId = item.productId.toString();
+    if (!itemsByProduct.has(productId)) itemsByProduct.set(productId, []);
+    itemsByProduct.get(productId).push(item);
   }
 
-  await variant.save({ session });
-};
+  for (const [productId, items] of itemsByProduct) {
+    const product = await Product.findById(productId).session(session);
+    if (!product) throw new ApiError(`Product with ID ${productId} not found.`);
 
-const calculateMovingAverage = async (purchaseOrder, session) => {
-  // calc new cost = (t_available + t_purchased) / (q_available + q_purchased), moving average cost
-  // Group items by their product ID to handle multiple variants of the same product
-  const variantsByProduct = new Map();
+    // calc new cost = (t_available + t_purchased) / (q_available + q_purchased), moving average cost
+    const q_available = (product.stock || []).reduce((sum, stock) => sum + stock.quantity, 0);
+    const q_purchased = items.reduce((total, item) => total + item.starterQuantity, 0);
+    const t_available = q_available * product.cost;
+    const t_purchased = items.reduce((total, item) => total + item.starterQuantity * item.unitPriceAfterDiscount, 0);
 
-  // First, get all variants and group them by product
-  for (const item of purchaseOrder.items) {
-    const variant = await Variant.findById(item.variantId).populate('productId').session(session);
+    product.cost = (t_available + t_purchased) / (q_available + q_purchased);
 
-    if (!variant) continue;
-
-    // productId
-    const productId = variant.productId._id.toString();
-
-    if (!variantsByProduct.has(productId)) {
-      variantsByProduct.set(productId, {
-        product: variant.productId,
-        items: [],
-      });
+    const stockEntry = product.stock.find(s => s.warehouse.toString() === warehouseId);
+    if (stockEntry) {
+      stockEntry.quantity += q_purchased;
+    } else {
+      product.stock.push({ warehouse: warehouseId, quantity: q_purchased });
     }
 
-    variantsByProduct.get(productId).items.push({
-      variant,
-      quantity: item.starterQuantity,
-      priceAfterDiscount: item.unitPriceAfterDiscount,
-    });
-  }
-
-  // Calculate and update the moving average for each product
-  for (const [productId, data] of variantsByProduct) {
-    const { product, items } = data;
-
-    // Calculate q_available (total quantity in stock before purchase)
-    const variants = await Variant.find({ productId: product._id }).session(session);
-
-    const q_available = variants.reduce((total, variant) => {
-      return total + variant.stock.reduce((sum, stock) => sum + stock.quantity, 0);
-    }, 0);
-
-    // logic upadte stock each time
-
-    // Calculate q_purchased (total quantity purchased in this PO)
-    const q_purchased = items.reduce((total, item) => total + item.quantity, 0);
-
-    // Calculate t_available (total cost of available stock)
-    const t_available = q_available * product.cost;
-
-    // Calculate t_purchased (total cost of purchased items)
-    const t_purchased = items.reduce((total, item) => {
-      return total + item.quantity * item.priceAfterDiscount;
-    }, 0);
-
-    console.log({ t_available, t_purchased, q_available, q_purchased });
-
-    // throw new ApiError('Stop '); // Testing
-
-    // Calculate new average cost for the product after purchase
-    // want substract the t_returnPurchase from t_purchased and q_returnPurchase from q_purchased
-    const newCost = (t_available + t_purchased) / (q_available + q_purchased);
-
-    // Update product cost
-    await Product.findByIdAndUpdate(productId, { cost: newCost }, { session });
+    await product.save({ session });
   }
 };
+
+// Exported so other PO-creation entry points (e.g. the CSV import pipeline) share this exact
+// cost/stock logic instead of maintaining a second copy.
+exports.applyPurchaseToProducts = applyPurchaseToProducts;
 
 exports.createPO = asyncHandler(async (req, res, next) => {
   const session = await mongoose.startSession();
@@ -117,15 +78,8 @@ exports.createPO = asyncHandler(async (req, res, next) => {
 
     await purchaseOrder.save({ session });
 
-    // Calculate and update moving average costs BEFORE updating stock
-    await calculateMovingAverage(purchaseOrder, session);
-
-    // Update stock after cost calculations
-    await Promise.all(
-      items.map(async item => {
-        await updateStock(item, warehouseId, session);
-      })
-    );
+    // Recompute moving-average cost and increment stock for every product this PO touches.
+    await applyPurchaseToProducts(purchaseOrder, warehouseId, session);
 
     await session.commitTransaction();
 

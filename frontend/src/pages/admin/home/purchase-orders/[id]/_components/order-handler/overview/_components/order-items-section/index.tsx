@@ -19,10 +19,8 @@ export default function OrderItemsSection() {
         <Table className="text-nowrap text-sm" withColumnBorders verticalSpacing={1.5}>
           <Table.Thead>
             <Table.Tr h={40} className="text-gray-800">
-              <Table.Th w={150}>{translate("Variant Code", "كود الصنف")}</Table.Th>
+              <Table.Th w={150}>{translate("SKU", "رمز المنتج")}</Table.Th>
               <Table.Th w={175}>{translate("Product Title", "عنوان المنتج")}</Table.Th>
-              <Table.Th w={100}>{translate("Color", "اللون")}</Table.Th>
-              <Table.Th w={100}>{translate("Size", "المقاس")}</Table.Th>
               <Table.Th w={100}>{translate("Quantity", "الكمية")}</Table.Th>
               <Table.Th w={125}>{translate("Returned", "مرتجع")}</Table.Th>
               <Table.Th w={125}>{translate("Unit Price", "سعر الوحدة")}</Table.Th>

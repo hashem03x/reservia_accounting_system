@@ -2,7 +2,7 @@ const { default: mongoose } = require('mongoose');
 const SalesOrder = require('../../models/sales/salesOrderModel');
 const SalesOrderReturn = require('../../models/sales/salesOrderReturnModel');
 const Payment = require('../../models/vendor/paymentModel');
-const Variant = require('../../models/inventory/variantModel');
+const Product = require('../../models/inventory/productModel');
 const asyncHandler = require('express-async-handler');
 const ApiError = require('../../utils/apiError');
 const factory = require('../handlersFactory');
@@ -168,23 +168,23 @@ exports.returnSalesOrderItemAdmin = asyncHandler(async (req, res, next) => {
           item.returnedQuantity += returnedQuantity;
           item.quantityToBeReturned = 0;
 
-          // 2.2 Increase stock in variant
-          const variant = await Variant.findById(item.variant).session(session);
-          if (!variant) {
-            throw new ApiError(`Variant not found with id ${item.variant}`, 404);
+          // 2.2 Increase stock on the product
+          const product = await Product.findById(item.product).session(session);
+          if (!product) {
+            throw new ApiError(`Product not found with id ${item.product}`, 404);
           }
 
-          const warehouseStock = variant.stock.find(stock => stock.warehouse.toString() === salesOrder.warehouse.toString());
+          const warehouseStock = product.stock.find(stock => stock.warehouse.toString() === salesOrder.warehouse.toString());
 
           if (!warehouseStock) {
-            variant.stock.push({
+            product.stock.push({
               warehouse: salesOrder.warehouse,
               quantity: returnedQuantity,
             });
           } else {
             warehouseStock.quantity += returnedQuantity;
           }
-          await variant.save({ session });
+          await product.save({ session });
 
           // 2.3 Create payment with type out
           const returnAmount = returnedQuantity * item.unitPriceAfterDiscount || returnedQuantity * item.unitPrice;
@@ -205,7 +205,7 @@ exports.returnSalesOrderItemAdmin = asyncHandler(async (req, res, next) => {
           const salesOrderReturn = new SalesOrderReturn({
             salesOrderId,
             warehouseId: salesOrder.warehouse,
-            variantId: item.variant,
+            productId: item.product,
             returnedQuantity,
             returnedAmount: returnAmount,
             notes: 'Website order return',

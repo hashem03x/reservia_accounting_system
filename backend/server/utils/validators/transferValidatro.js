@@ -1,16 +1,16 @@
 const { body, check } = require('express-validator');
 const Warehouse = require('../../models/inventory/warehouseModel');
-const Variant = require('../../models/inventory/variantModel');
+const Product = require('../../models/inventory/productModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { PaymentMethods } = require('../appConstant');
 
 exports.validateTransferStock = [
   body('type')
-    .isIn(['product', 'variant', 'variants'])
-    .withMessage('Invalid transfer type. Must be "product", "variant", or "variants".')
+    .isIn(['product', 'products'])
+    .withMessage('Invalid transfer type. Must be "product" or "products".')
     .custom((value, { req }) => {
-      if (value === 'variants' && !Array.isArray(req.body.details) && !req.body.productId) {
-        throw new Error('Details must be an array for multiple variants transfer && productId is required');
+      if (value === 'products' && !Array.isArray(req.body.details) && !req.body.productId) {
+        throw new Error('Details must be an array for multiple-products transfer && productId is required');
       }
       return true;
     }),
@@ -48,22 +48,18 @@ exports.validateTransferStock = [
       if (!value.productId) {
         throw new Error('Product ID is required for product transfer');
       }
-    } else if (type === 'variant') {
-      if (!value.variantId || typeof value.quantity !== 'number' || value.quantity <= 0) {
-        throw new Error('Variant ID and a valid quantity are required for single variant transfer');
-      }
-    } else if (type === 'variants') {
+    } else if (type === 'products') {
       if (!Array.isArray(value) || value.length === 0) {
-        throw new Error('Details must be a non-empty array for multiple variants transfer');
+        throw new Error('Details must be a non-empty array for multiple-products transfer');
       }
 
       for (const item of value) {
-        const variant = await Variant.findById(item.variantId);
-        if (!variant) {
-          throw new Error(`Variant with ID ${item.variantId} not found`);
+        const product = await Product.findById(item.productId);
+        if (!product) {
+          throw new Error(`Product with ID ${item.productId} not found`);
         }
-        if (!item.variantId || typeof item.quantity !== 'number' || item.quantity <= 0) {
-          throw new Error('Each detail in variants must include a valid variantId and quantity > 0');
+        if (!item.productId || typeof item.quantity !== 'number' || item.quantity <= 0) {
+          throw new Error('Each detail in products must include a valid productId and quantity > 0');
         }
       }
     }

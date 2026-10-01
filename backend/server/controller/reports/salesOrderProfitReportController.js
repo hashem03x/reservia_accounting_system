@@ -44,12 +44,8 @@ exports.getSalesOrderProfitReport = asyncHandler(async (req, res) => {
 
   const salesOrders = await SalesOrder.find(query)
     .populate({
-      path: 'items.variant',
-      select: 'color size productId',
-      populate: {
-        path: 'productId',
-        select: 'title cost',
-      },
+      path: 'items.product',
+      select: 'title cost',
     })
     .populate('warehouse', 'name')
     .select('items totalAmount createdAt warehouse');
@@ -60,8 +56,8 @@ exports.getSalesOrderProfitReport = asyncHandler(async (req, res) => {
 
     // Calculate total cost from items
     order.items.forEach(item => {
-      if (item.variant && item.variant.productId && item.variant.productId.cost) {
-        totalCost += item.variant.productId.cost * (item.starterQuantity - (item.returnedQuantity || 0));
+      if (item.product && item.product.cost) {
+        totalCost += item.product.cost * (item.starterQuantity - (item.returnedQuantity || 0));
       }
     });
 
@@ -74,9 +70,9 @@ exports.getSalesOrderProfitReport = asyncHandler(async (req, res) => {
       date: order.createdAt,
       warehouse: order.warehouse ? order.warehouse.name : 'N/A',
       items: order.items.map(item => ({
-        name: item.variant ? `${getEnglishTitle(item.variant.productId?.title)} - ${item.variant.color} ${item.variant.size}` : 'Unknown Item',
+        name: item.product ? getEnglishTitle(item.product.title) : 'Unknown Item',
         quantity: item.starterQuantity - (item.returnedQuantity || 0),
-        costPrice: item.variant && item.variant.productId ? item.variant.productId.cost : 0,
+        costPrice: item.product ? item.product.cost : 0,
         sellingPrice: item.unitPriceAfterDiscount || item.unitPrice || 0,
       })),
       totalSales,
@@ -120,12 +116,8 @@ exports.generateSalesOrderProfitReport = asyncHandler(async (req, res) => {
 
   const salesOrders = await SalesOrder.find(query)
     .populate({
-      path: 'items.variant',
-      select: 'color size productId',
-      populate: {
-        path: 'productId',
-        select: 'title cost',
-      },
+      path: 'items.product',
+      select: 'title cost',
     })
     .populate('warehouse', 'name')
     .select('items totalAmount createdAt warehouse');
@@ -152,9 +144,9 @@ exports.generateSalesOrderProfitReport = asyncHandler(async (req, res) => {
 
   salesOrders.forEach(order => {
     order.items.forEach(item => {
-      if (item.variant && item.variant.productId) {
+      if (item.product) {
         const quantity = item.starterQuantity - (item.returnedQuantity || 0);
-        const costPrice = item.variant.productId.cost || 0;
+        const costPrice = item.product.cost || 0;
         const sellingPrice = item.unitPriceAfterDiscount || item.unitPrice || 0;
         const itemTotalCost = costPrice * quantity;
         const itemTotalSales = sellingPrice * quantity;
@@ -169,7 +161,7 @@ exports.generateSalesOrderProfitReport = asyncHandler(async (req, res) => {
           formatDate(order.createdAt),
           order._id.toString(),
           order.warehouse ? order.warehouse.name : 'N/A',
-          `${getEnglishTitle(item.variant.productId.title)} - ${item.variant.color} ${item.variant.size}`,
+          getEnglishTitle(item.product.title),
           quantity,
           costPrice,
           sellingPrice,

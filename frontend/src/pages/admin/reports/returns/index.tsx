@@ -24,9 +24,8 @@ interface ReturnData {
   product: string;
   category: string;
   subcategory: string;
-  variantCode: string;
-  color: string;
-  size: string;
+  sku: string;
+  barcode: string;
   returnedQuantity: number;
   returnedAmount: number;
   createdBy: string;
@@ -208,9 +207,8 @@ export default function ReturnsReport() {
                   <Table.Th>{translate("Product", "المنتج")}</Table.Th>
                   <Table.Th>{translate("Category", "القسم")}</Table.Th>
                   <Table.Th>{translate("Subcategory", "القسم الفرعي")}</Table.Th>
-                  <Table.Th>{translate("Variant Code", "كود المنتج")}</Table.Th>
-                  <Table.Th>{translate("Color", "اللون")}</Table.Th>
-                  <Table.Th>{translate("Size", "المقاس")}</Table.Th>
+                  <Table.Th>{translate("SKU", "رمز المنتج")}</Table.Th>
+                  <Table.Th>{translate("Barcode", "الباركود")}</Table.Th>
                   <Table.Th style={{ textAlign: "right" }}>{translate("Returned Quantity", "الكمية المرتجعة")}</Table.Th>
                   <Table.Th style={{ textAlign: "right" }}>{translate("Returned Amount", "المبلغ المرتجع")}</Table.Th>
                   <Table.Th>{translate("Created By", "تم بواسطة")}</Table.Th>
@@ -226,9 +224,8 @@ export default function ReturnsReport() {
                     <Table.Td>{item.product}</Table.Td>
                     <Table.Td>{item.category}</Table.Td>
                     <Table.Td>{item.subcategory}</Table.Td>
-                    <Table.Td>{item.variantCode}</Table.Td>
-                    <Table.Td>{item.color}</Table.Td>
-                    <Table.Td>{item.size}</Table.Td>
+                    <Table.Td>{item.sku}</Table.Td>
+                    <Table.Td>{item.barcode}</Table.Td>
                     <Table.Td style={{ textAlign: "right" }}>{item.returnedQuantity}</Table.Td>
                     <Table.Td style={{ textAlign: "right" }}>{item.returnedAmount.toFixed(2)}</Table.Td>
                     <Table.Td>{item.createdBy}</Table.Td>
@@ -238,7 +235,7 @@ export default function ReturnsReport() {
 
                 {/* Total Row */}
                 <Table.Tr className="font-semibold text-gray-800" style={{ backgroundColor: "#f3f4f6" }}>
-                  <Table.Td colSpan={9}>{translate("Total", "المجموع")}</Table.Td>
+                  <Table.Td colSpan={8}>{translate("Total", "المجموع")}</Table.Td>
                   <Table.Td style={{ textAlign: "right" }}>
                     {data.data.reduce((sum, item) => sum + item.returnedQuantity, 0)}
                   </Table.Td>

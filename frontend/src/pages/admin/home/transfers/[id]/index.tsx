@@ -6,7 +6,6 @@ import useWarehouseHelpers from "@/hooks/useWarehouseHelpers";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { Transfer as TransferType } from "@/types/transfer";
-import { getColorLabel } from "@/utils/constants/colors";
 import { getTransferTypeLabel } from "@/utils/constants/transfer-types";
 import { formatDateAndTime } from "@/utils/helpers/date-formaters";
 import paths from "@/utils/constants/paths";
@@ -107,13 +106,13 @@ export default function Transfer() {
               </div>
             </div>
 
-            {/* Transfered Variants Table */}
+            {/* Transferred Products Table */}
             <div className="rounded-md bg-white p-3 sm:p-4">
-              <h3>{translate("Transferred  Variants", "الأصناف المحولة")}</h3>
+              <h3>{translate("Transferred Products", "المنتجات المحولة")}</h3>
 
               {transfer.type === "product" && (
                 <p className="text-sm">
-                  {translate("All variants of this product are transferred", "تم تحويل جميع أصناف هذا المنتج")}
+                  {translate("All available stock of this product is transferred", "تم تحويل جميع كمية هذا المنتج")}
                 </p>
               )}
 
@@ -123,8 +122,6 @@ export default function Transfer() {
                     <Table.Thead>
                       <Table.Tr className="border-t text-gray-800">
                         <Table.Th py={8}>{translate("Title", "العنوان")}</Table.Th>
-                        <Table.Th py={8}>{translate("Color", "اللون")}</Table.Th>
-                        <Table.Th py={8}>{translate("Size", "المقاس")}</Table.Th>
                         <Table.Th py={8}>{translate("Quantity", "الكمية")}</Table.Th>
                       </Table.Tr>
                     </Table.Thead>
@@ -132,10 +129,8 @@ export default function Transfer() {
                       {transfer.details.map((detail) => (
                         <Table.Tr key={detail._id}>
                           <Table.Td className="font-bold text-gray-800">
-                            {translate(transfer.product.title.en, transfer.product.title.ar)}
+                            {translate(detail.product.title.en, detail.product.title.ar)}
                           </Table.Td>
-                          <Table.Td>{getColorLabel(detail.variant.color, language)}</Table.Td>
-                          <Table.Td>{detail.variant.size}</Table.Td>
                           <Table.Td className="font-bold text-gray-800">{detail.quantity}</Table.Td>
                         </Table.Tr>
                       ))}

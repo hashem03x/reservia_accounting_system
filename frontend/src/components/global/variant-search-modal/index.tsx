@@ -4,8 +4,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useMainCategories } from "@/context/MainCategoriesContext";
 import useCategoryHelpers from "@/hooks/useCategoryHelpers";
 import useDataHandler from "@/hooks/useDataHandler";
-import { Product, Variant } from "@/types/product";
-import { getColorLabel } from "@/utils/constants/colors";
+import { Product } from "@/types/product";
 import handleRequest from "@/utils/helpers/handle-request";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
@@ -15,14 +14,10 @@ import { Button, Select, Table, TextInput } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import { getProductFinalPrice } from "@/utils/helpers/product-helpers";
 
-type VariantResult = Variant & {
-  title: { en: string; ar: string };
-  cost: number;
-  price: number;
-  priceAfterDiscount: number;
-};
-
-export default function VariantSearchModal({
+// A Product is the sellable/stock-tracked item itself now - there is no separate Variant to search
+// for (see docs/entities/products.md). `onSelect` receives the chosen product's barcode, the same
+// value a barcode scan into the order item row would produce.
+export default function ProductSearchModal({
   opened,
   close,
   mode,
@@ -31,14 +26,14 @@ export default function VariantSearchModal({
   opened: boolean;
   close: () => void;
   mode: "purchase" | "sales";
-  onSelect: (variantCode: string) => void;
+  onSelect: (barcode: string) => void;
 }) {
   const { translate, translations, language } = useLanguage();
 
   const { data: mainCategories } = useMainCategories();
   const { getSubcategoriesByMainCategoryId } = useCategoryHelpers();
 
-  const [variants, setVariants] = useState<VariantResult[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
 
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword] = useDebounce(keyword, 350);
@@ -49,7 +44,7 @@ export default function VariantSearchModal({
     initialData: null,
   });
 
-  function handleLoadVariants() {
+  function handleLoadProducts() {
     const controller = new AbortController();
     const canceled = { current: false };
 
@@ -68,19 +63,7 @@ export default function VariantSearchModal({
         language,
       });
 
-      const variants = response.data.flatMap((product: Product) =>
-        product.variants
-          .filter((variant) => !variant.isDeleted)
-          .map((variant) => ({
-            ...variant,
-            title: product.title,
-            cost: product.cost,
-            price: product.price,
-            priceAfterDiscount: product.priceAfterDiscount,
-          })),
-      );
-
-      setVariants(variants);
+      setProducts(response.data);
     };
 
     handleRequest(language, setLoading, setError, executeFetch, canceled);
@@ -93,7 +76,7 @@ export default function VariantSearchModal({
   }
 
   useEffect(() => {
-    const cancelRequest = handleLoadVariants(); // This will send the request and return the function to cancel it.
+    const cancelRequest = handleLoadProducts(); // This will send the request and return the function to cancel it.
     return cancelRequest; // This will be called when the component unmounts.
   }, [debouncedKeyword, mainCategoryFilter, subcategoryFilter]);
 
@@ -101,13 +84,13 @@ export default function VariantSearchModal({
     close();
     setTimeout(() => {
       // setKeyword("");
-      // setVariants([]);
+      // setProducts([]);
       setError("");
     }, 250);
   }
 
   return (
-    <Modal opened={opened} onClose={handleClose} title={translate("Search for a variant", "ابحث عن صنف")} size="lg">
+    <Modal opened={opened} onClose={handleClose} title={translate("Search for a product", "ابحث عن منتج")} size="lg">
       <div className="flex flex-col gap-3">
         {/* Filters */}
         <div className="flex items-center gap-2">
@@ -163,23 +146,15 @@ export default function VariantSearchModal({
 
         <div className="flex h-72 flex-col overflow-y-auto">
           {loading ? (
-            <LoadingSection message={translate("Loading variants", "جاري تحميل الأصناف")} />
+            <LoadingSection message={translate("Loading products", "جاري تحميل المنتجات")} />
           ) : error ? (
             <ErrorSection
-              errorTitle={translate("Error loading variants", "خطأ في تحميل الأصناف")}
+              errorTitle={translate("Error loading products", "خطأ في تحميل المنتجات")}
               errorMessage={error}
-              button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: handleLoadVariants }}
+              button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: handleLoadProducts }}
             />
-          ) : variants.length === 0 ? (
-            // debouncedKeyword ? (
-            //   <NoResultsSection
-            //     keyword={debouncedKeyword}
-            //     button={{ text: translate("View All", "عرض الكل"), onClick: () => setKeyword("") }}
-            //   />
-            // ) : (
-            //   <EmptySection useDefaultImg message={translate("No variants found", "لا توجد أصناف")} />
-            // )
-            <EmptySection useDefaultImg message={translate("No variants found", "لا توجد أصناف")} />
+          ) : products.length === 0 ? (
+            <EmptySection useDefaultImg message={translate("No products found", "لا توجد منتجات")} />
           ) : (
             <>
               {/* Table */}
@@ -188,9 +163,7 @@ export default function VariantSearchModal({
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>{translate("Title", "العنوان")}</Table.Th>
-                      <Table.Th>{translate("Code", "الكود")}</Table.Th>
-                      <Table.Th>{translate("Color", "اللون")}</Table.Th>
-                      <Table.Th>{translate("Size", "المقاس")}</Table.Th>
+                      <Table.Th>{translate("Barcode", "الباركود")}</Table.Th>
                       {mode === "purchase" ? (
                         <Table.Th>{translate("Cost", "التكلفة")}</Table.Th>
                       ) : mode === "sales" ? (
@@ -202,32 +175,30 @@ export default function VariantSearchModal({
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {variants.map((variant) => (
+                    {products.map((product) => (
                       <Table.Tr
-                        key={variant._id}
+                        key={product._id}
                         className="cursor-pointer text-gray-600"
                         onClick={() => {
-                          onSelect(variant.variantCode);
+                          if (product.barcode) onSelect(product.barcode);
                           handleClose();
                         }}
                       >
                         <Table.Td className="font-semibold text-gray-800">
-                          {translate(variant.title.en, variant.title.ar)}
+                          {translate(product.title.en, product.title.ar)}
                         </Table.Td>
-                        <Table.Td>{variant.variantCode}</Table.Td>
-                        <Table.Td>{getColorLabel(variant.color, language)}</Table.Td>
-                        <Table.Td>{variant.size}</Table.Td>
+                        <Table.Td>{product.barcode}</Table.Td>
                         {mode === "purchase" ? (
                           <Table.Td className="font-semibold text-gray-800">
-                            {variant.cost.toFixed(2)} {translations.currency}
+                            {(product.cost || 0).toFixed(2)} {translations.currency}
                           </Table.Td>
                         ) : mode === "sales" ? (
                           <>
                             <Table.Td className="font-semibold text-gray-800">
-                              {variant.price.toFixed(2)} {translations.currency}
+                              {product.price.toFixed(2)} {translations.currency}
                             </Table.Td>
                             <Table.Td className="font-semibold text-gray-800">
-                              {getProductFinalPrice(variant.priceAfterDiscount, variant.price).toFixed(2)}{" "}
+                              {getProductFinalPrice(product.priceAfterDiscount, product.price).toFixed(2)}{" "}
                               {translations.currency}
                             </Table.Td>
                           </>

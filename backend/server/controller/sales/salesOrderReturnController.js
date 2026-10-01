@@ -1,6 +1,5 @@
 const SalesOrderModel = require('../../models/sales/salesOrderModel');
 const SalesOrderReturnModel = require('../../models/sales/salesOrderReturnModel');
-const Variant = require('../../models/inventory/variantModel');
 const Product = require('../../models/inventory/productModel');
 const UserModel = require('../../models/userModel');
 const Payment = require('../../models/vendor/paymentModel');
@@ -8,7 +7,7 @@ const ApiError = require('../../utils/apiError');
 const factory = require('../handlersFactory');
 
 exports.returnSalesOrderItem = async (req, res, next) => {
-  let { salesOrderId, warehouseId, variantId, returnedQuantity, paymentMethod, notes } = req.body;
+  let { salesOrderId, warehouseId, productId, returnedQuantity, paymentMethod, notes } = req.body;
 
   returnedQuantity = Number(returnedQuantity);
 
@@ -22,12 +21,12 @@ exports.returnSalesOrderItem = async (req, res, next) => {
     if (!salesOrder) return next(new ApiError('Sales order not found', 404));
 
     // Get original item (that we want to return) from sales order
-    const originalItem = salesOrder.items.find(item => item.variant._id.toString() == variantId);
-    if (!originalItem) return next(new ApiError(`Item ${variantId} not found in original sales order`));
+    const originalItem = salesOrder.items.find(item => item.product._id.toString() == productId);
+    if (!originalItem) return next(new ApiError(`Item ${productId} not found in original sales order`));
 
     // Calculate total returned quantity
     originalItem.returnedQuantity += returnedQuantity;
-    if (originalItem.returnedQuantity > originalItem.starterQuantity) return next(new ApiError(`Cannot return more items than sold for variant ${variantId}`));
+    if (originalItem.returnedQuantity > originalItem.starterQuantity) return next(new ApiError(`Cannot return more items than sold for product ${productId}`));
 
     // Update quantity to be returned in sales order
     originalItem.quantityToBeReturned = Math.max(originalItem.quantityToBeReturned - returnedQuantity, 0);
@@ -37,21 +36,16 @@ exports.returnSalesOrderItem = async (req, res, next) => {
 
     await salesOrder.save({ session });
 
-    // Get original variant to be updated
-    const variant = await Variant.findById(variantId).session(session);
-    if (!variant) return next(new ApiError(`Variant with ID ${variantId} not found.`));
-
-    // Update product totalSold
-    const product = await Product.findById(variant.productId).session(session);
-    if (!product) return next(new ApiError(`Product not found for variant ${variantId}`));
+    // Get product to update stock + totalSold (no more variant indirection)
+    const product = await Product.findById(productId).session(session);
+    if (!product) return next(new ApiError(`Product with ID ${productId} not found.`));
     product.totalSold = Math.max((product.totalSold || 0) - returnedQuantity, 0);
-    await product.save({ session });
 
-    // Update variant stock in warehouse
-    const stockEntry = variant.stock.find(s => s.warehouse.toString() === warehouseId.toString());
-    if (!stockEntry) return next(new ApiError(`No stock found for variant ${variantId} in warehouse ${warehouseId}`));
+    // Update product stock in warehouse
+    const stockEntry = product.stock.find(s => s.warehouse.toString() === warehouseId.toString());
+    if (!stockEntry) return next(new ApiError(`No stock found for product ${productId} in warehouse ${warehouseId}`));
     stockEntry.quantity += returnedQuantity;
-    await variant.save({ session });
+    await product.save({ session });
 
     // Calculate return amount based on original unit price after discount
     const returnedAmount = returnedQuantity * originalItem.unitPriceAfterDiscount;
@@ -62,7 +56,7 @@ exports.returnSalesOrderItem = async (req, res, next) => {
         {
           salesOrderId,
           warehouseId,
-          variantId,
+          productId,
           returnedQuantity,
           returnedAmount,
           notes,
@@ -141,35 +135,26 @@ exports.returnAllSalesOrderItems = async (req, res, next) => {
       item.returnedQuantity += remainingQty;
       item.quantityToBeReturned = 0;
 
-      // Get original variant to be updated
-      const variant = await Variant.findById(item.variant._id).session(session);
-      if (!variant) {
-        await session.abortTransaction();
-        session.endSession();
-        return next(new ApiError(`Variant with ID ${item.variant._id} not found.`, 404));
-      }
-
-      // Get product to update totalSold
-      const product = await Product.findById(variant.productId).session(session);
+      // Get product to update stock + totalSold (no more variant indirection)
+      const product = await Product.findById(item.product._id).session(session);
       if (!product) {
         await session.abortTransaction();
         session.endSession();
-        return next(new ApiError(`Product not found for variant ${item.variant._id}`, 404));
+        return next(new ApiError(`Product with ID ${item.product._id} not found.`, 404));
       }
 
       // Update product totalSold
       product.totalSold = Math.max((product.totalSold || 0) - remainingQty, 0);
-      await product.save({ session });
 
       // Update stock in warehouse
-      const stockEntry = variant.stock.find(s => s.warehouse.toString() === warehouseId.toString());
+      const stockEntry = product.stock.find(s => s.warehouse.toString() === warehouseId.toString());
       if (!stockEntry) {
         await session.abortTransaction();
         session.endSession();
-        return next(new ApiError(`No stock found for variant ${item.variant._id} in warehouse ${warehouseId}`, 404));
+        return next(new ApiError(`No stock found for product ${item.product._id} in warehouse ${warehouseId}`, 404));
       }
       stockEntry.quantity += remainingQty;
-      await variant.save({ session });
+      await product.save({ session });
 
       // Calculate return amount for this item
       const returnedAmount = remainingQty * item.unitPriceAfterDiscount;
@@ -181,7 +166,7 @@ exports.returnAllSalesOrderItems = async (req, res, next) => {
           {
             salesOrderId,
             warehouseId,
-            variantId: item.variant._id,
+            productId: item.product._id,
             returnedQuantity: remainingQty,
             returnedAmount,
             notes,

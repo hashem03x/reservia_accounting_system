@@ -28,12 +28,9 @@ interface WarehouseStock {
 
 interface VariantHistory {
   _id: string;
-  productId: string;
   productName: string;
-  color: string;
-  size: string;
-  variantCode: string;
   sku: string;
+  barcode: string;
   stock: {
     warehouse: string;
     quantity: number;
@@ -57,7 +54,7 @@ type SortOrderOption = SortOrder;
 export default function VariantHistoryReport() {
   const { language, translate } = useLanguage();
 
-  const title = translate("Variant History Report", "تقرير سجل المتغيرات");
+  const title = translate("Product History Report", "تقرير سجل المنتجات");
 
   useDocumentTitle(title);
 
@@ -241,9 +238,7 @@ export default function VariantHistoryReport() {
               <Table.Tr>
                 <Table.Th>{translate("Product", "المنتج")}</Table.Th>
                 <Table.Th>{translate("SKU", "رمز المنتج")}</Table.Th>
-                <Table.Th>{translate("Variant Code", "رمز المتغير")}</Table.Th>
-                <Table.Th>{translate("Color", "اللون")}</Table.Th>
-                <Table.Th>{translate("Size", "المقاس")}</Table.Th>
+                <Table.Th>{translate("Barcode", "الباركود")}</Table.Th>
                 <Table.Th>{translate("Stock Level", "مستوى المخزون")}</Table.Th>
                 <Table.Th>{translate("Status", "الحالة")}</Table.Th>
                 <Table.Th>{translate("Created At", "تاريخ الإنشاء")}</Table.Th>
@@ -255,9 +250,7 @@ export default function VariantHistoryReport() {
                 <Table.Tr key={variant._id}>
                   <Table.Td>{variant.productName}</Table.Td>
                   <Table.Td>{variant.sku}</Table.Td>
-                  <Table.Td>{variant.variantCode}</Table.Td>
-                  <Table.Td>{variant.color}</Table.Td>
-                  <Table.Td>{variant.size}</Table.Td>
+                  <Table.Td>{variant.barcode}</Table.Td>
                   <Table.Td>{variant.stockLevel}</Table.Td>
                   <Table.Td>{getStockStatusLabel(variant.stockStatus)}</Table.Td>
                   <Table.Td>{formatDate(variant.createdAt, language)}</Table.Td>

@@ -38,10 +38,8 @@ export default function Returns() {
                 <Table className="text-nowrap text-sm" withColumnBorders verticalSpacing="xs">
                   <Table.Thead className="bg-gray-100 text-gray-800">
                     <Table.Tr>
-                      <Table.Th>{translate("Variant Code", "كود الصنف")}</Table.Th>
+                      <Table.Th>{translate("SKU", "رمز المنتج")}</Table.Th>
                       <Table.Th>{translate("Product Title", "عنوان المنتج")}</Table.Th>
-                      <Table.Th>{translate("Color", "اللون")}</Table.Th>
-                      <Table.Th>{translate("Size", "المقاس")}</Table.Th>
                       <Table.Th>{translate("Price After Discount", "السعر بعد الخصم")}</Table.Th>
                       <Table.Th>{translate("Quantity Returned", "الكمية المرتجعة")}</Table.Th>
                       <Table.Th>{translate("Amount Returned", "المبلغ المرتجع")}</Table.Th>
@@ -66,10 +64,8 @@ export default function Returns() {
                 <Table.Thead className="bg-gray-100 text-gray-800">
                   <Table.Tr>
                     <Table.Th>{translate("Return Date", "تاريخ الارجاع")}</Table.Th>
-                    <Table.Th>{translate("Variant Code", "كود الصنف")}</Table.Th>
+                    <Table.Th>{translate("SKU", "رمز المنتج")}</Table.Th>
                     <Table.Th>{translate("Product Title", "عنوان المنتج")}</Table.Th>
-                    <Table.Th>{translate("Color", "اللون")}</Table.Th>
-                    <Table.Th>{translate("Size", "المقاس")}</Table.Th>
                     <Table.Th>{translate("Quantity Returned", "الكمية المرتجعة")}</Table.Th>
                     <Table.Th>{translate("Amount Returned", "المبلغ المرتجع")}</Table.Th>
                   </Table.Tr>

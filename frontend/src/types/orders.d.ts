@@ -1,6 +1,6 @@
 import { Customer } from "./customer";
 import { PaymentStatus } from "./payment";
-import { ProductColor, Variant } from "./product";
+import { ProductColor } from "./product";
 import { Address } from "./user";
 
 export type DiscountType = "percentage" | "fixed";
@@ -28,13 +28,15 @@ export type PurchaseOrder = {
 
 export type PurchaseOrderItem = {
   _id: string;
-  variant: Variant & {
-    product: {
-      _id: string;
-      title: { en: string; ar: string };
-      price: number;
-      priceAfterDiscount: number | null;
-    };
+  // A Product is the sellable/stock-tracked item itself now - there is no separate Variant (see
+  // docs/entities/products.md).
+  product: {
+    _id: string;
+    title: { en: string; ar: string };
+    price: number;
+    priceAfterDiscount: number | null;
+    sku?: string;
+    barcode?: string;
   };
   unitPrice: number;
   itemDiscount: ItemDiscount;
@@ -81,14 +83,16 @@ export type SalesOrder = {
 
 export type SalesOrderItem = {
   _id: string;
-  variant: Variant & {
-    product: {
-      _id: string;
-      title: { en: string; ar: string };
-      price: number;
-      priceAfterDiscount: number | null;
-      colors: ProductColor[];
-    };
+  // A Product is the sellable/stock-tracked item itself now - there is no separate Variant (see
+  // docs/entities/products.md).
+  product: {
+    _id: string;
+    title: { en: string; ar: string };
+    price: number;
+    priceAfterDiscount: number | null;
+    colors: ProductColor[];
+    sku?: string;
+    barcode?: string;
   };
   unitPrice: number;
   itemDiscount: ItemDiscount;
@@ -106,7 +110,7 @@ export type SalesOrderItem = {
 
 export type ReturnRecord = {
   _id: string;
-  variantId: string;
+  productId: string;
   returnedQuantity: number;
   returnedAmount: number;
   notes?: string;

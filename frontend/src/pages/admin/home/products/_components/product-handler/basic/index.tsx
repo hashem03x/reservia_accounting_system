@@ -13,13 +13,13 @@ import GeneralInformation from "./_components/general-information";
 import ServiceInformation from "./_components/service-information";
 import CategoriesInformation from "./_components/categoreies-information";
 import ColorsInformation from "./_components/colors-information";
+import InventoryInformation from "./_components/inventory-information";
 import TagsInformation from "./_components/tags-information";
 import DeleteProductModal from "./_components/delete-product-modal";
 import validation from "./_utils/validation";
 import { useProduct } from "../context";
-import { NavMethods } from "..";
 
-export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethods }) {
+export default function ProductBasicInfo() {
   const { language, translate } = useLanguage();
 
   const {
@@ -41,6 +41,12 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
     setColors,
     tags,
     setTags,
+    sku,
+    setSku,
+    barcode,
+    setBarcode,
+    stock,
+    setStock,
     currentProduct,
     setCurrentProduct,
     canIUpdateProducts,
@@ -95,7 +101,7 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
       formData.append("season", season);
 
       if (productIsService) {
-        // A service has no cost/category/subcategory/colors - see docs/entities/products.md.
+        // A service has no cost/category/subcategory/colors/stock - see docs/entities/products.md.
         formData.append("durationValue", durationValue.toString());
         formData.append("durationUnit", durationUnit);
       } else {
@@ -116,6 +122,10 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
             if (image instanceof File) formData.append(`colorImages${index}`, image);
           });
         });
+
+        if (sku) formData.append("sku", sku);
+        if (barcode) formData.append("barcode", barcode);
+        formData.append("stock", JSON.stringify(stock.map((item) => ({ warehouse: item.warehouse, quantity: item.quantity || 0 }))));
       }
       formData.append("tags", JSON.stringify(tags));
 
@@ -130,6 +140,9 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
       setCurrentProduct(response.data);
       setColors(JSON.parse(JSON.stringify(response.data.colors))); // To replace File objects with UploadedImage objects
       setTags(response.data.tags || []); // Reflects the server's normalized (trimmed/deduped) tags
+      setSku(response.data.sku || "");
+      setBarcode(response.data.barcode || ""); // Reflects the server-generated default when left empty
+      setStock(response.data.stock ? JSON.parse(JSON.stringify(response.data.stock)) : []);
 
       notifySuccess({
         language,
@@ -138,9 +151,6 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
           ? translate("Product updated successfully", "تم تحديث المنتج بنجاح")
           : translate("Product added successfully", "تم اضافة المنتج بنجاح"),
       });
-
-      // A service has no Variants tab to jump to (see docs/entities/products.md).
-      !updatingStatus && !productIsService && canIUpdateProducts && navMethods.variants();
     });
   }
 
@@ -179,7 +189,13 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
               if (image instanceof File) return true;
               if (image._id !== currentProduct.colors[index].images[imageIndex]._id) return true;
             }),
-          ))
+          ) ||
+          sku !== (currentProduct.sku || "") ||
+          barcode !== (currentProduct.barcode || "") ||
+          stock.some((stockItem) => {
+            const existing = (currentProduct.stock || []).find((item) => item.warehouse === stockItem.warehouse);
+            return (existing?.quantity || 0) !== (Number(stockItem.quantity) || 0);
+          }))
     : false;
 
   const dataChanedText = translate("Unsaved changes detected", "توجد تغييرات لم يتم حفظها");
@@ -242,6 +258,7 @@ export default function ProductBasicInfo({ navMethods }: { navMethods: NavMethod
           <>
             <TagsInformation />
             <ColorsInformation />
+            <InventoryInformation />
           </>
         )}
         {productIsService && <TagsInformation />}

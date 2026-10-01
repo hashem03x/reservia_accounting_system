@@ -11,11 +11,11 @@ const transferTypes: LocalizedEntity<TransferType> = {
       ar: "المنتج بالكامل",
     },
   },
-  variants: {
-    value: "variants",
+  products: {
+    value: "products",
     label: {
-      en: "Specific Variants",
-      ar: "أصناف محددة",
+      en: "Specific Products",
+      ar: "منتجات محددة",
     },
   },
 };

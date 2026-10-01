@@ -17,7 +17,7 @@ const purchaseOrderSchema = new Schema(
     items: [
       {
         // warehouseId: { type: Schema.Types.ObjectId, ref: 'Warehouse' }, // Not used so far
-        variantId: { type: Schema.Types.ObjectId, ref: 'Variant', required: true },
+        productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
         unitPrice: { type: Number, required: true, min: 0 },
         itemDiscount: {
           type: { type: String, enum: ['percentage', 'fixed'], default: 'fixed' },
@@ -139,13 +139,8 @@ purchaseOrderSchema.pre(/^find/, function () {
   });
 
   this.populate({
-    path: 'items.variantId',
-    select: '-stock',
-    populate: {
-      path: 'productId',
-      select: 'title price priceAfterDiscount category subcategory', // categories needed for barcode printing
-      options: { populateVariants: false },
-    },
+    path: 'items.productId',
+    select: 'title price priceAfterDiscount category subcategory barcode sku', // categories needed for barcode printing
   });
 });
 
@@ -158,21 +153,12 @@ purchaseOrderSchema.set('toJSON', {
       delete ret.vendorId;
     }
 
-    // Iterate through items to rename variantId to variant and productId to product inside variant
+    // Iterate through items to rename productId to product
     if (ret.items) {
       ret.items = ret.items.map(item => {
-        if (item.variantId) {
-          const variant = item.variantId;
-
-          // Rename productId to product inside variant
-          if (variant.productId) {
-            variant.product = variant.productId;
-            delete variant.productId;
-          }
-
-          // Assign modified variant back to item
-          item.variant = variant;
-          delete item.variantId;
+        if (item.productId) {
+          item.product = item.productId;
+          delete item.productId;
         }
 
         return item;

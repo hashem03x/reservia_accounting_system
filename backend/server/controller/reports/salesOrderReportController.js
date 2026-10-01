@@ -62,7 +62,7 @@ exports.getSalesOrderReport = asyncHandler(async (req, res) => {
 
   const salesOrders = await SalesOrder.find(query)
     .populate('customer', 'name email phone')
-    .populate('items.variant', 'name')
+    .populate('items.product', 'title')
     .sort(sortConfig);
 
   res.status(200).json({
@@ -101,7 +101,7 @@ exports.exportSalesOrderReportExcel = asyncHandler(async (req, res) => {
 
   const salesOrders = await SalesOrder.find(query)
     .populate('customer', 'name email phone')
-    .populate('items.variant', 'name')
+    .populate('items.product', 'title')
     .populate('warehouse', 'name')
     .sort(sortConfig);
 

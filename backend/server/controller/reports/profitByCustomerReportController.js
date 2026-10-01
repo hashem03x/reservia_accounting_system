@@ -54,7 +54,7 @@ exports.getProfitByCustomerReport = asyncHandler(async (req, res) => {
       select: 'name email phone type',
       match: customerType ? { type: customerType } : {},
     })
-    .populate('items.variant', 'name')
+    .populate('items.product', 'title')
     .sort('customer');
 
   // Filter out orders where customer was not found (due to type filter)
@@ -148,7 +148,7 @@ exports.exportProfitByCustomerReport = asyncHandler(async (req, res) => {
       select: 'name email phone type',
       match: customerType ? { type: customerType } : {},
     })
-    .populate('items.variant', 'name')
+    .populate('items.product', 'title')
     .sort('customer');
 
   // Filter out orders where customer was not found (due to type filter)

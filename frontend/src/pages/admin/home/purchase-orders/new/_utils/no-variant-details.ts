@@ -1,7 +1,7 @@
 import { OrderItemInput } from "../types";
 
-const noVariantDetails: Omit<OrderItemInput, "variantCode" | "variantError"> = {
-  variantData: null,
+const noProductDetails: Omit<OrderItemInput, "productCode" | "productError"> = {
+  productData: null,
   unitPrice: 0,
   itemDiscount: { type: "percentage", value: 0 },
   unitPriceAfterDiscount: 0,
@@ -9,4 +9,4 @@ const noVariantDetails: Omit<OrderItemInput, "variantCode" | "variantError"> = {
   starterSubtotal: 0,
 };
 
-export default noVariantDetails;
+export default noProductDetails;

@@ -12,15 +12,15 @@ import ErrorAlert from "@/components/ui/error-alert";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import { OrderItemInput } from "./types";
 import validation from "./_utils/validation";
-import noVariantDetails from "./_utils/no-variant-details";
+import noProductDetails from "./_utils/no-variant-details";
 import CustomerWarehouseSection from "./_components/customer-warehouse-section";
 import OrderItemsSection from "./_components/order-items-section";
 import InfoItem from "@/components/ui/info-item";
 
 const emptyOrderItem: OrderItemInput = {
-  variantCode: "",
-  variantError: false,
-  ...noVariantDetails,
+  productCode: "",
+  productError: false,
+  ...noProductDetails,
 };
 
 export default function NewSalesOrder() {
@@ -49,7 +49,7 @@ export default function NewSalesOrder() {
   async function handleSaveOrder(e: React.FormEvent) {
     e.preventDefault();
     handleRequest(language, setLoading, setError, async () => {
-      const filteredItems = items.filter((item) => item.variantData);
+      const filteredItems = items.filter((item) => item.productData);
 
       const validationError = validation({ customer, warehouse: warehouseId, items: filteredItems }, language);
 
@@ -67,7 +67,7 @@ export default function NewSalesOrder() {
           warehouse: warehouseId,
           customer: customer?._id,
           items: filteredItems.map((item) => ({
-            variant: item.variantData?._id,
+            product: item.productData?._id,
             unitPrice: item.unitPrice,
             itemDiscount: item.itemDiscount,
             starterQuantity: item.starterQuantity,

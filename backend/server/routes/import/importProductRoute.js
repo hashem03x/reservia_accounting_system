@@ -5,7 +5,6 @@ const { importProductAndVariantValidator } = require('../../utils/validators/imp
 const { parseCsv } = require('../../controller/import/importProductController');
 const mongoose = require('mongoose');
 const Product = require('../../models/inventory/productModel');
-const Variant = require('../../models/inventory/variantModel');
 const Warehouse = require('../../models/inventory/warehouseModel');
 const fs = require('fs').promises;
 const ApiError = require('../../utils/apiError');

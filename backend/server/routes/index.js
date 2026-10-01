@@ -19,7 +19,6 @@ const roleRouter = require('./roleRoute');
 const vendorRouter = require('./user/vendorRoute');
 const warehouseRouter = require('./inventory/warehouseRoute');
 const transferRoute = require('./inventory/transferRoute');
-const variantCodeRoute = require('./inventory/variantCodeRoute');
 const fixedAssetRoute = require('./fixedAssetRoute');
 const projectRoute = require('./project/projectRoute');
 const chartOfAccountRoute = require('./accounting/chartOfAccountRoute');
@@ -70,10 +69,6 @@ const mountRoutes = app => {
 
   // payment route
   app.use('/api/v1/payment', require('./po/paymentRoute'));
-  // variants route
-
-  // app.use('/api/v1/variants', varaintsRouter);
-  app.use('/api/v1/variants', variantCodeRoute);
 
   //file route
   app.use('/api/v1/files', require('./inventory/fileRoute'));

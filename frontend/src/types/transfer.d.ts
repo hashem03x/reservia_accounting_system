@@ -1,7 +1,3 @@
-import { Variant } from "./product";
-
-type TransferedVariant = Omit<Variant, "stock">;
-
 export type Transfer = {
   _id: string;
   sourceWarehouse: string; // from (warehouse id)
@@ -10,10 +6,17 @@ export type Transfer = {
   product: {
     _id: string;
     title: { en: string; ar: string };
+    sku?: string;
+    barcode?: string;
   };
   details: {
     _id: string;
-    variant: TransferedVariant;
+    product: {
+      _id: string;
+      title: { en: string; ar: string };
+      sku?: string;
+      barcode?: string;
+    };
     quantity: number;
   }[];
   createdAt: Date;
@@ -24,4 +27,4 @@ export type Transfer = {
   };
 };
 
-export type TransferType = "product" | "variants";
+export type TransferType = "product" | "products";

@@ -3,16 +3,14 @@ const fs = require('fs');
 const asyncHandler = require('express-async-handler');
 
 const ApiError = require('../../utils/apiError');
-const Variant = require('../../models/inventory/variantModel');
 const Product = require('../../models/inventory/productModel');
 const apiResponse = require('../../utils/apiResponse');
 const { parseCsvFile, parseExcelFile } = require('../../utils/fileParsers');
-const { validateProductData, validateVariantData } = require('../../utils/validators/fileValidator');
+const { validateProductData } = require('../../utils/validators/fileValidator');
 const { exportLargeCsv, exportLargeExcel } = require('../../utils/exportFile');
 const factory = require('../handlersFactory');
 const fileProcessor = require('./fileProcessor');
 const { createProduct } = require('./productController');
-const { createVariant } = require('./varaintController');
 
 const csvController = {};
 
@@ -27,29 +25,22 @@ const storeData = async (product, req, res, next) => {
   try {
     let { variants, ...productData } = product;
 
-    variants = JSON.parse(variants);
     productData.colors = JSON.parse(productData.colors);
 
-    // check data if validated
-    // validateProductData(productData); if true store data in db
     productData = await validateProductData(productData);
-    // Store product data
+
+    // Products no longer have separate Variants (see docs/entities/products.md) - a product is
+    // itself the stock-tracked item now. The upload format used to carry sku/barcode on each
+    // variant row; fold the first one's identifying fields directly onto the product (a product
+    // has a single sku/barcode today, so multiple variant rows per product can no longer map 1:1 -
+    // an accepted trade-off of the architecture change).
+    const [primaryVariant] = variants ? JSON.parse(variants) : [];
+    if (primaryVariant) {
+      if (primaryVariant.sku) productData.sku = primaryVariant.sku;
+      if (primaryVariant.variantCode) productData.barcode = primaryVariant.variantCode;
+    }
+
     const newProduct = new Product(productData);
-
-    // checks variant is true or not in list then
-    const validatedVariants = await Promise.all(variants.map(variant => validateVariantData(variant)));
-    // store variants
-    const variantIds = await Promise.all(
-      validatedVariants.map(async variant => {
-        const newVariant = await Variant.create({ ...variant, productId: newProduct._id });
-        return newVariant._id;
-      })
-    );
-
-    // Store variants in the product
-    newProduct.variants.push(...variantIds);
-
-    // Save the product
     await newProduct.save();
     return newProduct;
   } catch (error) {

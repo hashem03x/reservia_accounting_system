@@ -4,15 +4,14 @@ import { useLanguage } from "@/context/LanguageContext";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
 import { ItemDiscount } from "@/types/orders";
 import { DEFAULT_VARIANT_CODE_LENGTH } from "@/utils/constants";
-import { getColorLabel } from "@/utils/constants/colors";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import { Button, NumberInput, Table, TextInput } from "@mantine/core";
-import VariantSearchModal from "@/components/global/variant-search-modal";
+import ProductSearchModal from "@/components/global/variant-search-modal";
 import { OrderItemInput } from "../../../types";
 import { calculateSubTotal, calculateUnitPriceAfterDiscount } from "../../../_utils/calculations";
-import noVariantDetails from "../../../_utils/no-variant-details";
+import noProductDetails from "../../../_utils/no-variant-details";
 
-const innerTableCells = 8; // Number of cells between variantCode cell and the deleteItem cell
+const innerTableCells = 6; // Number of cells between the barcode cell and the deleteItem cell
 
 export default function OrderItemRow({
   index,
@@ -31,9 +30,9 @@ export default function OrderItemRow({
 
   const currentItem = items[index];
   const {
-    variantCode,
-    variantError,
-    variantData,
+    productCode,
+    productError,
+    productData,
     unitPrice,
     itemDiscount,
     unitPriceAfterDiscount,
@@ -49,18 +48,18 @@ export default function OrderItemRow({
     });
   };
 
-  const handleVariantCodeChange = (newVariantCode: string) => {
-    updateItem({ variantCode: newVariantCode });
+  const handleProductCodeChange = (newProductCode: string) => {
+    updateItem({ productCode: newProductCode });
 
     // Cancel the previous request if it exists
     if (abortControllerRef.current) abortControllerRef.current.abort();
 
-    // Check if the variant code length is between 6 and 20 digits
-    if (newVariantCode.length >= 6 && newVariantCode.length <= 20) {
-      // Check if the variant code already exists in the items list
-      const existingItemIndex = items.findIndex((item) => item.variantCode === newVariantCode);
+    // Check if the barcode length is between 6 and 20 digits
+    if (newProductCode.length >= 6 && newProductCode.length <= 20) {
+      // Check if the product code already exists in the items list
+      const existingItemIndex = items.findIndex((item) => item.productCode === newProductCode);
 
-      // If the variant code already exists, just increase the quantity of the existing item
+      // If the product code already exists, just increase the quantity of the existing item
       if (existingItemIndex !== -1) {
         setItems((prevItems) => {
           const updatedItems = [...prevItems];
@@ -75,7 +74,7 @@ export default function OrderItemRow({
           };
 
           // Clear the new input row
-          updatedItems[index] = { variantCode: "", variantError: false, ...noVariantDetails };
+          updatedItems[index] = { productCode: "", productError: false, ...noProductDetails };
           return updatedItems;
         });
       } else {
@@ -89,27 +88,27 @@ export default function OrderItemRow({
         (async () => {
           try {
             const response = await privateRequest({
-              url: `variants/${newVariantCode}`,
+              url: `products/code/${newProductCode}`,
               signal: abortController.signal,
               language,
             });
             updateItem({
-              variantCode: newVariantCode,
-              variantError: false,
-              variantData: response.data,
+              productCode: newProductCode,
+              productError: false,
+              productData: response.data,
               starterQuantity: 1,
-              unitPrice: response.data.product.cost,
+              unitPrice: response.data.cost,
               itemDiscount: { type: "percentage", value: 0 },
-              unitPriceAfterDiscount: response.data.product.cost,
-              starterSubtotal: response.data.product.cost,
+              unitPriceAfterDiscount: response.data.cost,
+              starterSubtotal: response.data.cost,
             });
           } catch (error) {
-            updateItem({ variantCode: newVariantCode, variantError: true, ...noVariantDetails });
+            updateItem({ productCode: newProductCode, productError: true, ...noProductDetails });
           }
         })();
       }
-    } else if (newVariantCode.length < DEFAULT_VARIANT_CODE_LENGTH) {
-      updateItem({ variantCode: newVariantCode, variantError: false, ...noVariantDetails });
+    } else if (newProductCode.length < DEFAULT_VARIANT_CODE_LENGTH) {
+      updateItem({ productCode: newProductCode, productError: false, ...noProductDetails });
     }
   };
 
@@ -143,40 +142,38 @@ export default function OrderItemRow({
       <Table.Td className="flex items-center gap-2">
         <TextInput
           variant="unstyled"
-          placeholder={translate("Variant Code", "كود الصنف")}
-          value={variantCode}
-          onChange={(e) => handleVariantCodeChange(e.target.value)}
+          placeholder={translate("Barcode", "الباركود")}
+          value={productCode}
+          onChange={(e) => handleProductCodeChange(e.target.value)}
           maxLength={DEFAULT_VARIANT_CODE_LENGTH}
           className="font-medium text-gray-800"
           autoFocus
         />
 
-        {!variantData && (
+        {!productData && (
           <Button onClick={openSearchModal} variant="transparent" size="xs" px={5}>
             <solidIcons.Search size={20} />
           </Button>
         )}
 
-        <VariantSearchModal
+        <ProductSearchModal
           opened={searchModalOpened}
           close={closeSearchModal}
           mode="purchase"
-          onSelect={(selectedVariantCode) => handleVariantCodeChange(selectedVariantCode)}
+          onSelect={(selectedProductCode) => handleProductCodeChange(selectedProductCode)}
         />
       </Table.Td>
 
-      {variantError ? (
+      {productError ? (
         <Table.Td colSpan={innerTableCells} className="animate-fade-in bg-red-100">
           <div className="flex items-center gap-2">
             <solidIcons.ExclamationCircle className="text-red-500" size={15} />
-            <p className="text-xs md:text-sm">{translate("This variant does not exist.", "هذا الصنف غير موجود.")}</p>
+            <p className="text-xs md:text-sm">{translate("This product does not exist.", "هذا المنتج غير موجود.")}</p>
           </div>
         </Table.Td>
-      ) : variantData ? (
+      ) : productData ? (
         <>
-          <Table.Td>{translate(variantData.product.title.en, variantData.product.title.ar)}</Table.Td>
-          <Table.Td>{getColorLabel(variantData.color, language)}</Table.Td>
-          <Table.Td>{variantData?.size}</Table.Td>
+          <Table.Td>{translate(productData.title.en, productData.title.ar)}</Table.Td>
           <Table.Td>
             <NumberInput
               variant="unstyled"

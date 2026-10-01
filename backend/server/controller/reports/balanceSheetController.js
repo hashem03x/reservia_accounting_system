@@ -4,7 +4,6 @@ const Warehouse = require('../../models/inventory/warehouseModel');
 const Payment = require('../../models/vendor/paymentModel');
 const User = require('../../models/userModel');
 const Product = require('../../models/inventory/productModel');
-const Variant = require('../../models/inventory/variantModel');
 const Vendor = require('../../models/vendor/vendor');
 const { getNetProfit } = require('./incomeStatementController');
 const exportToExcel = require('../../utils/exportToExcel');
@@ -55,26 +54,18 @@ exports.getBalanceSheetReport = asyncHandler(async (req, res) => {
   const totalCurrencyTransfers = currencyTransfers.reduce((sum, payment) => sum + payment.amountPaid, 0) - totalCurrencyTransfersIn;
 
   // 3. Calculate Inventory value
+  // A product carries its own stock directly now (see docs/entities/products.md) - no separate
+  // Variant to populate.
   const products = await Product.find({
     ...dateQuery,
     isDeleted: false,
   })
-    .populate({
-      path: 'variants',
-      select: 'color size stockLevel stock sku',
-      match: { isDeleted: false },
-    })
+    .select('stock cost')
     .lean();
 
   let totalValue = 0;
   for (const product of products) {
-    const stockLevel = product.variants.reduce((sum, variant) => {
-      // Sum up stock quantities from all warehouses for each variant
-      if (variant.stock && Array.isArray(variant.stock)) {
-        return sum + variant.stock.reduce((stockSum, s) => stockSum + (s.quantity || 0), 0);
-      }
-      return sum + (variant.stockLevel || 0);
-    }, 0);
+    const stockLevel = (product.stock || []).reduce((sum, s) => sum + (s.quantity || 0), 0);
     totalValue += stockLevel * (product.cost || 0);
   }
 
@@ -204,26 +195,18 @@ exports.exportBalanceSheetReport = asyncHandler(async (req, res) => {
   const totalCurrencyTransfers = currencyTransfers.reduce((sum, payment) => sum + payment.amountPaid, 0) - totalCurrencyTransfersIn;
 
   // 3. Calculate Inventory value
+  // A product carries its own stock directly now (see docs/entities/products.md) - no separate
+  // Variant to populate.
   const products = await Product.find({
     ...dateQuery,
     isDeleted: false,
   })
-    .populate({
-      path: 'variants',
-      select: 'color size stockLevel stock sku',
-      match: { isDeleted: false },
-    })
+    .select('stock cost')
     .lean();
 
   let totalValue = 0;
   for (const product of products) {
-    const stockLevel = product.variants.reduce((sum, variant) => {
-      // Sum up stock quantities from all warehouses for each variant
-      if (variant.stock && Array.isArray(variant.stock)) {
-        return sum + variant.stock.reduce((stockSum, s) => stockSum + (s.quantity || 0), 0);
-      }
-      return sum + (variant.stockLevel || 0);
-    }, 0);
+    const stockLevel = (product.stock || []).reduce((sum, s) => sum + (s.quantity || 0), 0);
     totalValue += stockLevel * (product.cost || 0);
   }
 

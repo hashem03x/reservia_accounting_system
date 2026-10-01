@@ -60,13 +60,13 @@ exports.getNetProfit = async function (endDate, warehouseId = '', startDate) {
       ...currentQuery,
       ...(warehouseId && warehouseId !== 'all' ? { warehouse: warehouseId } : {}),
     })
-      .populate('items.variant')
+      .populate('items.product')
       .lean(),
     SalesOrder.find({
       ...previousQuery,
       ...(warehouseId && warehouseId !== 'all' ? { warehouse: warehouseId } : {}),
     })
-      .populate('items.variant')
+      .populate('items.product')
       .lean(),
   ]);
 
@@ -336,13 +336,13 @@ exports.getIncomeStatementReport = asyncHandler(async (req, res) => {
       ...currentQuery,
       ...(warehouseId && warehouseId !== 'all' ? { warehouse: warehouseId } : {}),
     })
-      .populate('items.variant')
+      .populate('items.product')
       .lean(),
     SalesOrder.find({
       ...previousQuery,
       ...(warehouseId && warehouseId !== 'all' ? { warehouse: warehouseId } : {}),
     })
-      .populate('items.variant')
+      .populate('items.product')
       .lean(),
   ]);
 
@@ -621,13 +621,13 @@ exports.exportIncomeStatementReport = asyncHandler(async (req, res) => {
       ...currentQuery,
       ...(warehouseId && warehouseId !== 'all' ? { warehouse: warehouseId } : {}),
     })
-      .populate('items.variant')
+      .populate('items.product')
       .lean(),
     SalesOrder.find({
       ...previousQuery,
       ...(warehouseId && warehouseId !== 'all' ? { warehouse: warehouseId } : {}),
     })
-      .populate('items.variant')
+      .populate('items.product')
       .lean(),
   ]);
 

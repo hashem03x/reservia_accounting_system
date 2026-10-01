@@ -1,5 +1,9 @@
 const asyncHandler = require('express-async-handler');
-const Variant = require('../../models/inventory/variantModel');
+// Route/export names here still say "variant" (see routes/reportsRoute.js, which wires these exact
+// export names to the /reports/variant-history endpoint) - the report itself is now a per-product
+// stock/warehouse breakdown, since Product carries its own stock directly (see
+// docs/entities/products.md) and there's no separate Variant to report on.
+const Product = require('../../models/inventory/productModel');
 const exportToExcel = require('../../utils/exportToExcel');
 const ApiError = require('../../utils/apiError');
 
@@ -14,70 +18,32 @@ const getSortConfig = (sortBy, sortOrder) => {
   return { _id: -1 }; // default sort
 };
 
-// Get variant history report
-exports.getVariantHistoryReport = asyncHandler(async (req, res) => {
-  const { color, size, stockStatus, warehouseId, sortBy, sortOrder, startDate, endDate } = req.query;
+const buildProductHistoryAggregation = ({ stockStatus, warehouseId, startDate, endDate }) => {
+  const matchStage = { isDeleted: false };
 
-  // Build match stage based on filters
-  let matchStage = { isDeleted: false };
-  if (color) matchStage.color = color;
-  if (size) matchStage.size = size;
-  if (stockStatus) matchStage.stockStatus = stockStatus;
-
-  // Add date range filter if provided
   if (startDate || endDate) {
     matchStage.createdAt = {};
     if (startDate) matchStage.createdAt.$gte = new Date(startDate);
     if (endDate) matchStage.createdAt.$lte = new Date(endDate);
   }
 
-  const variants = await Variant.aggregate([
-    {
-      $match: matchStage,
-    },
-    {
-      $lookup: {
-        from: 'products',
-        localField: 'productId',
-        foreignField: '_id',
-        as: 'productDetails',
-        pipeline: [
-          {
-            $project: {
-              'title.en': 1,
-            },
-          },
-        ],
-      },
-    },
+  return [
+    { $match: matchStage },
     // Filter by warehouse if provided
-    ...(warehouseId
-      ? [
-          {
-            $match: {
-              'stock.warehouse': warehouseId,
-            },
-          },
-        ]
-      : []),
+    ...(warehouseId ? [{ $match: { 'stock.warehouse': warehouseId } }] : []),
     {
       $lookup: {
         from: 'warehouses',
         localField: 'stock.warehouse',
         foreignField: '_id',
         as: 'warehouseDetails',
-        pipeline: [
-          {
-            $project: {
-              name: 1,
-            },
-          },
-        ],
+        pipeline: [{ $project: { name: 1 } }],
       },
     },
     {
       $addFields: {
-        productName: { $arrayElemAt: ['$productDetails.title.en', 0] },
+        productName: '$title.en',
+        stockLevel: { $sum: '$stock.quantity' },
         warehouseNames: {
           $map: {
             input: '$stock',
@@ -102,154 +68,64 @@ exports.getVariantHistoryReport = asyncHandler(async (req, res) => {
       },
     },
     {
-      $project: {
-        productDetails: 0,
-        warehouseDetails: 0,
+      $addFields: {
+        stockStatus: { $cond: [{ $gt: ['$stockLevel', 0] }, 'In Stock', 'Out of Stock'] },
       },
     },
-    {
-      $sort: getSortConfig(sortBy, sortOrder),
-    },
-  ]);
+    ...(stockStatus ? [{ $match: { stockStatus } }] : []),
+    { $sort: getSortConfig(null, null) },
+  ];
+};
+
+// Get product history report
+exports.getVariantHistoryReport = asyncHandler(async (req, res) => {
+  const { stockStatus, warehouseId, sortBy, sortOrder, startDate, endDate } = req.query;
+
+  const products = await Product.aggregate(buildProductHistoryAggregation({ stockStatus, warehouseId, startDate, endDate }).concat([{ $sort: getSortConfig(sortBy, sortOrder) }]));
 
   res.status(200).json({
     status: 'success',
-    results: variants.length,
-    data: variants,
+    results: products.length,
+    data: products,
   });
 });
 
-// Export variant history report to Excel
+// Export product history report to Excel
 exports.exportVariantHistoryReportExcel = asyncHandler(async (req, res) => {
-  const { color, size, stockStatus, warehouseId, sortBy, sortOrder, startDate, endDate } = req.query;
+  const { stockStatus, warehouseId, sortBy, sortOrder, startDate, endDate } = req.query;
 
-  // Build match stage based on filters
-  let matchStage = { isDeleted: false };
-  if (color) matchStage.color = color;
-  if (size) matchStage.size = size;
-  if (stockStatus) matchStage.stockStatus = stockStatus;
+  const products = await Product.aggregate(buildProductHistoryAggregation({ stockStatus, warehouseId, startDate, endDate }).concat([{ $sort: getSortConfig(sortBy, sortOrder) }]));
 
-  // Add date range filter if provided
-  if (startDate || endDate) {
-    matchStage.createdAt = {};
-    if (startDate) matchStage.createdAt.$gte = new Date(startDate);
-    if (endDate) matchStage.createdAt.$lte = new Date(endDate);
-  }
-
-  const variants = await Variant.aggregate([
-    {
-      $match: matchStage,
-    },
-    {
-      $lookup: {
-        from: 'products',
-        localField: 'productId',
-        foreignField: '_id',
-        as: 'productDetails',
-        pipeline: [
-          {
-            $project: {
-              'title.en': 1,
-            },
-          },
-        ],
-      },
-    },
-    // Filter by warehouse if provided
-    ...(warehouseId
-      ? [
-          {
-            $match: {
-              'stock.warehouse': warehouseId,
-            },
-          },
-        ]
-      : []),
-    {
-      $lookup: {
-        from: 'warehouses',
-        localField: 'stock.warehouse',
-        foreignField: '_id',
-        as: 'warehouseDetails',
-        pipeline: [
-          {
-            $project: {
-              name: 1,
-            },
-          },
-        ],
-      },
-    },
-    {
-      $addFields: {
-        productName: { $arrayElemAt: ['$productDetails.title.en', 0] },
-        warehouseNames: {
-          $map: {
-            input: '$stock',
-            as: 'stockItem',
-            in: {
-              warehouse: {
-                $arrayElemAt: [
-                  {
-                    $filter: {
-                      input: '$warehouseDetails',
-                      as: 'wh',
-                      cond: { $eq: ['$$wh._id', '$$stockItem.warehouse'] },
-                    },
-                  },
-                  0,
-                ],
-              },
-              quantity: '$$stockItem.quantity',
-            },
-          },
-        },
-      },
-    },
-    {
-      $sort: getSortConfig(sortBy, sortOrder),
-    },
-  ]);
-
-  if (!variants.length) {
-    throw new ApiError('No variant data found', 404);
+  if (!products.length) {
+    throw new ApiError('No product data found', 404);
   }
 
   // Prepare headers
-  const headers = ['SKU', 'Product', 'Color', 'Size', 'Stock Status', 'Total Stock', 'Warehouses', 'Created At'];
+  const headers = ['SKU', 'Barcode', 'Product', 'Stock Status', 'Total Stock', 'Warehouses', 'Created At'];
 
   // Transform data for excel format
-  const data = variants.map(variant => {
-    const warehouseInfo = variant.warehouseNames
+  const data = products.map(product => {
+    const warehouseInfo = product.warehouseNames
       .map(w => {
         const warehouseName = w.warehouse?.name?.en || w.warehouse?.name || 'Unknown Warehouse';
         return `${warehouseName}: ${w.quantity}`;
       })
       .join('; ');
 
-    return [
-      variant.sku,
-      variant.productName || 'Unknown Product',
-      variant.color,
-      variant.size,
-      variant.stockStatus,
-      variant.stockLevel,
-      warehouseInfo,
-      variant.createdAt ? new Date(variant.createdAt).toLocaleDateString() : '',
-    ];
+    return [product.sku, product.barcode, product.productName || 'Unknown Product', product.stockStatus, product.stockLevel, warehouseInfo, product.createdAt ? new Date(product.createdAt).toLocaleDateString() : ''];
   });
 
   // Calculate totals
-  const totals = variants.reduce(
-    (acc, variant) => ({
-      totalStock: (acc.totalStock || 0) + (variant.stockLevel || 0),
+  const totals = products.reduce(
+    (acc, product) => ({
+      totalStock: (acc.totalStock || 0) + (product.stockLevel || 0),
     }),
     {}
   );
 
   // Prepare total row
-  const totalRow = ['Total', '', '', '', '', totals.totalStock, '', ''];
+  const totalRow = ['Total', '', '', '', totals.totalStock, '', ''];
 
   // Export to Excel
-  await exportToExcel(res, 'variant_history_report.xlsx', headers, data, { totalRow });
+  await exportToExcel(res, 'product_history_report.xlsx', headers, data, { totalRow });
 });

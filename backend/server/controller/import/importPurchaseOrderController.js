@@ -2,13 +2,13 @@ const mongoose = require('mongoose');
 const fs = require('fs').promises;
 const csv = require('csv-parse');
 const xlsx = require('xlsx');
-const Variant = require('../../models/inventory/variantModel');
 const Warehouse = require('../../models/inventory/warehouseModel');
 const Vendor = require('../../models/vendor/vendor');
 const PurchaseOrder = require('../../models/vendor/purchaseOrder');
 const Product = require('../../models/inventory/productModel');
 const ApiError = require('../../utils/apiError');
 const catchAsync = require('express-async-handler');
+const { applyPurchaseToProducts } = require('../PO/purchaseOrderController');
 
 /**
  * Parse CSV file
@@ -51,137 +51,6 @@ const parseFileData = async file => {
     return exports.parseCsv(file.path);
   } else {
     throw new ApiError('Unsupported file format. Please upload CSV or Excel file.', 400);
-  }
-};
-
-/**
- * Calculate moving average cost for products in a purchase order
- * @param {Object} purchaseOrder - The purchase order
- */
-const calculateMovingAverage = async purchaseOrder => {
-  try {
-    console.log('Starting moving average calculation for purchase order:', purchaseOrder._id);
-
-    // Group items by their product ID to handle multiple variants of the same product
-    const variantsByProduct = new Map();
-
-    // First, get all variants and group them by product
-    const BATCH_SIZE = 50; // Process 50 items at a time
-    for (let i = 0; i < purchaseOrder.items.length; i += BATCH_SIZE) {
-      const itemBatch = purchaseOrder.items.slice(i, i + BATCH_SIZE);
-
-      // Process items in parallel
-      const itemPromises = itemBatch.map(async item => {
-        try {
-          const variant = await Variant.findById(item.variantId).populate('productId');
-
-          if (!variant || !variant.productId) {
-            return null;
-          }
-
-          // Get productId
-          const productId = variant.productId._id.toString();
-
-          return {
-            productId,
-            product: variant.productId,
-            variant,
-            quantity: item.starterQuantity,
-            priceAfterDiscount: item.unitPriceAfterDiscount,
-          };
-        } catch (error) {
-          console.error(`Error processing item ${item._id} for moving average:`, error);
-          return null;
-        }
-      });
-
-      const results = await Promise.all(itemPromises);
-
-      // Add valid results to the map
-      for (const result of results) {
-        if (result) {
-          if (!variantsByProduct.has(result.productId)) {
-            variantsByProduct.set(result.productId, {
-              product: result.product,
-              items: [],
-            });
-          }
-
-          variantsByProduct.get(result.productId).items.push({
-            variant: result.variant,
-            quantity: result.quantity,
-            priceAfterDiscount: result.priceAfterDiscount,
-          });
-        }
-      }
-    }
-
-    // Calculate and update the moving average for each product
-    const productIds = Array.from(variantsByProduct.keys());
-    console.log(`Calculating moving average for ${productIds.length} products`);
-
-    // Process products in batches
-    const PRODUCT_BATCH_SIZE = 10;
-    for (let i = 0; i < productIds.length; i += PRODUCT_BATCH_SIZE) {
-      const batchProductIds = productIds.slice(i, i + PRODUCT_BATCH_SIZE);
-      console.log(`Processing product batch ${Math.floor(i / PRODUCT_BATCH_SIZE) + 1}/${Math.ceil(productIds.length / PRODUCT_BATCH_SIZE)}`);
-
-      // Process products in parallel
-      const productPromises = batchProductIds.map(async productId => {
-        try {
-          const { product, items } = variantsByProduct.get(productId);
-
-          // Calculate q_available (total quantity in stock before purchase)
-          const variants = await Variant.find({ productId: product._id });
-
-          const q_available = variants.reduce((total, variant) => {
-            return total + variant.stock.reduce((sum, stock) => sum + stock.quantity, 0);
-          }, 0);
-
-          // Calculate q_purchased (total quantity purchased in this PO)
-          const q_purchased = items.reduce((total, item) => total + item.quantity, 0);
-
-          // Calculate t_available (total cost of available stock)
-          const t_available = q_available * (product.cost || 0);
-
-          // Calculate t_purchased (total cost of purchased items)
-          const t_purchased = items.reduce((total, item) => {
-            return total + item.quantity * (item.priceAfterDiscount || 0);
-          }, 0);
-
-          // Calculate new average cost for the product after purchase
-          let newCost = 0;
-          if (q_available + q_purchased > 0) {
-            newCost = (t_available + t_purchased) / (q_available + q_purchased);
-          }
-
-          // Update product cost
-          await Product.findByIdAndUpdate(productId, { cost: newCost });
-
-          return {
-            productId,
-            success: true,
-            newCost,
-            q_available,
-            q_purchased,
-            t_available,
-            t_purchased,
-          };
-        } catch (error) {
-          console.error(`Error calculating moving average for product ${productId}:`, error);
-          return { productId, success: false, error: error.message };
-        }
-      });
-
-      const results = await Promise.all(productPromises);
-      const successCount = results.filter(r => r.success).length;
-      console.log(`Updated moving average for ${successCount}/${batchProductIds.length} products`);
-    }
-
-    console.log('Moving average calculation completed successfully');
-  } catch (error) {
-    console.error('Error in calculateMovingAverage function:', error);
-    throw error; // Re-throw to be caught by the caller
   }
 };
 
@@ -234,17 +103,19 @@ exports.importPurchaseOrder = catchAsync(async (req, res, next) => {
     });
   }
 
-  // Check a sample of variants
+  // Check a sample of products (looked up by their barcode - the CSV's "variantCode" column is
+  // now a product barcode, since a product is the stock-tracked item and there's no separate
+  // Variant to resolve first).
   const sampleSize = Math.min(5, firstGroup.items.length);
   const sampleItems = firstGroup.items.slice(0, sampleSize);
 
   for (const item of sampleItems) {
-    const variant = await Variant.findOne({ variantCode: item.variantCode });
-    if (!variant) {
+    const product = await Product.findOne({ barcode: item.variantCode });
+    if (!product) {
       preValidationErrors.push({
-        type: 'variant',
+        type: 'product',
         value: item.variantCode,
-        message: `Variant with code ${item.variantCode} not found`,
+        message: `Product with barcode ${item.variantCode} not found`,
       });
     }
   }
@@ -252,7 +123,7 @@ exports.importPurchaseOrder = catchAsync(async (req, res, next) => {
   // If there are pre-validation errors, return them
   if (preValidationErrors.length > 0) {
     console.error('Pre-validation errors:', JSON.stringify(preValidationErrors, null, 2));
-    return next(new ApiError('Data validation failed. Please check that all vendors, warehouses, and variants exist in the system.', 400, { errors: preValidationErrors }));
+    return next(new ApiError('Data validation failed. Please check that all vendors, warehouses, and products exist in the system.', 400, { errors: preValidationErrors }));
   }
 
   const createdPurchaseOrders = [];
@@ -279,7 +150,6 @@ exports.importPurchaseOrder = catchAsync(async (req, res, next) => {
       // Process items in smaller batches
       const BATCH_SIZE = 50; // Process 50 items at a time
       const purchaseOrderItems = [];
-      const validatedItems = [];
       const invalidItems = [];
 
       // Process all items first to validate them
@@ -289,41 +159,22 @@ exports.importPurchaseOrder = catchAsync(async (req, res, next) => {
         // Process each item in the batch
         for (const item of itemBatch) {
           try {
-            // Find variant
-            const variant = await Variant.findOne({ variantCode: item.variantCode });
-            if (!variant) {
-              console.error(`Variant with code ${item.variantCode} not found`);
+            // Find the product by barcode (the CSV's "variantCode" column)
+            const product = await Product.findOne({ barcode: item.variantCode });
+            if (!product) {
+              console.error(`Product with barcode ${item.variantCode} not found`);
               invalidItems.push({
                 variantCode: item.variantCode,
-                error: `Variant with code ${item.variantCode} not found`,
+                error: `Product with barcode ${item.variantCode} not found`,
               });
               continue; // Skip this item but continue with others
             }
 
-            // Get product details to determine unit price
-            const product = await variant.populate('productId');
-            if (!product || !product.productId) {
-              console.error(`Product not found for variant ${variant._id}`);
-              invalidItems.push({
-                variantCode: item.variantCode,
-                error: `Product not found for variant ${variant._id}`,
-              });
-              continue; // Skip this item but continue with others
-            }
-
-            const unitPrice = product.productId.cost || product.productId.price;
-
-            // Add to validated items
-            validatedItems.push({
-              variant,
-              unitPrice,
-              quantity: parseInt(item.quantity),
-              discount: parseFloat(item.discount || 0),
-            });
+            const unitPrice = product.cost || product.price;
 
             // Create purchase order item
             purchaseOrderItems.push({
-              variantId: variant._id,
+              productId: product._id,
               unitPrice: unitPrice,
               itemDiscount: {
                 type: 'percentage',
@@ -369,46 +220,15 @@ exports.importPurchaseOrder = catchAsync(async (req, res, next) => {
       });
       createdIds.purchaseOrders.push(purchaseOrder._id);
 
-      // Update variant stock in batches
-      for (let i = 0; i < validatedItems.length; i += BATCH_SIZE) {
-        const itemBatch = validatedItems.slice(i, i + BATCH_SIZE);
-
-        // Use Promise.all to update stock in parallel
-        const updatePromises = itemBatch.map(async validItem => {
-          try {
-            // Find if warehouse already exists in stock
-            const warehouseStockIndex = validItem.variant.stock.findIndex(stock => stock.warehouse.toString() === orderGroup.warehouseId);
-
-            if (warehouseStockIndex >= 0) {
-              // Update existing warehouse stock
-              validItem.variant.stock[warehouseStockIndex].quantity += validItem.quantity;
-            } else {
-              // Add new warehouse stock
-              validItem.variant.stock.push({
-                warehouse: orderGroup.warehouseId,
-                quantity: validItem.quantity,
-                starterQuantity: validItem.quantity,
-              });
-            }
-
-            await validItem.variant.save();
-            return { success: true, variantCode: validItem.variant.variantCode };
-          } catch (stockError) {
-            console.error(`Error updating stock for variant ${validItem.variant.variantCode}:`, stockError);
-            return { success: false, variantCode: validItem.variant.variantCode, error: stockError.message };
-          }
-        });
-
-        const results = await Promise.all(updatePromises);
-        const successCount = results.filter(r => r.success).length;
-      }
-
-      // Calculate moving average cost for the purchase order
+      // Recompute moving-average cost and increment stock for every product this PO touches -
+      // same shared logic the regular PO-creation endpoint uses (controller/PO/purchaseOrderController.js),
+      // now that items reference a product directly and there's no variant stock to update instead.
       try {
-        await calculateMovingAverage(purchaseOrder);
-      } catch (avgError) {
-        console.error(`Error calculating moving average:`, avgError);
-        // We don't throw here to allow the purchase order to be created even if moving average calculation fails
+        await applyPurchaseToProducts(purchaseOrder, warehouse._id.toString(), undefined);
+      } catch (stockError) {
+        console.error(`Error applying purchase to products for order group:`, stockError);
+        // We don't throw here to allow the purchase order to be created even if the stock/cost
+        // update fails for some items - matches the previous behavior for moving-average failures.
       }
 
       createdPurchaseOrders.push(purchaseOrder);

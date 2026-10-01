@@ -1,5 +1,5 @@
 const asyncHandler = require('express-async-handler');
-const Variant = require('../models/inventory/variantModel');
+const Product = require('../models/inventory/productModel');
 
 const SO = require('../models/sales/salesOrderModel');
 const PO = require('../models/vendor/purchaseOrder');
@@ -10,13 +10,12 @@ const factory = require('./handlersFactory');
 const Movement = require('../models/inventory/movementModel');
 const ApiError = require('../utils/apiError');
 const apiResponse = require('../utils/apiResponse');
-const { writeFileAsync } = require('xlsx');
 
 // @desc    Create a new movement
 // @route   POST /api/v1/movements
 // @access  Private
 exports.createMovement = asyncHandler(async (req, res, next) => {
-  const { product, variant, quantity, fromLocation, toLocation, movementType, createdBy } = req.body;
+  const { product, quantity, fromLocation, toLocation, movementType, createdBy } = req.body;
 
   // Validate movement type
   if (!['transfer', 'sale', 'return', 'po'].includes(movementType)) {
@@ -34,29 +33,28 @@ exports.createMovement = asyncHandler(async (req, res, next) => {
   }
 
   // Check stock availability for sale or transfer
-  const variantData = await Variant.findOne({ _id: variant, 'stock.warehouse': fromLocation });
-  if (!variantData || variantData.stock.find(s => s.warehouse.toString() === fromLocation).quantity < quantity) {
+  const productData = await Product.findOne({ _id: product, 'stock.warehouse': fromLocation });
+  if (!productData || productData.stock.find(s => s.warehouse.toString() === fromLocation).quantity < quantity) {
     return next(new ApiError('Insufficient stock available', 400));
   }
 
   // Update inventory based on movement type
   if (movementType === 'transfer') {
-    // Decrease stock from fromLocation in Variant
-    await Variant.findOneAndUpdate({ _id: variant, 'stock.warehouse': fromLocation }, { $inc: { 'stock.$.quantity': -quantity } }, { new: true });
+    // Decrease stock from fromLocation
+    await Product.findOneAndUpdate({ _id: product, 'stock.warehouse': fromLocation }, { $inc: { 'stock.$.quantity': -quantity } }, { new: true });
 
-    // Increase stock at toLocation in Variant
-    await Variant.findOneAndUpdate({ _id: variant, 'stock.warehouse': toLocation }, { $inc: { 'stock.$.quantity': quantity } }, { new: true, upsert: true });
+    // Increase stock at toLocation
+    await Product.findOneAndUpdate({ _id: product, 'stock.warehouse': toLocation }, { $inc: { 'stock.$.quantity': quantity } }, { new: true, upsert: true });
   } else if (movementType === 'sale') {
-    // Decrease stock from fromLocation in Variant
-    await Variant.findOneAndUpdate({ _id: variant, 'stock.warehouse': fromLocation }, { $inc: { 'stock.$.quantity': -quantity } }, { new: true });
+    // Decrease stock from fromLocation
+    await Product.findOneAndUpdate({ _id: product, 'stock.warehouse': fromLocation }, { $inc: { 'stock.$.quantity': -quantity } }, { new: true });
   } else if (movementType === 'return') {
-    // Increase stock at fromLocation in Variant
-    await Variant.findOneAndUpdate({ _id: variant, 'stock.warehouse': fromLocation }, { $inc: { 'stock.$.quantity': quantity } }, { new: true });
+    // Increase stock at fromLocation
+    await Product.findOneAndUpdate({ _id: product, 'stock.warehouse': fromLocation }, { $inc: { 'stock.$.quantity': quantity } }, { new: true });
   }
 
   const movement = await Movement.create({
     product,
-    variant,
     quantity,
     fromLocation,
     toLocation,
@@ -71,13 +69,12 @@ exports.createMovement = asyncHandler(async (req, res, next) => {
 // @route   GET /api/v1/movements
 // @access  Privat
 exports.getMovements = asyncHandler(async (req, res) => {
-  const { variant } = req.query;
-  const salesMovements = await SO.find({ 'items.variant': variant });
-  const poMovements = await PO.find({ 'items.variant': variant });
-  const returnMovements = await Return.find({ 'items.variant': variant });
-  const transferMovements = await Transfer.find({ 'details.variant': variant });
+  const { product } = req.query;
+  const salesMovements = await SO.find({ 'items.product': product });
+  const poMovements = await PO.find({ 'items.productId': product });
+  const returnMovements = await Return.find({ productId: product });
+  const transferMovements = await Transfer.find({ 'details.product': product });
 
-  const movements = [...salesMovements, ...poMovements, ...returnMovements, ...transferMovements];
   res.json(
     apiResponse('Movements fetched successfully', true, {
       salesMovements,

@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const mongooseI18n = require('mongoose-i18n-localize');
 const { getColorCode, isValidColor } = require('../../utils/colorMapping');
 const { normalizeTags } = require('../../utils/helper');
+const generateBarcode = require('../../utils/generateBarcode');
 
 const productImageSchema = new mongoose.Schema({
   url: { type: String },
@@ -79,7 +80,21 @@ const productSchema = mongoose.Schema(
       default: function () { return this.type === 'service' ? 'month' : undefined; },
     },
     colors: [colorSchema],
-    variants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Variant' }],
+    // Replaces the old Variant model (removed - see docs/entities/products.md) - a Product is now
+    // itself the sellable/stock-tracked item instead of requiring a separate Variant. `sku` is
+    // plain/optional (the old Variant.sku had no real uniqueness enforcement either - its compound
+    // index included `_id`, which made it a no-op constraint - so nothing is weakened here).
+    // `barcode` replaces `Variant.variantCode` (same generator, same role). `stock` replaces
+    // `Variant.stock` (identical per-warehouse shape).
+    sku: { type: String, trim: true },
+    barcode: { type: String, default: () => generateBarcode().toString(), unique: true, sparse: true },
+    stock: [
+      {
+        warehouse: { type: mongoose.Schema.Types.ObjectId, ref: 'Warehouse', required: true },
+        quantity: { type: Number, required: true },
+        starterQuantity: { type: Number, default: 0 },
+      },
+    ],
     createdBy: { type: mongoose.Schema.ObjectId, ref: 'User' },
 
     ratingsQuantity: { type: Number, default: 0 },
@@ -104,20 +119,6 @@ productSchema.virtual('reviews', {
   ref: 'Review',
   foreignField: 'product',
   localField: '_id',
-});
-
-// Populate variants
-productSchema.pre(/^find/, function (next) {
-  // Check if the Variant model exists to avoid errors if not registered
-  // if middleware cancle populate varinat cancel it
-  // if(this.getOptions().populateVariants ) return next();
-  if (this.getOptions().populateVariants !== false && mongoose.models.Variant) {
-    this.populate({
-      path: 'variants',
-    });
-  }
-
-  next();
 });
 
 productSchema.pre(/^find/, function (next) {
@@ -164,14 +165,12 @@ productSchema.pre('save', function (next) {
   next();
 });
 
-// Defense-in-depth: variant creation is already blocked for services at the controller level
-// (see varaintController.js#createVariant), but this guards the invariant at the model layer too
-// (e.g. against a future/internal script pushing straight into `variants`) - a service must never
-// carry real stock-tracked variants, since every inventory/stock report and PO/SO line item reads
-// stock exclusively off Variant documents (see docs/entities/products.md).
+// Defense-in-depth: a service has no physical stock to track (see docs/entities/products.md) -
+// guards the invariant at the model layer (e.g. against a future/internal script pushing straight
+// into `stock`), mirroring the pre-existing "service cannot have variants" guard this replaces.
 productSchema.pre('save', function (next) {
-  if (this.type === 'service' && Array.isArray(this.variants) && this.variants.length > 0) {
-    return next(new Error('A service cannot have inventory variants.'));
+  if (this.type === 'service' && Array.isArray(this.stock) && this.stock.length > 0) {
+    return next(new Error('A service cannot have inventory stock.'));
   }
   next();
 });

@@ -4,7 +4,6 @@ import useStringifyOnlineAddress from "@/hooks/useStringifyOnlineAddress";
 import { useOrder } from "../../../../../../context";
 import { useLanguage } from "@/context/LanguageContext";
 import { formatDateAndTime } from "@/utils/helpers/date-formaters";
-import { getColorLabel } from "@/utils/constants/colors";
 import { solidIcons } from "@/components/icons";
 import useWarehouseHelpers from "@/hooks/useWarehouseHelpers";
 import { isCashierOrder } from "@/utils/constants/order-sources";
@@ -114,8 +113,6 @@ export default function PrintInvoice() {
             <thead>
               <tr>
                 <th style={{ minWidth: "50mm" }}>Item</th>
-                <th>Color</th>
-                <th>Size</th>
                 <th>Quantity</th>
                 <th style={{ textWrap: "nowrap" }}>Unit Price</th>
                 <th style={{ textWrap: "nowrap" }}>After Discount</th>
@@ -125,9 +122,7 @@ export default function PrintInvoice() {
             <tbody>
               {order.items.map((item, index) => (
                 <tr key={index}>
-                  <td>{item.variant.product.title.en}</td>
-                  <td>{getColorLabel(item.variant.color, "en-US")}</td>
-                  <td>{item.variant.size}</td>
+                  <td>{item.product.title.en}</td>
                   <td>{item.starterQuantity}</td>
                   <td>{item.unitPrice.toFixed(2)}</td>
                   <td>{item.unitPriceAfterDiscount.toFixed(2)}</td>
@@ -137,7 +132,7 @@ export default function PrintInvoice() {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={6}></td>
+                <td colSpan={4}></td>
                 <td style={{ fontWeight: 600 }}>{order.starterTotalAmount.toFixed(2)}</td>
               </tr>
             </tfoot>
@@ -152,8 +147,6 @@ export default function PrintInvoice() {
               <thead>
                 <tr>
                   <th style={{ minWidth: "50mm" }}>Item</th>
-                  <th>Color</th>
-                  <th>Size</th>
                   <th style={{ textWrap: "nowrap" }}>Price After Discount</th>
                   <th style={{ textWrap: "nowrap" }}>Quantity Returned</th>
                   <th style={{ textWrap: "nowrap" }}>Amount Returned</th>
@@ -161,10 +154,8 @@ export default function PrintInvoice() {
               </thead>
               <tbody>
                 {returnedItems.map((item) => (
-                  <tr key={item.variant._id}>
-                    <td>{item.variant.product.title.en}</td>
-                    <td>{getColorLabel(item.variant.color, "en-US")}</td>
-                    <td>{item.variant.size}</td>
+                  <tr key={item.product._id}>
+                    <td>{item.product.title.en}</td>
                     <td>{item.unitPriceAfterDiscount.toFixed(2)}</td>
                     <td>{item.returnedQuantity}</td>
                     <td style={{ fontWeight: 500 }}>{(item.unitPriceAfterDiscount * item.returnedQuantity).toFixed(2)}</td>
@@ -173,7 +164,7 @@ export default function PrintInvoice() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={5}></td>
+                  <td colSpan={3}></td>
                   <td style={{ fontWeight: 600 }}>{(order.starterTotalAmount - order.totalAmount).toFixed(2)}</td>
                 </tr>
               </tfoot>

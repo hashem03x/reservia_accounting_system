@@ -14,17 +14,17 @@ const exportLargeCsv = async (res, next) => {
     // Query MongoDB with a cursor
     const cursor = Product.find({ isDeleted: false }).cursor();
     for await (const doc of cursor) {
-      // Populate with variants
-      await doc.populate('variants').execPopulate();
-
-      doc.variants.forEach(variant => {
+      // A product now carries its own stock directly (no separate Variant to populate) - emit one
+      // row per warehouse stock entry, or a single stock-less row for a service/unstocked product.
+      const stockEntries = doc.stock && doc.stock.length > 0 ? doc.stock : [null];
+      stockEntries.forEach(stockItem => {
         csvStream.write({
           ProductTitle: doc.title,
           Price: doc.price,
-          VariantSlug: variant.slug,
-          Color: variant.color,
-          Size: variant.size,
-          SKU: variant.sku,
+          SKU: doc.sku,
+          Barcode: doc.barcode,
+          Warehouse: stockItem ? stockItem.warehouse : '',
+          Quantity: stockItem ? stockItem.quantity : 0,
         });
       });
     }
@@ -46,28 +46,30 @@ const exportLargeExcel = async (res, next) => {
     worksheet.columns = [
       { header: 'Product Title', key: 'ProductTitle', width: 25 },
       { header: 'Price', key: 'Price', width: 15 },
-      { header: 'Variant Slug', key: 'VariantSlug', width: 25 },
-      { header: 'Color', key: 'Color', width: 15 },
-      { header: 'Size', key: 'Size', width: 15 },
       { header: 'SKU', key: 'SKU', width: 20 },
+      { header: 'Barcode', key: 'Barcode', width: 20 },
+      { header: 'Warehouse', key: 'Warehouse', width: 25 },
+      { header: 'Quantity', key: 'Quantity', width: 15 },
     ];
 
     // Query MongoDB with a cursor
     const cursor = Product.find({ isDeleted: false }).cursor();
 
     for await (const doc of cursor) {
-      // Populate with variants
-      await doc.populate('variants').execPopulate();
-
-      doc.variants.forEach(variant => {
-        worksheet.addRow({
-          ProductTitle: doc.title,
-          Price: doc.price,
-          VariantSlug: variant.slug,
-          Color: variant.color,
-          Size: variant.size,
-          SKU: variant.sku,
-        }).commit();
+      // A product now carries its own stock directly (no separate Variant to populate) - emit one
+      // row per warehouse stock entry, or a single stock-less row for a service/unstocked product.
+      const stockEntries = doc.stock && doc.stock.length > 0 ? doc.stock : [null];
+      stockEntries.forEach(stockItem => {
+        worksheet
+          .addRow({
+            ProductTitle: doc.title,
+            Price: doc.price,
+            SKU: doc.sku,
+            Barcode: doc.barcode,
+            Warehouse: stockItem ? stockItem.warehouse : '',
+            Quantity: stockItem ? stockItem.quantity : 0,
+          })
+          .commit();
       });
     }
 

@@ -33,16 +33,10 @@ export default function OrderItemsSection({
           <Table.Thead>
             <Table.Tr h={40} className="text-gray-800">
               <Table.Th w={165} className="min-w-[165px]">
-                {translate("Variant Code", "كود الصنف")} {asterisk}
+                {translate("Barcode", "الباركود")} {asterisk}
               </Table.Th>
               <Table.Th w={175} className="min-w-[175px]">
                 {translate("Product Title", "عنوان المنتج")}
-              </Table.Th>
-              <Table.Th w={100} className="min-w-[100px]">
-                {translate("Color", "اللون")}
-              </Table.Th>
-              <Table.Th w={75} className="min-w-[75px]">
-                {translate("Size", "المقاس")}
               </Table.Th>
               <Table.Th w={100} className="min-w-[100px]">
                 {translate("Quantity", "الكمية")} {asterisk}

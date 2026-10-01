@@ -4,7 +4,6 @@ const express = require('express');
 const router = express.Router();
 // const { createFilterObject } = require('../inventory/inventoryMiddleware');
 const authController = require('../../controller/user/authController');
-const variantRoute = require('./variantRoute');
 
 const {
   createProduct,
@@ -15,6 +14,7 @@ const {
   handleProductImages,
   updateProductImages,
   updateProduct,
+  parseProductStock,
   deleteProductImage,
   resizeProductImages,
   createFilterObject,
@@ -27,6 +27,9 @@ const {
   getFilteredProducts,
   getProductsByIds,
   getDistinctTags,
+  getOrdersByProductCode,
+  getProductHistoryByCode,
+  getProductByCode,
 } = require('../../controller/inventory/productController');
 
 const { createProductValidator, deleteProductValidator, getProductValidator, updateProductValidator } = require('../../utils/validators/productValidator');
@@ -36,15 +39,11 @@ const { Resources, Actions } = require('../../utils/appConstant');
 const { uploadSingleFileONCloudinary } = require('../../middleware/fileUploadMiddleware');
 const { saveSingleFileMiddleware } = require('../../middleware/saveFileMiddleware');
 
-// variants route
-router.use('/:productId/variants', variantRoute);
-
 // get all products sizes and colors that is available in the store
 // router.get('/filter', getProductsColorsSizes);
 
 router
   .route('/')
-  // product info => [variants]
   .get(createFilterObject, getProducts) // get all products and make is global
   .post(
     authController.protect,
@@ -53,6 +52,7 @@ router
     checkUserPermissions({ resource: Resources.products, action: Actions.create }),
     uploadProductImages,
     handleProductImages,
+    parseProductStock,
     createProductValidator,
     createProduct
   );
@@ -62,6 +62,12 @@ router.get('/filtered', getFilteredProducts);
 router.get('/by-ids', getProductsByIds);
 
 router.get('/tags/distinct', getDistinctTags);
+
+// Barcode lookups - replace the removed Variant module's code-based endpoints, now resolving
+// against Product.barcode.
+router.get('/code/:code', getProductByCode);
+router.get('/orders/:code', getOrdersByProductCode);
+router.get('/history/:code', getProductHistoryByCode);
 
 router.put('/discount', authController.protect, checkUserPermissions({ resource: Resources.products, action: Actions.update }), applyDiscount);
 
@@ -77,6 +83,7 @@ router
     checkUserPermissions({ resource: Resources.products, action: Actions.update }),
     uploadProductImages,
     updateProductImages,
+    parseProductStock,
     updateProductValidator,
     updateProduct
   )

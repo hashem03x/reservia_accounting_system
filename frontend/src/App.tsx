@@ -31,8 +31,6 @@ import AP_PurchaseOrder from "@/pages/admin/home/purchase-orders/[id]";
 import AP_NewPurchaseOrder from "@/pages/admin/home/purchase-orders/new";
 import AP_Products from "@/pages/admin/home/products";
 import AP_Product from "@/pages/admin/home/products/[id]";
-import AP_Variants from "@/pages/admin/home/products/variants";
-import AP_Variant from "@/pages/admin/home/products/variants/[id]";
 import AP_NewProduct from "@/pages/admin/home/products/new";
 import AP_SalesOrders from "@/pages/admin/home/sales-orders";
 import AP_SalesOrder from "@/pages/admin/home/sales-orders/[id]";
@@ -74,7 +72,6 @@ import AP_FixedAssets from "@/pages/admin/fixed-assets";
 import AP_FixedAssetsReport from "@/pages/admin/reports/fixed-assets";
 import AP_BalanceSheetReport from "@/pages/admin/reports/balance-sheet";
 import AP_Analytics from "@/pages/admin/analytics";
-import VariantTransactions from "@/pages/admin/variants/transactions";
 import AP_Projects from "@/pages/admin/projects";
 import AP_Project from "@/pages/admin/projects/[id]";
 import AP_Accounts from "@/pages/admin/accounts";
@@ -124,8 +121,6 @@ export default function App() {
                     <Route element={<ResourceGuard resource={resources.products} action={actions.read} />}>
                       <Route path={paths.products} element={<AP_Products />} />
                       <Route path={paths.products + "/:id"} element={<AP_Product />} />
-                      <Route path={paths.products + "/" + paths.variants} element={<AP_Variants />} />
-                      <Route path={paths.products + "/" + paths.variants + "/:code"} element={<AP_Variant />} />
                       <Route element={<ResourceGuard resource={resources.products} action={actions.create} />}>
                         <Route path={paths.products + "/" + paths.new} element={<AP_NewProduct />} />
                       </Route>
@@ -152,8 +147,6 @@ export default function App() {
                       <Route path={paths.transfers} element={<AP_Transfers />} />
                       <Route path={paths.transfers + "/:id"} element={<AP_Transfer />} />
                     </Route>
-
-                    <Route path={paths.variantTransactions + "/:variantCode"} element={<VariantTransactions />} />
                   </Route>
 
                   <Route element={<ResourceGuard resource={resources.reports} action={actions.read} />}>

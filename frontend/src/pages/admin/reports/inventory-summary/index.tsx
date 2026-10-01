@@ -46,14 +46,7 @@ interface InventoryItem {
   stockLevel: number;
   value: number;
   createdAt: string;
-  variants: Array<{
-    _id: string;
-    stockQuantity: number;
-    sku: string;
-    color: string;
-    size: string;
-    variantCode?: string;
-  }>;
+  barcode?: string;
 }
 
 interface ReportData {
@@ -414,9 +407,8 @@ export default function InventorySummaryReport() {
                 <Table.Tr>
                   <Table.Th>{translate("#", "#")}</Table.Th>
                   <Table.Th>{translate("Title", "العنوان")}</Table.Th>
-                  <Table.Th>{translate("Variant Code", "كود الصنف")}</Table.Th>
-                  <Table.Th>{translate("Color", "اللون")}</Table.Th>
-                  <Table.Th>{translate("Size", "المقاس")}</Table.Th>
+                  <Table.Th>{translate("SKU", "رمز المنتج")}</Table.Th>
+                  <Table.Th>{translate("Barcode", "الباركود")}</Table.Th>
                   <Table.Th>{translate("Cost", "التكلفة")}</Table.Th>
                   <Table.Th>{translate("Category", "الفئة")}</Table.Th>
                   <Table.Th>{translate("Subcategory", "الفئة الفرعية")}</Table.Th>
@@ -427,65 +419,30 @@ export default function InventorySummaryReport() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {inventory.flatMap((item, index) => {
-                  // If no variants, display a single row for the item
-                  if (!item.variants || item.variants.length === 0) {
-                    return (
-                      <Table.Tr key={item._id}>
-                        <Table.Td>{index + 1}</Table.Td>
-                        <Table.Td>{item.title.en}</Table.Td>
-                        <Table.Td>-</Table.Td>
-                        <Table.Td>-</Table.Td>
-                        <Table.Td>-</Table.Td>
-                        <Table.Td>{item.cost}</Table.Td>
-                        <Table.Td>{translate(item.category.en, item.category.ar)}</Table.Td>
-                        <Table.Td>{item.subcategory ? translate(item.subcategory.en, item.subcategory.ar) : "-"}</Table.Td>
-                        <Table.Td>
-                          <Text c={item.stockLevel > 0 ? "green" : "red"}>
-                            {translate(
-                              item.stockLevel > 0 ? "In Stock" : "Out of Stock",
-                              item.stockLevel > 0 ? "متوفر" : "غير متوفر",
-                            )}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>{item.stockLevel}</Table.Td>
-                        <Table.Td className="font-semibold text-gray-800">
-                          {item.value?.toFixed(2) || "0.00"} {translations.currency}
-                        </Table.Td>
-                        <Table.Td>{formatDate(item.createdAt, language)}</Table.Td>
-                      </Table.Tr>
-                    );
-                  }
-
-                  // If has variants, display one row for each variant
-                  return item.variants.map((variant, variantIndex) => (
-                    <Table.Tr key={`${item._id}-${variant._id || variantIndex}`}>
-                      <Table.Td>
-                        {index + 1}.{variantIndex + 1}
-                      </Table.Td>
-                      <Table.Td>{item.title.en}</Table.Td>
-                      <Table.Td>{variant.variantCode || "-"}</Table.Td>
-                      <Table.Td>{variant.color || "-"}</Table.Td>
-                      <Table.Td>{variant.size || "-"}</Table.Td>
-                      <Table.Td>{item.cost}</Table.Td>
-                      <Table.Td>{translate(item.category.en, item.category.ar)}</Table.Td>
-                      <Table.Td>{item.subcategory ? translate(item.subcategory.en, item.subcategory.ar) : "-"}</Table.Td>
-                      <Table.Td>
-                        <Text c={variant.stockQuantity > 0 ? "green" : "red"}>
-                          {translate(
-                            variant.stockQuantity > 0 ? "In Stock" : "Out of Stock",
-                            variant.stockQuantity > 0 ? "متوفر" : "غير متوفر",
-                          )}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>{variant.stockQuantity !== undefined ? variant.stockQuantity : item.stockLevel}</Table.Td>
-                      <Table.Td className="font-semibold text-gray-800">
-                        {((variant.stockQuantity || 0) * item.cost).toFixed(2) || "0.00"} {translations.currency}
-                      </Table.Td>
-                      <Table.Td>{formatDate(item.createdAt, language)}</Table.Td>
-                    </Table.Tr>
-                  ));
-                })}
+                {inventory.map((item, index) => (
+                  <Table.Tr key={item._id}>
+                    <Table.Td>{index + 1}</Table.Td>
+                    <Table.Td>{item.title.en}</Table.Td>
+                    <Table.Td>{item.sku || "-"}</Table.Td>
+                    <Table.Td>{item.barcode || "-"}</Table.Td>
+                    <Table.Td>{item.cost}</Table.Td>
+                    <Table.Td>{translate(item.category.en, item.category.ar)}</Table.Td>
+                    <Table.Td>{item.subcategory ? translate(item.subcategory.en, item.subcategory.ar) : "-"}</Table.Td>
+                    <Table.Td>
+                      <Text c={item.stockLevel > 0 ? "green" : "red"}>
+                        {translate(
+                          item.stockLevel > 0 ? "In Stock" : "Out of Stock",
+                          item.stockLevel > 0 ? "متوفر" : "غير متوفر",
+                        )}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>{item.stockLevel}</Table.Td>
+                    <Table.Td className="font-semibold text-gray-800">
+                      {item.value?.toFixed(2) || "0.00"} {translations.currency}
+                    </Table.Td>
+                    <Table.Td>{formatDate(item.createdAt, language)}</Table.Td>
+                  </Table.Tr>
+                ))}
 
                 {/* Totals Row */}
                 <Table.Tr className="bg-gray-50">

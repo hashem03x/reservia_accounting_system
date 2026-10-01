@@ -4,23 +4,20 @@ const asyncHandler = require('express-async-handler');
 const Product = require('../../models/inventory/productModel');
 const PO = require('../../models/vendor/purchaseOrder');
 const POReturn = require('../../models/vendor/purchaseOrderReturn');
-const Variant = require('../../models/inventory/variantModel');
 const Vendor = require('../../models/vendor/vendor');
 const Payment = require('../../models/vendor/paymentModel');
 const Transfer = require('../../models/inventory/transferModel');
 const ApiError = require('../../utils/apiError');
 const factory = require('../handlersFactory');
 
-const { calculateMovingAverage } = require('./purchaseOrderController');
-
-const findTransferredQuantity = async (variantId, sourceWarehouseId, session) => {
-  // Find transfers where this variant was moved from source warehouse
+const findTransferredQuantity = async (productId, sourceWarehouseId, session) => {
+  // Find transfers where this product was moved from source warehouse
   const transfers = await Transfer.find({
-    'details.variant': variantId,
+    'details.product': productId,
     sourceWarehouse: sourceWarehouseId,
     status: { $ne: 'cancelled' }, // Only consider non-cancelled transfers
   })
-    .populate('details.variant')
+    .populate('details.product')
     .session(session);
 
   if (!transfers || transfers.length === 0) {
@@ -30,13 +27,13 @@ const findTransferredQuantity = async (variantId, sourceWarehouseId, session) =>
   // Calculate total transferred quantity and get target warehouses
   const transferDetails = transfers.reduce(
     (acc, transfer) => {
-      const variantDetail = transfer.details.find(d => d.variant._id.toString() === variantId.toString());
+      const productDetail = transfer.details.find(d => d.product._id.toString() === productId.toString());
 
-      if (variantDetail) {
-        acc.totalTransferred += variantDetail.quantity;
+      if (productDetail) {
+        acc.totalTransferred += productDetail.quantity;
         acc.targetWarehouses.push({
           warehouseId: transfer.targetWarehouse,
-          quantity: variantDetail.quantity,
+          quantity: productDetail.quantity,
         });
       }
       return acc;
@@ -52,43 +49,34 @@ const findTransferredQuantity = async (variantId, sourceWarehouseId, session) =>
 
 const calculateMovingAverageOnReturn = async (OrderReturn, session) => {
   // calc new cost = (total_cost_product - total_cost_returned) / (total_quantity_product - total_quantity_returned), moving average cost
-  const { variantId, returnedAmount, returnedQuantity } = OrderReturn;
+  const { productId, returnedAmount, returnedQuantity } = OrderReturn;
 
-  // Get variant
-  const variant = await Variant.findById(variantId).populate('productId').session(session);
-
-  if (!variant) throw new ApiError(`Variant with ID ${variantId} not found.`);
-
-  const productId = variant.productId._id.toString();
-
-  const allVariants = await Variant.find({ productId }).session(session);
+  const product = await Product.findById(productId).session(session);
+  if (!product) throw new ApiError(`Product with ID ${productId} not found.`);
 
   // calc total quantity product based on actual stock records
-  const totalQuantityProduct = allVariants.reduce((acc, variant) => {
-    const quantityInStock = variant.stock.reduce((sum, stockEntry) => sum + (stockEntry.quantity || 0), 0);
-    return acc + quantityInStock;
-  }, 0);
+  const totalQuantityProduct = (product.stock || []).reduce((sum, stockEntry) => sum + (stockEntry.quantity || 0), 0);
 
   // calc total cost of product
-  const costProduct = variant.productId.cost;
-  const totalCostProduct = totalQuantityProduct * costProduct;
+  const totalCostProduct = totalQuantityProduct * product.cost;
 
   //to more decalre only not any processing found cacl total quantity returned and cost of return
-  const costOfReturnVariant = Number(returnedAmount);
-  const qnatityReturnedVariant = Number(returnedQuantity);
+  const costOfReturnProduct = Number(returnedAmount);
+  const qnatityReturnedProduct = Number(returnedQuantity);
 
   // Validate inputs
-  if (isNaN(costOfReturnVariant) || isNaN(qnatityReturnedVariant)) {
+  if (isNaN(costOfReturnProduct) || isNaN(qnatityReturnedProduct)) {
     throw new Error('Invalid cost or quantity values for return calculation');
   }
 
   // calc new cost
-  const denominator = totalQuantityProduct - qnatityReturnedVariant;
-  const numerator = totalCostProduct - costOfReturnVariant;
+  const denominator = totalQuantityProduct - qnatityReturnedProduct;
+  const numerator = totalCostProduct - costOfReturnProduct;
 
   // Handle case where remaining quantity would be zero or negative after return
   if (denominator <= 0) {
-    await Product.findByIdAndUpdate(productId, { cost: 0 }, { session });
+    product.cost = 0;
+    await product.save({ session });
     return;
   }
 
@@ -99,11 +87,12 @@ const calculateMovingAverageOnReturn = async (OrderReturn, session) => {
   }
 
   // update product cost
-  await Product.findByIdAndUpdate(productId, { cost: newCost }).session(session);
+  product.cost = newCost;
+  await product.save({ session });
 };
 
 exports.returnPurchaseOrderItem = async (req, res, next) => {
-  let { purchaseOrderId, warehouseId, variantId, returnedQuantity, paymentMethod, notes } = req.body;
+  let { purchaseOrderId, warehouseId, productId, returnedQuantity, paymentMethod, notes } = req.body;
 
   returnedQuantity = Number(returnedQuantity);
 
@@ -116,12 +105,12 @@ exports.returnPurchaseOrderItem = async (req, res, next) => {
 
     if (!purchaseOrder) return next(new ApiError('Purchase order not found', 404));
 
-    const originalItem = purchaseOrder.items.find(item => item.variantId._id.toString() == variantId);
-    if (!originalItem) return next(new ApiError(`Item ${variantId} not found in original purchase order`));
+    const originalItem = purchaseOrder.items.find(item => item.productId._id.toString() == productId);
+    if (!originalItem) return next(new ApiError(`Item ${productId} not found in original purchase order`));
 
     originalItem.returnedQuantity += returnedQuantity;
 
-    if (originalItem.returnedQuantity > originalItem.starterQuantity) return next(new ApiError(`Cannot return more items than purchased for variant ${variantId}`));
+    if (originalItem.returnedQuantity > originalItem.starterQuantity) return next(new ApiError(`Cannot return more items than purchased for product ${productId}`));
 
     // Getting remaining amount before saving
     const orderRemainingAmount = purchaseOrder.remainingAmount;
@@ -139,7 +128,7 @@ exports.returnPurchaseOrderItem = async (req, res, next) => {
         {
           purchaseOrderId,
           warehouseId,
-          variantId,
+          productId,
           returnedQuantity,
           returnedAmount,
           notes,
@@ -156,18 +145,18 @@ exports.returnPurchaseOrderItem = async (req, res, next) => {
     // recalc moving average before update stock with returned quantity
     await calculateMovingAverageOnReturn(returnRecords[0], session);
 
-    // Update variant quantity in stock with transfer handling
-    const variant = await Variant.findById(variantId).session(session);
-    if (!variant) return next(new ApiError(`Variant with ID ${variantId} not found.`));
+    // Update product quantity in stock with transfer handling
+    const product = await Product.findById(productId).session(session);
+    if (!product) return next(new ApiError(`Product with ID ${productId} not found.`));
 
-    const sourceStockEntry = variant.stock.find(s => s.warehouse.toString() === warehouseId.toString());
-    if (!sourceStockEntry) return next(new ApiError(`No stock found for variant ${variantId} in warehouse ${warehouseId}`));
+    const sourceStockEntry = product.stock.find(s => s.warehouse.toString() === warehouseId.toString());
+    if (!sourceStockEntry) return next(new ApiError(`No stock found for product ${productId} in warehouse ${warehouseId}`));
 
     // First check if we have enough quantity across all warehouses
     let totalAvailableQuantity = sourceStockEntry.quantity;
 
     // Get transfer info to check target warehouse quantities
-    const transferInfo = await findTransferredQuantity(variantId, warehouseId, session);
+    const transferInfo = await findTransferredQuantity(productId, warehouseId, session);
 
     if (transferInfo.hasTransfers) {
       // Group quantities by target warehouse to avoid counting duplicates
@@ -181,7 +170,7 @@ exports.returnPurchaseOrderItem = async (req, res, next) => {
 
       // Add quantities from target warehouses
       for (const [targetWarehouseId, transferredQuantity] of Object.entries(warehouseQuantities)) {
-        const targetStockEntry = variant.stock.find(s => s.warehouse.toString() === targetWarehouseId);
+        const targetStockEntry = product.stock.find(s => s.warehouse.toString() === targetWarehouseId);
         if (targetStockEntry) {
           totalAvailableQuantity += targetStockEntry.quantity;
         }
@@ -205,7 +194,7 @@ exports.returnPurchaseOrderItem = async (req, res, next) => {
     // If we still need to return more, use target warehouses
     if (remainingToReturn > 0) {
       if (!transferInfo.hasTransfers) {
-        return next(new ApiError(`Insufficient quantity in warehouse ${warehouseId} for variant ${variantId}`));
+        return next(new ApiError(`Insufficient quantity in warehouse ${warehouseId} for product ${productId}`));
       }
 
       // Group quantities by target warehouse
@@ -221,7 +210,7 @@ exports.returnPurchaseOrderItem = async (req, res, next) => {
       for (const [targetWarehouseId, transferredQuantity] of Object.entries(warehouseQuantities)) {
         if (remainingToReturn <= 0) break;
 
-        const targetStockEntry = variant.stock.find(s => s.warehouse.toString() === targetWarehouseId);
+        const targetStockEntry = product.stock.find(s => s.warehouse.toString() === targetWarehouseId);
         if (!targetStockEntry) continue;
 
         const quantityToReduceFromTarget = Math.min(remainingToReturn, targetStockEntry.quantity);
@@ -236,7 +225,7 @@ exports.returnPurchaseOrderItem = async (req, res, next) => {
       }
     }
 
-    await variant.save({ session });
+    await product.save({ session });
 
     let paymentRecord = null;
 
@@ -286,7 +275,7 @@ exports.getAllReturns = factory.getAll(POReturn);
 
 // Get single return
 exports.getReturn = asyncHandler(async (req, res, next) => {
-  const returnRecord = await POReturn.findById(req.params.id).populate('purchaseOrder', 'orderNumber').populate('items.variant', 'name sku').populate('createdBy', 'name');
+  const returnRecord = await POReturn.findById(req.params.id).populate('purchaseOrderId', 'code').populate('productId', 'title sku').populate('createdBy', 'name');
 
   if (!returnRecord) {
     return next(new ApiError('Return not found', 404));

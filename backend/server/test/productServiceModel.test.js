@@ -64,7 +64,7 @@ test('a service does NOT require cost/category/subcategory, but does require a p
   await assert.rejects(() => invalidService.validate(), /duration/i);
 });
 
-test('saving a valid service persists with zero stock-tracked variants', async () => {
+test('saving a valid service persists with zero stock entries', async () => {
   const service = await Product.create({
     type: 'service',
     title: { en: 'Support Plan', ar: 'خطة دعم' },
@@ -75,10 +75,10 @@ test('saving a valid service persists with zero stock-tracked variants', async (
   });
 
   assert.equal(service.type, 'service');
-  assert.equal(service.variants.length, 0);
+  assert.equal(service.stock.length, 0);
 });
 
-test('a service can never be saved with variants attached (model-level guard)', async () => {
+test('a service can never be saved with stock attached (model-level guard)', async () => {
   const service = new Product({
     type: 'service',
     title: { en: 'Bad Service', ar: 'خدمة خاطئة' },
@@ -86,9 +86,9 @@ test('a service can never be saved with variants attached (model-level guard)', 
     price: 100,
     durationValue: 1,
     durationUnit: 'month',
-    variants: [new mongoose.Types.ObjectId()],
+    stock: [{ warehouse: new mongoose.Types.ObjectId(), quantity: 5 }],
   });
-  await assert.rejects(() => service.save(), /cannot have inventory variants/i);
+  await assert.rejects(() => service.save(), /cannot have inventory stock/i);
 });
 
 test('a regular product still saves normally with cost/category/subcategory (existing behavior preserved)', async () => {

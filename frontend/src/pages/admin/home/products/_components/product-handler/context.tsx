@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useState } from "react";
-import { Color, Product, ProductType, Season, Variant } from "@/types/product";
+import { Color, Product, ProductType, Season } from "@/types/product";
 import { DurationUnit } from "@/utils/constants/product-types";
 import { UploadedImage } from "@/types/global";
 import resources from "@/utils/constants/resources";
@@ -11,6 +11,11 @@ export type ProductColorInput = {
   code: string;
   images: (UploadedImage | File)[];
   deleteImages?: string[];
+};
+
+export type ProductStockInput = {
+  warehouse: string;
+  quantity: string | number;
 };
 
 type ProductContextProps = {
@@ -47,8 +52,14 @@ type ProductContextProps = {
   setColors: React.Dispatch<React.SetStateAction<ProductColorInput[]>>;
   tags: string[];
   setTags: React.Dispatch<React.SetStateAction<string[]>>;
-  variants: Variant[];
-  setVariants: React.Dispatch<React.SetStateAction<Variant[]>>;
+  // A Product is the sellable/stock-tracked item itself now - there is no separate Variant (see
+  // docs/entities/products.md).
+  sku: string;
+  setSku: React.Dispatch<React.SetStateAction<string>>;
+  barcode: string;
+  setBarcode: React.Dispatch<React.SetStateAction<string>>;
+  stock: ProductStockInput[];
+  setStock: React.Dispatch<React.SetStateAction<ProductStockInput[]>>;
   // For Reading & Updating
   currentProduct: Product | null;
   setCurrentProduct: React.Dispatch<React.SetStateAction<Product | null>>;
@@ -91,8 +102,12 @@ export const ProductContext = createContext<ProductContextProps>({
   setColors: () => {},
   tags: [],
   setTags: () => {},
-  variants: [],
-  setVariants: () => {},
+  sku: "",
+  setSku: () => {},
+  barcode: "",
+  setBarcode: () => {},
+  stock: [],
+  setStock: () => {},
   currentProduct: null,
   setCurrentProduct: () => {},
   canIUpdateProducts: false,
@@ -117,7 +132,9 @@ export default function ProductFormProvider({ product, children }: { product?: P
   const [subcategory, setSubcategory] = useState<string | null>(product?.subcategory || null);
   const [colors, setColors] = useState<ProductColorInput[]>(product ? JSON.parse(JSON.stringify(product.colors)) : []);
   const [tags, setTags] = useState<string[]>(product?.tags ? [...product.tags] : []);
-  const [variants, setVariants] = useState<Variant[]>(product ? JSON.parse(JSON.stringify(product.variants)) : []);
+  const [sku, setSku] = useState<string>(product?.sku || "");
+  const [barcode, setBarcode] = useState<string>(product?.barcode || "");
+  const [stock, setStock] = useState<ProductStockInput[]>(product?.stock ? JSON.parse(JSON.stringify(product.stock)) : []);
 
   const [currentProduct, setCurrentProduct] = useState<Product | null>(product || null);
 
@@ -160,8 +177,12 @@ export default function ProductFormProvider({ product, children }: { product?: P
         setColors,
         tags,
         setTags,
-        variants,
-        setVariants,
+        sku,
+        setSku,
+        barcode,
+        setBarcode,
+        stock,
+        setStock,
         currentProduct,
         setCurrentProduct,
         canIUpdateProducts,

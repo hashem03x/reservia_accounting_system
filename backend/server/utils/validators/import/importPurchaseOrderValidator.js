@@ -1,4 +1,4 @@
-const Variant = require('../../../models/inventory/variantModel');
+const Product = require('../../../models/inventory/productModel');
 const Warehouse = require('../../../models/inventory/warehouseModel');
 const Vendor = require('../../../models/vendor/vendor');
 const ApiError = require('../../apiError');
@@ -56,10 +56,11 @@ const validatePurchaseOrderItem = async (item, headerMap) => {
   // The controller will do the full validation before creating purchase orders
   if (errors.length === 0 && Math.random() < 0.1) {
     // Only check 10% of items
-    // Check if variant exists
-    const variant = await Variant.findOne({ variantCode });
-    if (!variant) {
-      errors.push(`Variant with code ${variantCode} not found`);
+    // Check if the product exists (variantCode is now a product barcode - there's no separate
+    // Variant to resolve first)
+    const product = await Product.findOne({ barcode: variantCode });
+    if (!product) {
+      errors.push(`Product with barcode ${variantCode} not found`);
     }
 
     // Check if warehouse exists

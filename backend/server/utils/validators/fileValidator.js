@@ -51,19 +51,3 @@ exports.validateProductData = async (data) => {
     
 
   
-exports.validateVariantData = (data) => {
-    const { productId, color, size, sku, variantCode } = data;
-    const product = Product.findById(productId);
-
-    if(!product) {
-      throw new Error(`Product with id ${productId} not found`);
-    }
-
-    if (!data.productId || !data.color || !data.size || !data.sku || !data.variantCode) {
-      throw new Error(`Variant validation failed. Missing required fields: ${JSON.stringify(data)}`);
-    }
-    return data;
-  };
-
-  // check available data
-  

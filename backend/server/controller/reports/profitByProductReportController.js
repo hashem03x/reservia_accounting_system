@@ -4,7 +4,6 @@ const SalesOrder = require('../../models/sales/salesOrderModel');
 const Product = require('../../models/inventory/productModel');
 const Category = require('../../models/categoryModel');
 const SubCategory = require('../../models/subCategoryModel');
-const Variant = require('../../models/inventory/variantModel'); // Added Variant model
 const exportToExcel = require('../../utils/exportToExcel');
 
 // Helper function to build aggregation pipeline for profit by product report
@@ -38,24 +37,11 @@ const buildProfitByProductPipeline = filters => {
   // Unwind items array
   pipeline.push({ $unwind: '$items' });
 
-  // Lookup variant details
-  pipeline.push({
-    $lookup: {
-      from: 'variants',
-      localField: 'items.variant',
-      foreignField: '_id',
-      as: 'variantDetails',
-    },
-  });
-
-  // Unwind variant details
-  pipeline.push({ $unwind: '$variantDetails' });
-
-  // Lookup product details
+  // Lookup product details - items identify their product directly now, no Variant to resolve first
   pipeline.push({
     $lookup: {
       from: 'products',
-      localField: 'variantDetails.productId',
+      localField: 'items.product',
       foreignField: '_id',
       as: 'productDetails',
     },

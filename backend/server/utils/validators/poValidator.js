@@ -2,7 +2,6 @@ const { body } = require('express-validator');
 
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const Vendor = require('../../models/vendor/vendor');
-const Variant = require('../../models/inventory/variantModel');
 const Warehouse = require('../../models/inventory/warehouseModel');
 
 const createPurchaseOrderValidate = [
@@ -17,7 +16,7 @@ const createPurchaseOrderValidate = [
 
     body('items').isArray().withMessage('Items must be an array'),
 
-    body('items.*.variantId').isString().withMessage('variant ID must be a string'),
+    body('items.*.productId').isMongoId().withMessage('Product ID must be a mongoID'),
     body('items.*.unitPrice').isFloat({ gt: 0 }).withMessage('Price must be a positive number'),
     body('items.*.starterQuantity').isInt({ gt: 0 }).withMessage('Quantity must be a positive integer'),
 

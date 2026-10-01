@@ -8,8 +8,10 @@ const { Parser } = require('json2csv');
 const ApiError = require('../../utils/apiError');
 const { uploadMixOfFiles } = require('../../middleware/uploadImageMiddleware');
 const Product = require('../../models/inventory/productModel');
+const PurchaseOrder = require('../../models/vendor/purchaseOrder');
+const SalesOrder = require('../../models/sales/salesOrderModel');
+const Transfer = require('../../models/inventory/transferModel');
 const factory = require('../handlersFactory');
-const Variant = require('../../models/inventory/variantModel');
 const apiResponse = require('../../utils/apiResponse');
 const { normalizeTags } = require('../../utils/helper');
 const { default: mongoose } = require('mongoose');
@@ -224,6 +226,22 @@ exports.updateProductImages = asyncHandler(async (req, res, next) => {
   } catch (error) {
     next(new ApiError(`Error updating images: ${error.message}`, 500));
   }
+});
+
+// `stock` arrives as a JSON string over multipart/form-data (FormData can't carry nested arrays
+// directly - see the product-handler's InventoryInformation component on the frontend). Parse it
+// back into the array the schema expects before validation/persistence. Not gated behind
+// `req.files` existing (unlike the colors-parsing above) since a product save with no new image
+// files must still get its stock parsed.
+exports.parseProductStock = asyncHandler(async (req, res, next) => {
+  if (typeof req.body.stock === 'string') {
+    try {
+      req.body.stock = JSON.parse(req.body.stock);
+    } catch (error) {
+      return next(new ApiError('Invalid stock data', 400));
+    }
+  }
+  next();
 });
 
 exports.updateProduct = asyncHandler(async (req, res) => {
@@ -505,17 +523,9 @@ exports.getFilteredProducts = asyncHandler(async (req, res, next) => {
   const { format } = req.query; // Check if CSV format is requested
   const allProducts = await Product.find().sort({ createdAt: -1 });
 
-  const filteredProducts = allProducts
-    .map(product => {
-      // Convert Mongoose document to plain object
-      const productObj = product.toObject();
-
-      // Filter colors that have at least one variant available in stock
-      const filteredColors = productObj.colors.filter(color => productObj.variants.some(variant => variant.color === color.name && variant.stock.some(s => s.quantity > 0)));
-
-      return { ...productObj, colors: filteredColors };
-    })
-    .filter(product => product.colors.length > 0);
+  // A Product no longer has per-color variants to check stock against - a product now carries its
+  // own stock directly, so "has it got anything sellable" is just "does it have stock anywhere".
+  const filteredProducts = allProducts.map(product => product.toObject()).filter(product => product.type === 'service' || (product.stock || []).some(s => s.quantity > 0));
 
   // If CSV format is requested
   if (format === 'csv') {
@@ -674,27 +684,21 @@ exports.deleteProduct = asyncHandler(async (req, res, next) => {
 
   product.colors = colors;
 
-  let variants = product.variants;
-
-  variants = await Promise.all(
-    variants.map(async variant => {
-      await Variant.findByIdAndUpdate(variant._id, { quantity: 0, isDeleted: true });
-    })
-  );
+  // Zero out stock everywhere instead of deleting it - a deleted product keeps its stock history
+  // (mirrors the old "mark variant deleted + zero its stock" behavior, now done directly on the
+  // product since there's no separate variant to carry that state).
+  product.stock.forEach(s => {
+    s.quantity = 0;
+  });
 
   product.isDeleted = true;
   product.imageCover = {};
   await product.save();
 
-  const data = {
-    product,
-    variants,
-  };
-
   res.status(200).json({
     status: 'success',
     message: 'Product deleted successfully',
-    data,
+    data: { product },
   });
 });
 
@@ -804,5 +808,183 @@ exports.applyDiscountToProduct = asyncHandler(async (req, res, next) => {
     status: 'success',
     message: 'Product price updated successfully',
     data: product,
+  });
+});
+
+/**
+ * @description Get a single product by its barcode - powers the PO/SO "scan or search an item"
+ * flow (replaces the removed Variant module's getVariantByCode).
+ * @route GET /api/v1/products/code/:code
+ * @access Private
+ */
+exports.getProductByCode = asyncHandler(async (req, res, next) => {
+  const { code } = req.params;
+
+  const product = await Product.findOne({ barcode: code }).lean();
+  if (!product) {
+    return next(new ApiError('Product not found with this code', 404));
+  }
+
+  res.status(200).json(apiResponse('Product found', true, product));
+});
+
+/**
+ * @description Get all purchase and sales orders containing a specific product (by barcode)
+ * @route GET /api/v1/products/orders/:code
+ * @access Private
+ * Ported from the removed Variant module's getOrdersByVariantCode - same capability, now keyed by
+ * Product.barcode (replaces Variant.variantCode) and queried directly against Product, with no
+ * variant-resolution step in between.
+ */
+exports.getOrdersByProductCode = asyncHandler(async (req, res, next) => {
+  const { code } = req.params;
+
+  const product = await Product.findOne({ barcode: code }).select('title cost price priceAfterDiscount barcode sku');
+  if (!product) {
+    return next(new ApiError('Product not found with this code', 404));
+  }
+
+  const purchaseOrders = await PurchaseOrder.find({ 'items.productId': product._id }).select('code items.productId items.starterQuantity items.returnedQuantity createdAt');
+
+  const salesOrders = await SalesOrder.find({ 'items.product': product._id }).select('code items.product items.starterQuantity items.returnedQuantity createdAt');
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      product,
+      purchaseOrders,
+      salesOrders,
+    },
+  });
+});
+
+/**
+ * @description Get comprehensive purchase/sale/transfer history of a product by its barcode
+ * @route GET /api/v1/products/history/:code
+ * @access Private
+ * Ported from the removed Variant module's getVariantHistoryByCode. Same response shape and
+ * balance calculation, now built directly from Product (and PO/SO/Transfer, which reference
+ * Product directly) instead of resolving a Variant first.
+ */
+exports.getProductHistoryByCode = asyncHandler(async (req, res, next) => {
+  const { code } = req.params;
+
+  const product = await Product.findOne({ barcode: code }).select('title sku barcode cost price priceAfterDiscount stock');
+  if (!product) {
+    return next(new ApiError('Product not found with this code', 404));
+  }
+
+  const starterQuantity = product.stock.reduce((total, stockItem) => total + (stockItem.starterQuantity || 0), 0);
+
+  // Purchase order history for this product
+  const purchaseOrders = await PurchaseOrder.find({ 'items.productId': product._id }).sort({ createdAt: 1 });
+
+  const purchaseOrdersHistory = [];
+  purchaseOrders.forEach(po => {
+    po.items.forEach(item => {
+      if (item.productId && item.productId._id.equals(product._id)) {
+        purchaseOrdersHistory.push({
+          orderId: po._id,
+          code: po.code,
+          type: 'purchase',
+          vendor: po.vendorId?.name || 'Unknown',
+          warehouse: po.warehouseId || 'Unknown',
+          quantityPurchased: item.starterQuantity || 0,
+          quantityReturned: item.returnedQuantity || 0,
+          netQuantity: (item.starterQuantity || 0) - (item.returnedQuantity || 0),
+          unitPrice: item.unitPrice || 0,
+          unitPriceAfterDiscount: item.unitPriceAfterDiscount || 0,
+          starterSubtotal: item.starterSubtotal || 0,
+          finalSubtotal: item.subtotal || 0,
+          date: po.createdAt,
+        });
+      }
+    });
+  });
+
+  // Sales order history for this product
+  const salesOrders = await SalesOrder.find({ 'items.product': product._id }).sort({ createdAt: 1 });
+
+  const salesOrdersHistory = [];
+  salesOrders.forEach(so => {
+    so.items.forEach(item => {
+      if (item.product && item.product._id.equals(product._id)) {
+        salesOrdersHistory.push({
+          orderId: so._id,
+          code: so.code,
+          type: 'sale',
+          customer: so.customer?.name || so.customer?.email || 'Unknown',
+          warehouse: so.warehouse || 'Unknown',
+          orderSource: so.orderSource || 'unknown',
+          quantitySold: item.starterQuantity || 0,
+          quantityReturned: item.returnedQuantity || 0,
+          netQuantity: (item.starterQuantity || 0) - (item.returnedQuantity || 0),
+          unitPrice: item.unitPrice || 0,
+          unitPriceAfterDiscount: item.unitPriceAfterDiscount || 0,
+          starterSubtotal: item.starterSubtotal || 0,
+          finalSubtotal: item.subtotal || 0,
+          date: so.createdAt,
+        });
+      }
+    });
+  });
+
+  // Transfer history for this product
+  const transfers = await Transfer.find({ 'details.product': product._id }).sort({ transferredAt: 1 });
+
+  const transfersHistory = [];
+  transfers.forEach(transfer => {
+    transfer.details.forEach(detail => {
+      if (detail.product && detail.product._id.equals(product._id)) {
+        transfersHistory.push({
+          transferId: transfer._id,
+          type: 'transfer',
+          quantityTransferred: detail.quantity || 0,
+          sourceWarehouse: transfer.sourceWarehouse,
+          targetWarehouse: transfer.targetWarehouse,
+          status: transfer.status,
+          transferredBy: transfer.transferredBy?.name || transfer.transferredBy?.email || 'Unknown',
+          date: transfer.transferredAt || transfer.createdAt,
+        });
+      }
+    });
+  });
+
+  const totalPurchased = purchaseOrdersHistory.reduce((sum, po) => sum + po.quantityPurchased, 0);
+  const totalPurchaseReturned = purchaseOrdersHistory.reduce((sum, po) => sum + po.quantityReturned, 0);
+  const totalSold = salesOrdersHistory.reduce((sum, so) => sum + so.quantitySold, 0);
+  const totalSalesReturned = salesOrdersHistory.reduce((sum, so) => sum + so.quantityReturned, 0);
+  const totalTransferred = transfersHistory.reduce((sum, t) => sum + t.quantityTransferred, 0);
+
+  const currentStock = product.stock.reduce((total, stockItem) => total + (stockItem.quantity || 0), 0);
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      product: {
+        _id: product._id,
+        title: product.title,
+        sku: product.sku,
+        barcode: product.barcode,
+        cost: product.cost,
+        price: product.price,
+        priceAfterDiscount: product.priceAfterDiscount,
+        stock: product.stock,
+        currentStock,
+      },
+      summary: {
+        starterQuantity,
+        totalPurchased,
+        totalPurchaseReturned,
+        totalSold,
+        totalSalesReturned,
+        totalTransferred,
+        currentStock,
+        calculatedBalance: starterQuantity + totalPurchased - totalPurchaseReturned - totalSold + totalSalesReturned,
+      },
+      purchaseOrders: purchaseOrdersHistory,
+      salesOrders: salesOrdersHistory,
+      transfers: transfersHistory,
+    },
   });
 });

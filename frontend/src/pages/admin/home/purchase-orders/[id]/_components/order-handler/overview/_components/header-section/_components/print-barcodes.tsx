@@ -2,7 +2,6 @@ import Barcode from "react-barcode";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAbout } from "@/context/AboutContext";
 import { useSubcategories } from "@/context/SubcategoriesContext";
-import { getColorLabel } from "@/utils/constants/colors";
 import { BARCODE_HEIGHT, BARCODE_WIDTH } from "@/utils/constants";
 import { useOrder } from "../../../../../../context";
 import { solidIcons } from "@/components/icons";
@@ -51,14 +50,11 @@ export function PrintBarcodesVertical() {
               }}
             >
               <span style={{ fontSize: "2.5mm" }}>
-                {item.variant.product.title.en} - {item.variant.product.price} EGP
-              </span>
-              <span style={{ fontSize: "2.5mm" }}>
-                {`${getColorLabel(item.variant.color, "en-US")} - ${item.variant.size}`}
+                {item.product.title.en} - {item.product.price} EGP
               </span>
             </div>
             {/* Barcode */}
-            <Barcode value={item.variant.variantCode} margin={0} width={1.68} height={38} fontSize={14} />
+            <Barcode value={item.product.barcode || ""} margin={0} width={1.68} height={38} fontSize={14} />
           </div>
         ))}
       </div>
@@ -128,14 +124,11 @@ export function PrintBarcodesHorizontal() {
                 }}
               >
                 <span style={{ fontSize: "2.5mm" }}>
-                  {item.variant.product.title.en} - {item.variant.product.price} EGP
-                </span>
-                <span style={{ fontSize: "2.5mm" }}>
-                  {`${getColorLabel(item.variant.color, "en-US")} - ${item.variant.size}`}
+                  {item.product.title.en} - {item.product.price} EGP
                 </span>
               </div>
               {/* Barcode */}
-              <Barcode value={item.variant.variantCode} margin={0} width={1.68} height={38} fontSize={14} />
+              <Barcode value={item.product.barcode || ""} margin={0} width={1.68} height={38} fontSize={14} />
             </div>
           </div>
         ))}
@@ -175,19 +168,13 @@ export function PrintBarcodes() {
         }}
       >
         {expandedItems.map((item, index) => {
-          console.log(item);
-          const subcategory = subcategories.find((sub) => sub._id === item.variant.product.subcategory);
+          const subcategory = subcategories.find((sub) => sub._id === item.product.subcategory);
 
-          // Build variant info based on barcode settings
+          // Build barcode label info based on barcode settings - color/size no longer exist on a
+          // product's order item (see docs/entities/products.md), only subcategory remains.
           const variantInfoParts: string[] = [];
           if (aboutData?.barcodeSittings?.subcategory && subcategory) {
             variantInfoParts.push(subcategory.name.en);
-          }
-          if (aboutData?.barcodeSittings?.color) {
-            variantInfoParts.push(getColorLabel(item.variant.color, "en-US"));
-          }
-          if (aboutData?.barcodeSittings?.size) {
-            variantInfoParts.push(item.variant.size);
           }
           const variantInfo = variantInfoParts.join(" - ");
 
@@ -225,7 +212,7 @@ export function PrintBarcodes() {
                     overflow: "hidden",
                   }}
                 >
-                  {item.variant.product.title.en}
+                  {item.product.title.en}
                 </div>
                 {/* Variant Info - Price */}
                 {variantInfo && (
@@ -236,7 +223,7 @@ export function PrintBarcodes() {
                       fontSize: "2.1mm",
                     }}
                   >
-                    {variantInfo} - {item.variant.product.price} EGP
+                    {variantInfo} - {item.product.price} EGP
                   </div>
                 )}
                 {!variantInfo && (
@@ -247,11 +234,11 @@ export function PrintBarcodes() {
                       fontSize: "2.1mm",
                     }}
                   >
-                    {item.variant.product.price} EGP
+                    {item.product.price} EGP
                   </div>
                 )}
                 {/* Barcode */}
-                <Barcode value={item.variant.variantCode} margin={0} width={1.65} height={32} fontSize={12.5} />
+                <Barcode value={item.product.barcode || ""} margin={0} width={1.65} height={32} fontSize={12.5} />
               </div>
             </div>
           );

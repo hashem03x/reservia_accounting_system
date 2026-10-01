@@ -27,7 +27,7 @@ const salesOrderSchema = mongoose.Schema(
     items: [
       {
         // warehouse: { type: Schema.Types.ObjectId, ref: 'Warehouse' }, // Not used so far
-        variant: { type: Schema.Types.ObjectId, ref: 'Variant', required: true },
+        product: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
         unitPrice: { type: Number, required: true, min: 0 },
         itemDiscount: {
           type: { type: String, enum: ['percentage', 'fixed'], default: 'fixed' },
@@ -145,31 +145,9 @@ salesOrderSchema.pre(/^find/, function () {
   });
 
   this.populate({
-    path: 'items.variant',
-    select: '-stock',
-    populate: {
-      path: 'productId',
-      select: 'title price priceAfterDiscount colors',
-      options: { populateVariants: false },
-    },
+    path: 'items.product',
+    select: 'title price priceAfterDiscount colors barcode sku',
   });
-});
-
-// Transform response format
-salesOrderSchema.set('toJSON', {
-  transform: function (doc, ret) {
-    // Iterate through items to rename productId to product inside variant
-    if (ret.items) {
-      ret.items = ret.items.map(item => {
-        if (item.variant?.productId) {
-          item.variant.product = item.variant.productId;
-          delete item.variant.productId;
-        }
-        return item;
-      });
-    }
-    return ret;
-  },
 });
 
 // Index for better query performance

@@ -9,7 +9,6 @@ const paths = {
   vendors: "vendors",
   customers: "customers",
   products: "products",
-  variants: "variants",
   purchaseOrders: "purchase-orders",
   salesOrders: "sales-orders",
   expenses: "expenses",
@@ -42,7 +41,6 @@ const paths = {
   journalEntries: "journal-entries",
   incomeStatement: "income-statement",
   balanceSheet: "balance-sheet",
-  variantTransactions: "variants/transactions",
 };
 
 export default paths;

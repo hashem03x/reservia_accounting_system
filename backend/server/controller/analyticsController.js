@@ -3,7 +3,6 @@ const Order = require('../models/sales/salesOrderModel');
 const OrderReturn = require('../models/sales/salesOrderReturnModel');
 const Product = require('../models/inventory/productModel');
 const User = require('../models/userModel');
-const Variant = require('../models/inventory/variantModel');
 const Warehouse = require('../models/inventory/warehouseModel');
 const Expense = require('../models/expense/expenseModel');
 const FixedAsset = require('../models/fixedAssets');
@@ -85,20 +84,13 @@ exports.getSalesOverview = asyncHandler(async (req, res) => {
 exports.getTopSellingProducts = asyncHandler(async (req, res) => {
   const { warehouseId } = req.query;
 
-  const matchStage = { isDeleted: false };
+  // A product carries its own stock directly now (see docs/entities/products.md) - filtering by
+  // warehouse is a plain match on the embedded `stock` array, no separate Variant lookup needed.
+  const matchStage = { isDeleted: false, ...(warehouseId ? { 'stock.warehouse': new mongoose.Types.ObjectId(warehouseId) } : {}) };
 
   const topProducts = await Product.aggregate([
     {
       $match: matchStage,
-    },
-    {
-      $lookup: {
-        from: 'variants',
-        localField: 'variants',
-        foreignField: '_id',
-        pipeline: [{ $match: { isDeleted: false } }, { $unwind: '$stock' }, ...(warehouseId ? [{ $match: { 'stock.warehouse': new mongoose.Types.ObjectId(warehouseId) } }] : [])],
-        as: 'variantDetails',
-      },
     },
     {
       $lookup: {
@@ -113,17 +105,8 @@ exports.getTopSellingProducts = asyncHandler(async (req, res) => {
           },
           { $unwind: '$items' },
           {
-            $lookup: {
-              from: 'variants',
-              localField: 'items.variant',
-              foreignField: '_id',
-              as: 'variantInfo',
-            },
-          },
-          { $unwind: '$variantInfo' },
-          {
             $match: {
-              $expr: { $eq: ['$variantInfo.productId', '$$productId'] },
+              $expr: { $eq: ['$items.product', '$$productId'] },
             },
           },
           {
@@ -153,7 +136,7 @@ exports.getTopSellingProducts = asyncHandler(async (req, res) => {
         price: 1,
         totalSold: { $ifNull: ['$salesInfo.totalSold', 0] },
         revenue: { $ifNull: ['$salesInfo.revenue', 0] },
-        variantsCount: { $size: '$variantDetails' },
+        stockEntriesCount: { $size: { $ifNull: ['$stock', []] } },
         availableColors: { $size: '$colors' },
       },
     },
@@ -193,17 +176,8 @@ exports.getRevenueByCategory = asyncHandler(async (req, res) => {
     { $unwind: '$items' },
     {
       $lookup: {
-        from: 'variants',
-        localField: 'items.variant',
-        foreignField: '_id',
-        as: 'variantInfo',
-      },
-    },
-    { $unwind: '$variantInfo' },
-    {
-      $lookup: {
         from: 'products',
-        localField: 'variantInfo.productId',
+        localField: 'items.product',
         foreignField: '_id',
         as: 'productInfo',
       },
@@ -239,7 +213,7 @@ exports.getRevenueByCategory = asyncHandler(async (req, res) => {
             priceAfterDiscount: '$productInfo.priceAfterDiscount',
             isAvailable: '$productInfo.isAvailable',
             season: '$productInfo.season',
-            variantsSold: {
+            quantitySold: {
               $sum: { $subtract: ['$items.starterQuantity', '$items.returnedQuantity'] },
             },
           },
@@ -537,34 +511,24 @@ exports.getNewCustomers = asyncHandler(async (req, res) => {
 
 // Get Inventory Status
 exports.getInventoryStatus = asyncHandler(async (req, res) => {
-  const inventoryStatus = await Variant.aggregate([
+  // A product carries its own per-warehouse stock directly now - no separate Variant collection
+  // to join against.
+  const inventoryStatus = await Product.aggregate([
     {
-      $match: {
-        isDeleted: false,
-      },
+      $match: { isDeleted: false },
     },
-    {
-      $lookup: {
-        from: 'products',
-        localField: 'productId',
-        foreignField: '_id',
-        as: 'product',
-      },
-    },
-    { $unwind: '$product' },
     {
       $unwind: '$stock',
     },
     {
       $group: {
-        _id: '$productId',
-        productTitle: { $first: '$product.title' },
+        _id: '$_id',
+        productTitle: { $first: '$title' },
         totalStock: { $sum: '$stock.quantity' },
-        variants: {
+        stockByWarehouse: {
           $push: {
-            color: '$color',
-            size: '$size',
             sku: '$sku',
+            barcode: '$barcode',
             stockQuantity: '$stock.quantity',
             warehouse: '$stock.warehouse',
           },
@@ -574,7 +538,7 @@ exports.getInventoryStatus = asyncHandler(async (req, res) => {
     {
       $lookup: {
         from: 'warehouses',
-        localField: 'variants.warehouse',
+        localField: 'stockByWarehouse.warehouse',
         foreignField: '_id',
         as: 'warehouseDetails',
       },
@@ -584,7 +548,7 @@ exports.getInventoryStatus = asyncHandler(async (req, res) => {
         _id: 1,
         productTitle: 1,
         totalStock: 1,
-        variants: 1,
+        stockByWarehouse: 1,
         warehouseCount: { $size: '$warehouseDetails' },
       },
     },
@@ -661,25 +625,19 @@ const getInventoryTotalValue = async (startDate, endDate, warehouseId) => {
     };
   }
 
-  const products = await Product.find(query)
-    .populate({
-      path: 'variants',
-      select: 'color size stockLevel stock sku',
-    })
-    .lean();
+  const products = await Product.find(query).select('stock cost').lean();
 
   let totalValue = 0;
 
   for (const product of products) {
-    const stockLevel = product.variants.reduce((sum, variant) => {
+    const stockLevel = (product.stock || []).reduce((sum, stockItem) => {
       if (warehouseId) {
-        const warehouseStock = variant.stock.find(s => s.warehouse.toString() === warehouseId);
-        return sum + (warehouseStock ? warehouseStock.quantity : 0);
+        return stockItem.warehouse.toString() === warehouseId ? sum + stockItem.quantity : sum;
       }
-      return sum + variant.stockLevel;
+      return sum + stockItem.quantity;
     }, 0);
 
-    totalValue += stockLevel * product.cost;
+    totalValue += stockLevel * (product.cost || 0);
   }
 
   return totalValue;
@@ -1002,26 +960,13 @@ exports.getProductPerformance = asyncHandler(async (req, res) => {
 
   const productPerformance = await Product.aggregate([
     {
-      $match: { isDeleted: false },
-    },
-    {
-      $lookup: {
-        from: 'variants',
-        localField: 'variants',
-        foreignField: '_id',
-        pipeline: [{ $match: { isDeleted: false } }, { $unwind: '$stock' }, ...(warehouseId ? [{ $match: { 'stock.warehouse': new mongoose.Types.ObjectId(warehouseId) } }] : [])],
-        as: 'variantDetails',
+      $match: {
+        isDeleted: false,
+        // A product carries its own stock directly now - filtering by warehouse is a plain match
+        // on the embedded `stock` array, no separate Variant lookup needed.
+        ...(warehouseId ? { 'stock.warehouse': new mongoose.Types.ObjectId(warehouseId) } : {}),
       },
     },
-    ...(warehouseId
-      ? [
-          {
-            $match: {
-              variantDetails: { $not: { $size: 0 } },
-            },
-          },
-        ]
-      : []),
     {
       $lookup: {
         from: 'salesorders',
@@ -1036,17 +981,8 @@ exports.getProductPerformance = asyncHandler(async (req, res) => {
           },
           { $unwind: '$items' },
           {
-            $lookup: {
-              from: 'variants',
-              localField: 'items.variant',
-              foreignField: '_id',
-              as: 'variantInfo',
-            },
-          },
-          { $unwind: '$variantInfo' },
-          {
             $match: {
-              $expr: { $eq: ['$variantInfo.productId', '$$productId'] },
+              $expr: { $eq: ['$items.product', '$$productId'] },
             },
           },
           {
@@ -1371,17 +1307,8 @@ exports.getSalesByCategory = asyncHandler(async (req, res) => {
     { $unwind: '$items' },
     {
       $lookup: {
-        from: 'variants',
-        localField: 'items.variant',
-        foreignField: '_id',
-        as: 'variant',
-      },
-    },
-    { $unwind: '$variant' },
-    {
-      $lookup: {
         from: 'products',
-        localField: 'variant.productId',
+        localField: 'items.product',
         foreignField: '_id',
         as: 'product',
       },
@@ -1467,17 +1394,8 @@ exports.getSalesBySubCategory = asyncHandler(async (req, res) => {
     { $unwind: '$items' },
     {
       $lookup: {
-        from: 'variants',
-        localField: 'items.variant',
-        foreignField: '_id',
-        as: 'variant',
-      },
-    },
-    { $unwind: '$variant' },
-    {
-      $lookup: {
         from: 'products',
-        localField: 'variant.productId',
+        localField: 'items.product',
         foreignField: '_id',
         as: 'product',
       },
@@ -1731,39 +1649,23 @@ exports.getProductAvailabilityAnalysis = asyncHandler(async (req, res) => {
   // 1. Get total number of active products
   const totalProducts = await Product.countDocuments({ isDeleted: false, ...excludeServicesFilter });
 
-  // 2. Get available products and total stock with warehouse filter
+  // 2. Get available products and total stock with warehouse filter - a product carries its own
+  // stock directly now, so this is a single in-document computation with no Variant lookup needed.
   const stockAnalysis = await Product.aggregate([
     {
       $match: { isDeleted: false, ...excludeServicesFilter },
     },
     {
-      $lookup: {
-        from: 'variants',
-        localField: 'variants',
-        foreignField: '_id',
-        pipeline: [
-          { $match: { isDeleted: false } },
-          { $unwind: '$stock' },
-          ...(warehouseId
-            ? [
-                {
-                  $match: { 'stock.warehouse': new mongoose.Types.ObjectId(warehouseId) },
-                },
-              ]
-            : []),
-          {
-            $group: {
-              _id: '$_id',
-              stockQuantity: { $sum: '$stock.quantity' },
+      $addFields: {
+        totalStock: {
+          $sum: {
+            $map: {
+              input: { $ifNull: ['$stock', []] },
+              as: 's',
+              in: warehouseId ? { $cond: [{ $eq: ['$$s.warehouse', new mongoose.Types.ObjectId(warehouseId)] }, '$$s.quantity', 0] } : '$$s.quantity',
             },
           },
-        ],
-        as: 'variantStocks',
-      },
-    },
-    {
-      $addFields: {
-        totalStock: { $sum: '$variantStocks.stockQuantity' },
+        },
       },
     },
   ]);
@@ -1771,7 +1673,7 @@ exports.getProductAvailabilityAnalysis = asyncHandler(async (req, res) => {
   const availableProducts = stockAnalysis.filter(p => p.totalStock > 0).length;
   const totalStock = stockAnalysis.reduce((sum, p) => sum + (p.totalStock || 0), 0);
 
-  // 3. Get sold products analysis with warehouse filter - get sold variants
+  // 3. Get sold products analysis with warehouse filter
   const deliveredOrders = await Order.aggregate([
     {
       $match: {
@@ -1782,7 +1684,7 @@ exports.getProductAvailabilityAnalysis = asyncHandler(async (req, res) => {
     { $unwind: '$items' },
     {
       $group: {
-        _id: '$items.variant',
+        _id: '$items.product',
         soldQuantity: { $sum: '$items.starterQuantity' },
       },
     },
@@ -1797,7 +1699,7 @@ exports.getProductAvailabilityAnalysis = asyncHandler(async (req, res) => {
     },
     {
       $group: {
-        _id: '$variantId',
+        _id: '$productId',
         returnedQuantity: { $sum: '$returnedQuantity' },
       },
     },
@@ -1808,45 +1710,17 @@ exports.getProductAvailabilityAnalysis = asyncHandler(async (req, res) => {
 
   // Calculate net sales
   const salesAnalysis = deliveredOrders.map(order => {
-    const variantId = order._id.toString();
-    const returnedQty = returnMap.get(variantId) || 0;
+    const productId = order._id.toString();
+    const returnedQty = returnMap.get(productId) || 0;
     return {
-      variantId,
+      productId,
       netQuantity: order.soldQuantity - returnedQty,
     };
   });
 
-  // Get unique sold products from variants (more accurate count)
-  // First, get variants with positive net quantity
-  const soldVariants = salesAnalysis.filter(item => item.netQuantity > 0);
-
-  // Convert to array of variant IDs
-  const soldVariantIds = soldVariants.map(item => new mongoose.Types.ObjectId(item.variantId));
-
-  // Count unique products from these variants
-  let soldProductsCount = 0;
-
-  // Check if we have any sold variants to look up
-  if (soldVariantIds.length > 0) {
-    // Look up the variants to get their productIds
-    const variantsWithProducts = await Variant.aggregate([
-      {
-        $match: {
-          _id: { $in: soldVariantIds },
-          isDeleted: false,
-        },
-      },
-      {
-        $group: {
-          _id: '$productId', // Group by productId to get unique products
-          count: { $sum: 1 },
-        },
-      },
-    ]);
-
-    // Count unique products
-    soldProductsCount = variantsWithProducts.length;
-  }
+  // Count unique sold products - items already identify their product directly (no separate
+  // Variant to resolve a productId from), so this is a plain in-memory count, no extra DB query.
+  const soldProductsCount = new Set(salesAnalysis.filter(item => item.netQuantity > 0).map(item => item.productId)).size;
 
   const totalSold = salesAnalysis.reduce((sum, item) => sum + Math.max(0, item.netQuantity), 0);
 

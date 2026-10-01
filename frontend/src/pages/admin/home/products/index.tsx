@@ -170,16 +170,6 @@ export default function Products() {
         backLink: true,
         sideElements: canICreateProducts && (
           <div className="flex items-center gap-2">
-            <Link to={`${paths.variants}`}>
-              <Button variant="light" color="cyan" leftSection={<solidIcons.Box />}>
-                <div className="flex-center gap-1.5">
-                  {translate("Variants", "الأصناف")}{" "}
-                  <Badge size="sm" color="cyan">
-                    {translate("New", "جديد")}
-                  </Badge>
-                </div>
-              </Button>
-            </Link>
             <GlobalDiscount singleProduct={null} />
             <ImportButton url="import/products" callback={handleLoadProducts} />
             <Link to={`${paths.new}`}>
@@ -362,11 +352,7 @@ export default function Products() {
                 <Table.Tbody>
                   {paginatedProducts.data.map((product) => {
                     // Calculate total quantity and total amount
-                    const totalQuantity = product.variants.reduce(
-                      (sum, variant) =>
-                        sum + variant.stock.reduce((stockSum, stockItem) => stockSum + stockItem.quantity, 0),
-                      0,
-                    );
+                    const totalQuantity = (product.stock || []).reduce((sum, stockItem) => sum + stockItem.quantity, 0);
 
                     // A service has no cost/inventory (see docs/entities/products.md) - `cost` is
                     // undefined for one, so this must not blindly call .toFixed() on it.

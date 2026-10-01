@@ -27,7 +27,7 @@ const createCashierSalesOrderValidator = [
 
 	body('items').isArray().withMessage('Items must be an array'),
 
-	body('items.*.variant').isMongoId().withMessage('Variant ID must be a mongoID'),
+	body('items.*.product').isMongoId().withMessage('Product ID must be a mongoID'),
 	body('items.*.unitPrice').isFloat({ gt: 0 }).withMessage('Price must be a positive number'),
 	body('items.*.starterQuantity').isInt({ gt: 0 }).withMessage('Quantity must be a positive integer'),
 

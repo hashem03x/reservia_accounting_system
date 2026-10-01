@@ -5,7 +5,6 @@ import useDataHandler from "@/hooks/useDataHandler";
 import { SalesOrderItem } from "@/types/orders";
 import { PaymentMethod } from "@/types/payment";
 import handleRequest from "@/utils/helpers/handle-request";
-import { getColorLabel } from "@/utils/constants/colors";
 import { Button, NumberInput, Select } from "@mantine/core";
 import ErrorAlert from "@/components/ui/error-alert";
 import Modal from "@/components/ui/modal";
@@ -45,7 +44,7 @@ export default function ReturnItemModal({ opened, close }: { opened: boolean; cl
         data: {
           salesOrderId: order._id,
           warehouseId: order.warehouse || "67933fd03bf29b9f172eeab6", // Fallback to main warehouse if not set (in case of website orders)
-          variantId: selectedItem.variant._id,
+          productId: selectedItem.product._id,
           returnedQuantity: quantity,
           paymentMethod,
         },
@@ -85,7 +84,7 @@ export default function ReturnItemModal({ opened, close }: { opened: boolean; cl
             onChange={(value) => setSelectedItemId(value)}
             data={order.items.map((item) => ({
               value: item._id,
-              label: `${translate(item.variant.product.title.en, item.variant.product.title.ar)} - ${getColorLabel(item.variant.color, language)} - ${item.variant.size} ${
+              label: `${translate(item.product.title.en, item.product.title.ar)} ${
                 item.quantityToBeReturned > 0
                   ? ` - (${translate(`Requested to return ${item.quantityToBeReturned}`, `طلب إرجاع ${item.quantityToBeReturned}`)})`
                   : ""

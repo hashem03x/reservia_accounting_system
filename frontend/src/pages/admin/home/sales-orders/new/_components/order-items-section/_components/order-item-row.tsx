@@ -3,15 +3,14 @@ import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
 import { ItemDiscount } from "@/types/orders";
-import { getColorLabel } from "@/utils/constants/colors";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import { Button, NumberInput, Table, TextInput, Tooltip } from "@mantine/core";
-import VariantSearchModal from "@/components/global/variant-search-modal";
+import ProductSearchModal from "@/components/global/variant-search-modal";
 import { OrderItemInput } from "../../../types";
 import { calculateSubTotal, calculateUnitPriceAfterDiscount } from "../../../_utils/calculations";
-import noVariantDetails from "../../../_utils/no-variant-details";
+import noProductDetails from "../../../_utils/no-variant-details";
 
-const innerTableCells = 8; // Number of cells between variantCode cell and the deleteItem cell
+const innerTableCells = 6; // Number of cells between the barcode cell and the deleteItem cell
 
 export default function OrderItemRow({
   index,
@@ -32,9 +31,9 @@ export default function OrderItemRow({
 
   const currentItem = items[index];
   const {
-    variantCode,
-    variantError,
-    variantData,
+    productCode,
+    productError,
+    productData,
     unitPrice,
     itemDiscount,
     unitPriceAfterDiscount,
@@ -54,7 +53,7 @@ export default function OrderItemRow({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Enter") {
         event.preventDefault(); // Prevent unintended form submission
-        if (index === items.length - 1 && !variantError) {
+        if (index === items.length - 1 && !productError) {
           addNewItem();
         }
       }
@@ -62,23 +61,22 @@ export default function OrderItemRow({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [index, items.length, variantError, addNewItem]);
+  }, [index, items.length, productError, addNewItem]);
 
-  const handleVariantCodeChange = (newVariantCode: string) => {
-    updateItem({ variantCode: newVariantCode });
+  const handleProductCodeChange = (newProductCode: string) => {
+    updateItem({ productCode: newProductCode });
 
     // Cancel the previous request if it exists
     if (abortControllerRef.current) abortControllerRef.current.abort();
 
-    // Check if the variant code length is between 6 and 20 digits
-    if (newVariantCode.length >= 6 && newVariantCode.length <= 20) {
-      // Check if the variant code already exists in the items list
-      // const existingItemIndex = items.findIndex((item) => item.variantCode === newVariantCode);
+    // Check if the barcode length is between 6 and 20 digits
+    if (newProductCode.length >= 6 && newProductCode.length <= 20) {
+      // Check if the product code already exists in the items list
       const existingItemIndex = items.findIndex(
-        (item) => item.variantCode === newVariantCode && item.itemDiscount.value === 0,
+        (item) => item.productCode === newProductCode && item.itemDiscount.value === 0,
       );
 
-      // If the variant code already exists, just increase the quantity of the existing item
+      // If the product code already exists, just increase the quantity of the existing item
       if (existingItemIndex !== -1) {
         setItems((prevItems) => {
           const updatedItems = [...prevItems];
@@ -93,7 +91,7 @@ export default function OrderItemRow({
           };
 
           // Clear the new input row
-          updatedItems[index] = { variantCode: "", variantError: false, ...noVariantDetails };
+          updatedItems[index] = { productCode: "", productError: false, ...noProductDetails };
           return updatedItems;
         });
       } else {
@@ -107,16 +105,16 @@ export default function OrderItemRow({
         (async () => {
           try {
             const response = await privateRequest({
-              url: `variants/${newVariantCode}`,
+              url: `products/code/${newProductCode}`,
               signal: abortController.signal,
               language,
             });
-            const price = response.data.product.price;
-            const priceAfterDiscount = response.data.product.priceAfterDiscount || price;
+            const price = response.data.price;
+            const priceAfterDiscount = response.data.priceAfterDiscount || price;
             updateItem({
-              variantCode: newVariantCode,
-              variantError: false,
-              variantData: response.data,
+              productCode: newProductCode,
+              productError: false,
+              productData: response.data,
               starterQuantity: 1,
               unitPrice: price,
               itemDiscount: { type: "fixed", value: price - priceAfterDiscount },
@@ -126,12 +124,12 @@ export default function OrderItemRow({
           } catch (error) {
             // If the request is aborted, do nothing
             if ((error as Error).name === "AbortError") return;
-            updateItem({ variantCode: newVariantCode, variantError: true, ...noVariantDetails });
+            updateItem({ productCode: newProductCode, productError: true, ...noProductDetails });
           }
         })();
       }
     } else {
-      updateItem({ variantCode: newVariantCode, variantError: false, ...noVariantDetails });
+      updateItem({ productCode: newProductCode, productError: false, ...noProductDetails });
     }
   };
 
@@ -160,56 +158,54 @@ export default function OrderItemRow({
 
   const [searchModalOpened, { open: openSearchModal, close: closeSearchModal }] = useDisclosure();
 
-  const stock = variantData?.stock.find((stock) => stock.warehouse === warehouseId);
-  const quantityAvailable = stock?.quantity || 0;
-  // Total quantity requested for the same variant across all rows
-  const totalRequestedForVariant = items.reduce((sum, item) => {
-    if (item.variantCode && item.variantCode === currentItem.variantCode) {
+  const stockEntry = productData?.stock?.find((s) => s.warehouse === warehouseId);
+  const quantityAvailable = stockEntry?.quantity || 0;
+  // Total quantity requested for the same product across all rows
+  const totalRequestedForProduct = items.reduce((sum, item) => {
+    if (item.productCode && item.productCode === currentItem.productCode) {
       return sum + (Number(item.starterQuantity) || 0);
     }
     return sum;
   }, 0);
-  const exceedsAvailable = totalRequestedForVariant > quantityAvailable;
+  const exceedsAvailable = totalRequestedForProduct > quantityAvailable;
 
   return (
     <Table.Tr className="text-gray-600">
       <Table.Td className="flex items-center gap-2">
         <TextInput
           variant="unstyled"
-          placeholder={translate("Variant Code", "كود الصنف")}
-          value={variantCode}
-          onChange={(e) => handleVariantCodeChange(e.target.value)}
+          placeholder={translate("Barcode", "الباركود")}
+          value={productCode}
+          onChange={(e) => handleProductCodeChange(e.target.value)}
           maxLength={20}
           className="font-medium text-gray-800"
           autoFocus
         />
 
-        {!variantData && (
+        {!productData && (
           <Button onClick={openSearchModal} variant="transparent" size="xs" px={5}>
             <solidIcons.Search size={20} />
           </Button>
         )}
 
-        <VariantSearchModal
+        <ProductSearchModal
           opened={searchModalOpened}
           close={closeSearchModal}
           mode="sales"
-          onSelect={(selectedVariantCode) => handleVariantCodeChange(selectedVariantCode)}
+          onSelect={(selectedProductCode) => handleProductCodeChange(selectedProductCode)}
         />
       </Table.Td>
 
-      {variantError ? (
+      {productError ? (
         <Table.Td colSpan={innerTableCells} className="animate-fade-in bg-red-100">
           <div className="flex items-center gap-2">
             <solidIcons.ExclamationCircle className="text-red-500" size={15} />
-            <p className="text-xs md:text-sm">{translate("This variant does not exist.", "هذا الصنف غير موجود.")}</p>
+            <p className="text-xs md:text-sm">{translate("This product does not exist.", "هذا المنتج غير موجود.")}</p>
           </div>
         </Table.Td>
-      ) : variantData ? (
+      ) : productData ? (
         <>
-          <Table.Td>{translate(variantData.product.title.en, variantData.product.title.ar)}</Table.Td>
-          <Table.Td>{getColorLabel(variantData.color, language)}</Table.Td>
-          <Table.Td>{variantData?.size}</Table.Td>
+          <Table.Td>{translate(productData.title.en, productData.title.ar)}</Table.Td>
           <Table.Td>
             <NumberInput
               variant="unstyled"
@@ -231,8 +227,8 @@ export default function OrderItemRow({
                       quantityAvailable === 0
                         ? translate("Out of stock", "إنتهى من المخزن")
                         : translate(
-                            `Requested ${totalRequestedForVariant}, only ${quantityAvailable} available`,
-                            `المطلوب ${totalRequestedForVariant}، المتاح فقط ${quantityAvailable}`,
+                            `Requested ${totalRequestedForProduct}, only ${quantityAvailable} available`,
+                            `المطلوب ${totalRequestedForProduct}، المتاح فقط ${quantityAvailable}`,
                           )
                     }
                   >

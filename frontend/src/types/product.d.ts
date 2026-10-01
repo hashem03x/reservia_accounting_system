@@ -13,7 +13,11 @@ export type Product = {
   category?: string;
   subcategory?: string;
   colors: ProductColor[];
-  variants: Variant[];
+  // A Product is the sellable/stock-tracked item itself now - there is no separate Variant (see
+  // docs/entities/products.md). `stock`/`sku`/`barcode` are absent/meaningless for a service.
+  sku?: string;
+  barcode?: string;
+  stock?: ProductStock[];
   // Service-only fields - absent/meaningless when type === "product".
   durationValue?: number;
   durationUnit?: "month";
@@ -66,11 +70,8 @@ export type ProductColor = {
 
 // ============================================================================
 
-export type Variant = {
-  _id: string;
-  color: Color;
-  size: string;
-  variantCode: string;
-  stock: { warehouse: string; quantity: number }[];
-  isDeleted: boolean;
+export type ProductStock = {
+  warehouse: string;
+  quantity: number;
+  starterQuantity?: number;
 };

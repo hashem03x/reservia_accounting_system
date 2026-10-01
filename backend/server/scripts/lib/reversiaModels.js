@@ -36,7 +36,6 @@ const REVERSIA_MODELS = [
   { name: 'Product', require: () => require('../../models/inventory/productModel'), purpose: 'Product catalog' },
   { name: 'Size', require: () => require('../../models/inventory/sizeModel'), purpose: 'Product size taxonomy' },
   { name: 'Transfer', require: () => require('../../models/inventory/transferModel'), purpose: 'Inter-warehouse inventory transfers' },
-  { name: 'Variant', require: () => require('../../models/inventory/variantModel'), purpose: 'Product variants (SKU/size/color/stock)' },
   { name: 'Warehouse', require: () => require('../../models/inventory/warehouseModel'), purpose: 'Warehouse locations' },
   { name: 'SalesOrder', require: () => require('../../models/sales/salesOrderModel'), purpose: 'Sales orders' },
   { name: 'SalesOrderReturn', require: () => require('../../models/sales/salesOrderReturnModel'), purpose: 'Sales order returns' },

@@ -1,7 +1,6 @@
 const { body } = require('express-validator');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const PO = require('../../models/vendor/purchaseOrder');
-const Variant = require('../../models/inventory/variantModel');
 const Warehouse = require('../../models/inventory/warehouseModel');
 const { PaymentMethods } = require('../appConstant');
 
@@ -64,9 +63,9 @@ const createReturnValidate = [
     //         return true;
     //     }),
 
-    body('variantId')
-        .notEmpty().withMessage('Variant ID is required')
-        .isMongoId().withMessage('Variant ID must be a mongoID'),
+    body('productId')
+        .notEmpty().withMessage('Product ID is required')
+        .isMongoId().withMessage('Product ID must be a mongoID'),
 
     body('returnedQuantity')
         .notEmpty().withMessage('Returned quantity is required')

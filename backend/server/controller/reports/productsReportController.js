@@ -1,7 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const Product = require('../../models/inventory/productModel');
-const Variant = require('../../models/inventory/variantModel');
 const SalesOrder = require('../../models/sales/salesOrderModel');
 const ApiError = require('../../utils/apiError');
 const excel = require('exceljs');
@@ -71,35 +70,59 @@ const buildProductQuery = queryParams => {
   return query;
 };
 
-// Helper function to get warehouse stock for a variant
-const getWarehouseStock = (variant, warehouse) => {
-  if (!variant || !variant.stock) return 0;
-  if (!warehouse) return variant.stockLevel || 0;
+// A product carries its own per-warehouse stock directly now (see docs/entities/products.md) - no
+// separate Variant collection to join against. This stage computes each product's filtered stock
+// entries (and total) straight from the embedded `stock` array.
+const stockAggregationStages = warehouse => [
+  {
+    $lookup: {
+      from: 'categories',
+      localField: 'category',
+      foreignField: '_id',
+      as: 'categoryData',
+    },
+  },
+  {
+    $lookup: {
+      from: 'subcategories',
+      localField: 'subcategory',
+      foreignField: '_id',
+      as: 'subcategoryData',
+    },
+  },
+  {
+    $addFields: {
+      stockEntries: {
+        $filter: {
+          input: { $ifNull: ['$stock', []] },
+          as: 's',
+          cond: warehouse ? { $eq: ['$$s.warehouse', new mongoose.Types.ObjectId(warehouse)] } : true,
+        },
+      },
+      categoryName: { $arrayElemAt: ['$categoryData.name', 0] },
+      subcategoryName: { $arrayElemAt: ['$subcategoryData.name', 0] },
+    },
+  },
+  {
+    $addFields: {
+      totalStock: { $sum: '$stockEntries.quantity' },
+    },
+  },
+];
 
-  const warehouseStock = variant.stock.find(s => s && s.warehouse && s.warehouse.toString() === warehouse);
-  return warehouseStock ? warehouseStock.quantity || 0 : 0;
-};
+// Total sold for a product (optionally restricted to one warehouse), summed directly from
+// SalesOrder.items - items identify their product directly, so this is one query per product with
+// no Variant resolution step in between.
+const getProductTotalSold = async (productId, warehouse) => {
+  const match = { 'items.product': productId };
+  if (warehouse) match.warehouse = warehouse;
 
-// Helper function to get total sold for variants in a specific warehouse
-const getVariantsTotalSold = async (variants, warehouse) => {
-  const variantIds = variants.map(v => v._id.toString());
-  const query = {
-    'items.variant': { $in: variantIds },
-    // orderStatus: 'delivered',
-  };
-
-  if (warehouse) {
-    query.warehouse = warehouse;
-  }
-
-  const salesOrders = await SalesOrder.find(query).populate('items.variant'); // Make sure variant is populated
+  const salesOrders = await SalesOrder.find(match).select('items warehouse');
 
   let totalSold = 0;
   for (const order of salesOrders) {
     for (const item of order.items) {
-      // Compare using the _id from the populated variant object
-      const variantId = item.variant._id.toString();
-      if (variantIds.includes(variantId)) {
+      if (item.product && item.product._id.toString() === productId.toString()) {
         totalSold += item.starterQuantity - (item.returnedQuantity || 0);
       }
     }
@@ -107,252 +130,44 @@ const getVariantsTotalSold = async (variants, warehouse) => {
   return totalSold;
 };
 
-exports.getProductsReport = asyncHandler(async (req, res, next) => {
-  const { sortBy = 'createdAt', sortOrder = 'desc', warehouse, ...filters } = req.query;
+const buildStockAnalysis = async (query, warehouse) => Product.aggregate([{ $match: query }, ...stockAggregationStages(warehouse)]);
 
-  // Build base query
-  const query = buildProductQuery(filters);
+// Resolves the stockAnalysis result set with the same category/subcategory/warehouse fallback
+// behavior as before: if the initial filters produce nothing, progressively relax them (drop a
+// subcategory that doesn't belong to the given category, then drop the warehouse filter) so the
+// report still shows something useful instead of an empty page for an overly-narrow filter combo.
+const resolveStockAnalysis = async (query, filters, warehouse) => {
+  let stockAnalysis = await buildStockAnalysis(query, warehouse);
+  if (stockAnalysis.length > 0) return stockAnalysis;
 
-  // Use aggregation pipeline for consistent stock calculation - similar to inventorySummaryReport
-  let stockAnalysis = await Product.aggregate([
-    {
-      $match: query,
-    },
-    {
-      $lookup: {
-        from: 'variants',
-        localField: 'variants',
-        foreignField: '_id',
-        pipeline: [
-          { $match: { isDeleted: false } },
-          { $unwind: '$stock' },
-          ...(warehouse
-            ? [
-                {
-                  $match: { 'stock.warehouse': new mongoose.Types.ObjectId(warehouse) },
-                },
-              ]
-            : []),
-          {
-            $group: {
-              _id: '$_id',
-              stockQuantity: { $sum: '$stock.quantity' },
-              color: { $first: '$color' },
-              size: { $first: '$size' },
-              sku: { $first: '$sku' },
-            },
-          },
-        ],
-        as: 'variantStocks',
-      },
-    },
-    {
-      $lookup: {
-        from: 'categories',
-        localField: 'category',
-        foreignField: '_id',
-        as: 'categoryData',
-      },
-    },
-    {
-      $lookup: {
-        from: 'subcategories',
-        localField: 'subcategory',
-        foreignField: '_id',
-        as: 'subcategoryData',
-      },
-    },
-    {
-      $addFields: {
-        totalStock: { $sum: '$variantStocks.stockQuantity' },
-        categoryName: { $arrayElemAt: ['$categoryData.name', 0] },
-        subcategoryName: { $arrayElemAt: ['$subcategoryData.name', 0] },
-      },
-    },
-  ]);
+  if (filters.subcategory && filters.category) {
+    const matchingSubcategory = await mongoose.connection.db.collection('subcategories').countDocuments({
+      _id: new mongoose.Types.ObjectId(filters.subcategory),
+      mainCategory: new mongoose.Types.ObjectId(filters.category),
+    });
 
-  // Check if filters returned no results
-  if (stockAnalysis.length === 0) {
-    // Check if category exists
-    if (filters.category) {
-      const categoryCount = await mongoose.connection.db.collection('categories').countDocuments({
-        _id: new mongoose.Types.ObjectId(filters.category),
-      });
-    }
+    if (matchingSubcategory === 0) {
+      const queryWithoutSubcategory = { ...query };
+      delete queryWithoutSubcategory.subcategory;
 
-    // Check if subcategory exists
-    if (filters.subcategory) {
-      const subcategoryCount = await mongoose.connection.db.collection('subcategories').countDocuments({
-        _id: new mongoose.Types.ObjectId(filters.subcategory),
-      });
-
-      // If subcategory exists, check if it belongs to the specified category
-      if (subcategoryCount > 0 && filters.category) {
-        const matchingSubcategory = await mongoose.connection.db.collection('subcategories').countDocuments({
-          _id: new mongoose.Types.ObjectId(filters.subcategory),
-          mainCategory: new mongoose.Types.ObjectId(filters.category),
-        });
-
-        // If subcategory doesn't belong to category, try with just category filter
-        if (matchingSubcategory === 0) {
-          const queryWithoutSubcategory = { ...query };
-          delete queryWithoutSubcategory.subcategory;
-
-          const productsWithCategoryOnly = await Product.countDocuments(queryWithoutSubcategory);
-
-          // If there are products with just the category filter, use that instead
-          if (productsWithCategoryOnly > 0) {
-            stockAnalysis = await Product.aggregate([
-              {
-                $match: queryWithoutSubcategory,
-              },
-              {
-                $lookup: {
-                  from: 'variants',
-                  localField: 'variants',
-                  foreignField: '_id',
-                  pipeline: [
-                    { $match: { isDeleted: false } },
-                    { $unwind: '$stock' },
-                    ...(warehouse
-                      ? [
-                          {
-                            $match: { 'stock.warehouse': new mongoose.Types.ObjectId(warehouse) },
-                          },
-                        ]
-                      : []),
-                    {
-                      $group: {
-                        _id: '$_id',
-                        stockQuantity: { $sum: '$stock.quantity' },
-                        color: { $first: '$color' },
-                        size: { $first: '$size' },
-                        sku: { $first: '$sku' },
-                      },
-                    },
-                  ],
-                  as: 'variantStocks',
-                },
-              },
-              {
-                $lookup: {
-                  from: 'categories',
-                  localField: 'category',
-                  foreignField: '_id',
-                  as: 'categoryData',
-                },
-              },
-              {
-                $lookup: {
-                  from: 'subcategories',
-                  localField: 'subcategory',
-                  foreignField: '_id',
-                  as: 'subcategoryData',
-                },
-              },
-              {
-                $addFields: {
-                  totalStock: { $sum: '$variantStocks.stockQuantity' },
-                  categoryName: { $arrayElemAt: ['$categoryData.name', 0] },
-                  subcategoryName: { $arrayElemAt: ['$subcategoryData.name', 0] },
-                },
-              },
-            ]);
-          }
-        }
-      }
-    }
-
-    // Check if warehouse exists
-    if (warehouse) {
-      const warehouseCount = await mongoose.connection.db.collection('warehouses').countDocuments({
-        _id: new mongoose.Types.ObjectId(warehouse),
-      });
-
-      // Check if there are any products with stock in this warehouse
-      const productsInWarehouse = await Variant.aggregate([
-        {
-          $match: {
-            'stock.warehouse': new mongoose.Types.ObjectId(warehouse),
-            isDeleted: false,
-          },
-        },
-        {
-          $group: {
-            _id: '$productId',
-            count: { $sum: 1 },
-          },
-        },
-        {
-          $count: 'total',
-        },
-      ]);
-
-      const warehouseProductCount = productsInWarehouse.length > 0 ? productsInWarehouse[0].total : 0;
-
-      // If still no products and we have a warehouse filter, try without it
-      if (stockAnalysis.length === 0 && warehouseProductCount === 0) {
-        // Create a simplified aggregation without warehouse filter
-        const queryWithoutWarehouse = { ...query };
-
-        stockAnalysis = await Product.aggregate([
-          {
-            $match: queryWithoutWarehouse,
-          },
-          {
-            $lookup: {
-              from: 'variants',
-              localField: 'variants',
-              foreignField: '_id',
-              pipeline: [
-                { $match: { isDeleted: false } },
-                { $unwind: '$stock' },
-                {
-                  $group: {
-                    _id: '$_id',
-                    stockQuantity: { $sum: '$stock.quantity' },
-                    color: { $first: '$color' },
-                    size: { $first: '$size' },
-                    sku: { $first: '$sku' },
-                  },
-                },
-              ],
-              as: 'variantStocks',
-            },
-          },
-          {
-            $lookup: {
-              from: 'categories',
-              localField: 'category',
-              foreignField: '_id',
-              as: 'categoryData',
-            },
-          },
-          {
-            $lookup: {
-              from: 'subcategories',
-              localField: 'subcategory',
-              foreignField: '_id',
-              as: 'subcategoryData',
-            },
-          },
-          {
-            $addFields: {
-              totalStock: { $sum: '$variantStocks.stockQuantity' },
-              categoryName: { $arrayElemAt: ['$categoryData.name', 0] },
-              subcategoryName: { $arrayElemAt: ['$subcategoryData.name', 0] },
-            },
-          },
-        ]);
+      const productsWithCategoryOnly = await Product.countDocuments(queryWithoutSubcategory);
+      if (productsWithCategoryOnly > 0) {
+        stockAnalysis = await buildStockAnalysis(queryWithoutSubcategory, warehouse);
       }
     }
   }
 
-  // Process products to include all required data with consistent null handling
-  const processedProducts = await Promise.all(
+  if (stockAnalysis.length === 0 && warehouse) {
+    stockAnalysis = await buildStockAnalysis(query, undefined);
+  }
+
+  return stockAnalysis;
+};
+
+const buildProcessedProducts = async (stockAnalysis, warehouse) =>
+  Promise.all(
     stockAnalysis.map(async product => {
-      // Calculate total sold based on variants and warehouse if specified
-      const totalSold = await getVariantsTotalSold(product.variantStocks, warehouse);
+      const totalSold = await getProductTotalSold(product._id, warehouse);
 
       return {
         _id: product._id,
@@ -368,7 +183,9 @@ exports.getProductsReport = asyncHandler(async (req, res, next) => {
         subcategory: product.subcategory,
         colors: product.colors,
         createdAt: product.createdAt,
-        variants: product.variantStocks,
+        sku: product.sku,
+        barcode: product.barcode,
+        stock: product.stockEntries,
         totalStock: product.totalStock || 0,
         categoryName: product.categoryName,
         subcategoryName: product.subcategoryName,
@@ -376,35 +193,31 @@ exports.getProductsReport = asyncHandler(async (req, res, next) => {
     })
   );
 
-  // Sort products
-  if (sortBy) {
-    const sortMultiplier = sortOrder === 'desc' ? -1 : 1;
-    processedProducts.sort((a, b) => {
-      if (a[sortBy] < b[sortBy]) return -1 * sortMultiplier;
-      if (a[sortBy] > b[sortBy]) return 1 * sortMultiplier;
-      return 0;
-    });
-  }
+const sortProducts = (products, sortBy, sortOrder) => {
+  if (!sortBy) return products;
+  const sortMultiplier = sortOrder === 'desc' ? -1 : 1;
+  return [...products].sort((a, b) => {
+    if (a[sortBy] < b[sortBy]) return -1 * sortMultiplier;
+    if (a[sortBy] > b[sortBy]) return 1 * sortMultiplier;
+    return 0;
+  });
+};
 
-  // Calculate the grand total stock using the same approach as analytics controller
+exports.getProductsReport = asyncHandler(async (req, res, next) => {
+  const { sortBy = 'createdAt', sortOrder = 'desc', warehouse, ...filters } = req.query;
+
+  const query = buildProductQuery(filters);
+  const stockAnalysis = await resolveStockAnalysis(query, filters, warehouse);
+  const processedProducts = sortProducts(await buildProcessedProducts(stockAnalysis, warehouse), sortBy, sortOrder);
+
   const totalStock = stockAnalysis.reduce((sum, p) => sum + (p.totalStock || 0), 0);
-
-  // Calculate the total inventory value directly from processedProducts to ensure consistency
-  const totalValue = processedProducts.reduce((sum, product) => {
-    const stockLevel = product.totalStock || 0;
-    const cost = product.cost || 0;
-    return sum + stockLevel * cost;
-  }, 0);
-
-  // Format totalValue with comma as thousands separator
+  const totalValue = processedProducts.reduce((sum, product) => sum + (product.totalStock || 0) * (product.cost || 0), 0);
   const formattedTotalValue = totalValue.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 
-  // Check if we still have no products after all fallback attempts
   if (processedProducts.length === 0) {
-    // Instead of error, return success but with empty data and a message
     return res.status(200).json({
       status: 'success',
       results: 0,
@@ -418,8 +231,8 @@ exports.getProductsReport = asyncHandler(async (req, res, next) => {
   res.status(200).json({
     status: 'success',
     results: processedProducts.length,
-    totalStock: totalStock, // Include the standardized totalStock in the response
-    totalValue: formattedTotalValue, // Format with comma separator to match expected display
+    totalStock,
+    totalValue: formattedTotalValue,
     data: processedProducts,
   });
 });
@@ -427,343 +240,20 @@ exports.getProductsReport = asyncHandler(async (req, res, next) => {
 exports.exportProductsReportExcel = asyncHandler(async (req, res, next) => {
   const { sortBy = 'createdAt', sortOrder = 'desc', warehouse, ...filters } = req.query;
 
-  // Build base query
   const query = buildProductQuery(filters);
+  const stockAnalysis = await resolveStockAnalysis(query, filters, warehouse);
+  const processedProducts = sortProducts(await buildProcessedProducts(stockAnalysis, warehouse), sortBy, sortOrder);
 
-  // Use aggregation pipeline for consistent stock calculation - similar to inventorySummaryReport
-  let stockAnalysis = await Product.aggregate([
-    {
-      $match: query,
-    },
-    {
-      $lookup: {
-        from: 'variants',
-        localField: 'variants',
-        foreignField: '_id',
-        pipeline: [
-          { $match: { isDeleted: false } },
-          { $unwind: '$stock' },
-          ...(warehouse
-            ? [
-                {
-                  $match: { 'stock.warehouse': new mongoose.Types.ObjectId(warehouse) },
-                },
-              ]
-            : []),
-          {
-            $group: {
-              _id: '$_id',
-              stockQuantity: { $sum: '$stock.quantity' },
-              color: { $first: '$color' },
-              size: { $first: '$size' },
-              sku: { $first: '$sku' },
-            },
-          },
-        ],
-        as: 'variantStocks',
-      },
-    },
-    {
-      $lookup: {
-        from: 'categories',
-        localField: 'category',
-        foreignField: '_id',
-        as: 'categoryData',
-      },
-    },
-    {
-      $lookup: {
-        from: 'subcategories',
-        localField: 'subcategory',
-        foreignField: '_id',
-        as: 'subcategoryData',
-      },
-    },
-    {
-      $addFields: {
-        totalStock: { $sum: '$variantStocks.stockQuantity' },
-        categoryName: { $arrayElemAt: ['$categoryData.name', 0] },
-        subcategoryName: { $arrayElemAt: ['$subcategoryData.name', 0] },
-      },
-    },
-  ]);
-
-  // Check if filters returned no results
-  if (stockAnalysis.length === 0) {
-    // Check if category exists
-    if (filters.category) {
-      const categoryCount = await mongoose.connection.db.collection('categories').countDocuments({
-        _id: new mongoose.Types.ObjectId(filters.category),
-      });
-    }
-
-    // Check if subcategory exists
-    if (filters.subcategory) {
-      const subcategoryCount = await mongoose.connection.db.collection('subcategories').countDocuments({
-        _id: new mongoose.Types.ObjectId(filters.subcategory),
-      });
-
-      // If subcategory exists, check if it belongs to the specified category
-      if (subcategoryCount > 0 && filters.category) {
-        const matchingSubcategory = await mongoose.connection.db.collection('subcategories').countDocuments({
-          _id: new mongoose.Types.ObjectId(filters.subcategory),
-          mainCategory: new mongoose.Types.ObjectId(filters.category),
-        });
-
-        // If subcategory doesn't belong to category, try with just category filter
-        if (matchingSubcategory === 0) {
-          const queryWithoutSubcategory = { ...query };
-          delete queryWithoutSubcategory.subcategory;
-
-          const productsWithCategoryOnly = await Product.countDocuments(queryWithoutSubcategory);
-
-          // If there are products with just the category filter, use that instead
-          if (productsWithCategoryOnly > 0) {
-            stockAnalysis = await Product.aggregate([
-              {
-                $match: queryWithoutSubcategory,
-              },
-              {
-                $lookup: {
-                  from: 'variants',
-                  localField: 'variants',
-                  foreignField: '_id',
-                  pipeline: [
-                    { $match: { isDeleted: false } },
-                    { $unwind: '$stock' },
-                    ...(warehouse
-                      ? [
-                          {
-                            $match: { 'stock.warehouse': new mongoose.Types.ObjectId(warehouse) },
-                          },
-                        ]
-                      : []),
-                    {
-                      $group: {
-                        _id: '$_id',
-                        stockQuantity: { $sum: '$stock.quantity' },
-                        color: { $first: '$color' },
-                        size: { $first: '$size' },
-                        sku: { $first: '$sku' },
-                      },
-                    },
-                  ],
-                  as: 'variantStocks',
-                },
-              },
-              {
-                $lookup: {
-                  from: 'categories',
-                  localField: 'category',
-                  foreignField: '_id',
-                  as: 'categoryData',
-                },
-              },
-              {
-                $lookup: {
-                  from: 'subcategories',
-                  localField: 'subcategory',
-                  foreignField: '_id',
-                  as: 'subcategoryData',
-                },
-              },
-              {
-                $addFields: {
-                  totalStock: { $sum: '$variantStocks.stockQuantity' },
-                  categoryName: { $arrayElemAt: ['$categoryData.name', 0] },
-                  subcategoryName: { $arrayElemAt: ['$subcategoryData.name', 0] },
-                },
-              },
-            ]);
-          }
-        }
-      }
-    }
-
-    // Check if warehouse exists
-    if (warehouse) {
-      const warehouseCount = await mongoose.connection.db.collection('warehouses').countDocuments({
-        _id: new mongoose.Types.ObjectId(warehouse),
-      });
-
-      // Check if there are any products with stock in this warehouse
-      const productsInWarehouse = await Variant.aggregate([
-        {
-          $match: {
-            'stock.warehouse': new mongoose.Types.ObjectId(warehouse),
-            isDeleted: false,
-          },
-        },
-        {
-          $group: {
-            _id: '$productId',
-            count: { $sum: 1 },
-          },
-        },
-        {
-          $count: 'total',
-        },
-      ]);
-
-      const warehouseProductCount = productsInWarehouse.length > 0 ? productsInWarehouse[0].total : 0;
-
-      // If still no products and we have a warehouse filter, try without it
-      if (stockAnalysis.length === 0 && warehouseProductCount === 0) {
-        // Create a simplified aggregation without warehouse filter
-        const queryWithoutWarehouse = { ...query };
-
-        stockAnalysis = await Product.aggregate([
-          {
-            $match: queryWithoutWarehouse,
-          },
-          {
-            $lookup: {
-              from: 'variants',
-              localField: 'variants',
-              foreignField: '_id',
-              pipeline: [
-                { $match: { isDeleted: false } },
-                { $unwind: '$stock' },
-                {
-                  $group: {
-                    _id: '$_id',
-                    stockQuantity: { $sum: '$stock.quantity' },
-                    color: { $first: '$color' },
-                    size: { $first: '$size' },
-                    sku: { $first: '$sku' },
-                  },
-                },
-              ],
-              as: 'variantStocks',
-            },
-          },
-          {
-            $lookup: {
-              from: 'categories',
-              localField: 'category',
-              foreignField: '_id',
-              as: 'categoryData',
-            },
-          },
-          {
-            $lookup: {
-              from: 'subcategories',
-              localField: 'subcategory',
-              foreignField: '_id',
-              as: 'subcategoryData',
-            },
-          },
-          {
-            $addFields: {
-              totalStock: { $sum: '$variantStocks.stockQuantity' },
-              categoryName: { $arrayElemAt: ['$categoryData.name', 0] },
-              subcategoryName: { $arrayElemAt: ['$subcategoryData.name', 0] },
-            },
-          },
-        ]);
-      }
-    }
-  }
-
-  // Process products to include all required data with consistent null handling
-  const processedProducts = await Promise.all(
-    stockAnalysis.map(async product => {
-      // Calculate total sold based on variants and warehouse if specified
-      const totalSold = await getVariantsTotalSold(product.variantStocks, warehouse);
-
-      return {
-        _id: product._id,
-        title: product.title,
-        description: product.description,
-        cost: product.cost || 0,
-        price: product.price || 0,
-        priceAfterDiscount: product.priceAfterDiscount,
-        totalSold: totalSold || 0,
-        isAvailable: product.isAvailable,
-        season: product.season,
-        category: product.category,
-        subcategory: product.subcategory,
-        colors: product.colors,
-        createdAt: product.createdAt,
-        variants: product.variantStocks,
-        totalStock: product.totalStock || 0,
-        categoryName: product.categoryName,
-        subcategoryName: product.subcategoryName,
-      };
-    })
-  );
-
-  // Sort products
-  if (sortBy) {
-    const sortMultiplier = sortOrder === 'desc' ? -1 : 1;
-    processedProducts.sort((a, b) => {
-      if (a[sortBy] < b[sortBy]) return -1 * sortMultiplier;
-      if (a[sortBy] > b[sortBy]) return 1 * sortMultiplier;
-      return 0;
-    });
-  }
-
-  // Calculate the grand total stock using the same approach as analytics controller
   const totalStock = stockAnalysis.reduce((sum, p) => sum + (p.totalStock || 0), 0);
-
-  // Calculate the total inventory value directly from processedProducts to ensure consistency
-  const totalValue = processedProducts.reduce((sum, product) => {
-    const stockLevel = product.totalStock || 0;
-    const cost = product.cost || 0;
-    return sum + stockLevel * cost;
-  }, 0);
-
-  // Format totalValue with comma as thousands separator
+  const totalValue = processedProducts.reduce((sum, product) => sum + (product.totalStock || 0) * (product.cost || 0), 0);
   const formattedTotalValue = totalValue.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 
-  // Check if we still have no products after all fallback attempts
-  if (processedProducts.length === 0) {
-    // Create a new workbook with a note about missing data
-    const workbook = new excel.Workbook();
-    const worksheet = workbook.addWorksheet('Products Report');
-
-    // Define columns
-    worksheet.columns = [
-      { header: 'Title (EN)', key: 'titleEn', width: 20 },
-      { header: 'Title (AR)', key: 'titleAr', width: 20 },
-      { header: 'Category', key: 'category', width: 15 },
-      { header: 'Subcategory', key: 'subcategory', width: 15 },
-      { header: 'Cost', key: 'cost', width: 10 },
-      { header: 'Price', key: 'price', width: 10 },
-      { header: 'Total Sold', key: 'totalSold', width: 10 },
-      { header: 'Total Stock', key: 'totalStock', width: 10 },
-      { header: 'Season', key: 'season', width: 10 },
-      { header: 'Created At', key: 'createdAt', width: 20 },
-    ];
-
-    // Add note about empty data
-    worksheet.addRow({
-      titleEn: 'No products found matching the specified filters. Please try with different filter criteria.',
-      titleAr: '',
-      category: '',
-      subcategory: '',
-    });
-
-    // Style the header row
-    worksheet.getRow(1).font = { bold: true };
-
-    // Set the response headers
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=products-report-empty.xlsx');
-
-    // Write the workbook to the response
-    await workbook.xlsx.write(res);
-    return;
-  }
-
-  // Create a new workbook
   const workbook = new excel.Workbook();
   const worksheet = workbook.addWorksheet('Products Report');
 
-  // Define columns
   worksheet.columns = [
     { header: 'Title (EN)', key: 'titleEn', width: 20 },
     { header: 'Title (AR)', key: 'titleAr', width: 20 },
@@ -777,7 +267,23 @@ exports.exportProductsReportExcel = asyncHandler(async (req, res, next) => {
     { header: 'Created At', key: 'createdAt', width: 20 },
   ];
 
-  // Add data rows using processed products (sorted)
+  if (processedProducts.length === 0) {
+    worksheet.addRow({
+      titleEn: 'No products found matching the specified filters. Please try with different filter criteria.',
+      titleAr: '',
+      category: '',
+      subcategory: '',
+    });
+
+    worksheet.getRow(1).font = { bold: true };
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=products-report-empty.xlsx');
+
+    await workbook.xlsx.write(res);
+    return;
+  }
+
   for (const product of processedProducts) {
     worksheet.addRow({
       titleEn: product.title?.en || '',
@@ -793,21 +299,17 @@ exports.exportProductsReportExcel = asyncHandler(async (req, res, next) => {
     });
   }
 
-  // Add summary row
   worksheet.addRow({});
   worksheet.addRow({
     titleEn: 'TOTAL',
-    totalStock: totalStock,
+    totalStock,
     cost: formattedTotalValue,
   });
 
-  // Style the header row
   worksheet.getRow(1).font = { bold: true };
 
-  // Set the response headers
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', 'attachment; filename=products-report.xlsx');
 
-  // Write the workbook to the response
   await workbook.xlsx.write(res);
 });
