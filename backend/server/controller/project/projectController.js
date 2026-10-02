@@ -16,7 +16,7 @@ const { logAccountingEvent } = require('../../utils/accountingLogger');
 // treatment is wanted) are created separately via the Journal Entries module, unaffected by this
 // change.
 const createProject = asyncHandler(async (req, res, next) => {
-  const { projectNumber, name, description, contractValue, projectManager, startDate, deliveryDate, status, sector } = req.body;
+  const { projectNumber, name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines } = req.body;
 
   try {
     const project = await Project.create({
@@ -30,6 +30,8 @@ const createProject = asyncHandler(async (req, res, next) => {
       deliveryDate,
       status,
       sector: sector || null,
+      customer: customer || null,
+      averageCostLines: averageCostLines || [],
       createdBy: req.user._id,
     });
 
@@ -56,7 +58,7 @@ const updateProject = asyncHandler(async (req, res, next) => {
   // is immutable business-key data (see master spec), remainingMoney is always derived (see
   // projectAccountingService.js#recalculateRemainingMoney). Both are silently ignored rather than
   // rejected, matching updateCustomer's existing partial-update convention.
-  const { name, description, contractValue, projectManager, startDate, deliveryDate, status, sector } = req.body;
+  const { name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines } = req.body;
   if (name !== undefined) project.name = name;
   if (description !== undefined) project.description = description;
   if (projectManager !== undefined) project.projectManager = projectManager;
@@ -64,6 +66,10 @@ const updateProject = asyncHandler(async (req, res, next) => {
   if (deliveryDate !== undefined) project.deliveryDate = deliveryDate;
   if (status !== undefined) project.status = status;
   if (sector !== undefined) project.sector = sector || null;
+  if (customer !== undefined) project.customer = customer || null;
+  // Replace semantics (matches journalEntryController.js's handling of `lines`) - the client always
+  // sends the full intended set of Average Cost lines, not a delta.
+  if (averageCostLines !== undefined) project.averageCostLines = averageCostLines;
 
   const contractValueChanged = contractValue !== undefined && contractValue !== project.contractValue;
   if (contractValue !== undefined) project.contractValue = contractValue;

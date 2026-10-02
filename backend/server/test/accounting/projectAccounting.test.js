@@ -7,7 +7,12 @@ const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_te
 let Project;
 let JournalEntry;
 let User;
+let ChartOfAccount;
 let user;
+let customer;
+let cogsAccountA;
+let cogsAccountB;
+let nonCogsAccount;
 
 // Project.create() no longer takes a session/journal-entry step - creating a project only ever
 // creates the Project document (automatic journal-entry creation on project creation was removed,
@@ -29,7 +34,8 @@ before(async () => {
   Project = require('../../models/project/projectModel');
   JournalEntry = require('../../models/accounting/journalEntryModel');
   User = require('../../models/userModel');
-  await Promise.all([Project.init(), JournalEntry.init()]);
+  ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
+  await Promise.all([Project.init(), JournalEntry.init(), ChartOfAccount.init()]);
 });
 
 after(async () => {
@@ -41,8 +47,13 @@ beforeEach(async () => {
   await Project.deleteMany({});
   await JournalEntry.deleteMany({});
   await User.deleteMany({});
+  await ChartOfAccount.deleteMany({});
 
   user = await User.create({ name: 'Test Manager', email: `manager-${Date.now()}@example.com`, role: 'admin', type: 'online' });
+  customer = await User.create({ name: 'Test Customer', email: `customer-${Date.now()}@example.com`, role: 'user', type: 'online' });
+  cogsAccountA = await ChartOfAccount.create({ code: `COGS-A-${Date.now()}`, name: 'Direct Materials', type: 'cogs' });
+  cogsAccountB = await ChartOfAccount.create({ code: `COGS-B-${Date.now()}`, name: 'Direct Labor', type: 'cogs' });
+  nonCogsAccount = await ChartOfAccount.create({ code: `CASH-${Date.now()}`, name: 'Cash', type: 'asset' });
 });
 
 test('creating a project does NOT create any journal entry', async () => {
@@ -79,15 +90,18 @@ test('an invalid (zero/negative) contract value is rejected', async () => {
   await assert.rejects(() => Project.create(baseProjectData({ projectNumber: 'PRJ-005', contractValue: -100 })), /greater than 0/);
 });
 
-test('startDate and deliveryDate are required', async () => {
-  await assert.rejects(
-    () => Project.create({ projectNumber: 'PRJ-006', contractValue: 1000, projectManager: user._id, deliveryDate: new Date('2026-06-01') }),
-    /Start date is required/
-  );
-  await assert.rejects(
-    () => Project.create({ projectNumber: 'PRJ-007', contractValue: 1000, projectManager: user._id, startDate: new Date('2026-01-01') }),
-    /Delivery date is required/
-  );
+test('contractValue, projectManager, startDate and deliveryDate are optional at the model level (enforced instead by createProjectValidators.js for real API requests)', async () => {
+  // These four fields were deliberately made non-`required` on the Mongoose schema so a
+  // genuinely partial record (e.g. a project known only by its number, imported from an external
+  // source like accounting journal entries) can be stored honestly instead of forcing a
+  // fabricated value. The real "Create Project" HTTP endpoint still requires all four - see
+  // server/utils/validators/projectValidators.js's createProjectValidators - this test only
+  // covers the model layer.
+  const project = await Project.create({ projectNumber: 'PRJ-006' });
+  assert.equal(project.contractValue, null);
+  assert.equal(project.projectManager, null);
+  assert.equal(project.startDate, null);
+  assert.equal(project.deliveryDate, null);
 });
 
 test('deliveryDate cannot be before startDate', async () => {
@@ -187,8 +201,12 @@ test('a project created before this phase (no startDate/deliveryDate) remains re
 
   const legacyProject = await Project.findOne({ projectNumber: 'PRJ-LEGACY-01' });
   assert.ok(legacyProject, 'a legacy project document missing the new required date fields must still be readable');
-  assert.equal(legacyProject.startDate, undefined);
-  assert.equal(legacyProject.deliveryDate, undefined);
+  // startDate/deliveryDate now have `default: null` on the schema, so a stored document that
+  // lacks them hydrates as `null` (Mongoose applies schema defaults at hydration time too), not
+  // `undefined` - functionally equivalent for every existing "missing" check in this codebase
+  // (`!= null`), but the exact value to assert here.
+  assert.equal(legacyProject.startDate, null);
+  assert.equal(legacyProject.deliveryDate, null);
 });
 
 test('a project created before the projectAmount/executor/department rename (not yet migrated) is readable with contractValue/projectManager undefined, not throwing', async () => {
@@ -215,12 +233,97 @@ test('a project created before the projectAmount/executor/department rename (not
 
   const unmigrated = await Project.findOne({ projectNumber: 'PRJ-UNMIGRATED-01' });
   assert.ok(unmigrated, 'an unmigrated legacy project must still be readable, not throw');
-  assert.equal(unmigrated.contractValue, undefined, 'contractValue is genuinely undefined until migrated - this is what the frontend must render as "-", never as 0');
-  assert.equal(unmigrated.projectManager, undefined);
+  // contractValue/projectManager now have `default: null`, so they hydrate as `null` rather than
+  // `undefined` for a document that never had them - the frontend's existing `!= null` guards
+  // already treat both the same way (render "-", never fabricate 0).
+  assert.equal(unmigrated.contractValue, null, 'contractValue is genuinely unset until migrated - this is what the frontend must render as "-", never as 0');
+  assert.equal(unmigrated.projectManager, null);
   assert.equal(unmigrated.remainingMoney, 4200, 'remainingMoney was never renamed, so it survives untouched even before migration');
 
   const { recalculateRemainingMoney } = require('../../services/project/projectAccountingService');
   await recalculateRemainingMoney(unmigrated._id);
   const afterRecalc = await Project.findById(unmigrated._id);
   assert.equal(afterRecalc.remainingMoney, 4200, 'recalculateRemainingMoney must skip (not overwrite with NaN) when contractValue is missing');
+});
+
+test('a project can have a customer, and it persists/populates on read', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-CUST-01', customer: customer._id }));
+
+  const found = await Project.findById(project._id);
+  assert.equal(found.customer._id.toString(), customer._id.toString());
+  assert.equal(found.customer.name, 'Test Customer');
+});
+
+test('a project with no customer defaults to null, not throwing', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-CUST-02' }));
+  const found = await Project.findById(project._id);
+  assert.equal(found.customer, null);
+});
+
+test('Average Cost: accepts COGS accounts and derives the total from the lines', async () => {
+  const project = await Project.create(
+    baseProjectData({
+      projectNumber: 'PRJ-COST-01',
+      averageCostLines: [
+        { account: cogsAccountA._id, amount: 20000 },
+        { account: cogsAccountB._id, amount: 10000 },
+      ],
+    })
+  );
+
+  assert.equal(project.averageCost, 30000);
+
+  const found = await Project.findById(project._id);
+  assert.equal(found.averageCost, 30000);
+  assert.equal(found.averageCostLines.length, 2);
+  assert.equal(found.averageCostLines[0].account.code, cogsAccountA.code, 'the account reference populates, not just a name/label');
+});
+
+test('Average Cost: rejects a non-COGS account', async () => {
+  await assert.rejects(
+    () => Project.create(baseProjectData({ projectNumber: 'PRJ-COST-02', averageCostLines: [{ account: nonCogsAccount._id, amount: 1000 }] })),
+    /not eligible for Average Cost/
+  );
+});
+
+test('Average Cost: rejects a duplicate account across lines', async () => {
+  await assert.rejects(
+    () =>
+      Project.create(
+        baseProjectData({
+          projectNumber: 'PRJ-COST-03',
+          averageCostLines: [
+            { account: cogsAccountA._id, amount: 20000 },
+            { account: cogsAccountA._id, amount: 5000 },
+          ],
+        })
+      ),
+    /can only appear once/
+  );
+});
+
+test('Average Cost: a line amount must be greater than 0', async () => {
+  await assert.rejects(
+    () => Project.create(baseProjectData({ projectNumber: 'PRJ-COST-04', averageCostLines: [{ account: cogsAccountA._id, amount: 0 }] })),
+    /Cost amount must be greater than 0/
+  );
+});
+
+test('Average Cost: a project with no lines defaults averageCost to 0', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-COST-05' }));
+  assert.equal(project.averageCost, 0);
+});
+
+test('Average Cost: updating lines recomputes the total', async () => {
+  const project = await Project.create(
+    baseProjectData({ projectNumber: 'PRJ-COST-06', averageCostLines: [{ account: cogsAccountA._id, amount: 20000 }] })
+  );
+  assert.equal(project.averageCost, 20000);
+
+  project.averageCostLines = [
+    { account: cogsAccountA._id, amount: 20000 },
+    { account: cogsAccountB._id, amount: 15000 },
+  ];
+  await project.save();
+  assert.equal(project.averageCost, 35000);
 });

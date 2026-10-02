@@ -7,8 +7,11 @@ import { DateInput } from "@mantine/dates";
 import useDataHandler from "@/hooks/useDataHandler";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
 import handleRequest from "@/utils/helpers/handle-request";
-import { Project } from "@/types/project";
+import { AverageCostLineInput, Project } from "@/types/project";
+import { Customer } from "@/types/customer";
 import { ProjectSectors } from "@/utils/constants/accounting";
+import CustomerSearch from "@/components/global/customer-search";
+import AverageCostEditor from "./average-cost-editor";
 
 type StaffOption = { _id: string; name: string; role: string };
 
@@ -32,6 +35,8 @@ export default function CreateProjectModal({
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [deliveryDate, setDeliveryDate] = useState<Date | null>(null);
   const [sector, setSector] = useState("");
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [averageCostLines, setAverageCostLines] = useState<AverageCostLineInput[]>([]);
   const [staff, setStaff] = useState<StaffOption[]>([]);
 
   const { privateRequest: fetchStaffRequest } = useDataHandler({ initialData: null });
@@ -53,11 +58,26 @@ export default function CreateProjectModal({
     e.preventDefault();
 
     handleRequest(language, setLoading, setError, async () => {
+      // Drop any Average Cost row the user added but never finished filling in (no account
+      // selected yet) - partial rows aren't sent at all, rather than sent incomplete.
+      const cleanedAverageCostLines = averageCostLines.filter((l) => l.account && l.amount !== "" && l.amount != null);
+
       const res = await privateRequest({
         language,
         method: "POST",
         url: "projects",
-        data: { projectNumber, name, description, contractValue, projectManager, startDate, deliveryDate, sector: sector || undefined },
+        data: {
+          projectNumber,
+          name,
+          description,
+          contractValue,
+          projectManager,
+          startDate,
+          deliveryDate,
+          sector: sector || undefined,
+          customer: customer?._id || undefined,
+          averageCostLines: cleanedAverageCostLines,
+        },
       });
 
       onCreated(res.data);
@@ -76,6 +96,8 @@ export default function CreateProjectModal({
       setStartDate(null);
       setDeliveryDate(null);
       setSector("");
+      setCustomer(null);
+      setAverageCostLines([]);
       setError("");
     }, 250);
   }
@@ -158,6 +180,15 @@ export default function CreateProjectModal({
           data={ProjectSectors.map((s) => ({ value: s, label: s }))}
           clearable
         />
+
+        <CustomerSearch
+          customer={customer}
+          setCustomer={setCustomer}
+          label={translate("Customer (optional)", "العميل (اختياري)")}
+          placeholder={translate("Search for a customer", "ابحث عن عميل")}
+        />
+
+        <AverageCostEditor lines={averageCostLines} setLines={setAverageCostLines} />
 
         <Button type="submit" loading={loading} disabled={!!deliveryBeforeStartError} mt="md">
           {translate("Create Project", "إنشاء مشروع")}

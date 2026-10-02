@@ -13,3 +13,5 @@ login.txt
 # *.webp
 uploads/import/*.csv
 config copy.env
+newCluadetxt.txt
+csv_files

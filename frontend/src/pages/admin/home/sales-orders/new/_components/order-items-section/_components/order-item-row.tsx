@@ -33,6 +33,7 @@ export default function OrderItemRow({
   const {
     productCode,
     productError,
+    productErrorMessage,
     productData,
     unitPrice,
     itemDiscount,
@@ -124,7 +125,12 @@ export default function OrderItemRow({
           } catch (error) {
             // If the request is aborted, do nothing
             if ((error as Error).name === "AbortError") return;
-            updateItem({ productCode: newProductCode, productError: true, ...noProductDetails });
+            updateItem({
+              productCode: newProductCode,
+              productError: true,
+              productErrorMessage: (error as { message?: string })?.message,
+              ...noProductDetails,
+            });
           }
         })();
       }
@@ -158,6 +164,9 @@ export default function OrderItemRow({
 
   const [searchModalOpened, { open: openSearchModal, close: closeSearchModal }] = useDisclosure();
 
+  // A service has no stock/warehouse concept at all - it is never "out of stock", so the
+  // availability check below only ever applies to a physical product.
+  const isService = productData?.type === "service";
   const stockEntry = productData?.stock?.find((s) => s.warehouse === warehouseId);
   const quantityAvailable = stockEntry?.quantity || 0;
   // Total quantity requested for the same product across all rows
@@ -167,7 +176,7 @@ export default function OrderItemRow({
     }
     return sum;
   }, 0);
-  const exceedsAvailable = totalRequestedForProduct > quantityAvailable;
+  const exceedsAvailable = !isService && totalRequestedForProduct > quantityAvailable;
 
   return (
     <Table.Tr className="text-gray-600">
@@ -200,7 +209,9 @@ export default function OrderItemRow({
         <Table.Td colSpan={innerTableCells} className="animate-fade-in bg-red-100">
           <div className="flex items-center gap-2">
             <solidIcons.ExclamationCircle className="text-red-500" size={15} />
-            <p className="text-xs md:text-sm">{translate("This product does not exist.", "هذا المنتج غير موجود.")}</p>
+            <p className="text-xs md:text-sm">
+              {productErrorMessage || translate("This product does not exist.", "هذا المنتج غير موجود.")}
+            </p>
           </div>
         </Table.Td>
       ) : productData ? (

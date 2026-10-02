@@ -116,6 +116,7 @@ export default function JournalEntryDetail() {
               <Table.Th>{translate("Debit", "مدين")}</Table.Th>
               <Table.Th>{translate("Credit", "دائن")}</Table.Th>
               <Table.Th>{translate("Balance", "الرصيد")}</Table.Th>
+              <Table.Th>{translate("Original Currency", "العملة الأصلية")}</Table.Th>
               <Table.Th>{translate("Unearned Revenue", "إيرادات غير مكتسبة")}</Table.Th>
             </Table.Tr>
           </Table.Thead>
@@ -136,6 +137,11 @@ export default function JournalEntryDetail() {
                   <Table.Td>{line.debit ? line.debit.toLocaleString() : "-"}</Table.Td>
                   <Table.Td>{line.credit ? line.credit.toLocaleString() : "-"}</Table.Td>
                   <Table.Td className={lineBalance < 0 ? "text-red-600" : ""}>{lineBalance.toLocaleString()}</Table.Td>
+                  <Table.Td>
+                    {line.currency
+                      ? `${line.currency}${line.exchangeRate ? ` @ ${line.exchangeRate}` : ""}`
+                      : "-"}
+                  </Table.Td>
                   <Table.Td>{line.unearnedRevenue ? line.unearnedRevenue.toLocaleString() : "-"}</Table.Td>
                 </Table.Tr>
               );
@@ -146,10 +152,10 @@ export default function JournalEntryDetail() {
               <Table.Td colSpan={4}>{translate("Total", "الإجمالي")}</Table.Td>
               <Table.Td>{entry.totalDebit.toLocaleString()}</Table.Td>
               <Table.Td>{entry.totalCredit.toLocaleString()}</Table.Td>
-              <Table.Td colSpan={2} />
+              <Table.Td colSpan={3} />
             </Table.Tr>
             <Table.Tr>
-              <Table.Td colSpan={7} className={difference !== 0 ? "text-red-600" : "text-green-600"}>
+              <Table.Td colSpan={8} className={difference !== 0 ? "text-red-600" : "text-green-600"}>
                 {translate("Difference", "الفرق")}: {difference}
               </Table.Td>
             </Table.Tr>

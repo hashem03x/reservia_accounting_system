@@ -41,10 +41,13 @@ exports.returnSalesOrderItem = async (req, res, next) => {
     if (!product) return next(new ApiError(`Product with ID ${productId} not found.`));
     product.totalSold = Math.max((product.totalSold || 0) - returnedQuantity, 0);
 
-    // Update product stock in warehouse
-    const stockEntry = product.stock.find(s => s.warehouse.toString() === warehouseId.toString());
-    if (!stockEntry) return next(new ApiError(`No stock found for product ${productId} in warehouse ${warehouseId}`));
-    stockEntry.quantity += returnedQuantity;
+    // A service has no stock/warehouse concept at all (see docs/entities/products.md) - returning
+    // one only reverses totalSold, above; there is no stock entry to find or restore.
+    if (product.type !== 'service') {
+      const stockEntry = product.stock.find(s => s.warehouse.toString() === warehouseId.toString());
+      if (!stockEntry) return next(new ApiError(`No stock found for product ${productId} in warehouse ${warehouseId}`));
+      stockEntry.quantity += returnedQuantity;
+    }
     await product.save({ session });
 
     // Calculate return amount based on original unit price after discount
@@ -146,14 +149,17 @@ exports.returnAllSalesOrderItems = async (req, res, next) => {
       // Update product totalSold
       product.totalSold = Math.max((product.totalSold || 0) - remainingQty, 0);
 
-      // Update stock in warehouse
-      const stockEntry = product.stock.find(s => s.warehouse.toString() === warehouseId.toString());
-      if (!stockEntry) {
-        await session.abortTransaction();
-        session.endSession();
-        return next(new ApiError(`No stock found for product ${item.product._id} in warehouse ${warehouseId}`, 404));
+      // A service has no stock/warehouse concept at all (see docs/entities/products.md) - there is
+      // no stock entry to find or restore for one.
+      if (product.type !== 'service') {
+        const stockEntry = product.stock.find(s => s.warehouse.toString() === warehouseId.toString());
+        if (!stockEntry) {
+          await session.abortTransaction();
+          session.endSession();
+          return next(new ApiError(`No stock found for product ${item.product._id} in warehouse ${warehouseId}`, 404));
+        }
+        stockEntry.quantity += remainingQty;
       }
-      stockEntry.quantity += remainingQty;
       await product.save({ session });
 
       // Calculate return amount for this item

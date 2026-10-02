@@ -32,6 +32,7 @@ export default function OrderItemRow({
   const {
     productCode,
     productError,
+    productErrorMessage,
     productData,
     unitPrice,
     itemDiscount,
@@ -103,7 +104,12 @@ export default function OrderItemRow({
               starterSubtotal: response.data.cost,
             });
           } catch (error) {
-            updateItem({ productCode: newProductCode, productError: true, ...noProductDetails });
+            updateItem({
+              productCode: newProductCode,
+              productError: true,
+              productErrorMessage: (error as { message?: string })?.message,
+              ...noProductDetails,
+            });
           }
         })();
       }
@@ -168,7 +174,9 @@ export default function OrderItemRow({
         <Table.Td colSpan={innerTableCells} className="animate-fade-in bg-red-100">
           <div className="flex items-center gap-2">
             <solidIcons.ExclamationCircle className="text-red-500" size={15} />
-            <p className="text-xs md:text-sm">{translate("This product does not exist.", "هذا المنتج غير موجود.")}</p>
+            <p className="text-xs md:text-sm">
+              {productErrorMessage || translate("This product does not exist.", "هذا المنتج غير موجود.")}
+            </p>
           </div>
         </Table.Td>
       ) : productData ? (

@@ -3,7 +3,20 @@
 // pre-existing Resources/Actions/PaymentMethods enums, rather than scattering string literals
 // across models/controllers.
 
-exports.AccountTypes = ['asset', 'liability', 'equity', 'revenue', 'expense'];
+// 'cogs' is kept distinct from 'expense' rather than folded into it, mirroring the CSV accounting
+// import's own source data (which distinguishes "Costs" from "Expenses" in its type column, see
+// scripts/importReversiaAccountingData.js's TYPE_MAP) - this is what lets Project Average Cost
+// eligibility be determined structurally from `type === 'cogs'` instead of string-matching a
+// "COGS" display name (see services/project/averageCostEligibilityService.js).
+exports.AccountTypes = ['asset', 'liability', 'equity', 'revenue', 'expense', 'cogs'];
+
+// Secondary classification on top of `type` (e.g. an asset can additionally be Current/Non-Current,
+// an expense can be Operating/Non-Operating or Direct/Indirect) - a single flat controlled list
+// rather than a type-specific enum, since which states are "appropriate" for a given type is a
+// business judgment call made when the account is created/edited, not a fixed mapping this schema
+// should hard-code. Optional/nullable - imported CSV accounts never have a source value for this
+// (the source file has no such column), so it stays null until an admin assigns one.
+exports.AccountStates = ['current', 'non-current', 'operating', 'non-operating', 'direct', 'indirect', 'other'];
 
 exports.JournalEntryStatus = ['draft', 'posted', 'reversed'];
 

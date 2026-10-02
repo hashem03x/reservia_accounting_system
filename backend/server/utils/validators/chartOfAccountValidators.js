@@ -1,7 +1,7 @@
 const { check } = require('express-validator');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
-const { AccountTypes } = require('../accountingConstants');
+const { AccountTypes, AccountStates } = require('../accountingConstants');
 
 const createChartOfAccountValidators = [
   check('code')
@@ -18,8 +18,10 @@ const createChartOfAccountValidators = [
     ),
 
   check('name').notEmpty().withMessage('Account name is required').isString().trim().isLength({ max: 100 }),
+  check('nameAr').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
 
   check('type').notEmpty().withMessage('Account type is required').isIn(AccountTypes).withMessage(`Account type must be one of: ${AccountTypes.join(', ')}`),
+  check('state').optional({ nullable: true }).isIn(AccountStates).withMessage(`Account state must be one of: ${AccountStates.join(', ')}`),
 
   check('parentAccount')
     .optional({ nullable: true })
@@ -49,7 +51,9 @@ const updateChartOfAccountValidators = [
       })
     ),
   check('name').optional().isString().trim().isLength({ max: 100 }),
+  check('nameAr').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
   check('type').optional().isIn(AccountTypes).withMessage(`Account type must be one of: ${AccountTypes.join(', ')}`),
+  check('state').optional({ nullable: true }).isIn(AccountStates).withMessage(`Account state must be one of: ${AccountStates.join(', ')}`),
   check('parentAccount')
     .optional({ nullable: true })
     .isMongoId()

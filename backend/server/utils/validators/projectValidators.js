@@ -1,8 +1,61 @@
 const { check } = require('express-validator');
 const Project = require('../../models/project/projectModel');
 const User = require('../../models/userModel');
+const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { ProjectStatuses, ProjectSectors } = require('../accountingConstants');
+
+// Fast pre-check for Average Cost lines - the model's pre('validate') hook (projectModel.js) is
+// the real backstop that re-verifies this no matter which code path writes to the document, but
+// failing fast here gives a clean 400 before a save is even attempted. Shared by create/update
+// since the rule is identical either way.
+const averageCostLines = check('averageCostLines')
+  .optional({ nullable: true })
+  .isArray()
+  .withMessage('averageCostLines must be an array')
+  .custom(async lines => {
+    if (!Array.isArray(lines) || lines.length === 0) return true;
+
+    const accountIds = [];
+    for (const line of lines) {
+      if (!line || typeof line !== 'object' || !line.account) {
+        throw new Error('Each Average Cost line must reference an account.');
+      }
+      if (typeof line.amount !== 'number' && isNaN(Number(line.amount))) {
+        throw new Error('Each Average Cost line must have a numeric amount.');
+      }
+      if (Number(line.amount) <= 0) {
+        throw new Error('Average Cost line amounts must be greater than 0.');
+      }
+      accountIds.push(String(line.account));
+    }
+
+    const uniqueIds = new Set(accountIds);
+    if (uniqueIds.size !== accountIds.length) {
+      throw new Error("Each account can only appear once in a project's Average Cost lines.");
+    }
+
+    const accounts = await ChartOfAccount.find({ _id: { $in: Array.from(uniqueIds) } }).lean();
+    if (accounts.length !== uniqueIds.size) {
+      throw new Error('One of the selected Average Cost accounts does not exist.');
+    }
+    const ineligible = accounts.find(a => a.type !== 'cogs');
+    if (ineligible) {
+      throw new Error(`Account "${ineligible.code} - ${ineligible.name}" is not eligible for Average Cost (must be a COGS account).`);
+    }
+
+    return true;
+  });
+
+const customer = check('customer')
+  .optional({ nullable: true })
+  .isMongoId()
+  .withMessage('Invalid customer id')
+  .custom(value =>
+    User.findById(value).then(user => {
+      if (!user) return Promise.reject(new Error('Customer does not exist.'));
+    })
+  );
 
 // Shared by create/update - only meaningful when BOTH dates are present in the same request body.
 // This is a fast, friendly pre-check; the model's own pre('validate') hook
@@ -51,6 +104,9 @@ const createProjectValidators = [
   check('deliveryDate').notEmpty().withMessage('Delivery date is required').isISO8601().withMessage('Invalid delivery date'),
   deliveryNotBeforeStart,
 
+  customer,
+  averageCostLines,
+
   check('status').optional().isIn(ProjectStatuses),
 
   check('sector')
@@ -78,6 +134,9 @@ const updateProjectValidators = [
   check('startDate').optional().isISO8601().withMessage('Invalid start date'),
   check('deliveryDate').optional().isISO8601().withMessage('Invalid delivery date'),
   deliveryNotBeforeStart,
+
+  customer,
+  averageCostLines,
 
   check('status').optional().isIn(ProjectStatuses),
 

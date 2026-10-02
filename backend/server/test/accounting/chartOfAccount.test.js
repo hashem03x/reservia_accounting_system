@@ -63,3 +63,46 @@ test('an account cannot be set as its own parent', async () => {
   account.parentAccount = account._id;
   await assert.rejects(() => account.save(), /own parent/);
 });
+
+test('an account can be created with a valid state and defaults to null', async () => {
+  const withState = await ChartOfAccount.create({ code: '4000', name: 'Cash', type: 'asset', state: 'current' });
+  assert.equal(withState.state, 'current');
+
+  const withoutState = await ChartOfAccount.create({ code: '4001', name: 'Land', type: 'asset' });
+  assert.equal(withoutState.state, null);
+});
+
+test('rejects an invalid state at the schema level', async () => {
+  await assert.rejects(() => ChartOfAccount.create({ code: '4002', name: 'Bad State', type: 'asset', state: 'not-a-real-state' }), /not a valid account state/);
+});
+
+test('accepts the cogs account type', async () => {
+  const account = await ChartOfAccount.create({ code: '5000', name: 'Direct Materials', type: 'cogs' });
+  assert.equal(account.type, 'cogs');
+});
+
+const { getNextSortOrder, typeBase } = require('../../services/accounting/chartOfAccountOrderingService');
+
+test('getNextSortOrder places a new top-level account after the last one of the same type', async () => {
+  await ChartOfAccount.create({ code: 'A1', name: 'Asset One', type: 'asset', sortOrder: typeBase('asset') + 1 });
+  await ChartOfAccount.create({ code: 'A2', name: 'Asset Two', type: 'asset', sortOrder: typeBase('asset') + 2 });
+
+  const next = await getNextSortOrder({ type: 'asset' });
+  assert.equal(next, typeBase('asset') + 3);
+});
+
+test('getNextSortOrder keeps a different type in its own block, unaffected by another type\'s accounts', async () => {
+  await ChartOfAccount.create({ code: 'E1', name: 'Expense One', type: 'expense', sortOrder: typeBase('expense') + 1 });
+
+  const nextAsset = await getNextSortOrder({ type: 'asset' });
+  assert.equal(nextAsset, typeBase('asset') + 1, 'a type with no existing accounts yet must start at the bottom of its own block, not be pushed by another type');
+});
+
+test('getNextSortOrder places a new child after existing children of the same parent', async () => {
+  const parent = await ChartOfAccount.create({ code: 'P1', name: 'Parent', type: 'liability', sortOrder: typeBase('liability') + 1 });
+  const firstChild = await getNextSortOrder({ type: 'liability', parentAccount: parent._id });
+  await ChartOfAccount.create({ code: 'C1', name: 'Child One', type: 'liability', parentAccount: parent._id, sortOrder: firstChild });
+
+  const secondChild = await getNextSortOrder({ type: 'liability', parentAccount: parent._id });
+  assert.ok(secondChild > firstChild, 'the second child must sort after the first child');
+});

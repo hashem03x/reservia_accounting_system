@@ -114,6 +114,7 @@ export default function Projects() {
                   <Table.Th>{translate("Project Number", "رقم المشروع")}</Table.Th>
                   <Table.Th>{translate("Sector", "القطاع")}</Table.Th>
                   <Table.Th>{translate("Name", "الاسم")}</Table.Th>
+                  <Table.Th>{translate("Customer", "العميل")}</Table.Th>
                   <Table.Th>{translate("Contract Value", "قيمة العقد")}</Table.Th>
                   <Table.Th>{translate("Remaining", "المتبقي")}</Table.Th>
                   <Table.Th>{translate("Project Manager", "مدير المشروع")}</Table.Th>
@@ -130,6 +131,7 @@ export default function Projects() {
                     <Table.Td className="font-medium">{project.projectNumber}</Table.Td>
                     <Table.Td>{project.sector || "-"}</Table.Td>
                     <Table.Td>{project.name || "-"}</Table.Td>
+                    <Table.Td>{project.customer?.name || "-"}</Table.Td>
                     <Table.Td>
                       {/* Missing only for a project created before the projectAmount->contractValue
                           rename that hasn't been through migrateProjectFieldRenames.js yet - shown

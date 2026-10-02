@@ -10,6 +10,11 @@ export interface JournalLine {
   projectNumber?: string | null;
   debit: number;
   credit: number;
+  // Audit-trail only - debit/credit above always hold the local-currency amount. These preserve
+  // the original foreign-currency amount/rate when a line was imported from a multi-currency
+  // source (e.g. the accounting CSV import).
+  currency?: string | null;
+  exchangeRate?: number | null;
   description?: string;
   unearnedRevenue?: number;
 }

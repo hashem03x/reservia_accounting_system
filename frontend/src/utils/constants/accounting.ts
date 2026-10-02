@@ -6,3 +6,11 @@
 export const ProjectSectors = ["Villa", "Industrials"] as const;
 
 export type ProjectSector = (typeof ProjectSectors)[number];
+
+// Mirrors backend/server/utils/accountingConstants.js's AccountStates - secondary classification
+// on top of a Chart of Accounts entry's `type` (e.g. Current/Non-Current for an asset,
+// Direct/Indirect for an expense). A flat controlled list rather than a type-specific mapping,
+// since which states make sense for a given account is a judgment call made at creation/edit time.
+export const AccountStates = ["current", "non-current", "operating", "non-operating", "direct", "indirect", "other"] as const;
+
+export type AccountState = (typeof AccountStates)[number];

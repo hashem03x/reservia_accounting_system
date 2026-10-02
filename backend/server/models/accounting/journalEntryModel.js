@@ -27,6 +27,12 @@ const journalLineSchema = new Schema(
     projectNumber: { type: String, trim: true, default: null },
     debit: { type: Number, default: 0, min: 0 },
     credit: { type: Number, default: 0, min: 0 },
+    // Audit-trail only - debit/credit above always hold the local-currency amount (every existing
+    // balance/report calculation keeps assuming a single reporting currency). These two fields
+    // just preserve the original foreign-currency amount/rate when a line was imported from a
+    // multi-currency source, e.g. the CSV accounting import.
+    currency: { type: String, trim: true, default: null },
+    exchangeRate: { type: Number, default: null },
     description: { type: String, trim: true },
     // Populated only for lines that represent unearned/deferred revenue (e.g. the Cr line of the
     // automatic project-creation entry) - see projectAccountingService.js.

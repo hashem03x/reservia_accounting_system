@@ -168,23 +168,26 @@ exports.returnSalesOrderItemAdmin = asyncHandler(async (req, res, next) => {
           item.returnedQuantity += returnedQuantity;
           item.quantityToBeReturned = 0;
 
-          // 2.2 Increase stock on the product
+          // 2.2 Increase stock on the product - a service has no stock/warehouse concept at all
+          // (see docs/entities/products.md), so returning one never touches inventory.
           const product = await Product.findById(item.product).session(session);
           if (!product) {
             throw new ApiError(`Product not found with id ${item.product}`, 404);
           }
 
-          const warehouseStock = product.stock.find(stock => stock.warehouse.toString() === salesOrder.warehouse.toString());
+          if (product.type !== 'service') {
+            const warehouseStock = product.stock.find(stock => stock.warehouse.toString() === salesOrder.warehouse.toString());
 
-          if (!warehouseStock) {
-            product.stock.push({
-              warehouse: salesOrder.warehouse,
-              quantity: returnedQuantity,
-            });
-          } else {
-            warehouseStock.quantity += returnedQuantity;
+            if (!warehouseStock) {
+              product.stock.push({
+                warehouse: salesOrder.warehouse,
+                quantity: returnedQuantity,
+              });
+            } else {
+              warehouseStock.quantity += returnedQuantity;
+            }
+            await product.save({ session });
           }
-          await product.save({ session });
 
           // 2.3 Create payment with type out
           const returnAmount = returnedQuantity * item.unitPriceAfterDiscount || returnedQuantity * item.unitPrice;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
@@ -10,20 +10,21 @@ import { AccountStates } from "@/utils/constants/accounting";
 
 const accountTypes: AccountType[] = ["asset", "liability", "equity", "revenue", "cogs", "expense"];
 
-export default function CreateAccountModal({
+export default function EditAccountModal({
   opened,
   close,
+  account,
   accounts,
-  onCreated,
+  onUpdated,
 }: {
   opened: boolean;
   close: () => void;
+  account: ChartOfAccount | null;
   accounts: ChartOfAccount[];
-  onCreated: (account: ChartOfAccount) => void;
+  onUpdated: (account: ChartOfAccount) => void;
 }) {
   const { translate, language } = useLanguage();
 
-  const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [nameAr, setNameAr] = useState("");
   const [type, setType] = useState<string>("");
@@ -33,42 +34,41 @@ export default function CreateAccountModal({
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
+  // Re-seed the form fields every time a different account is opened for editing.
+  useEffect(() => {
+    if (!account) return;
+    setName(account.name);
+    setNameAr(account.nameAr || "");
+    setType(account.type);
+    setState(account.state || "");
+    setParentAccount(account.parentAccount?._id || "");
+    setDescription(account.description || "");
+    setError("");
+  }, [account]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!account) return;
 
     handleRequest(language, setLoading, setError, async () => {
       const res = await privateRequest({
         language,
-        method: "POST",
-        url: "accounts",
-        data: { code, name, nameAr: nameAr || undefined, type, state: state || undefined, parentAccount: parentAccount || undefined, description },
+        method: "PATCH",
+        url: `accounts/${account._id}`,
+        data: { name, nameAr: nameAr || null, type, state: state || null, parentAccount: parentAccount || null, description },
       });
 
-      onCreated(res.data);
-      handleClose();
+      onUpdated(res.data);
+      close();
     });
   }
 
-  function handleClose() {
-    close();
-    setTimeout(() => {
-      setCode("");
-      setName("");
-      setNameAr("");
-      setType("");
-      setState("");
-      setParentAccount("");
-      setDescription("");
-      setError("");
-    }, 250);
-  }
-
   return (
-    <Modal opened={opened} onClose={handleClose} title={translate("Create Account", "إنشاء حساب")} size="lg">
+    <Modal opened={opened} onClose={close} title={translate("Edit Account", "تعديل الحساب")} size="lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {error && <ErrorAlert error={error} />}
 
-        <TextInput label={translate("Code", "الرمز")} value={code} onChange={(e) => setCode(e.target.value)} required />
+        <TextInput label={translate("Code", "الرمز")} value={account?.code || ""} disabled />
         <TextInput label={translate("Name", "الاسم")} value={name} onChange={(e) => setName(e.target.value)} required />
         <TextInput label={translate("Arabic Name (optional)", "الاسم بالعربي (اختياري)")} value={nameAr} onChange={(e) => setNameAr(e.target.value)} dir="rtl" />
         <Select
@@ -93,14 +93,14 @@ export default function CreateAccountModal({
           label={translate("Parent Account (optional)", "الحساب الرئيسي (اختياري)")}
           value={parentAccount}
           onChange={(v) => setParentAccount(v || "")}
-          data={accounts.map((a) => ({ value: a._id, label: `${a.code} - ${a.name}` }))}
+          data={accounts.filter((a) => a._id !== account?._id).map((a) => ({ value: a._id, label: `${a.code} - ${a.name}` }))}
           searchable
           clearable
         />
         <Textarea label={translate("Description (optional)", "الوصف (اختياري)")} value={description} onChange={(e) => setDescription(e.target.value)} autosize minRows={2} />
 
         <Button type="submit" loading={loading} mt="md">
-          {translate("Create", "إنشاء")}
+          {translate("Save", "حفظ")}
         </Button>
       </form>
     </Modal>

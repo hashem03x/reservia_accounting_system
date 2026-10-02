@@ -18,6 +18,11 @@ export type UserState = Omit<User, "password"> & { accessToken: string };
 export interface UserContextProps {
   user: UserState | null;
   setUser: React.Dispatch<React.SetStateAction<UserState | null>>;
+  /** True until session restoration (RememberUser's refresh-token attempt) has finished - lets
+   * AuthGaurd wait instead of redirecting to /login while a valid session is still being restored
+   * on page load. */
+  isInitializing: boolean;
+  setIsInitializing: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 // ============================================================================

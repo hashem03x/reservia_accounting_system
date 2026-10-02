@@ -142,90 +142,99 @@ exports.returnPurchaseOrderItem = async (req, res, next) => {
       throw new ApiError('Failed to create return record', 500);
     }
 
-    // recalc moving average before update stock with returned quantity
-    await calculateMovingAverageOnReturn(returnRecords[0], session);
+    // A service was never purchased into stock in the first place (see applyPurchaseToProducts /
+    // docs/entities/products.md), so returning one skips moving-average-cost recalculation and the
+    // entire warehouse/transfer stock-reconciliation block below - there is no inventory to give
+    // back.
+    const productForType = await Product.findById(productId).session(session);
+    if (!productForType) return next(new ApiError(`Product with ID ${productId} not found.`));
 
-    // Update product quantity in stock with transfer handling
-    const product = await Product.findById(productId).session(session);
-    if (!product) return next(new ApiError(`Product with ID ${productId} not found.`));
+    if (productForType.type !== 'service') {
+      // recalc moving average before update stock with returned quantity
+      await calculateMovingAverageOnReturn(returnRecords[0], session);
 
-    const sourceStockEntry = product.stock.find(s => s.warehouse.toString() === warehouseId.toString());
-    if (!sourceStockEntry) return next(new ApiError(`No stock found for product ${productId} in warehouse ${warehouseId}`));
+      // Update product quantity in stock with transfer handling
+      const product = await Product.findById(productId).session(session);
+      if (!product) return next(new ApiError(`Product with ID ${productId} not found.`));
 
-    // First check if we have enough quantity across all warehouses
-    let totalAvailableQuantity = sourceStockEntry.quantity;
+      const sourceStockEntry = product.stock.find(s => s.warehouse.toString() === warehouseId.toString());
+      if (!sourceStockEntry) return next(new ApiError(`No stock found for product ${productId} in warehouse ${warehouseId}`));
 
-    // Get transfer info to check target warehouse quantities
-    const transferInfo = await findTransferredQuantity(productId, warehouseId, session);
+      // First check if we have enough quantity across all warehouses
+      let totalAvailableQuantity = sourceStockEntry.quantity;
 
-    if (transferInfo.hasTransfers) {
-      // Group quantities by target warehouse to avoid counting duplicates
-      const warehouseQuantities = transferInfo.targetWarehouses.reduce((acc, tw) => {
-        if (!acc[tw.warehouseId.toString()]) {
-          acc[tw.warehouseId.toString()] = 0;
-        }
-        acc[tw.warehouseId.toString()] += tw.quantity;
-        return acc;
-      }, {});
+      // Get transfer info to check target warehouse quantities
+      const transferInfo = await findTransferredQuantity(productId, warehouseId, session);
 
-      // Add quantities from target warehouses
-      for (const [targetWarehouseId, transferredQuantity] of Object.entries(warehouseQuantities)) {
-        const targetStockEntry = product.stock.find(s => s.warehouse.toString() === targetWarehouseId);
-        if (targetStockEntry) {
-          totalAvailableQuantity += targetStockEntry.quantity;
+      if (transferInfo.hasTransfers) {
+        // Group quantities by target warehouse to avoid counting duplicates
+        const warehouseQuantities = transferInfo.targetWarehouses.reduce((acc, tw) => {
+          if (!acc[tw.warehouseId.toString()]) {
+            acc[tw.warehouseId.toString()] = 0;
+          }
+          acc[tw.warehouseId.toString()] += tw.quantity;
+          return acc;
+        }, {});
+
+        // Add quantities from target warehouses
+        for (const [targetWarehouseId, transferredQuantity] of Object.entries(warehouseQuantities)) {
+          const targetStockEntry = product.stock.find(s => s.warehouse.toString() === targetWarehouseId);
+          if (targetStockEntry) {
+            totalAvailableQuantity += targetStockEntry.quantity;
+          }
         }
       }
-    }
 
-    // Validate total available quantity
-    if (totalAvailableQuantity < returnedQuantity) {
-      return next(new ApiError(`Insufficient quantity available. Requested: ${returnedQuantity}, Available: ${totalAvailableQuantity} across all warehouses`));
-    }
-
-    let remainingToReturn = returnedQuantity;
-
-    // First reduce from source warehouse as much as possible
-    if (sourceStockEntry.quantity > 0) {
-      const quantityFromSource = Math.min(sourceStockEntry.quantity, remainingToReturn);
-      sourceStockEntry.quantity -= quantityFromSource;
-      remainingToReturn -= quantityFromSource;
-    }
-
-    // If we still need to return more, use target warehouses
-    if (remainingToReturn > 0) {
-      if (!transferInfo.hasTransfers) {
-        return next(new ApiError(`Insufficient quantity in warehouse ${warehouseId} for product ${productId}`));
+      // Validate total available quantity
+      if (totalAvailableQuantity < returnedQuantity) {
+        return next(new ApiError(`Insufficient quantity available. Requested: ${returnedQuantity}, Available: ${totalAvailableQuantity} across all warehouses`));
       }
 
-      // Group quantities by target warehouse
-      const warehouseQuantities = transferInfo.targetWarehouses.reduce((acc, tw) => {
-        if (!acc[tw.warehouseId.toString()]) {
-          acc[tw.warehouseId.toString()] = 0;
-        }
-        acc[tw.warehouseId.toString()] += tw.quantity;
-        return acc;
-      }, {});
+      let remainingToReturn = returnedQuantity;
 
-      // Try to fulfill the remaining return quantity from target warehouses
-      for (const [targetWarehouseId, transferredQuantity] of Object.entries(warehouseQuantities)) {
-        if (remainingToReturn <= 0) break;
-
-        const targetStockEntry = product.stock.find(s => s.warehouse.toString() === targetWarehouseId);
-        if (!targetStockEntry) continue;
-
-        const quantityToReduceFromTarget = Math.min(remainingToReturn, targetStockEntry.quantity);
-        if (quantityToReduceFromTarget <= 0) continue;
-
-        targetStockEntry.quantity -= quantityToReduceFromTarget;
-        remainingToReturn -= quantityToReduceFromTarget;
+      // First reduce from source warehouse as much as possible
+      if (sourceStockEntry.quantity > 0) {
+        const quantityFromSource = Math.min(sourceStockEntry.quantity, remainingToReturn);
+        sourceStockEntry.quantity -= quantityFromSource;
+        remainingToReturn -= quantityFromSource;
       }
 
+      // If we still need to return more, use target warehouses
       if (remainingToReturn > 0) {
-        return next(new ApiError(`Could not find sufficient quantity across warehouses. Still need ${remainingToReturn} items`));
-      }
-    }
+        if (!transferInfo.hasTransfers) {
+          return next(new ApiError(`Insufficient quantity in warehouse ${warehouseId} for product ${productId}`));
+        }
 
-    await product.save({ session });
+        // Group quantities by target warehouse
+        const warehouseQuantities = transferInfo.targetWarehouses.reduce((acc, tw) => {
+          if (!acc[tw.warehouseId.toString()]) {
+            acc[tw.warehouseId.toString()] = 0;
+          }
+          acc[tw.warehouseId.toString()] += tw.quantity;
+          return acc;
+        }, {});
+
+        // Try to fulfill the remaining return quantity from target warehouses
+        for (const [targetWarehouseId, transferredQuantity] of Object.entries(warehouseQuantities)) {
+          if (remainingToReturn <= 0) break;
+
+          const targetStockEntry = product.stock.find(s => s.warehouse.toString() === targetWarehouseId);
+          if (!targetStockEntry) continue;
+
+          const quantityToReduceFromTarget = Math.min(remainingToReturn, targetStockEntry.quantity);
+          if (quantityToReduceFromTarget <= 0) continue;
+
+          targetStockEntry.quantity -= quantityToReduceFromTarget;
+          remainingToReturn -= quantityToReduceFromTarget;
+        }
+
+        if (remainingToReturn > 0) {
+          return next(new ApiError(`Could not find sufficient quantity across warehouses. Still need ${remainingToReturn} items`));
+        }
+      }
+
+      await product.save({ session });
+    }
 
     let paymentRecord = null;
 

@@ -33,6 +33,12 @@ const applyPurchaseToProducts = async (purchaseOrder, warehouseId, session) => {
     const product = await Product.findById(productId).session(session);
     if (!product) throw new ApiError(`Product with ID ${productId} not found.`);
 
+    // A service has no inventory/variant data at all (see docs/entities/products.md) - it cannot
+    // be "purchased into stock", so none of the moving-average-cost/warehouse-stock logic below
+    // applies. The model itself rejects a service document carrying any stock, so skipping this
+    // entirely (rather than letting the push below trip that guard) is both correct and required.
+    if (product.type === 'service') continue;
+
     // calc new cost = (t_available + t_purchased) / (q_available + q_purchased), moving average cost
     const q_available = (product.stock || []).reduce((sum, stock) => sum + stock.quantity, 0);
     const q_purchased = items.reduce((total, item) => total + item.starterQuantity, 0);

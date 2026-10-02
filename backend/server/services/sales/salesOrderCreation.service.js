@@ -11,6 +11,10 @@ const ApiError = require('../../utils/apiError');
 async function updateStockAndSold(item, warehouseId, session) {
   const { product: productId, starterQuantity } = item;
 
+  // Products are the overwhelmingly common case, so try the warehouse-stock decrement first (one
+  // query) exactly as before - this only ever misses for a service (no stock array to match) or a
+  // genuinely missing product, both handled in the fallback below without adding a query to the
+  // normal product path.
   const result = await Product.findOneAndUpdate(
     { _id: productId, 'stock.warehouse': warehouseId },
     { $inc: { 'stock.$.quantity': -starterQuantity, totalSold: starterQuantity } },
@@ -20,8 +24,15 @@ async function updateStockAndSold(item, warehouseId, session) {
   if (!result) {
     const foundProduct = await Product.findById(productId).session(session);
     if (!foundProduct) throw new ApiError(`Product with ID ${productId} not found.`);
+
+    // A service has no stock/warehouse concept at all (see docs/entities/products.md) - selling
+    // one only needs totalSold tracked for reporting, there is nothing to decrement.
+    if (foundProduct.type === 'service') {
+      return Product.findByIdAndUpdate(productId, { $inc: { totalSold: starterQuantity } }, { new: true, session, runValidators: true });
+    }
+
     const stock = foundProduct.stock.find(s => s.warehouse.toString() === warehouseId);
-    if (!stock) throw new ApiError(`No stock found for product ${foundProduct.title} in warehouse ${warehouseId}`);
+    if (!stock) throw new ApiError(`No stock found for product ${foundProduct.title?.en || foundProduct.sku || productId} in warehouse ${warehouseId}`);
   }
 
   return result;

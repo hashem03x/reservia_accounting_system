@@ -3,11 +3,15 @@ import { ProductStock } from "@/types/product";
 export type OrderItemInput = {
   productCode: string;
   productError: boolean;
+  /** The actual backend error message, when available - falls back to a generic "not found"
+   * message when the lookup failed for a reason with no message (e.g. the request was aborted). */
+  productErrorMessage?: string;
   // The following always come together (product data and its inputs)
   // 1. The original product data coming from the server
   productData: {
     _id: string;
     title: { en: string; ar: string };
+    type?: "product" | "service";
     cost: number;
     price: number;
     priceAfterDiscount: number | null;

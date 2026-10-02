@@ -12,6 +12,7 @@
     "db:seed-industrial-categories": "node server/scripts/seedIndustrialCategories.js",
     "db:migrate-project-fields": "node server/scripts/migrateProjectFieldRenames.js",
     "db:migrate-variants-to-products": "node server/scripts/migrateVariantsToProducts.js",
+    "db:import-accounting-data": "node server/scripts/importReversiaAccountingData.js",
     "db:create-admin": "node server/scripts/createAdminUser.js",
     "start": "node server.js",
     "dev": "cross-env NODE_ENV=development nodemon server.js",

@@ -32,8 +32,28 @@ export interface Project {
   deliveryDate?: string;
   sector?: ProjectSector | null;
   status: ProjectStatus;
+  // A real reference into the existing customer (User, role: 'user') collection - never a
+  // duplicated plain-text name. Null for projects with no linked customer (e.g. imported records).
+  customer?: { _id: string; name: string; email?: string; phone?: string; customerNumber?: number } | null;
+  // Average Cost (see docs section "Project - Average Cost") - each line references a real
+  // ChartOfAccount (always a `cogs`-type account), never just an account name. `averageCost` is
+  // always derived from these lines server-side, never independently editable.
+  averageCostLines?: AverageCostLine[];
+  averageCost?: number;
   contract?: ProjectContract | null;
   createdBy?: { _id: string; name: string };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AverageCostLine {
+  account: { _id: string; code: string; name: string; nameAr?: string | null; type: string };
+  amount: number;
+}
+
+// Shape sent to the API when creating/editing a project's Average Cost lines - `account` is just
+// the id string here (not the populated object above).
+export interface AverageCostLineInput {
+  account: string;
+  amount: number | string;
 }

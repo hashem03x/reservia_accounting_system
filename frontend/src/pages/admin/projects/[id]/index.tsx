@@ -16,9 +16,12 @@ import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import ErrorAlert from "@/components/ui/error-alert";
 import paths from "@/utils/constants/paths";
-import { Project } from "@/types/project";
+import { AverageCostLineInput, Project } from "@/types/project";
+import { Customer } from "@/types/customer";
 import { JournalEntry } from "@/types/journal-entry";
 import ProjectContractSection from "../_components/project-contract-section";
+import CustomerSearch from "@/components/global/customer-search";
+import AverageCostEditor from "../_components/average-cost-editor";
 import { ProjectSectors } from "@/utils/constants/accounting";
 
 const statusColors: Record<string, string> = { active: "green", completed: "blue", cancelled: "red", on_hold: "yellow" };
@@ -65,6 +68,8 @@ export default function ProjectDetail() {
   const [sector, setSector] = useState("");
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [deliveryDate, setDeliveryDate] = useState<Date | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [averageCostLines, setAverageCostLines] = useState<AverageCostLineInput[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -81,15 +86,30 @@ export default function ProjectDetail() {
     setSector(project.sector || "");
     setStartDate(project.startDate ? new Date(project.startDate) : null);
     setDeliveryDate(project.deliveryDate ? new Date(project.deliveryDate) : null);
+    // CustomerSearch only ever reads `.name`/`._id` off this object - the populated customer
+    // sub-document here carries fewer fields than the full Customer type, which is fine at runtime.
+    setCustomer((project.customer as unknown as Customer) || null);
+    setAverageCostLines((project.averageCostLines || []).map((l) => ({ account: l.account._id, amount: l.amount })));
     setEditing(true);
   }
 
   async function handleSave() {
     handleRequest(language, setSaving, setSaveError, async () => {
+      const cleanedAverageCostLines = averageCostLines.filter((l) => l.account && l.amount !== "" && l.amount != null);
+
       const res = await privateRequest({
         url: `projects/${id}`,
         method: "PATCH",
-        data: { name, description, status, sector: sector || null, startDate, deliveryDate },
+        data: {
+          name,
+          description,
+          status,
+          sector: sector || null,
+          startDate,
+          deliveryDate,
+          customer: customer?._id || null,
+          averageCostLines: cleanedAverageCostLines,
+        },
         language,
       });
       setProject(res.data);
@@ -128,12 +148,17 @@ export default function ProjectDetail() {
           value={project.remainingMoney != null ? `${project.remainingMoney.toLocaleString()} ${translations.currency}` : "-"}
         />
         <SummaryCard label={translate("Project Manager", "مدير المشروع")} value={project.projectManager?.name || "-"} />
+        <SummaryCard label={translate("Customer", "العميل")} value={project.customer?.name || "-"} />
         <SummaryCard label={translate("Sector", "القطاع")} value={project.sector || "-"} />
         <SummaryCard label={translate("Start Date", "تاريخ البدء")} value={project.startDate ? formatDate(project.startDate, language) : "-"} />
         <SummaryCard label={translate("Delivery Date", "تاريخ التسليم")} value={project.deliveryDate ? formatDate(project.deliveryDate, language) : "-"} />
         <SummaryCard
           label={translate("Status", "الحالة")}
           value={<Badge color={statusColors[project.status] || "gray"}>{project.status}</Badge>}
+        />
+        <SummaryCard
+          label={translate("Average Cost", "متوسط التكلفة")}
+          value={project.averageCost != null ? `${project.averageCost.toLocaleString()} ${translations.currency}` : "-"}
         />
       </div>
 
@@ -169,6 +194,16 @@ export default function ProjectDetail() {
               error={editDeliveryBeforeStartError}
             />
           </div>
+
+          <CustomerSearch
+            customer={customer}
+            setCustomer={setCustomer}
+            label={translate("Customer", "العميل")}
+            placeholder={translate("Search for a customer", "ابحث عن عميل")}
+          />
+
+          <AverageCostEditor lines={averageCostLines} setLines={setAverageCostLines} />
+
           <div className="flex gap-2">
             <Button loading={saving} disabled={!!editDeliveryBeforeStartError} onClick={handleSave}>
               {translations.confirm}
@@ -179,7 +214,43 @@ export default function ProjectDetail() {
           </div>
         </div>
       ) : (
-        project.description && <p className="mt-4 text-gray-600">{project.description}</p>
+        <>
+          {project.description && <p className="mt-4 text-gray-600">{project.description}</p>}
+
+          {project.averageCostLines && project.averageCostLines.length > 0 && (
+            <div className="mt-6">
+              <h4>{translate("Average Cost", "متوسط التكلفة")}</h4>
+              <Table striped highlightOnHover mt="xs">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{translate("Cost Account", "حساب التكلفة")}</Table.Th>
+                    <Table.Th>{translate("Amount", "المبلغ")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {project.averageCostLines.map((line, i) => (
+                    <Table.Tr key={i}>
+                      <Table.Td>
+                        {line.account.code} - {line.account.name}
+                      </Table.Td>
+                      <Table.Td>
+                        {line.amount.toLocaleString()} {translations.currency}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+                <Table.Tfoot>
+                  <Table.Tr className="font-bold">
+                    <Table.Td>{translate("Total Average Cost", "إجمالي متوسط التكلفة")}</Table.Td>
+                    <Table.Td>
+                      {(project.averageCost || 0).toLocaleString()} {translations.currency}
+                    </Table.Td>
+                  </Table.Tr>
+                </Table.Tfoot>
+              </Table>
+            </div>
+          )}
+        </>
       )}
 
       <div className="mt-6">
