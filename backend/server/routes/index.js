@@ -61,6 +61,9 @@ const mountRoutes = app => {
   app.use('/api/v1/accounts', chartOfAccountRoute);
   app.use('/api/v1/journal-entries', journalEntryRoute);
 
+  // advanced payments (customer/vendor advances against a project)
+  app.use('/api/v1/advanced-payments', require('./payments/advancedPaymentRoute'));
+
   // transfer route
   app.use('/api/v1/transfer', transferRoute);
 

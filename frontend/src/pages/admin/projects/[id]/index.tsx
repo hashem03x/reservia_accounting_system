@@ -23,6 +23,9 @@ import ProjectContractSection from "../_components/project-contract-section";
 import CustomerSearch from "@/components/global/customer-search";
 import AverageCostEditor from "../_components/average-cost-editor";
 import { ProjectSectors } from "@/utils/constants/accounting";
+import { AdvancedPayment } from "@/types/advanced-payment";
+
+const advanceStatusColors: Record<string, string> = { available: "green", partially_used: "yellow", fully_used: "gray", cancelled: "red" };
 
 const statusColors: Record<string, string> = { active: "green", completed: "blue", cancelled: "red", on_hold: "yellow" };
 const statusOptions = ["active", "completed", "cancelled", "on_hold"];
@@ -45,6 +48,8 @@ export default function ProjectDetail() {
     setData: setEntries,
   } = useDataHandler<JournalEntry[]>({ initialData: [], initialLoading: true });
 
+  const { privateRequest: advancesRequest, data: advances, setData: setAdvances } = useDataHandler<AdvancedPayment[]>({ initialData: [] });
+
   useDocumentTitle(project ? `${project.projectNumber} | ${translations.pages.projects}` : translations.pages.projects);
 
   function load() {
@@ -53,6 +58,10 @@ export default function ProjectDetail() {
       setProject(res.data);
       const entriesRes = await entriesRequest({ url: `projects/${id}/journal-entries`, language });
       setEntries(entriesRes.data);
+      // Retrieved from the Advanced Payment records themselves (docs section "Project Advanced
+      // Payment Display") - never duplicated/stored on the Project document.
+      const advancesRes = await advancesRequest({ url: "advanced-payments", params: { project: id as string, type: "customer" }, language });
+      setAdvances(advancesRes.data);
     });
   }
 
@@ -216,6 +225,34 @@ export default function ProjectDetail() {
       ) : (
         <>
           {project.description && <p className="mt-4 text-gray-600">{project.description}</p>}
+
+          <div className="mt-6 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h4>{translate("Advanced Payment", "الدفعة المقدمة")}</h4>
+              <Button
+                variant="light"
+                size="xs"
+                onClick={() => navigate(`/${paths.admin}/${paths.advancedPayments}?project=${project._id}`)}
+              >
+                {translate("View Advanced Payments", "عرض الدفعات المقدمة")}
+              </Button>
+            </div>
+            {advances.length === 0 ? (
+              <p className="text-sm text-gray-400">{translate("No advanced payments for this project yet.", "لا توجد دفعات مقدمة لهذا المشروع بعد.")}</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <SummaryCard label={translate("Customer", "العميل")} value={project.customer?.name || "-"} />
+                <SummaryCard
+                  label={translate("Available", "المتاح")}
+                  value={`${advances.reduce((sum, a) => sum + (a.status !== "cancelled" ? a.remainingAmount : 0), 0).toLocaleString()} ${advances[0]?.currency || translations.currency}`}
+                />
+                <SummaryCard
+                  label={translate("Status", "الحالة")}
+                  value={<Badge color={advanceStatusColors[advances[0]?.status] || "gray"}>{advances[0]?.status}</Badge>}
+                />
+              </div>
+            )}
+          </div>
 
           {project.averageCostLines && project.averageCostLines.length > 0 && (
             <div className="mt-6">

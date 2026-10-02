@@ -10,6 +10,7 @@ const {
   getPaymentStatus,
 } = require('../../utils/helper');
 const { generateSalesOrderCode } = require('../../utils/helper');
+const { SalesOrderPaymentMethods } = require('../../utils/appConstant');
 
 const salesOrderSchema = mongoose.Schema(
   {
@@ -19,6 +20,21 @@ const salesOrderSchema = mongoose.Schema(
     },
     warehouse: { type: Schema.Types.ObjectId, ref: 'Warehouse' },
     customer: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    // Optional - most orders have no project at all (unrelated to the accounting Projects module).
+    // Required only when `paymentMethod === 'advanced_payment'` (enforced in
+    // salesOrderCreation.service.js, not here, since resolving/consuming the advance needs an
+    // async DB lookup against the live AdvancedPayment balance - see docs section "Do not trust the
+    // frontend amount").
+    project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
+    // This order's own "how will this be paid" selection at creation time - a different concept
+    // from the separate `Payment` model's `paymentMethod` (a record of an actual payment
+    // transaction against an order). Optional/null for every existing order and every new order
+    // that doesn't use this field - purely additive, doesn't change any existing behavior.
+    paymentMethod: { type: String, enum: { values: [...SalesOrderPaymentMethods, null], message: '{VALUE} is not a valid payment method' }, default: null },
+    // Set only when paymentMethod === 'advanced_payment' - the specific AdvancedPayment document
+    // this order consumed, so a later cancellation can restore exactly that balance (see
+    // services/payments/advancedPaymentService.js#restoreAdvancedPaymentForSalesOrder).
+    advancedPayment: { type: Schema.Types.ObjectId, ref: 'AdvancedPayment', default: null },
     // 'website' and 'shopify' are legacy values from the old storefront/Shopify-integration order
     // paths (both removed) - kept in the enum only so historical orders remain valid/readable.
     // 'cashier' (POS) is the only source new orders are created with.
@@ -148,6 +164,19 @@ salesOrderSchema.pre(/^find/, function () {
     path: 'items.product',
     select: 'title price priceAfterDiscount colors barcode sku',
   });
+
+  this.populate({
+    path: 'project',
+    select: 'projectNumber name customer',
+  });
+
+  // Deliberately NOT populated here: AdvancedPayment's own pre(/^find/) hook populates
+  // `usageHistory.salesOrder` back into a full SalesOrder document - populating `advancedPayment`
+  // from this side too would make every fetch of either model recurse into the other forever
+  // (SalesOrder -> AdvancedPayment -> usageHistory.salesOrder -> SalesOrder -> ...). The frontend
+  // already has `paymentMethod`/`advancedPayment` (the raw id) to work with; fetch the
+  // AdvancedPayment separately (GET /advanced-payments/:id) if its full details are ever needed
+  // from a Sales Order page.
 });
 
 // Index for better query performance
@@ -157,5 +186,6 @@ salesOrderSchema.index({ employee: 1 });
 salesOrderSchema.index({ createdAt: 1 });
 salesOrderSchema.index({ paymentStatus: 1 });
 salesOrderSchema.index({ orderStatus: 1 });
+salesOrderSchema.index({ project: 1 });
 
 module.exports = mongoose.model('SalesOrder', salesOrderSchema);

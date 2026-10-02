@@ -4,6 +4,14 @@
 // Paymob-specific processing fee to the paymob-* values, which matters for legacy payment records.
 exports.PaymentMethods = ['cash', 'wallet', 'instapay', 'band_transfer', 'fawry', 'paymob-online', 'paymob-offline', 'main-bank', 'Banque Misr Deposit', 'shopify-payments'];
 
+// Sales Order's own "how will this order be paid" selection at creation time - a distinct concept
+// from the `Payment` model's `paymentMethod` above (a record of an actual payment transaction), so
+// it gets its own list rather than polluting PaymentMethods with 'advanced_payment' (which would
+// then also become selectable when recording a Purchase Order payment - out of scope, see
+// services/payments/advancedPaymentService.js). Spread, not a hardcoded copy, so a future addition
+// to PaymentMethods is automatically available here too.
+exports.SalesOrderPaymentMethods = [...exports.PaymentMethods, 'advanced_payment'];
+
 exports.expensesCategories = [
   'office-supplies',
   'operating-expenses',
@@ -47,6 +55,7 @@ exports.Resources = {
   projects: 'projects',
   accounts: 'accounts',
   journalEntries: 'journalEntries',
+  advancedPayments: 'advancedPayments',
 };
 
 exports.Actions = {
@@ -78,6 +87,7 @@ exports.adminPermission = [
   { resource: 'projects', actions: ['create', 'delete', 'read', 'update'] },
   { resource: 'accounts', actions: ['create', 'delete', 'read', 'update'] },
   { resource: 'journalEntries', actions: ['create', 'read', 'update'] },
+  { resource: 'advancedPayments', actions: ['create', 'delete', 'read', 'update'] },
 ];
 
 exports.moderatorPermission = [
@@ -103,6 +113,7 @@ exports.moderatorPermission = [
   { resource: 'projects', actions: ['create', 'read', 'update'] },
   { resource: 'accounts', actions: ['read'] },
   { resource: 'journalEntries', actions: ['create', 'read'] },
+  { resource: 'advancedPayments', actions: ['create', 'read', 'update'] },
 ];
 
 exports.operatorPermission = [
@@ -114,6 +125,7 @@ exports.operatorPermission = [
   { resource: 'projects', actions: ['read'] },
   { resource: 'accounts', actions: ['read'] },
   { resource: 'journalEntries', actions: ['read'] },
+  { resource: 'advancedPayments', actions: ['read'] },
 ];
 
 exports.userPermission = [

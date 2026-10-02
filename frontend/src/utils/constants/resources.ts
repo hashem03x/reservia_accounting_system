@@ -170,6 +170,13 @@ const resources: LocalizedEntity<Resource> = {
       ar: "القيود اليومية",
     },
   },
+  advancedPayments: {
+    value: "advancedPayments",
+    label: {
+      en: "Advanced Payments",
+      ar: "الدفعات المقدمة",
+    },
+  },
 };
 
 export default resources;

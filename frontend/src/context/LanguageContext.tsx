@@ -49,6 +49,7 @@ export const LanguageContext = createContext<LanguageContextProps>({
       projects: "",
       accounts: "",
       journalEntries: "",
+      advancedPayments: "",
     },
   },
 });
@@ -118,6 +119,7 @@ export default function LanguageProvider({ children }: { children: React.ReactNo
       projects: translateResource(resources.projects),
       accounts: translateResource(resources.accounts),
       journalEntries: translateResource(resources.journalEntries),
+      advancedPayments: translateResource(resources.advancedPayments),
     },
   };
 

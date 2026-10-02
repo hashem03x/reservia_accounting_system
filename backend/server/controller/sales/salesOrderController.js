@@ -7,10 +7,11 @@ const asyncHandler = require('express-async-handler');
 const ApiError = require('../../utils/apiError');
 const factory = require('../handlersFactory');
 const { createSalesOrder } = require('../../services/sales/salesOrderCreation.service');
+const { restoreAdvancedPaymentForSalesOrder } = require('../../services/payments/advancedPaymentService');
 
 // Create a new sales order
 exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
-  const { customer, warehouse, items, isPrepaid, shippingCost, isCodOrder, paidAmount } = req.body;
+  const { customer, warehouse, items, isPrepaid, shippingCost, isCodOrder, paidAmount, paymentMethod, project } = req.body;
 
   try {
     const salesOrder = await createSalesOrder({
@@ -22,6 +23,8 @@ exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
       orderSource: 'cashier',
       isCodOrder,
       paidAmount,
+      paymentMethod,
+      project,
       createdBy: req.user._id,
       employee: req.user._id,
     });
@@ -88,6 +91,27 @@ exports.cancelOrder = asyncHandler(async (req, res, next) => {
   if (salesOrder.orderStatus === 'canceled') {
     return next(new ApiError('Order is already canceled', 400));
   }
+
+  // An order that consumed an Advanced Payment must restore it on cancellation (docs section
+  // "Sales Order edit/cancel/return") - the customer's advance must never be silently lost. Only
+  // this path (not the plain-save path below) needs a transaction, since it now touches two
+  // documents.
+  if (salesOrder.advancedPayment) {
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const freshOrder = await SalesOrder.findById(id).session(session);
+        freshOrder.orderStatus = 'canceled';
+        await freshOrder.save({ session });
+        await restoreAdvancedPaymentForSalesOrder({ advancedPaymentId: freshOrder.advancedPayment, salesOrderId: freshOrder._id, session });
+      });
+    } finally {
+      session.endSession();
+    }
+    const updated = await SalesOrder.findById(id);
+    return res.status(200).json({ status: 'success', data: updated });
+  }
+
   salesOrder.orderStatus = 'canceled';
   await salesOrder.save();
   res.status(200).json({ status: 'success', data: salesOrder });

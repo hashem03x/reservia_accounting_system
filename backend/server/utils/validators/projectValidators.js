@@ -47,15 +47,23 @@ const averageCostLines = check('averageCostLines')
     return true;
   });
 
-const customer = check('customer')
-  .optional({ nullable: true })
+const customerExistsCheck = value =>
+  User.findById(value).then(user => {
+    if (!user) return Promise.reject(new Error('Customer does not exist.'));
+  });
+
+// Required on create (docs section "Project UI" - the Advanced Payments feature depends on every
+// new project having exactly one customer) - still optional on update so existing customer-less
+// projects (e.g. the "V01" project created by the accounting CSV import, whose source data had no
+// customer at all) remain readable/editable without being forced to backfill one immediately.
+const customerRequired = check('customer')
+  .notEmpty()
+  .withMessage('Customer is required')
   .isMongoId()
   .withMessage('Invalid customer id')
-  .custom(value =>
-    User.findById(value).then(user => {
-      if (!user) return Promise.reject(new Error('Customer does not exist.'));
-    })
-  );
+  .custom(customerExistsCheck);
+
+const customerOptional = check('customer').optional({ nullable: true }).isMongoId().withMessage('Invalid customer id').custom(customerExistsCheck);
 
 // Shared by create/update - only meaningful when BOTH dates are present in the same request body.
 // This is a fast, friendly pre-check; the model's own pre('validate') hook
@@ -104,7 +112,7 @@ const createProjectValidators = [
   check('deliveryDate').notEmpty().withMessage('Delivery date is required').isISO8601().withMessage('Invalid delivery date'),
   deliveryNotBeforeStart,
 
-  customer,
+  customerRequired,
   averageCostLines,
 
   check('status').optional().isIn(ProjectStatuses),
@@ -135,7 +143,7 @@ const updateProjectValidators = [
   check('deliveryDate').optional().isISO8601().withMessage('Invalid delivery date'),
   deliveryNotBeforeStart,
 
-  customer,
+  customerOptional,
   averageCostLines,
 
   check('status').optional().isIn(ProjectStatuses),

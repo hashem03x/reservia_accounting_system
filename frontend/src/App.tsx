@@ -79,6 +79,8 @@ import AP_Project from "@/pages/admin/projects/[id]";
 import AP_Accounts from "@/pages/admin/accounts";
 import AP_JournalEntries from "@/pages/admin/journal-entries";
 import AP_JournalEntry from "@/pages/admin/journal-entries/[id]";
+import AP_AdvancedPayments from "@/pages/admin/advanced-payments";
+import AP_AdvancedPayment from "@/pages/admin/advanced-payments/[id]";
 
 export default function App() {
   useColorScheme();
@@ -217,6 +219,10 @@ export default function App() {
                   <Route element={<ResourceGuard resource={resources.journalEntries} action={actions.read} />}>
                     <Route path={paths.journalEntries} element={<AP_JournalEntries />} />
                     <Route path={paths.journalEntries + "/:id"} element={<AP_JournalEntry />} />
+                  </Route>
+                  <Route element={<ResourceGuard resource={resources.advancedPayments} action={actions.read} />}>
+                    <Route path={paths.advancedPayments} element={<AP_AdvancedPayments />} />
+                    <Route path={paths.advancedPayments + "/:id"} element={<AP_AdvancedPayment />} />
                   </Route>
                 </Route>
 

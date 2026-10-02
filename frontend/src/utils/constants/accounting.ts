@@ -14,3 +14,22 @@ export type ProjectSector = (typeof ProjectSectors)[number];
 export const AccountStates = ["current", "non-current", "operating", "non-operating", "direct", "indirect", "other"] as const;
 
 export type AccountState = (typeof AccountStates)[number];
+
+// Mirrors backend/server/utils/appConstant.js's SalesOrderPaymentMethods - the Sales Order's own
+// "how will this be paid" selection at creation time (distinct from the separate Payment model's
+// own paymentMethod, which records an actual payment transaction).
+export const SalesOrderPaymentMethods = [
+  "cash",
+  "wallet",
+  "instapay",
+  "band_transfer",
+  "fawry",
+  "paymob-online",
+  "paymob-offline",
+  "main-bank",
+  "Banque Misr Deposit",
+  "shopify-payments",
+  "advanced_payment",
+] as const;
+
+export type SalesOrderPaymentMethod = (typeof SalesOrderPaymentMethods)[number];

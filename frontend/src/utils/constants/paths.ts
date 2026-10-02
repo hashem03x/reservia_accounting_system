@@ -39,6 +39,7 @@ const paths = {
   projects: "projects",
   accounts: "accounts",
   journalEntries: "journal-entries",
+  advancedPayments: "advanced-payments",
   incomeStatement: "income-statement",
   balanceSheet: "balance-sheet",
 };

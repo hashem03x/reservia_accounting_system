@@ -9,11 +9,12 @@ import handleRequest from "@/utils/helpers/handle-request";
 import { Customer as CustomerType } from "@/types/customer";
 import { SalesOrder } from "@/types/orders";
 import { Payment } from "@/types/payment";
+import { AdvancedPayment } from "@/types/advanced-payment";
 import { isCustomer } from "@/utils/constants/roles";
 import { getCustomerTypeLabel, isOffline } from "@/utils/constants/customer-types";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
-import { Button } from "@mantine/core";
+import { Badge, Button, Table } from "@mantine/core";
 import { outlineIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
@@ -43,6 +44,7 @@ export default function Customer() {
 
   const [customerSalesOrders, setCustomerSalesOrders] = useState<SalesOrder[]>([]);
   const [customerPayments, setCustomerPayments] = useState<Payment[]>([]);
+  const [customerAdvances, setCustomerAdvances] = useState<AdvancedPayment[]>([]);
 
   useDocumentTitle(`${customer?.name ?? translate("Customer Data", "بيانات العميل")} | ${translations.pages.customers}`);
 
@@ -51,7 +53,7 @@ export default function Customer() {
     const canceled = { current: false };
 
     const executeFetch = async () => {
-      const [customerResponse, ordersResponse, paymentsResponse] = await Promise.all([
+      const [customerResponse, ordersResponse, paymentsResponse, advancesResponse] = await Promise.all([
         privateRequest({ url: `customers/${id}`, signal: controller.signal, language }),
         canIReadSalesOrders &&
           privateRequest({
@@ -67,6 +69,13 @@ export default function Customer() {
             signal: controller.signal,
             language,
           }),
+        canIReadAdvancedPayments &&
+          privateRequest({
+            url: `advanced-payments`,
+            params: { customer: id || "", type: "customer", limit: Infinity },
+            signal: controller.signal,
+            language,
+          }),
       ]);
       if (customerResponse.data.isDeleted || !isCustomer(customerResponse.data.role))
         setError(translate("This customer does not exist.", "هذا العميل غير موجود."));
@@ -74,6 +83,7 @@ export default function Customer() {
         setCustomer(customerResponse.data);
         setCustomerSalesOrders(ordersResponse.data);
         setCustomerPayments(paymentsResponse.data);
+        if (advancesResponse) setCustomerAdvances(advancesResponse.data);
       }
     };
 
@@ -96,6 +106,7 @@ export default function Customer() {
 
   const canIReadSalesOrders = useHasPermission(resources.salesOrders, actions.read);
   const canIReadPayments = useHasPermission(resources.cash, actions.read);
+  const canIReadAdvancedPayments = useHasPermission(resources.advancedPayments, actions.read);
 
   // ========== Handle Modals ==========
 
@@ -285,6 +296,43 @@ export default function Customer() {
             {canIReadPayments && customerPayments.length > 0 && (
               <div className="rounded-md bg-gray-100 p-4">
                 <CustomerPaymentsHistory payments={customerPayments} />
+              </div>
+            )}
+
+            {/* Advanced Payments - retrieved from the Advanced Payment records themselves, never
+                duplicated/stored on the Customer document (docs section "Customer Details"). */}
+            {canIReadAdvancedPayments && customerAdvances.length > 0 && (
+              <div className="rounded-md bg-gray-100 p-4">
+                <h4 className="mb-3">{translate("Advanced Payments", "الدفعات المقدمة")}</h4>
+                <Table striped highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>{translate("Project", "المشروع")}</Table.Th>
+                      <Table.Th>{translate("Original", "الأصلي")}</Table.Th>
+                      <Table.Th>{translate("Used", "المستخدم")}</Table.Th>
+                      <Table.Th>{translate("Remaining", "المتبقي")}</Table.Th>
+                      <Table.Th>{translate("Status", "الحالة")}</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {customerAdvances.map((advance) => (
+                      <Table.Tr key={advance._id}>
+                        <Table.Td>{advance.project?.projectNumber || "-"}</Table.Td>
+                        <Table.Td>{advance.amount.toLocaleString()}</Table.Td>
+                        <Table.Td>{(advance.amount - advance.remainingAmount).toLocaleString()}</Table.Td>
+                        <Table.Td>{advance.remainingAmount.toLocaleString()}</Table.Td>
+                        <Table.Td>
+                          <Badge
+                            color={{ available: "green", partially_used: "yellow", fully_used: "gray", cancelled: "red" }[advance.status] || "gray"}
+                            variant="light"
+                          >
+                            {advance.status}
+                          </Badge>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
               </div>
             )}
           </section>

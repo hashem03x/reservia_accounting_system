@@ -134,6 +134,11 @@ export default function AllAdminOptions({ closeDrawer, collapsed = false }: { cl
       label: translations.pages.journalEntries,
       Icon: outlineIcons.JournalEntries,
     },
+    {
+      to: `/${paths.admin}/${paths.advancedPayments}`,
+      label: translations.pages.advancedPayments,
+      Icon: outlineIcons.DollarSign,
+    },
   ];
 
   return (

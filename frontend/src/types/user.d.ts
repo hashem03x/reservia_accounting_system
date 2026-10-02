@@ -53,7 +53,8 @@ export type Resource =
   | "databaseExport"
   | "projects"
   | "accounts"
-  | "journalEntries";
+  | "journalEntries"
+  | "advancedPayments";
 
 export type Action = "create" | "read" | "update" | "delete";
 

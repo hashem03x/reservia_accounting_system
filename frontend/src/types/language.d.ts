@@ -43,6 +43,7 @@ export interface LanguageContextProps {
       projects: string;
       accounts: string;
       journalEntries: string;
+      advancedPayments: string;
     };
   };
 }

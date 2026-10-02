@@ -1,7 +1,9 @@
 const mongoose = require('mongoose');
 const SalesOrder = require('../../models/sales/salesOrderModel');
 const Product = require('../../models/inventory/productModel');
+const Project = require('../../models/project/projectModel');
 const ApiError = require('../../utils/apiError');
+const { consumeCustomerAdvancedPayment } = require('../payments/advancedPaymentService');
 
 // Decrements this product's stock in the sale's warehouse AND increments its totalSold in one
 // atomic update - previously two separate writes (decrement Variant.stock, then a second
@@ -47,7 +49,7 @@ async function updateStockAndSold(item, warehouseId, session) {
  * original behavior).
  */
 async function createSalesOrder(
-  { customer, warehouse, items, isPrepaid, shippingCost, isCodOrder, paidAmount, createdBy, employee, extraFields = {} },
+  { customer, warehouse, items, isPrepaid, shippingCost, isCodOrder, paidAmount, paymentMethod, project, createdBy, employee, extraFields = {} },
   { session: providedSession } = {}
 ) {
   if (!items || !Array.isArray(items) || items.length === 0) throw new ApiError('Items must be a non-empty array');
@@ -78,8 +80,41 @@ async function createSalesOrder(
       shippingCost,
       ...(isCodOrder !== undefined ? { isCodOrder } : {}),
       ...(paidAmount !== undefined ? { paidAmount } : {}),
+      ...(paymentMethod !== undefined ? { paymentMethod } : {}),
+      ...(project !== undefined ? { project } : {}),
       ...extraFields,
     });
+
+    // Advanced Payment: the server NEVER trusts a client-submitted amount (docs section "Do not
+    // trust the frontend amount") - `paidAmount` above is discarded/overridden entirely here. This
+    // must run inside the same transaction as the SalesOrder save below: either both the advance
+    // consumption and the order creation commit together, or neither does (docs section "Atomic
+    // database operation").
+    if (paymentMethod === 'advanced_payment') {
+      if (!project) throw new ApiError('A project must be selected to use Advanced Payment.', 400);
+
+      const projectDoc = await Project.findById(project).session(session);
+      if (!projectDoc) throw new ApiError('Project not found.', 404);
+      // Project.findById() runs Project's own populate hook, turning `.customer` into
+      // `{_id, name, ...}` - see advancedPaymentModel.js's identical comment.
+      const projectCustomerId = projectDoc.customer?._id || projectDoc.customer;
+      if (!projectCustomerId || projectCustomerId.toString() !== String(customer)) {
+        throw new ApiError('This project does not belong to the selected customer.', 400);
+      }
+
+      // `salesOrder._id` already exists at this point - Mongoose generates ObjectIds client-side on
+      // construction, not on insert - so the usage-history entry can reference the real order id in
+      // a single pass, with no separate patch-after-save step.
+      const { advancedPaymentId, consumedAmount } = await consumeCustomerAdvancedPayment({
+        customer,
+        project,
+        salesOrderId: salesOrder._id,
+        session,
+      });
+
+      salesOrder.paidAmount = consumedAmount;
+      salesOrder.advancedPayment = advancedPaymentId;
+    }
 
     await salesOrder.save({ session });
   };
