@@ -128,15 +128,47 @@ journalEntrySchema.pre('save', async function (next) {
       }
     }
 
+    // RULE 2: a manually-created journal entry (the Journal Entries module's own create
+    // form/endpoint - source 'manual') must reference a project. Two kinds of system-generated
+    // entries are deliberately exempt from this, both pre-existing features this rule must not
+    // regress:
+    //   - Reversal entries (`reversalOfEntry` set) - mirrors of an existing entry, which already
+    //     copies the original's own `project` verbatim, including `null` for a historical entry
+    //     that predates this rule. Reversing must keep working for every existing entry.
+    //   - The Fixed Asset purchase auto-entry (source 'fixed_asset_purchase', see
+    //     fixedAssetController.js#createFixedAsset) - an unrelated existing feature with no
+    //     concept of a project at all; retrofitting it to require one is out of scope here.
+    if (this.isNew && !this.reversalOfEntry && this.source === 'manual' && !this.project) {
+      throw new Error('Project is required when creating a journal entry.');
+    }
+    if (this.isNew && this.project) {
+      const Project = this.model('Project');
+      const projectExists = await Project.exists({ _id: this.project });
+      if (!projectExists) {
+        throw new Error('The selected project does not exist.');
+      }
+    }
+
     this.totalDebit = round2(this.lines.reduce((sum, line) => sum + (line.debit || 0), 0));
     this.totalCredit = round2(this.lines.reduce((sum, line) => sum + (line.credit || 0), 0));
 
+    // RULE 1: total debit must equal total credit - unconditionally, for every status, including
+    // `draft`. There is deliberately no `if (status === 'draft') skip...` exception here (see
+    // docs section "Journal Entry Lines Must Always Balance to Zero" - a draft is still a
+    // persisted accounting record, not a scratchpad, and must never be allowed to go unbalanced).
+    if (!this.lines || this.lines.length === 0) {
+      throw new Error('A journal entry must have at least one line.');
+    }
+    if (!this.isBalanced()) {
+      throw new Error('Journal entry is not balanced. Total debit must equal total credit.');
+    }
+
+    // Stricter than plain balance (a single line could theoretically net to zero-difference only
+    // if its debit/credit were both 0, which the line-level pre('validate') hook above already
+    // forbids) - kept as an explicit, clearer error specifically for posting.
     if (this.status === 'posted') {
       if (this.lines.length < 2) {
         throw new Error('A journal entry must have at least two lines to be posted.');
-      }
-      if (!this.isBalanced()) {
-        throw new Error('Journal entry cannot be posted because total debit does not equal total credit.');
       }
     }
 

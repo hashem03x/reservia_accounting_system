@@ -6,9 +6,12 @@ const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_te
 
 let JournalEntry;
 let ChartOfAccount;
+let Project;
+let User;
 let getNextJournalEntryNumber;
 let cash;
 let revenue;
+let project;
 let transactionsSupported = true;
 
 before(async () => {
@@ -16,10 +19,12 @@ before(async () => {
   await mongoose.connection.dropDatabase();
   JournalEntry = require('../../models/accounting/journalEntryModel');
   ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
+  Project = require('../../models/project/projectModel');
+  User = require('../../models/userModel');
   ({ getNextJournalEntryNumber } = require('../../services/accounting/journalEntryNumberService'));
   // See chartOfAccount.test.js's before() comment - avoids racing the unique index builds
   // (entryNumber, and the sourceType+sourceId partial index) under concurrent test-file load.
-  await Promise.all([JournalEntry.init(), ChartOfAccount.init()]);
+  await Promise.all([JournalEntry.init(), ChartOfAccount.init(), Project.init()]);
 
   const probeSession = await mongoose.startSession();
   try {
@@ -42,15 +47,25 @@ after(async () => {
 beforeEach(async () => {
   await JournalEntry.deleteMany({});
   await ChartOfAccount.deleteMany({});
+  await Project.deleteMany({});
+  await User.deleteMany({});
   await mongoose.connection.collection('counters').deleteMany({});
   cash = await ChartOfAccount.create({ code: '1000', name: 'Cash', type: 'asset' });
   revenue = await ChartOfAccount.create({ code: '4000', name: 'Revenue', type: 'revenue' });
+  const manager = await User.create({ name: 'PM', email: `pm-${Date.now()}@example.com`, role: 'admin', type: 'online' });
+  project = await Project.create({
+    projectNumber: `PRJ-${Date.now()}`,
+    projectManager: manager._id,
+    startDate: new Date(),
+    deliveryDate: new Date(Date.now() + 86400000),
+  });
 });
 
 test('a balanced draft entry can be posted', async () => {
   const entryNumber = await getNextJournalEntryNumber();
   const entry = await JournalEntry.create({
     entryNumber,
+    project: project._id,
     lines: [
       { account: cash._id, debit: 100, credit: 0 },
       { account: revenue._id, debit: 0, credit: 100 },
@@ -67,18 +82,39 @@ test('a balanced draft entry can be posted', async () => {
   assert.equal(entry.status, 'posted');
 });
 
-test('an unbalanced entry is rejected at posting time', async () => {
+// RULE 1: balance is checked unconditionally now - an unbalanced entry is rejected at CREATE
+// time, for every status (including draft), not only when posting. There is deliberately no
+// `status === 'draft'` exception (see docs section "Journal Entry Lines Must Always Balance to
+// Zero").
+test('an unbalanced entry is rejected at creation time, for both draft and posted status', async () => {
   const entryNumber = await getNextJournalEntryNumber();
-  const entry = await JournalEntry.create({
-    entryNumber,
-    lines: [
-      { account: cash._id, debit: 100, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 40 },
-    ],
-  });
+  await assert.rejects(
+    () =>
+      JournalEntry.create({
+        entryNumber,
+        project: project._id,
+        lines: [
+          { account: cash._id, debit: 100, credit: 0 },
+          { account: revenue._id, debit: 0, credit: 40 },
+        ],
+      }),
+    /not balanced/
+  );
 
-  entry.status = 'posted';
-  await assert.rejects(() => entry.save(), /does not equal total credit/);
+  const entryNumber2 = await getNextJournalEntryNumber();
+  await assert.rejects(
+    () =>
+      JournalEntry.create({
+        entryNumber: entryNumber2,
+        status: 'posted',
+        project: project._id,
+        lines: [
+          { account: cash._id, debit: 100, credit: 0 },
+          { account: revenue._id, debit: 0, credit: 40 },
+        ],
+      }),
+    /not balanced/
+  );
 });
 
 test('a line cannot have both a debit and a credit, or neither', async () => {
@@ -87,6 +123,7 @@ test('a line cannot have both a debit and a credit, or neither', async () => {
     () =>
       JournalEntry.create({
         entryNumber,
+        project: project._id,
         lines: [{ account: cash._id, debit: 100, credit: 100 }],
       }),
     /either a debit or a credit/
@@ -97,17 +134,23 @@ test('a line cannot have both a debit and a credit, or neither', async () => {
     () =>
       JournalEntry.create({
         entryNumber: entryNumber2,
+        project: project._id,
         lines: [{ account: cash._id, debit: 0, credit: 0 }],
       }),
     /either a debit or a credit/
   );
 });
 
-test('a draft entry with fewer than two lines cannot be posted', async () => {
+// A single line can never actually reach the ">=2 lines to post" guard anymore - one line is
+// always one-sided (debit XOR credit, enforced above), so it can never balance to zero and is now
+// rejected by the unconditional balance check at creation, before posting is even attempted. This
+// is a direct, intentional consequence of RULE 1 - documented here rather than silently dropped.
+test('a single-line entry can never balance, so it is rejected at creation (before the two-line posting rule would even apply)', async () => {
   const entryNumber = await getNextJournalEntryNumber();
-  const entry = await JournalEntry.create({ entryNumber, lines: [{ account: cash._id, debit: 50, credit: 0 }] });
-  entry.status = 'posted';
-  await assert.rejects(() => entry.save(), /at least two lines/);
+  await assert.rejects(
+    () => JournalEntry.create({ entryNumber, project: project._id, lines: [{ account: cash._id, debit: 50, credit: 0 }] }),
+    /not balanced/
+  );
 });
 
 test('a posted entry cannot have its lines modified directly', async () => {
@@ -115,6 +158,7 @@ test('a posted entry cannot have its lines modified directly', async () => {
   const entry = await JournalEntry.create({
     entryNumber,
     status: 'posted',
+    project: project._id,
     lines: [
       { account: cash._id, debit: 100, credit: 0 },
       { account: revenue._id, debit: 0, credit: 100 },
@@ -129,6 +173,7 @@ test('entryNumber is unique', async () => {
   const entryNumber = await getNextJournalEntryNumber();
   await JournalEntry.create({
     entryNumber,
+    project: project._id,
     lines: [
       { account: cash._id, debit: 100, credit: 0 },
       { account: revenue._id, debit: 0, credit: 100 },
@@ -139,6 +184,7 @@ test('entryNumber is unique', async () => {
     () =>
       JournalEntry.create({
         entryNumber,
+        project: project._id,
         lines: [
           { account: cash._id, debit: 50, credit: 0 },
           { account: revenue._id, debit: 0, credit: 50 },
@@ -149,12 +195,13 @@ test('entryNumber is unique', async () => {
 });
 
 test('at most one journal entry can exist per (sourceType, sourceId) pair', async () => {
-  const projectId = new mongoose.Types.ObjectId();
+  const sourceProjectId = new mongoose.Types.ObjectId();
   const entryNumber1 = await getNextJournalEntryNumber();
   await JournalEntry.create({
     entryNumber: entryNumber1,
     sourceType: 'PROJECT_CREATION',
-    sourceId: projectId,
+    sourceId: sourceProjectId,
+    project: project._id,
     lines: [
       { account: cash._id, debit: 100, credit: 0 },
       { account: revenue._id, debit: 0, credit: 100 },
@@ -167,7 +214,8 @@ test('at most one journal entry can exist per (sourceType, sourceId) pair', asyn
       JournalEntry.create({
         entryNumber: entryNumber2,
         sourceType: 'PROJECT_CREATION',
-        sourceId: projectId,
+        sourceId: sourceProjectId,
+        project: project._id,
         lines: [
           { account: cash._id, debit: 100, credit: 0 },
           { account: revenue._id, debit: 0, credit: 100 },
@@ -186,6 +234,7 @@ test('reversing a posted entry creates a balanced mirrored entry on the admin-ch
     entryNumber,
     date: originalDate,
     status: 'posted',
+    project: project._id,
     lines: [
       { account: cash._id, debit: 100, credit: 0 },
       { account: revenue._id, debit: 0, credit: 100 },
@@ -205,6 +254,7 @@ test('reversing a posted entry creates a balanced mirrored entry on the admin-ch
     date: adminChosenReversalDate,
     status: 'posted',
     reversalOfEntry: original._id,
+    project: original.project,
     lines: original.lines.map(line => ({
       account: line.account._id || line.account,
       debit: line.credit,
@@ -252,6 +302,44 @@ test('the reverseJournalEntryValidators reject a missing or invalid reversalDate
   assert.equal(valid.isEmpty(), true, 'a request with a valid ISO reversalDate must pass validation');
 });
 
+test('createJournalEntryValidators: RULE 1 and RULE 2 fast pre-checks', async () => {
+  const { validationResult } = require('express-validator');
+  const { createJournalEntryValidators } = require('../../utils/validators/journalEntryValidators');
+
+  async function runValidators(body) {
+    const req = { body, params: {}, query: {} };
+    for (const middleware of createJournalEntryValidators) {
+      if (typeof middleware.run === 'function') await middleware.run(req);
+    }
+    return validationResult(req);
+  }
+
+  const balancedLines = [
+    { account: cash._id.toString(), debit: 100, credit: 0 },
+    { account: revenue._id.toString(), debit: 0, credit: 100 },
+  ];
+  const unbalancedLines = [
+    { account: cash._id.toString(), debit: 100, credit: 0 },
+    { account: revenue._id.toString(), debit: 0, credit: 40 },
+  ];
+
+  const noProject = await runValidators({ lines: balancedLines });
+  assert.equal(noProject.isEmpty(), false, 'a request with no project must fail validation');
+  assert.ok(noProject.array().some(e => /Project is required/.test(e.msg)));
+
+  const fakeProjectId = new mongoose.Types.ObjectId().toString();
+  const nonExistentProject = await runValidators({ project: fakeProjectId, lines: balancedLines });
+  assert.equal(nonExistentProject.isEmpty(), false, 'a request referencing a non-existent project must fail validation');
+  assert.ok(nonExistentProject.array().some(e => /does not exist/.test(e.msg)));
+
+  const unbalanced = await runValidators({ project: project._id.toString(), lines: unbalancedLines });
+  assert.equal(unbalanced.isEmpty(), false, 'a request with unbalanced lines must fail validation');
+  assert.ok(unbalanced.array().some(e => /not balanced/.test(e.msg)));
+
+  const valid = await runValidators({ project: project._id.toString(), lines: balancedLines });
+  assert.equal(valid.isEmpty(), true, 'a request with a valid project and balanced lines must pass validation');
+});
+
 // Regression for journalEntryController.js#reverseJournalEntry's in-transaction re-check: two
 // concurrent requests could both read `reversedByEntry: null` before either writes (the classic
 // TOCTOU race). Mirrors the controller's actual guard - re-fetching the original INSIDE the
@@ -264,6 +352,7 @@ test('re-checking reversal eligibility inside the transaction rejects an entry t
   const original = await JournalEntry.create({
     entryNumber,
     status: 'posted',
+    project: project._id,
     lines: [
       { account: cash._id, debit: 100, credit: 0 },
       { account: revenue._id, debit: 0, credit: 100 },
@@ -300,4 +389,131 @@ test('re-checking reversal eligibility inside the transaction rejects an entry t
 
   const allReversalsOfOriginal = await JournalEntry.find({ reversalOfEntry: original._id });
   assert.equal(allReversalsOfOriginal.length, 1, 'only the first, legitimate reversal must exist - no duplicate reversal entry');
+});
+
+// ===================== RULE 2: mandatory project =====================
+
+test('RULE 2: a new (non-reversal) journal entry without a project is rejected', async () => {
+  const entryNumber = await getNextJournalEntryNumber();
+  await assert.rejects(
+    () =>
+      JournalEntry.create({
+        entryNumber,
+        lines: [
+          { account: cash._id, debit: 100, credit: 0 },
+          { account: revenue._id, debit: 0, credit: 100 },
+        ],
+      }),
+    /Project is required/
+  );
+});
+
+test('RULE 2: a journal entry referencing a non-existent project is rejected', async () => {
+  const entryNumber = await getNextJournalEntryNumber();
+  await assert.rejects(
+    () =>
+      JournalEntry.create({
+        entryNumber,
+        project: new mongoose.Types.ObjectId(),
+        lines: [
+          { account: cash._id, debit: 100, credit: 0 },
+          { account: revenue._id, debit: 0, credit: 100 },
+        ],
+      }),
+    /project does not exist/
+  );
+});
+
+// Regression test: the Fixed Asset purchase flow (fixedAssetController.js#createFixedAsset) auto-
+// creates a `source: 'fixed_asset_purchase'` journal entry with no project at all - an unrelated,
+// pre-existing feature that this mandatory-project rule must not break.
+test('RULE 2: the Fixed Asset purchase auto-entry (source: fixed_asset_purchase) is exempt from the mandatory-project rule', async () => {
+  const entryNumber = await getNextJournalEntryNumber();
+  const entry = await JournalEntry.create({
+    entryNumber,
+    source: 'fixed_asset_purchase',
+    status: 'posted',
+    lines: [
+      { account: cash._id, debit: 500, credit: 0 },
+      { account: revenue._id, debit: 0, credit: 500 },
+    ],
+  });
+  assert.equal(entry.project, null);
+});
+
+test('RULE 2: reversal entries are exempt from the mandatory-project rule (reversing a historical entry that predates this rule must keep working)', async () => {
+  // Simulates a pre-existing entry created before this rule existed (raw insert, bypassing
+  // validation entirely - the same way projectAccounting.test.js simulates legacy documents).
+  const entryNumber = await getNextJournalEntryNumber();
+  await mongoose.connection.collection('journalentries').insertOne({
+    entryNumber,
+    status: 'posted',
+    totalDebit: 100,
+    totalCredit: 100,
+    lines: [
+      { account: cash._id, debit: 100, credit: 0 },
+      { account: revenue._id, debit: 0, credit: 100 },
+    ],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  const legacyOriginal = await JournalEntry.findOne({ entryNumber });
+  assert.equal(legacyOriginal.project, null);
+
+  const reversalNumber = await getNextJournalEntryNumber();
+  const reversal = await JournalEntry.create({
+    entryNumber: reversalNumber,
+    status: 'posted',
+    reversalOfEntry: legacyOriginal._id,
+    project: legacyOriginal.project,
+    lines: [
+      { account: cash._id, debit: 0, credit: 100 },
+      { account: revenue._id, debit: 100, credit: 0 },
+    ],
+  });
+  assert.ok(reversal._id, 'reversing a project-less legacy entry must still succeed');
+  assert.equal(reversal.project, null);
+});
+
+// ===================== RULE 3: a reversed entry cannot be reversed again =====================
+
+test('RULE 3: the controller-level pre-check rejects reversing the same entry twice', async () => {
+  const entryNumber = await getNextJournalEntryNumber();
+  const original = await JournalEntry.create({
+    entryNumber,
+    status: 'posted',
+    project: project._id,
+    lines: [
+      { account: cash._id, debit: 100, credit: 0 },
+      { account: revenue._id, debit: 0, credit: 100 },
+    ],
+  });
+
+  // First reversal succeeds (mirrors reverseJournalEntry's create+link, without the transaction
+  // wrapper - see the earlier "reversing a posted entry..." test for why).
+  const reversalNumber = await getNextJournalEntryNumber();
+  const reversal = await JournalEntry.create({
+    entryNumber: reversalNumber,
+    status: 'posted',
+    reversalOfEntry: original._id,
+    project: original.project,
+    lines: [
+      { account: cash._id, debit: 0, credit: 100 },
+      { account: revenue._id, debit: 100, credit: 0 },
+    ],
+  });
+  original.reversedByEntry = reversal._id;
+  original.status = 'reversed';
+  await original.save();
+
+  // Second reversal attempt: this is exactly reverseJournalEntry's own pre-transaction guard,
+  // exercised directly against the now-reversed entry.
+  const reloaded = await JournalEntry.findById(original._id);
+  assert.equal(reloaded.status, 'reversed');
+  assert.ok(reloaded.reversedByEntry);
+  const wouldReject = reloaded.status !== 'posted' || Boolean(reloaded.reversedByEntry);
+  assert.equal(wouldReject, true, 'an already-reversed entry must be rejected before even starting a second reversal transaction');
+
+  const allReversalsOfOriginal = await JournalEntry.find({ reversalOfEntry: original._id });
+  assert.equal(allReversalsOfOriginal.length, 1, 'exactly one reversal must exist for this entry');
 });

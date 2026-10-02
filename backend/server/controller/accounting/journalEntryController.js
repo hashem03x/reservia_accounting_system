@@ -8,17 +8,21 @@ const { getNextJournalEntryNumber } = require('../../services/accounting/journal
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
 
 const createJournalEntry = asyncHandler(async (req, res) => {
+  // `project` is guaranteed present and valid by createJournalEntryValidators (RULE 2) by the time
+  // this handler runs - never silently defaulted to null here.
   const { date, description, reference, project, lines } = req.body;
 
   const entryNumber = await getNextJournalEntryNumber();
-  // Manual journal entries always start as a draft - posting (and the balance check that gates
-  // it) is a separate, explicit action (POST /:id/post). Any `status` sent in the body is ignored.
+  // Manual journal entries always start as a draft - posting is a separate, explicit action
+  // (POST /:id/post). Any `status` sent in the body is ignored. The balance check (RULE 1) is
+  // enforced unconditionally for every status by the model's own pre('save') hook - drafts are not
+  // exempt.
   const entry = await JournalEntry.create({
     entryNumber,
     date,
     description,
     reference,
-    project: project || null,
+    project,
     lines: (lines || []).map(line => ({ ...line, projectNumber: line.projectNumber || null })),
     source: 'manual',
     status: 'draft',

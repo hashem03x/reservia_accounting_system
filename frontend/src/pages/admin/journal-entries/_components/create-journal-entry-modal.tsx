@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
-import { Button, NumberInput, Select, TextInput } from "@mantine/core";
+import { Alert, Button, NumberInput, Select, TextInput } from "@mantine/core";
 import useDataHandler from "@/hooks/useDataHandler";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
 import handleRequest from "@/utils/helpers/handle-request";
@@ -29,6 +29,7 @@ export default function CreateJournalEntryModal({
   const [date, setDate] = useState("");
   const [description, setDescription] = useState("");
   const [reference, setReference] = useState("");
+  const [entryProject, setEntryProject] = useState("");
   const [lines, setLines] = useState<JournalLineInput[]>([{ ...emptyLine }, { ...emptyLine }]);
 
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
@@ -62,6 +63,11 @@ export default function CreateJournalEntryModal({
   const totalDebit = lines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0);
   const totalCredit = lines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
   const difference = Math.round((totalDebit - totalCredit) * 100) / 100;
+  const isBalanced = difference === 0;
+  // UX-only - the backend independently recomputes and enforces both of these from the actual
+  // request (RULE 1/RULE 2), never trusting this client-side check (docs section "Do not rely on
+  // the frontend").
+  const canSubmit = isBalanced && !!entryProject;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -75,6 +81,7 @@ export default function CreateJournalEntryModal({
           date: date || undefined,
           description,
           reference,
+          project: entryProject,
           lines: lines.map((l) => ({ ...l, subAccount: l.subAccount || undefined, project: l.project || undefined })),
         },
       });
@@ -90,6 +97,7 @@ export default function CreateJournalEntryModal({
       setDate("");
       setDescription("");
       setReference("");
+      setEntryProject("");
       setLines([{ ...emptyLine }, { ...emptyLine }]);
       setError("");
     }, 250);
@@ -105,6 +113,18 @@ export default function CreateJournalEntryModal({
           <TextInput label={translate("Reference", "المرجع")} value={reference} onChange={(e) => setReference(e.target.value)} />
         </div>
         <TextInput label={translate("Description", "الوصف")} value={description} onChange={(e) => setDescription(e.target.value)} />
+
+        <Select
+          label={translate("Project", "المشروع")}
+          description={translate("Required - every journal entry must reference a project.", "مطلوب - يجب أن يرتبط كل قيد يومية بمشروع.")}
+          placeholder={translate("Select project", "اختر المشروع")}
+          value={entryProject || null}
+          onChange={(v) => setEntryProject(v || "")}
+          data={projects.map((p) => ({ value: p._id, label: p.projectNumber }))}
+          searchable
+          required
+          withAsterisk
+        />
 
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
@@ -164,7 +184,7 @@ export default function CreateJournalEntryModal({
           ))}
         </div>
 
-        <div className="flex justify-end gap-6 rounded-lg bg-gray-50 p-3 text-sm">
+        <div className="flex flex-wrap justify-end gap-6 rounded-lg bg-gray-50 p-3 text-sm">
           <span>
             {translate("Total Debit", "إجمالي المدين")}: <b>{totalDebit.toLocaleString()}</b>
           </span>
@@ -174,9 +194,21 @@ export default function CreateJournalEntryModal({
           <span className={difference !== 0 ? "text-red-600" : "text-green-600"}>
             {translate("Difference", "الفرق")}: <b>{difference}</b>
           </span>
+          <span className={isBalanced ? "text-green-600" : "text-red-600"}>
+            {translate("Status", "الحالة")}: <b>{isBalanced ? translate("Balanced", "متوازن") : translate("Not Balanced", "غير متوازن")}</b>
+          </span>
         </div>
 
-        <Button type="submit" loading={loading} mt="md">
+        {!isBalanced && (
+          <Alert color="red" variant="light">
+            {translate(
+              "The entry is not balanced. Total debit must equal total credit before it can be saved, even as a draft.",
+              "القيد غير متوازن. يجب أن يتساوى إجمالي المدين مع إجمالي الدائن قبل الحفظ، حتى كمسودة.",
+            )}
+          </Alert>
+        )}
+
+        <Button type="submit" loading={loading} disabled={!canSubmit} mt="md">
           {translate("Save as Draft", "حفظ كمسودة")}
         </Button>
       </form>

@@ -6,21 +6,26 @@ const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_te
 
 let JournalEntry;
 let ChartOfAccount;
+let Project;
+let User;
 let getNextJournalEntryNumber;
 let getAccountBalance;
 let getTrialBalance;
 let cash;
 let unearnedRevenue;
 let receivable;
+let project;
 
 before(async () => {
   await mongoose.connect(DB_URI);
   await mongoose.connection.dropDatabase();
   JournalEntry = require('../../models/accounting/journalEntryModel');
   ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
+  Project = require('../../models/project/projectModel');
+  User = require('../../models/userModel');
   ({ getNextJournalEntryNumber } = require('../../services/accounting/journalEntryNumberService'));
   ({ getAccountBalance, getTrialBalance } = require('../../services/accounting/generalLedgerService'));
-  await Promise.all([JournalEntry.init(), ChartOfAccount.init()]);
+  await Promise.all([JournalEntry.init(), ChartOfAccount.init(), Project.init()]);
 });
 
 after(async () => {
@@ -31,15 +36,24 @@ after(async () => {
 beforeEach(async () => {
   await JournalEntry.deleteMany({});
   await ChartOfAccount.deleteMany({});
+  await Project.deleteMany({});
+  await User.deleteMany({});
   await mongoose.connection.collection('counters').deleteMany({});
   cash = await ChartOfAccount.create({ code: '1000', name: 'Cash', type: 'asset' });
   receivable = await ChartOfAccount.create({ code: '1100', name: 'Accounts Receivable', type: 'asset' });
   unearnedRevenue = await ChartOfAccount.create({ code: '2400', name: 'Unearned Revenue', type: 'liability' });
+  const manager = await User.create({ name: 'PM', email: `pm-${Date.now()}@example.com`, role: 'admin', type: 'online' });
+  project = await Project.create({
+    projectNumber: `PRJ-${Date.now()}`,
+    projectManager: manager._id,
+    startDate: new Date(),
+    deliveryDate: new Date(Date.now() + 86400000),
+  });
 });
 
 async function postEntry(lines) {
   const entryNumber = await getNextJournalEntryNumber();
-  return JournalEntry.create({ entryNumber, status: 'posted', lines });
+  return JournalEntry.create({ entryNumber, status: 'posted', project: project._id, lines });
 }
 
 test('account balance = total debits - total credits, even when credits exceed debits (no account-type sign flip)', async () => {
@@ -80,6 +94,7 @@ test('draft (unposted) entries do not affect account balances', async () => {
   await JournalEntry.create({
     entryNumber,
     status: 'draft',
+    project: project._id,
     lines: [
       { account: cash._id, debit: 500, credit: 0 },
       { account: receivable._id, debit: 0, credit: 500 },

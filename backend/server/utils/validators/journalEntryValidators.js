@@ -1,5 +1,27 @@
 const { check } = require('express-validator');
+const Project = require('../../models/project/projectModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
+
+// Mirrors journalEntryModel.js's own `round2` - kept in sync deliberately rather than imported,
+// since the model doesn't export it; this is only ever used for this fast pre-check, the model's
+// own pre('save') hook (using its own round2) remains the real backstop (see docs section
+// "Validate Both Debit and Credit Totals" - must use the project's existing precision strategy,
+// not a fresh floating-point comparison).
+const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+
+// RULE 1 fast pre-check: computed from the actual `lines` in the request body, never trusted from
+// a client-submitted `difference`/`totalDebit`/`totalCredit` field (docs section "Do not trust a
+// difference value sent from the frontend"). Applies unconditionally - there is no `status`
+// exception, including for `draft` (docs section "Very Important: Drafts Are NOT Exempt").
+const linesAreBalanced = check('lines').custom(lines => {
+  if (!Array.isArray(lines) || lines.length === 0) return true; // handled by the separate isArray({min:1}) check
+  const totalDebit = round2(lines.reduce((sum, l) => sum + (Number(l?.debit) || 0), 0));
+  const totalCredit = round2(lines.reduce((sum, l) => sum + (Number(l?.credit) || 0), 0));
+  if (totalDebit !== totalCredit) {
+    throw new Error('Journal entry is not balanced. Total debit must equal total credit.');
+  }
+  return true;
+});
 
 const lineValidators = (prefix = 'lines.*') => [
   check(`${prefix}.account`).notEmpty().withMessage('Account (GA) is required for every line').isMongoId().withMessage('Invalid account id'),
@@ -20,12 +42,27 @@ const lineValidators = (prefix = 'lines.*') => [
   }),
 ];
 
+// RULE 2 fast pre-check: project is mandatory for a manually-created journal entry (this is the
+// create endpoint the Journal Entries form submits to - reversal/fixed-asset-purchase auto-entries
+// never go through this validator, see journalEntryModel.js's identical exemption comment).
+const projectRequired = check('project')
+  .notEmpty()
+  .withMessage('Project is required when creating a journal entry.')
+  .isMongoId()
+  .withMessage('Invalid project id')
+  .custom(value =>
+    Project.findById(value).then(project => {
+      if (!project) return Promise.reject(new Error('The selected project does not exist.'));
+    })
+  );
+
 const createJournalEntryValidators = [
   check('date').optional().isISO8601().withMessage('Invalid date'),
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('reference').optional().isString().trim().isLength({ max: 100 }),
-  check('project').optional({ nullable: true }).isMongoId().withMessage('Invalid project id'),
+  projectRequired,
   check('lines').isArray({ min: 1 }).withMessage('A journal entry needs at least one line'),
+  linesAreBalanced,
   ...lineValidators(),
   validatorMiddleware,
 ];
@@ -34,8 +71,12 @@ const updateJournalEntryValidators = [
   check('date').optional().isISO8601().withMessage('Invalid date'),
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('reference').optional().isString().trim().isLength({ max: 100 }),
+  // Project stays optional on update (not re-required retroactively) - see docs section "Check
+  // Existing Journal Entries": the new mandatory rule applies to new creation, not to editing a
+  // pre-existing entry that may predate it.
   check('project').optional({ nullable: true }).isMongoId().withMessage('Invalid project id'),
   check('lines').optional().isArray({ min: 1 }).withMessage('A journal entry needs at least one line'),
+  linesAreBalanced,
   ...lineValidators(),
   validatorMiddleware,
 ];
