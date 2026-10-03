@@ -49,7 +49,23 @@ async function updateStockAndSold(item, warehouseId, session) {
  * original behavior).
  */
 async function createSalesOrder(
-  { customer, warehouse, items, isPrepaid, shippingCost, isCodOrder, paidAmount, paymentMethod, project, createdBy, employee, extraFields = {} },
+  {
+    customer,
+    warehouse,
+    items,
+    isPrepaid,
+    shippingCost,
+    isCodOrder,
+    paidAmount,
+    paymentMethod,
+    paymentAccount,
+    project,
+    vatPercentage,
+    withholdingTaxPercentage,
+    createdBy,
+    employee,
+    extraFields = {},
+  },
   { session: providedSession } = {}
 ) {
   if (!items || !Array.isArray(items) || items.length === 0) throw new ApiError('Items must be a non-empty array');
@@ -81,7 +97,10 @@ async function createSalesOrder(
       ...(isCodOrder !== undefined ? { isCodOrder } : {}),
       ...(paidAmount !== undefined ? { paidAmount } : {}),
       ...(paymentMethod !== undefined ? { paymentMethod } : {}),
+      ...(paymentAccount !== undefined ? { paymentAccount } : {}),
       ...(project !== undefined ? { project } : {}),
+      ...(vatPercentage !== undefined ? { vatPercentage } : {}),
+      ...(withholdingTaxPercentage !== undefined ? { withholdingTaxPercentage } : {}),
       ...extraFields,
     });
 

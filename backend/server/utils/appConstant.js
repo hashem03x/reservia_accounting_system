@@ -5,12 +5,15 @@
 exports.PaymentMethods = ['cash', 'wallet', 'instapay', 'band_transfer', 'fawry', 'paymob-online', 'paymob-offline', 'main-bank', 'Banque Misr Deposit', 'shopify-payments'];
 
 // Sales Order's own "how will this order be paid" selection at creation time - a distinct concept
-// from the `Payment` model's `paymentMethod` above (a record of an actual payment transaction), so
-// it gets its own list rather than polluting PaymentMethods with 'advanced_payment' (which would
-// then also become selectable when recording a Purchase Order payment - out of scope, see
-// services/payments/advancedPaymentService.js). Spread, not a hardcoded copy, so a future addition
-// to PaymentMethods is automatically available here too.
-exports.SalesOrderPaymentMethods = [...exports.PaymentMethods, 'advanced_payment'];
+// from the `Payment` model's `paymentMethod` above (a record of an actual payment transaction).
+// A discriminator, not a list of concrete methods (see docs section "Payment Methods Must Come
+// From Chart of Accounts"): 'account' means "paid via a Cash/Cash-Equivalent ChartOfAccount",
+// which account is recorded separately in `SalesOrder.paymentAccount`. 'advanced_payment' means
+// "paid via the customer's AdvancedPayment balance" (unrelated to Chart of Accounts entirely -
+// see services/payments/advancedPaymentService.js). The old hardcoded cash/wallet/fawry/etc. list
+// is deliberately not reused here - it never actually drove any Sales-Order-level behavior (only
+// `=== 'advanced_payment'` ever did), and a real Chart of Accounts account now plays that role.
+exports.SalesOrderPaymentMethods = ['account', 'advanced_payment'];
 
 exports.expensesCategories = [
   'office-supplies',

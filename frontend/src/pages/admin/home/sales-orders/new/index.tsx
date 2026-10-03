@@ -19,7 +19,8 @@ import CustomerWarehouseSection from "./_components/customer-warehouse-section";
 import OrderItemsSection from "./_components/order-items-section";
 import InfoItem from "@/components/ui/info-item";
 import { useEffect } from "react";
-import { SalesOrderPaymentMethods } from "@/utils/constants/accounting";
+import PaymentAccountSelect from "@/components/global/payment-account-select";
+import OrderTaxSection from "@/components/global/order-tax-section";
 
 const emptyOrderItem: OrderItemInput = {
   productCode: "",
@@ -44,7 +45,10 @@ export default function NewSalesOrder() {
   const [items, setItems] = useState<OrderItemInput[]>([emptyOrderItem]);
   const [shippingCost, setShippingCost] = useState<string | number>("");
   const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentAccount, setPaymentAccount] = useState("");
   const [project, setProject] = useState("");
+  const [vatPercentage, setVatPercentage] = useState<string | number>(0);
+  const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
 
   const totalAmount = items.reduce((acc, item) => acc + item.starterSubtotal, 0);
 
@@ -54,20 +58,20 @@ export default function NewSalesOrder() {
 
   const isAdvancedPayment = paymentMethod === "advanced_payment";
 
-  // Only Projects belonging to the selected customer are ever offered (docs section "One Project =
-  // One Customer") - reloaded any time the customer changes, never carried over from a previous
-  // selection.
+  // Available regardless of payment method (docs section "Sales Orders - Add Project Number") -
+  // only scoped to the selected customer's own projects (docs section "One Project = One
+  // Customer"). Reloaded any time the customer changes, never carried over from a previous one.
   const { privateRequest: fetchProjectsRequest, data: customerProjects, setData: setCustomerProjects } = useDataHandler<Project[]>({ initialData: [] });
   useEffect(() => {
     setProject("");
-    if (!isAdvancedPayment || !customer) {
+    if (!customer) {
       setCustomerProjects([]);
       return;
     }
     fetchProjectsRequest({ url: "projects", params: { customer: customer._id, limit: 100 }, language })
       .then((res) => setCustomerProjects(res.data))
       .catch(() => setCustomerProjects([]));
-  }, [isAdvancedPayment, customer?._id]);
+  }, [customer?._id]);
 
   // Re-fetched whenever the project (or payment method) changes - never leaves a stale amount
   // attached after the user picks a different project (docs section "Changing Project").
@@ -108,6 +112,9 @@ export default function NewSalesOrder() {
           setError(translate("No available advanced payment exists for this project.", "لا توجد دفعة مقدمة متاحة لهذا المشروع."));
           return;
         }
+      } else if (paymentMethod === "account" && !paymentAccount) {
+        setError(translate("A payment account must be selected.", "يجب اختيار حساب الدفع."));
+        return;
       }
 
       const response = await privateRequest({
@@ -118,7 +125,8 @@ export default function NewSalesOrder() {
           isPrepaid: false,
           warehouse: warehouseId,
           paymentMethod: paymentMethod || undefined,
-          project: isAdvancedPayment ? project : undefined,
+          paymentAccount: paymentMethod === "account" ? paymentAccount : undefined,
+          project: project || undefined,
           customer: customer?._id,
           items: filteredItems.map((item) => ({
             product: item.productData?._id,
@@ -127,6 +135,8 @@ export default function NewSalesOrder() {
             starterQuantity: item.starterQuantity,
           })),
           shippingCost: shippingCost ? Number(shippingCost) : undefined,
+          vatPercentage,
+          withholdingTaxPercentage,
         },
       });
 
@@ -147,7 +157,10 @@ export default function NewSalesOrder() {
             px="xl"
             radius="md"
             loading={loading}
-            disabled={isAdvancedPayment && (!project || !availableAdvance || availableAdvance.remainingAmount <= 0)}
+            disabled={
+              (isAdvancedPayment && (!project || !availableAdvance || availableAdvance.remainingAmount <= 0)) ||
+              (paymentMethod === "account" && !paymentAccount)
+            }
           >
             {translate("Save", "حفظ")}
           </Button>
@@ -192,34 +205,54 @@ export default function NewSalesOrder() {
 
       <hr />
 
-      {/* Payment Method / Advanced Payment */}
+      {/* Project (always selectable - docs section "Sales Orders - Add Project Number") */}
+      <Select
+        label={translate("Project (Optional)", "المشروع (اختياري)")}
+        placeholder={!customer ? translate("Select a customer first", "اختر عميلاً أولاً") : translate("Select project", "اختر المشروع")}
+        value={project || null}
+        onChange={(v) => setProject(v || "")}
+        data={customerProjects.map((p) => ({ value: p._id, label: `${p.projectNumber}${p.name ? ` - ${p.name}` : ""}` }))}
+        disabled={!customer}
+        searchable
+        clearable
+        style={{ maxWidth: 300 }}
+      />
+      {customer && customerProjects.length === 0 && (
+        <Alert color="yellow" variant="light">
+          {translate("This customer has no projects.", "ليس لدى هذا العميل أي مشاريع.")}
+        </Alert>
+      )}
+
+      <hr />
+
+      {/* Payment Method: a Cash/Cash-Equivalent Chart of Accounts account, or Advanced Payment -
+          never a hardcoded list (docs section "Payment Methods Must Come From Chart of Accounts"). */}
       <div className="flex flex-col gap-3">
         <Select
           label={translate("Payment Method (Optional)", "طريقة الدفع (اختياري)")}
           placeholder={translate("Select payment method", "اختر طريقة الدفع")}
           value={paymentMethod || null}
-          onChange={(v) => setPaymentMethod(v || "")}
-          data={SalesOrderPaymentMethods.map((m) => ({ value: m, label: m === "advanced_payment" ? translate("Advanced Payment", "دفعة مقدمة") : m }))}
+          onChange={(v) => {
+            setPaymentMethod(v || "");
+            setPaymentAccount("");
+          }}
+          data={[
+            { value: "account", label: translate("Cash / Cash Equivalent Account", "حساب نقدي / ما يعادله") },
+            { value: "advanced_payment", label: translate("Advanced Payment", "دفعة مقدمة") },
+          ]}
           clearable
           style={{ maxWidth: 300 }}
         />
 
+        {paymentMethod === "account" && (
+          <PaymentAccountSelect value={paymentAccount} onChange={setPaymentAccount} required />
+        )}
+
         {isAdvancedPayment && (
           <>
-            <Select
-              label={translate("Project", "المشروع")}
-              placeholder={!customer ? translate("Select a customer first", "اختر عميلاً أولاً") : translate("Select project", "اختر المشروع")}
-              value={project || null}
-              onChange={(v) => setProject(v || "")}
-              data={customerProjects.map((p) => ({ value: p._id, label: `${p.projectNumber}${p.name ? ` - ${p.name}` : ""}` }))}
-              disabled={!customer}
-              searchable
-              style={{ maxWidth: 300 }}
-            />
-
-            {customer && customerProjects.length === 0 && (
+            {!customer && (
               <Alert color="yellow" variant="light">
-                {translate("This customer has no projects.", "ليس لدى هذا العميل أي مشاريع.")}
+                {translate("Select a customer first.", "اختر عميلاً أولاً.")}
               </Alert>
             )}
 
@@ -245,6 +278,16 @@ export default function NewSalesOrder() {
           </>
         )}
       </div>
+
+      <hr />
+
+      <OrderTaxSection
+        amount={totalAmount}
+        vatPercentage={vatPercentage}
+        setVatPercentage={setVatPercentage}
+        withholdingTaxPercentage={withholdingTaxPercentage}
+        setWithholdingTaxPercentage={setWithholdingTaxPercentage}
+      />
 
       <hr />
 

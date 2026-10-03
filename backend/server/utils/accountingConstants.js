@@ -16,7 +16,14 @@ exports.AccountTypes = ['asset', 'liability', 'equity', 'revenue', 'expense', 'c
 // business judgment call made when the account is created/edited, not a fixed mapping this schema
 // should hard-code. Optional/nullable - imported CSV accounts never have a source value for this
 // (the source file has no such column), so it stays null until an admin assigns one.
-exports.AccountStates = ['current', 'non-current', 'operating', 'non-operating', 'direct', 'indirect', 'other'];
+// 'cash'/'cash-equivalent' additionally double as the structural signal for "can this account be
+// used as a Payment Method" (see chartOfAccountController.js#getCashEquivalentAccounts) - an
+// asset-type account with one of these two states, nothing else. Reuses this same secondary-
+// classification mechanism rather than adding a separate boolean flag, for the same reason 'cogs'
+// reuses `type` instead of a name match against "COGS": a real account whose own classification
+// (set once, by an admin, via the existing Edit Account screen) drives eligibility everywhere,
+// never a label/name string compared at read time.
+exports.AccountStates = ['current', 'non-current', 'operating', 'non-operating', 'direct', 'indirect', 'cash', 'cash-equivalent', 'other'];
 
 exports.JournalEntryStatus = ['draft', 'posted', 'reversed'];
 

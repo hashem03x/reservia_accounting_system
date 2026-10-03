@@ -83,8 +83,12 @@ export const paymentMethodsArray = Object.values(paymentMethods);
 
 // ================ Helpers ================
 
-export function getPaymentMethodLabel(method: PaymentMethod, language: Language) {
-  console.log(method)
+// `method` is optional/nullable - a payment made via `paymentAccount` (a Chart of Accounts Cash/
+// Cash-Equivalent account, see docs section "Payment Methods Must Come From Chart of Accounts")
+// has no legacy `paymentMethod` string at all. Callers displaying a payment's method should prefer
+// `payment.paymentAccount` (code/name) when present, falling back to this for historical payments.
+export function getPaymentMethodLabel(method: PaymentMethod | null | undefined, language: Language) {
+  if (!method || !paymentMethods[method]) return translate(language, "-", "-");
   return translate(language, paymentMethods[method].label.en, paymentMethods[method].label.ar);
 }
 

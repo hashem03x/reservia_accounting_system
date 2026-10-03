@@ -35,6 +35,7 @@ export default function CreateProjectModal({
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [deliveryDate, setDeliveryDate] = useState<Date | null>(null);
   const [sector, setSector] = useState("");
+  const [executedPercentage, setExecutedPercentage] = useState<string | number>(0);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [averageCostLines, setAverageCostLines] = useState<AverageCostLineInput[]>([]);
   const [staff, setStaff] = useState<StaffOption[]>([]);
@@ -75,6 +76,7 @@ export default function CreateProjectModal({
           startDate,
           deliveryDate,
           sector: sector || undefined,
+          executedPercentage,
           customer: customer?._id || undefined,
           averageCostLines: cleanedAverageCostLines,
         },
@@ -96,6 +98,7 @@ export default function CreateProjectModal({
       setStartDate(null);
       setDeliveryDate(null);
       setSector("");
+      setExecutedPercentage(0);
       setCustomer(null);
       setAverageCostLines([]);
       setError("");
@@ -179,6 +182,17 @@ export default function CreateProjectModal({
           onChange={(value) => setSector(value || "")}
           data={ProjectSectors.map((s) => ({ value: s, label: s }))}
           clearable
+        />
+
+        <NumberInput
+          label={translate("Executed Percentage", "نسبة المنفذ")}
+          placeholder={translate("Enter executed percentage", "أدخل نسبة المنفذ")}
+          value={executedPercentage}
+          onChange={setExecutedPercentage}
+          min={0}
+          max={100}
+          decimalScale={2}
+          suffix="%"
         />
 
         <CustomerSearch

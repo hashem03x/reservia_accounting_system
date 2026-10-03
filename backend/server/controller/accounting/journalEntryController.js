@@ -111,6 +111,14 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
   if (original.reversedByEntry) {
     return next(new ApiError('This journal entry has already been reversed.', 400));
   }
+  // A reversal entry is itself a valid posted entry (status 'posted', reversedByEntry null), so
+  // without this check it would otherwise pass both guards above and could be reversed again,
+  // chaining indefinitely (Original -> Reversal -> Reversal of Reversal -> ...). `reversalOfEntry`
+  // is only ever set on a reversal entry, so this cleanly identifies and blocks that case without
+  // affecting a normal original entry.
+  if (original.reversalOfEntry) {
+    return next(new ApiError('A reversal entry cannot itself be reversed.', 400));
+  }
 
   const { reversalDate, reference } = req.body;
   const startedAt = Date.now();
@@ -127,6 +135,9 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
       const currentOriginal = await JournalEntry.findById(original._id).session(session);
       if (!currentOriginal || currentOriginal.status !== 'posted' || currentOriginal.reversedByEntry) {
         throw new ApiError('This journal entry has already been reversed.', 400);
+      }
+      if (currentOriginal.reversalOfEntry) {
+        throw new ApiError('A reversal entry cannot itself be reversed.', 400);
       }
 
       const entryNumber = await getNextJournalEntryNumber(session);

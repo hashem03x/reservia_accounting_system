@@ -3,12 +3,11 @@ import { useLanguage } from "@/context/LanguageContext";
 import useWarehouseHelpers from "@/hooks/useWarehouseHelpers";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
-import { paymentMethodsArray } from "@/utils/constants/payment-methods";
-import { PaymentMethod } from "@/types/payment";
-import { Button, NumberInput, Select, Textarea } from "@mantine/core";
+import { Button, NumberInput, Textarea } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import ErrorAlert from "@/components/ui/error-alert";
 import Modal from "@/components/ui/modal";
+import PaymentAccountSelect from "@/components/global/payment-account-select";
 import { useOrder } from "../../../../context";
 
 export default function AddPaymentModal({ opened, close }: { opened: boolean; close: () => void }) {
@@ -19,7 +18,7 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
   const { updateWarehouseBalanceById } = useWarehouseHelpers();
 
   const [amountPaid, setAmountPaid] = useState<string | number>("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [paymentAccount, setPaymentAccount] = useState("");
   const [notes, setNotes] = useState<string>("");
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
@@ -50,7 +49,7 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
           warehouseId: order.warehouse,
           salesOrderId: order._id,
           amountPaid: amountPaid,
-          paymentMethod,
+          paymentAccount,
           notes,
         },
       });
@@ -66,7 +65,7 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
     setTimeout(() => {
       setError("");
       setAmountPaid("");
-      setPaymentMethod(null);
+      setPaymentAccount("");
       setNotes("");
     }, 250);
   }
@@ -98,18 +97,7 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
             <span className="font-medium">{translate("Enter Full Amount", "ادخل المبلغ الكامل")}</span>
           </Button>
 
-          <Select
-            clearable
-            value={paymentMethod}
-            onChange={(value) => setPaymentMethod(value as PaymentMethod | null)}
-            data={paymentMethodsArray.map((method) => ({
-              value: method.value,
-              label: translate(method.label.en, method.label.ar),
-            }))}
-            label={translate("Payment Method", "طريقة الدفع")}
-            placeholder={translate("Select payment method", "اختر طريقة الدفع")}
-            required
-          />
+          <PaymentAccountSelect value={paymentAccount} onChange={setPaymentAccount} required />
 
           <Textarea
             label={translate("Notes (Optional)", "ملاحظات (اختياري)")}
@@ -125,7 +113,7 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
           <Button onClick={handleClose} variant="light" color="dark" fullWidth>
             {translations.cancel}
           </Button>
-          <Button type="submit" loading={loading} disabled={!amountPaid || !paymentMethod} fullWidth>
+          <Button type="submit" loading={loading} disabled={!amountPaid || !paymentAccount} fullWidth>
             {title}
           </Button>
         </div>

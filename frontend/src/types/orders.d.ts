@@ -7,9 +7,31 @@ export type ItemDiscount = { type: DiscountType; value: number };
 export type OrderSource = "cashier" | "website" | "shopify"; // For Sales Orders
 export type OrderStatus = "pending" | "delivered" | "canceled";
 
+// 'account' = paid via a Cash/Cash-Equivalent ChartOfAccount (see `paymentAccount`).
+// 'advanced_payment' = Sales Order only - paid via the customer's AdvancedPayment balance.
+export type OrderPaymentMethod = "account" | "advanced_payment";
+
+export type ChartOfAccountRef = { _id: string; code: string; name: string; nameAr?: string | null };
+
+// Shared by both Sales Orders and Purchase Orders (docs sections "VAT on Sales Orders and Purchase
+// Orders" / "Withholding Tax" / "Payment Methods Must Come From Chart of Accounts" / "Add Project
+// Number") - `vatAmount`/`withholdingTaxAmount`/`grandTotal` are always server-computed, never
+// editable from a form.
+export interface OrderFinancials {
+  project?: { _id: string; projectNumber: string; name?: string } | null;
+  paymentMethod?: OrderPaymentMethod | null;
+  paymentAccount?: ChartOfAccountRef | null;
+  vatPercentage?: number;
+  vatAmount?: number;
+  withholdingTaxPercentage?: number;
+  withholdingTaxAmount?: number;
+  // = totalAmount + vatAmount - withholdingTaxAmount
+  grandTotal?: number;
+}
+
 // =============================================================
 
-export type PurchaseOrder = {
+export type PurchaseOrder = OrderFinancials & {
   _id: string;
   code?: string; // Optional as old orders don't have a code
   vendor: { _id: string; name: string; contact: { phone: string; email?: string } };
@@ -48,7 +70,7 @@ export type PurchaseOrderItem = {
 
 // =============================================================
 
-export type SalesOrder = {
+export type SalesOrder = OrderFinancials & {
   _id: string;
   code?: string; // Optional as old orders don't have a code
   orderSource: OrderSource;

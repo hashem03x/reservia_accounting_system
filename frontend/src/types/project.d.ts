@@ -40,6 +40,10 @@ export interface Project {
   // always derived from these lines server-side, never independently editable.
   averageCostLines?: AverageCostLine[];
   averageCost?: number;
+  // نسبة المنفذ - how much of the project has actually been executed (0-100), entered directly by
+  // an admin. Not derived from contractValue/remainingMoney/averageCost - a separate concept
+  // (physical/work progress, not money).
+  executedPercentage?: number;
   contract?: ProjectContract | null;
   createdBy?: { _id: string; name: string };
   createdAt: string;

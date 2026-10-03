@@ -5,7 +5,7 @@ const ApiError = require('../../utils/apiError');
 const salesOrderModel = require('../../models/sales/salesOrderModel');
 
 exports.createPurchasePayment = async (req, res, next) => {
-  const { warehouseId, purchaseOrderId, amountPaid, paymentMethod, notes } = req.body;
+  const { warehouseId, purchaseOrderId, amountPaid, paymentMethod, paymentAccount, notes } = req.body;
 
   let payment;
 
@@ -28,6 +28,7 @@ exports.createPurchasePayment = async (req, res, next) => {
       amountPaid,
       type: 'out',
       paymentMethod,
+      paymentAccount,
       paymentCategory: 'purchase',
       notes,
       createdBy: req.user.id,
@@ -50,7 +51,7 @@ exports.createPurchasePayment = async (req, res, next) => {
 };
 
 exports.createSalesPayment = async (req, res, next) => {
-  const { warehouseId, salesOrderId, amountPaid, paymentMethod, notes } = req.body;
+  const { warehouseId, salesOrderId, amountPaid, paymentMethod, paymentAccount, notes } = req.body;
 
   let payment;
 
@@ -73,6 +74,7 @@ exports.createSalesPayment = async (req, res, next) => {
       amountPaid,
       type: 'in',
       paymentMethod,
+      paymentAccount,
       paymentCategory: 'sales',
       notes,
       createdBy: req.user.id,

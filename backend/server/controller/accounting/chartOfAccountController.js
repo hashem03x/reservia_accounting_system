@@ -56,6 +56,17 @@ const getCogsEligibleAccounts = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Eligible average-cost accounts retrieved successfully', true, accounts));
 });
 
+// Accounts selectable as a Payment Method (Sales/Purchase Orders, Payments) - restricted to
+// asset-type accounts explicitly classified `state: 'cash'` or `state: 'cash-equivalent'` (see
+// accountingConstants.js#AccountStates) - never a name/label match against "Cash"/"Bank", and
+// never auto-inferred from an account's `parentGroupNameEn` CSV label. An admin must explicitly
+// classify an account via Edit Account before it becomes payment-eligible (docs section "Payment
+// Methods Must Come From Chart of Accounts").
+const getCashEquivalentAccounts = asyncHandler(async (req, res) => {
+  const accounts = await ChartOfAccount.find({ type: 'asset', state: { $in: ['cash', 'cash-equivalent'] }, isActive: true }).sort({ sortOrder: 1, code: 1 });
+  res.status(200).json(apiResponse('Eligible payment-method accounts retrieved successfully', true, accounts));
+});
+
 const updateAccount = asyncHandler(async (req, res, next) => {
   try {
     // sortOrder is never editable through this endpoint - see chartOfAccountOrderingService.js.
@@ -107,4 +118,5 @@ module.exports = {
   getAccountBalanceHandler,
   getTrialBalanceHandler,
   getCogsEligibleAccounts,
+  getCashEquivalentAccounts,
 };

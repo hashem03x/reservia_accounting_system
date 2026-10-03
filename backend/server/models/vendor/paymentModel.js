@@ -3,6 +3,9 @@ const SalesOrder = require('../sales/salesOrderModel');
 const { PaymentMethods } = require('../../utils/appConstant');
 const Warehouse = require('../inventory/warehouseModel');
 const Expense = require('../expense/expenseModel');
+// Explicit require (not just the string `ref:` name) - mirrors salesOrderModel.js's convention for
+// every model this schema's hooks look up via `this.model(...)`.
+require('../accounting/chartOfAccountModel');
 
 const paymentSchema = Schema(
   {
@@ -20,7 +23,18 @@ const paymentSchema = Schema(
     projectId: { type: Schema.Types.ObjectId, ref: 'Project' },
     type: { type: String, enum: ['in', 'out'], required: true },
     amountPaid: { type: Number, required: true, min: 0 },
-    paymentMethod: { type: String, enum: PaymentMethods, required: true },
+    // No longer `required` - a new payment is expected to use `paymentAccount` instead (docs
+    // section "Payment Methods Must Come From Chart of Accounts"). Kept, with its original enum of
+    // hardcoded values, purely so historical Payment documents remain valid/readable and so the
+    // other existing flows noted below keep working unmodified. The pre('save') backstop below
+    // requires at least one of `paymentMethod`/`paymentAccount` to be set, so a payment can never
+    // be created with neither.
+    paymentMethod: { type: String, enum: [...PaymentMethods, null], default: null },
+    // The Cash/Cash-Equivalent ChartOfAccount this payment was made from/to - the new primary way
+    // to record a payment's method (docs section "Payment Methods Must Come From Chart of
+    // Accounts"). Validated for eligibility (type 'asset' + state 'cash'/'cash-equivalent') in the
+    // pre('save') hook below, mirroring salesOrderModel.js's identical check.
+    paymentAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
     paymentCategory: {
       type: String,
       enum: ['purchase', 'purchase-return', 'sales', 'sales-return', 'expense', 'transfer', 'finance-charges', 'currency-transfer'],
@@ -50,6 +64,23 @@ paymentSchema.pre('save', async function (next) {
     const PurchaseOrder = this.model('PurchaseOrder');
     const salesOrderModel = this.model('SalesOrder');
     const User = this.model('User');
+
+    // Backstop (see controller-level validators) - never trust that `paymentAccount` is actually
+    // eligible just because a request validator approved it at some earlier point, and never allow
+    // a payment with neither a legacy `paymentMethod` nor a `paymentAccount` set.
+    if (this.isNew || this.isModified('paymentMethod') || this.isModified('paymentAccount')) {
+      if (!this.paymentMethod && !this.paymentAccount) {
+        throw new Error('Either a payment method or a payment account is required.');
+      }
+      if (this.paymentAccount) {
+        const ChartOfAccount = this.model('ChartOfAccount');
+        const account = await ChartOfAccount.findById(this.paymentAccount).session(session);
+        if (!account) throw new Error('The selected payment account does not exist.');
+        if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+          throw new Error('The selected payment account must be a Cash or Cash Equivalent account.');
+        }
+      }
+    }
 
     // Calculate and create tax payment if applicable
     if (this.type === 'in' && !this.tax.paymentId && this.paymentCategory === 'sales') {
@@ -169,6 +200,11 @@ paymentSchema.pre(/^find/, function (next) {
   this.populate({
     path: 'createdBy',
     select: 'name email',
+  });
+
+  this.populate({
+    path: 'paymentAccount',
+    select: 'code name nameAr',
   });
 
   next();

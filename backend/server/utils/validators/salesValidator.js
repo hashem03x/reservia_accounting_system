@@ -4,7 +4,9 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const Warehouse = require('../../models/inventory/warehouseModel');
 const userModel = require('../../models/userModel');
 const Project = require('../../models/project/projectModel');
+const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { SalesOrderPaymentMethods } = require('../../utils/appConstant');
+const { vatAndWithholdingTaxValidators } = require('./taxValidators');
 
 const createCashierSalesOrderValidator = [
 	body('customer').isMongoId().withMessage('Customer ID must be a mongoID').custom(async value => {
@@ -35,9 +37,31 @@ const createCashierSalesOrderValidator = [
 
 	body('shippingCost').optional().isFloat({ gt: 0 }).withMessage('Shipping cost must be a positive number'),
 
+	...vatAndWithholdingTaxValidators,
+
 	// Optional - existing callers that never send this are completely unaffected (see
-	// salesOrderModel.js's `paymentMethod` field comment).
+	// salesOrderModel.js's `paymentMethod` field comment). A discriminator ('account' or
+	// 'advanced_payment'), not a concrete method - see appConstant.js#SalesOrderPaymentMethods.
 	body('paymentMethod').optional({ nullable: true }).isIn(SalesOrderPaymentMethods).withMessage(`Payment method must be one of: ${SalesOrderPaymentMethods.join(', ')}`),
+
+	// Required only when paymentMethod === 'account' (docs section "Payment Methods Must Come From
+	// Chart of Accounts") - fast pre-check; the model's own pre('save') hook
+	// (salesOrderModel.js) re-verifies this against the live account no matter which code path
+	// writes to the document, and is the real backstop.
+	body('paymentAccount')
+		.if((value, { req }) => req.body.paymentMethod === 'account')
+		.notEmpty()
+		.withMessage('A payment account is required when Payment Method is "account"')
+		.isMongoId()
+		.withMessage('Payment account ID must be a mongoID')
+		.custom(async value => {
+			const account = await ChartOfAccount.findById(value);
+			if (!account) throw new Error('The selected payment account does not exist');
+			if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+				throw new Error('The selected payment account must be a Cash or Cash Equivalent account');
+			}
+			return true;
+		}),
 
 	// Required only when paymentMethod is 'advanced_payment' (docs section "Advanced Payment must
 	// only appear when appropriate") - this is a fast pre-check only; the actual
@@ -60,7 +84,18 @@ const createCashierSalesOrderValidator = [
 			}
 			return true;
 		}),
-	body('project').if((value, { req }) => req.body.paymentMethod !== 'advanced_payment' && value).isMongoId().withMessage('Project ID must be a mongoID'),
+	// General case (docs section "Sales Orders - Add Project Number"): a project may be selected
+	// regardless of payment method - still existence-checked, just not required or customer-scoped
+	// unless Advanced Payment is in play (handled above).
+	body('project')
+		.if((value, { req }) => req.body.paymentMethod !== 'advanced_payment' && value)
+		.isMongoId()
+		.withMessage('Project ID must be a mongoID')
+		.custom(async value => {
+			const exists = await Project.exists({ _id: value });
+			if (!exists) throw new Error('Project not found');
+			return true;
+		}),
 
 	validatorMiddleware
 ];

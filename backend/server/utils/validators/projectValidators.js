@@ -78,6 +78,12 @@ const deliveryNotBeforeStart = check('deliveryDate').custom((value, { req }) => 
   return true;
 });
 
+// نسبة المنفذ - shared by create/update, always optional (defaults to 0 - see projectModel.js).
+const executedPercentage = check('executedPercentage')
+  .optional()
+  .isFloat({ min: 0, max: 100 })
+  .withMessage('Executed percentage must be between 0 and 100');
+
 const createProjectValidators = [
   check('projectNumber')
     .notEmpty()
@@ -114,6 +120,7 @@ const createProjectValidators = [
 
   customerRequired,
   averageCostLines,
+  executedPercentage,
 
   check('status').optional().isIn(ProjectStatuses),
 
@@ -145,6 +152,7 @@ const updateProjectValidators = [
 
   customerOptional,
   averageCostLines,
+  executedPercentage,
 
   check('status').optional().isIn(ProjectStatuses),
 

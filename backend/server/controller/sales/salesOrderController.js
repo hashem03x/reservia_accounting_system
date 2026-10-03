@@ -11,7 +11,10 @@ const { restoreAdvancedPaymentForSalesOrder } = require('../../services/payments
 
 // Create a new sales order
 exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
-  const { customer, warehouse, items, isPrepaid, shippingCost, isCodOrder, paidAmount, paymentMethod, project } = req.body;
+  // `vatAmount`/`withholdingTaxAmount`/`grandTotal`/`totalAmount` are deliberately never
+  // destructured here - only the percentages are ever accepted from a client (docs section "Do not
+  // allow clients to manipulate the final total").
+  const { customer, warehouse, items, isPrepaid, shippingCost, isCodOrder, paidAmount, paymentMethod, paymentAccount, project, vatPercentage, withholdingTaxPercentage } = req.body;
 
   try {
     const salesOrder = await createSalesOrder({
@@ -24,7 +27,10 @@ exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
       isCodOrder,
       paidAmount,
       paymentMethod,
+      paymentAccount,
       project,
+      vatPercentage,
+      withholdingTaxPercentage,
       createdBy: req.user._id,
       employee: req.user._id,
     });

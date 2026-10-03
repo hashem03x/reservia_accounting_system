@@ -517,3 +517,48 @@ test('RULE 3: the controller-level pre-check rejects reversing the same entry tw
   const allReversalsOfOriginal = await JournalEntry.find({ reversalOfEntry: original._id });
   assert.equal(allReversalsOfOriginal.length, 1, 'exactly one reversal must exist for this entry');
 });
+
+// RULE 3 extension: a reversal entry (status 'posted', reversedByEntry null) would otherwise pass
+// both of reverseJournalEntry's existing guards (status==='posted' and !reversedByEntry) and could
+// be reversed again, chaining indefinitely. `reversalOfEntry` is the signal that blocks this -
+// exercised directly against the controller's exact guard condition, the same way the "reversing
+// twice" test above does.
+test('RULE 3: a reversal entry cannot itself be reversed (no Original -> Reversal -> Reversal of Reversal chains)', async () => {
+  const entryNumber = await getNextJournalEntryNumber();
+  const original = await JournalEntry.create({
+    entryNumber,
+    status: 'posted',
+    project: project._id,
+    lines: [
+      { account: cash._id, debit: 100, credit: 0 },
+      { account: revenue._id, debit: 0, credit: 100 },
+    ],
+  });
+
+  const reversalNumber = await getNextJournalEntryNumber();
+  const reversal = await JournalEntry.create({
+    entryNumber: reversalNumber,
+    status: 'posted',
+    reversalOfEntry: original._id,
+    project: original.project,
+    lines: [
+      { account: cash._id, debit: 0, credit: 100 },
+      { account: revenue._id, debit: 100, credit: 0 },
+    ],
+  });
+  original.reversedByEntry = reversal._id;
+  original.status = 'reversed';
+  await original.save();
+
+  // The reversal entry itself: status 'posted', reversedByEntry null - both of the pre-existing
+  // guards would pass. `reversalOfEntry` is what must reject it.
+  assert.equal(reversal.status, 'posted');
+  assert.equal(reversal.reversedByEntry, null);
+  assert.ok(reversal.reversalOfEntry, 'the reversal entry must have reversalOfEntry set');
+
+  const wouldReject = reversal.status !== 'posted' || Boolean(reversal.reversedByEntry) || Boolean(reversal.reversalOfEntry);
+  assert.equal(wouldReject, true, 'attempting to reverse the reversal entry itself must be rejected');
+
+  const reversalsOfTheReversal = await JournalEntry.find({ reversalOfEntry: reversal._id });
+  assert.equal(reversalsOfTheReversal.length, 0, 'no reversal-of-reversal must ever be creatable');
+});

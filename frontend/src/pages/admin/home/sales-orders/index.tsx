@@ -334,6 +334,7 @@ export default function SalesOrders() {
                     <Table.Th>{translate("Order ID", "الرقم المرجعي")}</Table.Th>
                     <Table.Th>{translate("Warehouse", "الفرع")}</Table.Th>
                     <Table.Th>{translate("Customer", "العميل")}</Table.Th>
+                    <Table.Th>{translate("Project", "المشروع")}</Table.Th>
                     <Table.Th>{translate("Payment Status", "حالة الدفع")}</Table.Th>
                     <Table.Th>{translate("Total Amount", "المبلغ الإجمالي")}</Table.Th>
                     <Table.Th>{translate("Paid Amount", "المبلغ المدفوع")}</Table.Th>
@@ -406,6 +407,7 @@ export default function SalesOrders() {
                           </div>
                         </Table.Td>
                         <Table.Td>{salesOrder.customer.name}</Table.Td>
+                        <Table.Td>{salesOrder.project?.projectNumber || "-"}</Table.Td>
                         <Table.Td>{getPaymentStatusLabel(salesOrder.paymentStatus, language)}</Table.Td>
                         <Table.Td className="font-semibold text-gray-800">{salesOrder.totalAmount.toFixed(2)}</Table.Td>
                         <Table.Td>{salesOrder.paidAmount.toFixed(2)}</Table.Td>

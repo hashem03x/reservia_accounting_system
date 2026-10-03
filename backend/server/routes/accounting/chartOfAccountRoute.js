@@ -13,14 +13,16 @@ const {
   getAccountBalanceHandler,
   getTrialBalanceHandler,
   getCogsEligibleAccounts,
+  getCashEquivalentAccounts,
 } = require('../../controller/accounting/chartOfAccountController');
 const { createChartOfAccountValidators, updateChartOfAccountValidators } = require('../../utils/validators/chartOfAccountValidators');
 
 router.use(authController.protect);
 
 router.get('/trial-balance', checkUserPermissions({ resource: Resources.accounts, action: Actions.read }), getTrialBalanceHandler);
-// Registered before the generic '/:id' GET so "cogs-eligible" is never matched as an :id param.
+// Registered before the generic '/:id' GET so these are never matched as an :id param.
 router.get('/cogs-eligible', checkUserPermissions({ resource: Resources.accounts, action: Actions.read }), getCogsEligibleAccounts);
+router.get('/cash-equivalent-eligible', checkUserPermissions({ resource: Resources.accounts, action: Actions.read }), getCashEquivalentAccounts);
 
 router
   .route('/')

@@ -8,7 +8,7 @@ import handleRequest from "@/utils/helpers/handle-request";
 import { formatDate } from "@/utils/helpers/date-formaters";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
-import { Badge, Button, Select, Table, Textarea, TextInput } from "@mantine/core";
+import { Badge, Button, NumberInput, Progress, Select, Table, Textarea, TextInput } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
@@ -75,6 +75,7 @@ export default function ProjectDetail() {
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("");
   const [sector, setSector] = useState("");
+  const [executedPercentage, setExecutedPercentage] = useState<string | number>(0);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [deliveryDate, setDeliveryDate] = useState<Date | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -93,6 +94,7 @@ export default function ProjectDetail() {
     setDescription(project.description || "");
     setStatus(project.status);
     setSector(project.sector || "");
+    setExecutedPercentage(project.executedPercentage ?? 0);
     setStartDate(project.startDate ? new Date(project.startDate) : null);
     setDeliveryDate(project.deliveryDate ? new Date(project.deliveryDate) : null);
     // CustomerSearch only ever reads `.name`/`._id` off this object - the populated customer
@@ -114,6 +116,7 @@ export default function ProjectDetail() {
           description,
           status,
           sector: sector || null,
+          executedPercentage,
           startDate,
           deliveryDate,
           customer: customer?._id || null,
@@ -169,6 +172,15 @@ export default function ProjectDetail() {
           label={translate("Average Cost", "متوسط التكلفة")}
           value={project.averageCost != null ? `${project.averageCost.toLocaleString()} ${translations.currency}` : "-"}
         />
+        <SummaryCard
+          label={translate("Executed Percentage", "نسبة المنفذ")}
+          value={
+            <div className="flex flex-col gap-1">
+              <span>{project.executedPercentage ?? 0}%</span>
+              <Progress value={project.executedPercentage ?? 0} size="sm" color="cyan" />
+            </div>
+          }
+        />
       </div>
 
       {editing ? (
@@ -188,6 +200,15 @@ export default function ProjectDetail() {
             onChange={(v) => setSector(v || "")}
             data={ProjectSectors.map((s) => ({ value: s, label: s }))}
             clearable
+          />
+          <NumberInput
+            label={translate("Executed Percentage", "نسبة المنفذ")}
+            value={executedPercentage}
+            onChange={setExecutedPercentage}
+            min={0}
+            max={100}
+            decimalScale={2}
+            suffix="%"
           />
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <DateInput

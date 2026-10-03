@@ -31,6 +31,36 @@ export default function HeaderSection() {
           label={translate("Order Amount", "سعر الطلب")}
           value={`${order.totalAmount.toFixed(2)} ${translations.currency}`}
         />
+        {order.project && (
+          <InfoItem label={translate("Project", "المشروع")} value={order.project.projectNumber} />
+        )}
+        {!!order.vatPercentage && (
+          <InfoItem
+            label={translate("VAT", "ضريبة القيمة المضافة")}
+            value={`(${order.vatPercentage}%) ${(order.vatAmount || 0).toFixed(2)} ${translations.currency}`}
+          />
+        )}
+        {!!order.withholdingTaxPercentage && (
+          <InfoItem
+            label={translate("Withholding Tax", "ضريبة الخصم")}
+            value={`(${order.withholdingTaxPercentage}%) -${(order.withholdingTaxAmount || 0).toFixed(2)} ${translations.currency}`}
+          />
+        )}
+        {(!!order.vatPercentage || !!order.withholdingTaxPercentage) && (
+          <InfoItem
+            label={translate("Total (incl. VAT/Withholding)", "الإجمالي (شامل الضريبة)")}
+            value={`${(order.grandTotal ?? order.totalAmount).toFixed(2)} ${translations.currency}`}
+          />
+        )}
+        {order.paymentMethod === "account" && order.paymentAccount && (
+          <InfoItem
+            label={translate("Payment Account", "حساب الدفع")}
+            value={`${order.paymentAccount.code} - ${order.paymentAccount.name}`}
+          />
+        )}
+        {order.paymentMethod === "advanced_payment" && (
+          <InfoItem label={translate("Payment Account", "حساب الدفع")} value={translate("Advanced Payment", "دفعة مقدمة")} />
+        )}
         <InfoItem
           label={translate("Payment Method", "طريقة الدفع")}
           value={

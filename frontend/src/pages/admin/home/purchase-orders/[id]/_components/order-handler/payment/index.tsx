@@ -72,7 +72,11 @@ export default function Payment() {
                       <Table.Td>
                         <PaymentAmount payment={payment} />
                       </Table.Td>
-                      <Table.Td>{getPaymentMethodLabel(payment.paymentMethod, language)}</Table.Td>
+                      <Table.Td>
+                        {payment.paymentAccount
+                          ? `${payment.paymentAccount.code} - ${payment.paymentAccount.name}`
+                          : getPaymentMethodLabel(payment.paymentMethod, language)}
+                      </Table.Td>
                       <Table.Td>{getPaymentCategoryLabel(payment.paymentCategory, language)}</Table.Td>
                       <Table.Td>{payment.notes}</Table.Td>
                     </Table.Tr>

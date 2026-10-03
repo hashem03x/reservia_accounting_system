@@ -1,5 +1,10 @@
 const { Schema, model } = require('mongoose');
 const { generatePurchaseOrderCode } = require('../../utils/helper');
+// Explicit require (not just the string `ref:` name) - mirrors salesOrderModel.js's convention for
+// every model this schema's hooks look up via `this.model(...)`.
+require('../accounting/chartOfAccountModel');
+
+const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 
 // const { createCanvas } = require('canvas');
 // const JsBarcode = require('jsbarcode');
@@ -14,6 +19,18 @@ const purchaseOrderSchema = new Schema(
     },
     vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
     warehouseId: { type: Schema.Types.ObjectId, ref: 'Warehouse', required: true },
+    // Optional - mirrors SalesOrder.project's reference pattern (same Project model, same
+    // "select by projectNumber" UX). No vendor<->project relationship exists in the data model
+    // (unlike SalesOrder.customer, a project has no concept of "its vendor"), so unlike the Sales
+    // Order form this is never filtered down to a subset of projects.
+    project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
+    // Mirrors SalesOrder's 'account' case exactly (docs section "Payment Methods Must Come From
+    // Chart of Accounts") - 'advanced_payment' is deliberately NOT a valid value here. Vendor-side
+    // Advanced Payment consumption was explicitly deferred as a future enhancement when the
+    // Advanced Payment module was first built (see services/payments/advancedPaymentService.js's
+    // header comment) - this does not implement that, only the Cash/Cash-Equivalent case.
+    paymentMethod: { type: String, enum: { values: ['account', null], message: '{VALUE} is not a valid payment method' }, default: null },
+    paymentAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
     items: [
       {
         // warehouseId: { type: Schema.Types.ObjectId, ref: 'Warehouse' }, // Not used so far
@@ -33,6 +50,18 @@ const purchaseOrderSchema = new Schema(
     ],
     starterTotalAmount: { type: Number, min: 0 },
     totalAmount: { type: Number, min: 0 },
+    // VAT/Withholding Tax - mirrors salesOrderModel.js's identical fields/comments exactly (docs
+    // sections "VAT on Sales Orders and Purchase Orders" / "Withholding Tax") - percentages are the
+    // only client input, amounts are always server-computed in pre('save') below.
+    vatPercentage: { type: Number, default: 0, min: [0, 'VAT percentage cannot be negative'] },
+    vatAmount: { type: Number, default: 0, min: 0 },
+    withholdingTaxPercentage: { type: Number, enum: { values: [0, 1, 3, 5], message: '{VALUE} is not a valid withholding tax percentage' }, default: 0 },
+    withholdingTaxAmount: { type: Number, default: 0, min: 0 },
+    // = totalAmount + vatAmount - withholdingTaxAmount - the real payable figure (remainingAmount/
+    // paymentStatus/the vendor-balance adjustment below are all based on this, not the pre-tax
+    // totalAmount). Function default so an order predating this field still reports its real total
+    // if read before ever being re-saved.
+    grandTotal: { type: Number, default: function () { return this.totalAmount || 0; }, min: 0 },
     paidAmount: { type: Number, min: 0, default: 0 },
     remainingAmount: { type: Number },
     paymentStatus: { type: String, enum: ['unpaid', 'partial', 'paid', 'unknown'], default: 'unpaid' },
@@ -100,6 +129,23 @@ purchaseOrderSchema.pre('save', async function (next) {
       this.code = await generatePurchaseOrderCode();
     }
 
+    // Backstop (the fast pre-check lives in poValidator.js) - never trust that `paymentAccount` is
+    // actually eligible just because a request validator approved it at some earlier point;
+    // re-verified here against the live ChartOfAccount document every time this path is taken.
+    if (this.isModified('paymentMethod') || this.isModified('paymentAccount')) {
+      if (this.paymentMethod === 'account') {
+        if (!this.paymentAccount) throw new Error('A payment account is required when paymentMethod is "account".');
+        const ChartOfAccount = this.model('ChartOfAccount');
+        const account = await ChartOfAccount.findById(this.paymentAccount).session(this.$session());
+        if (!account) throw new Error('The selected payment account does not exist.');
+        if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+          throw new Error('The selected payment account must be a Cash or Cash Equivalent account.');
+        }
+      } else if (this.paymentAccount) {
+        throw new Error('paymentAccount can only be set when paymentMethod is "account".');
+      }
+    }
+
     for (const item of this.items) {
       item.unitPriceAfterDiscount = calculateUnitPriceAfterDiscount(item.itemDiscount.type, item.itemDiscount.value, item.unitPrice);
       item.starterSubtotal = calculateStarterSubtotal(item.unitPriceAfterDiscount, item.starterQuantity);
@@ -108,8 +154,13 @@ purchaseOrderSchema.pre('save', async function (next) {
 
     this.starterTotalAmount = calculateStarterTotalAmount(this.items);
     this.totalAmount = calculateTotalAmount(this.items);
-    this.remainingAmount = calculateRemainingAmount(this.totalAmount, this.paidAmount);
-    this.paymentStatus = getPaymentStatus(this.paidAmount, this.totalAmount);
+
+    this.vatAmount = round2((this.totalAmount * (this.vatPercentage || 0)) / 100);
+    this.withholdingTaxAmount = round2((this.totalAmount * (this.withholdingTaxPercentage || 0)) / 100);
+    this.grandTotal = round2(this.totalAmount + this.vatAmount - this.withholdingTaxAmount);
+
+    this.remainingAmount = calculateRemainingAmount(this.grandTotal, this.paidAmount);
+    this.paymentStatus = getPaymentStatus(this.paidAmount, this.grandTotal);
 
     // Only update vendor balance on creation (not on update). By the way there is no purchase order updation.
     if (this.isNew) {
@@ -141,6 +192,16 @@ purchaseOrderSchema.pre(/^find/, function () {
   this.populate({
     path: 'items.productId',
     select: 'title price priceAfterDiscount category subcategory barcode sku', // categories needed for barcode printing
+  });
+
+  this.populate({
+    path: 'project',
+    select: 'projectNumber name customer',
+  });
+
+  this.populate({
+    path: 'paymentAccount',
+    select: 'code name nameAr',
   });
 });
 

@@ -3,12 +3,11 @@ import { useLanguage } from "@/context/LanguageContext";
 import useWarehouseHelpers from "@/hooks/useWarehouseHelpers";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
-import { paymentMethodsArray } from "@/utils/constants/payment-methods";
-import { PaymentMethod } from "@/types/payment";
-import { Alert, Button, Select } from "@mantine/core";
+import { Alert, Button } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import ErrorAlert from "@/components/ui/error-alert";
 import Modal from "@/components/ui/modal";
+import PaymentAccountSelect from "@/components/global/payment-account-select";
 import { useOrder } from "../../../../context";
 import InfoItem from "@/components/ui/info-item";
 
@@ -24,7 +23,7 @@ export default function PayAllModal({ opened, close }: { opened: boolean; close:
   const amountToPay = order.remainingAmount;
   const shippingCostNeededToBePaid = order.shippingCost > 0 && !order.shippingCostPaid;
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [paymentAccount, setPaymentAccount] = useState("");
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
@@ -40,7 +39,7 @@ export default function PayAllModal({ opened, close }: { opened: boolean; close:
           warehouseId: order.warehouse,
           salesOrderId: order._id,
           amountPaid: amountToPay,
-          paymentMethod,
+          paymentAccount,
         },
       });
       updateWarehouseBalanceById(order.warehouse, amountToPay, "in");
@@ -63,7 +62,7 @@ export default function PayAllModal({ opened, close }: { opened: boolean; close:
     close();
     setTimeout(() => {
       setError("");
-      setPaymentMethod(null);
+      setPaymentAccount("");
     }, 250);
   }
 
@@ -92,25 +91,14 @@ export default function PayAllModal({ opened, close }: { opened: boolean; close:
         </Alert>
 
         <div className="flex flex-col gap-2">
-          <Select
-            clearable
-            value={paymentMethod}
-            onChange={(value) => setPaymentMethod(value as PaymentMethod | null)}
-            data={paymentMethodsArray.map((method) => ({
-              value: method.value,
-              label: translate(method.label.en, method.label.ar),
-            }))}
-            label={translate("Payment Method", "طريقة الدفع")}
-            placeholder={translate("Select payment method", "اختر طريقة الدفع")}
-            required
-          />
+          <PaymentAccountSelect value={paymentAccount} onChange={setPaymentAccount} required />
         </div>
 
         <div className="flex gap-2">
           <Button onClick={handleClose} variant="light" color="dark" fullWidth>
             {translations.cancel}
           </Button>
-          <Button type="submit" loading={loading} disabled={!paymentMethod} fullWidth>
+          <Button type="submit" loading={loading} disabled={!paymentAccount} fullWidth>
             {title}
           </Button>
         </div>

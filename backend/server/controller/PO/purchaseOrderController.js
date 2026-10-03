@@ -68,7 +68,11 @@ exports.createPO = asyncHandler(async (req, res, next) => {
   try {
     session.startTransaction();
 
-    const { vendorId, warehouseId, items } = req.body;
+    // `vatAmount`/`withholdingTaxAmount`/`grandTotal`/`totalAmount` are deliberately never
+    // destructured here - only the percentages are ever accepted from a client; the model's own
+    // pre('save') hook computes every derived amount from the real item totals (docs section "Do
+    // not allow clients to manipulate the final total").
+    const { vendorId, warehouseId, items, project, paymentMethod, paymentAccount, vatPercentage, withholdingTaxPercentage } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new ApiError('Items must be a non-empty array');
@@ -79,6 +83,11 @@ exports.createPO = asyncHandler(async (req, res, next) => {
       vendorId,
       warehouseId,
       items,
+      project: project || null,
+      paymentMethod: paymentMethod || null,
+      paymentAccount: paymentAccount || null,
+      vatPercentage,
+      withholdingTaxPercentage,
       createdBy: req.user._id,
     });
 

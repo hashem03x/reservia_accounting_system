@@ -116,6 +116,16 @@ const projectSchema = new Schema(
       default: 0,
       min: 0,
     },
+    // نسبة المنفذ - how much of the project has actually been executed, entered/edited directly by
+    // an admin (not derived from contractValue/remainingMoney/averageCost, which track money, not
+    // physical/work progress - see docs section "Project - Executed Percentage"). Defaults to 0 for
+    // both new projects and any pre-existing project read before this field existed.
+    executedPercentage: {
+      type: Number,
+      default: 0,
+      min: [0, 'Executed percentage cannot be less than 0'],
+      max: [100, 'Executed percentage cannot be greater than 100'],
+    },
     // Renamed from `department` - see docs/entities/projects.md. Optional - `null` is explicitly
     // included in the enum's own value list (Mongoose's built-in enum validator otherwise rejects
     // an explicit `null`), so "no sector" is a real, settable value rather than something that

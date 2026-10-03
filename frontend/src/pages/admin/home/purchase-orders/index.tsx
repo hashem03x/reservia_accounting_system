@@ -144,6 +144,7 @@ export default function PurchaseOrders() {
                     <Table.Th>{translate("Order ID", "الرقم المرجعي")}</Table.Th>
                     <Table.Th>{translate("Warehouse", "الفرع")}</Table.Th>
                     <Table.Th>{translate("Vendor", "البائع")}</Table.Th>
+                    <Table.Th>{translate("Project", "المشروع")}</Table.Th>
                     <Table.Th>{translate("Payment Status", "حالة الدفع")}</Table.Th>
                     <Table.Th>{translate("Total Amount", "المبلغ الإجمالي")}</Table.Th>
                     <Table.Th>{translate("Paid Amount", "المبلغ المدفوع")}</Table.Th>
@@ -164,6 +165,7 @@ export default function PurchaseOrders() {
                       <Table.Td className="font-semibold text-gray-800">{purchaseOrder._id}</Table.Td>
                       <Table.Td>{getWarehouseNameById(purchaseOrder.warehouseId)}</Table.Td>
                       <Table.Td>{purchaseOrder.vendor.name}</Table.Td>
+                      <Table.Td>{purchaseOrder.project?.projectNumber || "-"}</Table.Td>
                       <Table.Td>{getPaymentStatusLabel(purchaseOrder.paymentStatus, language)}</Table.Td>
                       <Table.Td className="font-semibold text-gray-800">{purchaseOrder.totalAmount.toFixed(2)}</Table.Td>
                       <Table.Td>{purchaseOrder.paidAmount.toFixed(2)}</Table.Td>

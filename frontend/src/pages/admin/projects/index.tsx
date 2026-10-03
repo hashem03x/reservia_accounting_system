@@ -121,6 +121,7 @@ export default function Projects() {
                   <Table.Th>{translate("Start Date", "تاريخ البدء")}</Table.Th>
                   <Table.Th>{translate("Delivery Date", "تاريخ التسليم")}</Table.Th>
                   <Table.Th>{translate("Status", "الحالة")}</Table.Th>
+                  <Table.Th>{translate("Executed %", "نسبة المنفذ")}</Table.Th>
                   <Table.Th>{translate("Contract", "العقد")}</Table.Th>
                   <Table.Th>{translate("Actions", "الإجراءات")}</Table.Th>
                 </Table.Tr>
@@ -150,6 +151,7 @@ export default function Projects() {
                         {project.status}
                       </Badge>
                     </Table.Td>
+                    <Table.Td>{project.executedPercentage ?? 0}%</Table.Td>
                     <Table.Td>
                       {project.contract ? (
                         <outlineIcons.Document className="text-green-600" size={18} />

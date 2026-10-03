@@ -9,7 +9,7 @@ import handleRequest from "@/utils/helpers/handle-request";
 import { formatDate } from "@/utils/helpers/date-formaters";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
-import { Badge, Button, Table } from "@mantine/core";
+import { Badge, Button, Table, Tooltip } from "@mantine/core";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
@@ -87,10 +87,26 @@ export default function JournalEntryDetail() {
                 {translate("Post", "ترحيل")}
               </Button>
             )}
-            {canUpdate && entry.status === "posted" && !entry.reversedByEntry && (
-              <Button variant="light" color="red" onClick={openReverseModal}>
-                {translate("Reverse", "عكس")}
-              </Button>
+            {canUpdate && entry.status === "posted" && (
+              <Tooltip
+                label={
+                  entry.reversedByEntry
+                    ? translate("This entry has already been reversed and cannot be reversed again.", "تم عكس هذا القيد بالفعل ولا يمكن عكسه مرة أخرى.")
+                    : entry.reversalOfEntry
+                      ? translate("A reversal entry cannot itself be reversed.", "لا يمكن عكس قيد عكس بحد ذاته.")
+                      : ""
+                }
+                disabled={!entry.reversedByEntry && !entry.reversalOfEntry}
+              >
+                <Button
+                  variant="light"
+                  color="red"
+                  onClick={openReverseModal}
+                  disabled={!!entry.reversedByEntry || !!entry.reversalOfEntry}
+                >
+                  {translate("Reverse", "عكس")}
+                </Button>
+              </Tooltip>
             )}
           </div>
         ),
@@ -103,6 +119,34 @@ export default function JournalEntryDetail() {
         <InfoCard label={translate("Source", "المصدر")} value={entry.source} />
         <InfoCard label={translate("Project", "المشروع")} value={entry.project?.projectNumber || "-"} />
         <InfoCard label={translate("Reference", "المرجع")} value={entry.reference || "-"} />
+        {entry.reversedByEntry && (
+          <InfoCard
+            label={translate("Reversed By", "تم عكسه بواسطة")}
+            value={
+              <button
+                type="button"
+                className="text-blue-600 hover:underline"
+                onClick={() => navigate(`/${paths.admin}/${paths.journalEntries}/${entry.reversedByEntry}`)}
+              >
+                {translate("View reversal entry", "عرض قيد العكس")}
+              </button>
+            }
+          />
+        )}
+        {entry.reversalOfEntry && (
+          <InfoCard
+            label={translate("Reverses", "يعكس")}
+            value={
+              <button
+                type="button"
+                className="text-blue-600 hover:underline"
+                onClick={() => navigate(`/${paths.admin}/${paths.journalEntries}/${entry.reversalOfEntry}`)}
+              >
+                {translate("View original entry", "عرض القيد الأصلي")}
+              </button>
+            }
+          />
+        )}
       </div>
 
       <div className="mt-6 overflow-x-auto">

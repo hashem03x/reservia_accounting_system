@@ -11,6 +11,11 @@ const {
 } = require('../../utils/helper');
 const { generateSalesOrderCode } = require('../../utils/helper');
 const { SalesOrderPaymentMethods } = require('../../utils/appConstant');
+// Explicit require (not just the string `ref:` name) - mirrors journalEntryModel.js's convention
+// for every model this schema's hooks look up via `this.model(...)`.
+require('../accounting/chartOfAccountModel');
+
+const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 
 const salesOrderSchema = mongoose.Schema(
   {
@@ -30,7 +35,14 @@ const salesOrderSchema = mongoose.Schema(
     // from the separate `Payment` model's `paymentMethod` (a record of an actual payment
     // transaction against an order). Optional/null for every existing order and every new order
     // that doesn't use this field - purely additive, doesn't change any existing behavior.
+    // 'account' = paid via a Cash/Cash-Equivalent ChartOfAccount (see `paymentAccount` below).
+    // 'advanced_payment' = paid via the customer's AdvancedPayment balance (see `advancedPayment`).
     paymentMethod: { type: String, enum: { values: [...SalesOrderPaymentMethods, null], message: '{VALUE} is not a valid payment method' }, default: null },
+    // Set only when paymentMethod === 'account' - the specific Cash/Cash-Equivalent ChartOfAccount
+    // this order is paid against (docs section "Payment Methods Must Come From Chart of
+    // Accounts"). Never a hardcoded string - a real account reference, validated for eligibility
+    // (type 'asset' + state 'cash'/'cash-equivalent') in the pre('validate') hook below.
+    paymentAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
     // Set only when paymentMethod === 'advanced_payment' - the specific AdvancedPayment document
     // this order consumed, so a later cancellation can restore exactly that balance (see
     // services/payments/advancedPaymentService.js#restoreAdvancedPaymentForSalesOrder).
@@ -63,6 +75,25 @@ const salesOrderSchema = mongoose.Schema(
     ],
     starterTotalAmount: { type: Number, min: 0 },
     totalAmount: { type: Number, min: 0 },
+    // VAT - percentage is the only client input; vatAmount is always server-computed from
+    // `totalAmount` (docs section "VAT on Sales Orders and Purchase Orders") - never trusted from
+    // the client, recomputed on every save the same way totalAmount itself already is.
+    vatPercentage: { type: Number, default: 0, min: [0, 'VAT percentage cannot be negative'] },
+    vatAmount: { type: Number, default: 0, min: 0 },
+    // Withholding Tax - only these four percentages are valid business values (docs section
+    // "Withholding Tax") - not an arbitrary rate like VAT. withholdingTaxAmount is server-computed,
+    // same rule as vatAmount.
+    withholdingTaxPercentage: { type: Number, enum: { values: [0, 1, 3, 5], message: '{VALUE} is not a valid withholding tax percentage' }, default: 0 },
+    withholdingTaxAmount: { type: Number, default: 0, min: 0 },
+    // = totalAmount + vatAmount - withholdingTaxAmount - always server-computed (see pre('save')
+    // below), never accepted from a request body. This is the real payable/receivable figure
+    // (remainingAmount/paymentStatus/the customer-balance deduction below are all based on this,
+    // not the pre-tax `totalAmount`) - shipping remains a deliberately separate concern (see
+    // `shippingCostPaid`/`payShippingCost` - shipping was never part of paidAmount/remainingAmount
+    // even before this change, so it stays out of this figure too for consistency.
+    // A function default (not a flat 0) so an existing order that predates this field, read before
+    // ever being re-saved, still reports its real total instead of a misleading 0.
+    grandTotal: { type: Number, default: function () { return this.totalAmount || 0; }, min: 0 },
     paidAmount: { type: Number, min: 0, default: 0 },
     remainingAmount: { type: Number },
     paymentStatus: { type: String, enum: ['unpaid', 'partial', 'paid', 'unknown'], default: 'unpaid' },
@@ -113,6 +144,23 @@ salesOrderSchema.pre('save', async function (next) {
       this.code = await generateSalesOrderCode();
     }
 
+    // Backstop (the fast pre-check lives in salesValidator.js) - never trust that `paymentAccount`
+    // is actually eligible just because a request validator approved it at some earlier point;
+    // re-verified here against the live ChartOfAccount document every time this path is taken.
+    if (this.isModified('paymentMethod') || this.isModified('paymentAccount')) {
+      if (this.paymentMethod === 'account') {
+        if (!this.paymentAccount) throw new Error('A payment account is required when paymentMethod is "account".');
+        const ChartOfAccount = this.model('ChartOfAccount');
+        const account = await ChartOfAccount.findById(this.paymentAccount).session(this.$session());
+        if (!account) throw new Error('The selected payment account does not exist.');
+        if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+          throw new Error('The selected payment account must be a Cash or Cash Equivalent account.');
+        }
+      } else if (this.paymentAccount) {
+        throw new Error('paymentAccount can only be set when paymentMethod is "account".');
+      }
+    }
+
     for (const item of this.items) {
       item.unitPriceAfterDiscount = calculateUnitPriceAfterDiscount(item.itemDiscount.type, item.itemDiscount.value, item.unitPrice);
       item.starterSubtotal = calculateStarterSubtotal(item.unitPriceAfterDiscount, item.starterQuantity);
@@ -121,8 +169,13 @@ salesOrderSchema.pre('save', async function (next) {
 
     this.starterTotalAmount = calculateStarterTotalAmount(this.items);
     this.totalAmount = calculateTotalAmount(this.items);
-    this.remainingAmount = calculateRemainingAmount(this.totalAmount, this.paidAmount);
-    this.paymentStatus = getPaymentStatus(this.paidAmount, this.totalAmount);
+
+    this.vatAmount = round2((this.totalAmount * (this.vatPercentage || 0)) / 100);
+    this.withholdingTaxAmount = round2((this.totalAmount * (this.withholdingTaxPercentage || 0)) / 100);
+    this.grandTotal = round2(this.totalAmount + this.vatAmount - this.withholdingTaxAmount);
+
+    this.remainingAmount = calculateRemainingAmount(this.grandTotal, this.paidAmount);
+    this.paymentStatus = getPaymentStatus(this.paidAmount, this.grandTotal);
 
     this.starterTotalAmountPlusShipping = this.starterTotalAmount + (this.shippingCost || 0);
     this.totalAmountPlusShipping = this.totalAmount + (this.shippingCost || 0);
@@ -168,6 +221,11 @@ salesOrderSchema.pre(/^find/, function () {
   this.populate({
     path: 'project',
     select: 'projectNumber name customer',
+  });
+
+  this.populate({
+    path: 'paymentAccount',
+    select: 'code name nameAr',
   });
 
   // Deliberately NOT populated here: AdvancedPayment's own pre(/^find/) hook populates

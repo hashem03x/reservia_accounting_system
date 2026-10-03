@@ -31,7 +31,10 @@ export type Payment = {
   customerId: string;
   amountPaid: number;
   type: PaymentType;
-  paymentMethod: PaymentMethod;
+  // Legacy/optional - a new payment uses `paymentAccount` instead (docs section "Payment Methods
+  // Must Come From Chart of Accounts"). Still present on historical payments.
+  paymentMethod?: PaymentMethod | null;
+  paymentAccount?: { _id: string; code: string; name: string; nameAr?: string | null } | null;
   paymentCategory: PaymentCategory;
   paidWithPaymob: boolean;
   notes?: string;
