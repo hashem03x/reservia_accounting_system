@@ -96,7 +96,7 @@ export default function PrintInvoice() {
             <tbody>
               {order.items.map((item, index) => (
                 <tr key={index}>
-                  <td>{item.product.title.en}</td>
+                  <td>{item.product?.title.en || "Deleted Product"}</td>
                   <td>{item.starterQuantity}</td>
                   <td>{item.unitPrice.toFixed(2)}</td>
                   <td>{item.unitPriceAfterDiscount.toFixed(2)}</td>
@@ -128,8 +128,8 @@ export default function PrintInvoice() {
               </thead>
               <tbody>
                 {returnedItems.map((item) => (
-                  <tr key={item.product._id}>
-                    <td>{item.product.title.en}</td>
+                  <tr key={item._id}>
+                    <td>{item.product?.title.en || "Deleted Product"}</td>
                     <td>{item.unitPriceAfterDiscount.toFixed(2)}</td>
                     <td>{item.returnedQuantity}</td>
                     <td style={{ fontWeight: 500 }}>{(item.unitPriceAfterDiscount * item.returnedQuantity).toFixed(2)}</td>

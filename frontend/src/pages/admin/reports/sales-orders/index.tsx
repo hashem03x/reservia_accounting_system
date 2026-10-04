@@ -258,7 +258,7 @@ export default function SalesOrdersReport() {
                     <Table.Td className="font-semibold text-gray-800">{order._id}</Table.Td>
                     <Table.Td>{getOrderSourceLabel(order.orderSource, language)}</Table.Td>
                     <Table.Td>{isCashierOrder(order.orderSource) ? getWarehouseNameById(order.warehouse) : ""}</Table.Td>
-                    <Table.Td>{order.customer.name}</Table.Td>
+                    <Table.Td>{order.customer?.name || translate("Deleted Customer", "عميل محذوف")}</Table.Td>
                     <Table.Td>{getPaymentStatusLabel(order.paymentStatus, language)}</Table.Td>
                     <Table.Td className="font-semibold text-gray-800">
                       {order.totalAmount.toFixed(2)} {translations.currency}

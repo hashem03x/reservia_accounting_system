@@ -148,7 +148,7 @@ export default function PrintReceipt() {
               <tbody>
                 {order.items.map((item, index) => (
                   <tr key={index}>
-                    <td>{item.product.sku}</td>
+                    <td>{item.product?.sku || "-"}</td>
                     <td>{item.starterQuantity}</td>
                     <td>{item.unitPriceAfterDiscount.toFixed(0)}</td>
                     <td style={{ fontWeight: 500 }}>{item.starterSubtotal.toFixed(0)}</td>
@@ -179,8 +179,8 @@ export default function PrintReceipt() {
                 </thead>
                 <tbody>
                   {returnedItems.map((item) => (
-                    <tr key={item.product._id}>
-                      <td>{item.product.sku}</td>
+                    <tr key={item._id}>
+                      <td>{item.product?.sku || "-"}</td>
                       <td>{item.returnedQuantity}</td>
                       <td style={{ fontWeight: 500 }}>{(item.unitPriceAfterDiscount * item.returnedQuantity).toFixed(0)}</td>
                     </tr>

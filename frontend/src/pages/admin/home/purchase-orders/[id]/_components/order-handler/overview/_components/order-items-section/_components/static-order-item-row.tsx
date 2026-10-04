@@ -14,16 +14,20 @@ export default function StaticOrderItemRow({ index }: { index: number }) {
   return (
     <Table.Tr className="text-gray-600" h={40}>
       {/* SKU */}
-      <Table.Td>{currentItem.product.sku}</Table.Td>
+      <Table.Td>{currentItem.product?.sku || "-"}</Table.Td>
       {/* Product Title */}
       <Table.Td className="font-bold text-gray-800">
-        <Link
-          target="_blank"
-          to={`/${paths.admin}/${paths.home}/${paths.products}/${currentItem.product._id}`}
-          className="hover:underline"
-        >
-          {translate(currentItem.product.title.en, currentItem.product.title.ar)}
-        </Link>
+        {currentItem.product ? (
+          <Link
+            target="_blank"
+            to={`/${paths.admin}/${paths.home}/${paths.products}/${currentItem.product._id}`}
+            className="hover:underline"
+          >
+            {translate(currentItem.product.title.en, currentItem.product.title.ar)}
+          </Link>
+        ) : (
+          <span className="text-gray-500">{translate("Deleted Product", "منتج محذوف")}</span>
+        )}
       </Table.Td>
       {/* Quantity */}
       <Table.Td>{currentItem.starterQuantity}</Table.Td>

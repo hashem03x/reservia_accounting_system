@@ -50,7 +50,9 @@ export type PurchaseOrder = OrderFinancials & {
 export type PurchaseOrderItem = {
   _id: string;
   // A Product is the sellable/stock-tracked item itself now - there is no separate Variant (see
-  // docs/entities/products.md).
+  // docs/entities/products.md). Nullable: Mongoose populate resolves this to `null` when the
+  // referenced Product document no longer exists (e.g. hard-deleted outside the app's own
+  // soft-delete flow) - a historical order must still render, not crash, when that happens.
   product: {
     _id: string;
     title: { en: string; ar: string };
@@ -58,7 +60,7 @@ export type PurchaseOrderItem = {
     priceAfterDiscount: number | null;
     sku?: string;
     barcode?: string;
-  };
+  } | null;
   unitPrice: number;
   itemDiscount: ItemDiscount;
   unitPriceAfterDiscount: number;
@@ -75,7 +77,9 @@ export type SalesOrder = OrderFinancials & {
   code?: string; // Optional as old orders don't have a code
   orderSource: OrderSource;
   isPrepaid: boolean;
-  customer: Customer;
+  // Nullable: Mongoose populate resolves this to `null` when the referenced User document no
+  // longer exists - see `SalesOrderItem.product`'s identical comment.
+  customer: Customer | null;
   warehouse: string;
   items: SalesOrderItem[];
   starterTotalAmount: number;
@@ -105,7 +109,7 @@ export type SalesOrder = OrderFinancials & {
 export type SalesOrderItem = {
   _id: string;
   // A Product is the sellable/stock-tracked item itself now - there is no separate Variant (see
-  // docs/entities/products.md).
+  // docs/entities/products.md). Nullable - see `PurchaseOrderItem.product`'s identical comment.
   product: {
     _id: string;
     title: { en: string; ar: string };
@@ -113,7 +117,7 @@ export type SalesOrderItem = {
     priceAfterDiscount: number | null;
     sku?: string;
     barcode?: string;
-  };
+  } | null;
   unitPrice: number;
   itemDiscount: ItemDiscount;
   unitPriceAfterDiscount: number;

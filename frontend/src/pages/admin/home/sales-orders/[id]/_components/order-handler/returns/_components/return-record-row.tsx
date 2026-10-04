@@ -11,24 +11,32 @@ export default function ReturnRecordRow({ returnRecord }: { returnRecord: Return
 
   const { order } = useOrder();
 
-  const returnedItemData = order.items.find((item) => item.product._id === returnRecord.productId);
-  if (!returnedItemData) return null;
+  // Only used for display (SKU/title) - returnedQuantity/returnedAmount below come from
+  // `returnRecord` itself, so a return record must still render even when the matching order item
+  // can't be found or its product has since been deleted (docs section "do not silently hide
+  // accounting information").
+  const returnedItemData = order.items.find((item) => item.product?._id === returnRecord.productId);
+  const product = returnedItemData?.product;
 
   return (
     <Table.Tr className="text-gray-600" h={42}>
       {/* Return Date */}
       <Table.Td>{formatDate(returnRecord.createdAt, language)}</Table.Td>
       {/* SKU */}
-      <Table.Td>{returnedItemData.product.sku}</Table.Td>
+      <Table.Td>{product?.sku || "-"}</Table.Td>
       {/* Product Title */}
       <Table.Td className="font-bold text-gray-800">
-        <Link
-          target="_blank"
-          to={`/${paths.admin}/${paths.home}/${paths.products}/${returnedItemData.product._id}`}
-          className="hover:underline"
-        >
-          {translate(returnedItemData.product.title.en, returnedItemData.product.title.ar)}
-        </Link>
+        {product ? (
+          <Link
+            target="_blank"
+            to={`/${paths.admin}/${paths.home}/${paths.products}/${product._id}`}
+            className="hover:underline"
+          >
+            {translate(product.title.en, product.title.ar)}
+          </Link>
+        ) : (
+          <span className="text-gray-500">{translate("Deleted Product", "منتج محذوف")}</span>
+        )}
       </Table.Td>
       {/* Quantity Returned */}
       <Table.Td className="font-bold text-gray-800">{returnRecord.returnedQuantity}</Table.Td>

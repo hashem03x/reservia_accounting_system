@@ -76,12 +76,14 @@ export default function PrintInvoice() {
               <strong>Date & Time:</strong> {formatDateAndTime(order.createdAt, "en-US")}
             </span>
             <span>
-              <strong>Customer Name:</strong> {order.customer.name}
+              <strong>Customer Name:</strong> {order.customer?.name || "Deleted Customer"}
             </span>
-            <span>
-              <strong>Customer Phone:</strong> {order.customer.phone}
-            </span>
-            {isCashierOrder(order.orderSource) && order.customer.offlineAddress && (
+            {order.customer?.phone && (
+              <span>
+                <strong>Customer Phone:</strong> {order.customer.phone}
+              </span>
+            )}
+            {isCashierOrder(order.orderSource) && order.customer?.offlineAddress && (
               <span>
                 <strong>Customer Address:</strong> {stringifyCustomerAddress(order.customer)}
               </span>
@@ -122,7 +124,7 @@ export default function PrintInvoice() {
             <tbody>
               {order.items.map((item, index) => (
                 <tr key={index}>
-                  <td>{item.product.title.en}</td>
+                  <td>{item.product?.title.en || "Deleted Product"}</td>
                   <td>{item.starterQuantity}</td>
                   <td>{item.unitPrice.toFixed(2)}</td>
                   <td>{item.unitPriceAfterDiscount.toFixed(2)}</td>
@@ -154,8 +156,8 @@ export default function PrintInvoice() {
               </thead>
               <tbody>
                 {returnedItems.map((item) => (
-                  <tr key={item.product._id}>
-                    <td>{item.product.title.en}</td>
+                  <tr key={item._id}>
+                    <td>{item.product?.title.en || "Deleted Product"}</td>
                     <td>{item.unitPriceAfterDiscount.toFixed(2)}</td>
                     <td>{item.returnedQuantity}</td>
                     <td style={{ fontWeight: 500 }}>{(item.unitPriceAfterDiscount * item.returnedQuantity).toFixed(2)}</td>

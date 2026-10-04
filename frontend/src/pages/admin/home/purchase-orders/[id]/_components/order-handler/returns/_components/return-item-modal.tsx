@@ -29,7 +29,8 @@ export default function ReturnItemModal({ opened, close }: { opened: boolean; cl
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!selectedItem) return;
+    if (!selectedItem || !selectedItem.product) return;
+    const selectedProduct = selectedItem.product;
 
     if (+quantity > selectedItem.starterQuantity) {
       setError(translate("Quantity exceeds the available quantity", "الكمية تتجاوز الكمية المتاحة"));
@@ -44,7 +45,7 @@ export default function ReturnItemModal({ opened, close }: { opened: boolean; cl
         data: {
           purchaseOrderId: order._id,
           warehouseId: order.warehouseId,
-          productId: selectedItem.product._id,
+          productId: selectedProduct._id,
           returnedQuantity: quantity,
           paymentMethod,
         },
@@ -82,10 +83,14 @@ export default function ReturnItemModal({ opened, close }: { opened: boolean; cl
             searchable
             value={selectedItemId}
             onChange={(value) => setSelectedItemId(value)}
-            data={order.items.map((item) => ({
-              value: item._id,
-              label: `${item.product.sku} - ${translate(item.product.title.en, item.product.title.ar)}`,
-            }))}
+            // Items whose product has since been deleted can't be processed as a return - excluded
+            // from the selectable list rather than crashing on the missing title.
+            data={order.items
+              .filter((item) => item.product)
+              .map((item) => ({
+                value: item._id,
+                label: `${item.product!.sku} - ${translate(item.product!.title.en, item.product!.title.ar)}`,
+              }))}
             label={translate("Select Item", "اختر العنصر")}
             placeholder={translate("Select item to return", "اختر العنصر المرتجع")}
             required

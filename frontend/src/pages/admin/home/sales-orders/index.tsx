@@ -406,7 +406,7 @@ export default function SalesOrders() {
                             )}
                           </div>
                         </Table.Td>
-                        <Table.Td>{salesOrder.customer.name}</Table.Td>
+                        <Table.Td>{salesOrder.customer?.name || translate("Deleted Customer", "عميل محذوف")}</Table.Td>
                         <Table.Td>{salesOrder.project?.projectNumber || "-"}</Table.Td>
                         <Table.Td>{getPaymentStatusLabel(salesOrder.paymentStatus, language)}</Table.Td>
                         <Table.Td className="font-semibold text-gray-800">{salesOrder.totalAmount.toFixed(2)}</Table.Td>

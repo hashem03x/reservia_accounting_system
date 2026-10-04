@@ -29,7 +29,8 @@ export default function ReturnItemModal({ opened, close }: { opened: boolean; cl
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!selectedItem) return;
+    if (!selectedItem || !selectedItem.product) return;
+    const selectedProduct = selectedItem.product;
 
     if (+quantity > selectedItem.starterQuantity) {
       setError(translate("Quantity exceeds the available quantity", "الكمية تتجاوز الكمية المتاحة"));
@@ -44,7 +45,7 @@ export default function ReturnItemModal({ opened, close }: { opened: boolean; cl
         data: {
           salesOrderId: order._id,
           warehouseId: order.warehouse || "67933fd03bf29b9f172eeab6", // Fallback to main warehouse if not set (in case of website orders)
-          productId: selectedItem.product._id,
+          productId: selectedProduct._id,
           returnedQuantity: quantity,
           paymentMethod,
         },
@@ -82,14 +83,19 @@ export default function ReturnItemModal({ opened, close }: { opened: boolean; cl
             searchable
             value={selectedItemId}
             onChange={(value) => setSelectedItemId(value)}
-            data={order.items.map((item) => ({
-              value: item._id,
-              label: `${translate(item.product.title.en, item.product.title.ar)} ${
-                item.quantityToBeReturned > 0
-                  ? ` - (${translate(`Requested to return ${item.quantityToBeReturned}`, `طلب إرجاع ${item.quantityToBeReturned}`)})`
-                  : ""
-              }`,
-            }))}
+            // Items whose product has since been deleted can't be processed as a return (nothing to
+            // restock/match against) - excluded from the selectable list rather than crashing on
+            // the missing title.
+            data={order.items
+              .filter((item) => item.product)
+              .map((item) => ({
+                value: item._id,
+                label: `${translate(item.product!.title.en, item.product!.title.ar)} ${
+                  item.quantityToBeReturned > 0
+                    ? ` - (${translate(`Requested to return ${item.quantityToBeReturned}`, `طلب إرجاع ${item.quantityToBeReturned}`)})`
+                    : ""
+                }`,
+              }))}
             label={translate("Select Item", "اختر العنصر")}
             placeholder={translate("Select item to return", "اختر العنصر المرتجع")}
             required

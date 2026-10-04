@@ -11,8 +11,12 @@ export function PrintBarcodesVertical() {
   const { translate } = useLanguage();
   const { order } = useOrder();
 
-  // Expand items array based on quantity
-  const items = order.items;
+  // Expand items array based on quantity - items whose product has since been deleted are
+  // excluded (nothing to print a barcode/title/price for), rather than crashing on the missing
+  // product. Note: `Array(n).fill(item)` is untyped as `any[]` by TS's lib defs (no contextual type
+  // to infer from a bare `Array(n)` call), which is why `item.product` below isn't flagged by the
+  // compiler even though it's nullable - filtering explicitly here is the real guard.
+  const items = order.items.filter((item) => item.product);
   const expandedItems = items.map((item) => Array(item.starterQuantity - item.returnedQuantity).fill(item)).flat();
   // const expandedItems = items.flatMap((item) => Array(item.quantity).fill(item)); // Alternative to the above line.
 
@@ -69,8 +73,12 @@ export function PrintBarcodesHorizontal() {
   const swappedWidth = BARCODE_HEIGHT;
   const swappedHeight = BARCODE_WIDTH;
 
-  // Expand items array based on quantity
-  const items = order.items;
+  // Expand items array based on quantity - items whose product has since been deleted are
+  // excluded (nothing to print a barcode/title/price for), rather than crashing on the missing
+  // product. Note: `Array(n).fill(item)` is untyped as `any[]` by TS's lib defs (no contextual type
+  // to infer from a bare `Array(n)` call), which is why `item.product` below isn't flagged by the
+  // compiler even though it's nullable - filtering explicitly here is the real guard.
+  const items = order.items.filter((item) => item.product);
   const expandedItems = items.map((item) => Array(item.starterQuantity - item.returnedQuantity).fill(item)).flat();
   // const expandedItems = items.flatMap((item) => Array(item.quantity).fill(item)); // Alternative to the above line.
 
@@ -147,8 +155,12 @@ export function PrintBarcodes() {
 
   console.log(subcategories);
 
-  // Expand items array based on quantity
-  const items = order.items;
+  // Expand items array based on quantity - items whose product has since been deleted are
+  // excluded (nothing to print a barcode/title/price for), rather than crashing on the missing
+  // product. Note: `Array(n).fill(item)` is untyped as `any[]` by TS's lib defs (no contextual type
+  // to infer from a bare `Array(n)` call), which is why `item.product` below isn't flagged by the
+  // compiler even though it's nullable - filtering explicitly here is the real guard.
+  const items = order.items.filter((item) => item.product);
   const expandedItems = items.map((item) => Array(item.starterQuantity - item.returnedQuantity).fill(item)).flat();
   // const expandedItems = items.flatMap((item) => Array(item.quantity).fill(item)); // Alternative to the above line.
 
