@@ -1,5 +1,6 @@
 const { Schema, model } = require('mongoose');
 const { generatePurchaseOrderCode } = require('../../utils/helper');
+const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 // Explicit requires (not just the string `ref:` names) - mirrors salesOrderModel.js's convention
 // for every model this schema's hooks look up via `this.model(...)` or populate.
 require('../accounting/chartOfAccountModel');
@@ -148,7 +149,7 @@ purchaseOrderSchema.pre('save', async function (next) {
         const ChartOfAccount = this.model('ChartOfAccount');
         const account = await ChartOfAccount.findById(this.paymentAccount).session(this.$session());
         if (!account) throw new Error('The selected payment account does not exist.');
-        if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+        if (!isPaymentAccountEligible(account)) {
           throw new Error('The selected payment account must be a Cash or Cash Equivalent account.');
         }
       } else if (this.paymentAccount) {

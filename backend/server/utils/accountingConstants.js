@@ -16,14 +16,37 @@ exports.AccountTypes = ['asset', 'liability', 'equity', 'revenue', 'expense', 'c
 // business judgment call made when the account is created/edited, not a fixed mapping this schema
 // should hard-code. Optional/nullable - imported CSV accounts never have a source value for this
 // (the source file has no such column), so it stays null until an admin assigns one.
-// 'cash'/'cash-equivalent' additionally double as the structural signal for "can this account be
-// used as a Payment Method" (see chartOfAccountController.js#getCashEquivalentAccounts) - an
-// asset-type account with one of these two states, nothing else. Reuses this same secondary-
-// classification mechanism rather than adding a separate boolean flag, for the same reason 'cogs'
-// reuses `type` instead of a name match against "COGS": a real account whose own classification
-// (set once, by an admin, via the existing Edit Account screen) drives eligibility everywhere,
-// never a label/name string compared at read time.
+// 'cash'/'cash-equivalent' additionally double as ONE of the two structural signals for "can this
+// account be used as a Payment Method" - see `isPaymentAccountEligible` below.
 exports.AccountStates = ['current', 'non-current', 'operating', 'non-operating', 'direct', 'indirect', 'cash', 'cash-equivalent', 'other'];
+
+// The CSV-imported Chart of Accounts' own group label for every real bank/cash account (see
+// scripts/importReversiaAccountingData.js) - e.g. "misr banque", "NBE", "Bank Cairo" all carry
+// `parentGroupNameEn: 'Cash & Cash Equivalents'`. This is the ONLY signal imported accounts
+// actually carry (none of them have `state` set - that field is populated only when an admin
+// explicitly classifies an account via the Edit Account screen, which nobody has done on the real
+// data yet). Kept as a named constant (not a literal re-typed at every call site) so the one place
+// this exact string is compared never drifts out of sync with itself.
+exports.CashEquivalentParentGroupName = 'Cash & Cash Equivalents';
+
+// Single source of truth for "is this ChartOfAccount document eligible to be selected as a Payment
+// Method" (Sales/Purchase Orders, Payments, Advanced Payments - docs section "Payment Methods Must
+// Come From Chart of Accounts"). An account qualifies via EITHER of two independent signals:
+//   1. `parentGroupNameEn === 'Cash & Cash Equivalents'` - the real, already-populated signal every
+//      imported bank/cash account actually carries today.
+//   2. `type === 'asset' && state in ['cash', 'cash-equivalent']` - the explicit, admin-assigned
+//      classification path (see AccountStates above) for any account the CSV import didn't cover,
+//      e.g. a new cash/bank account created later through the app's own Create Account screen,
+//      which has no `parentGroupNameEn` (that field is only ever set by the CSV import).
+// Every consumer (the `accounts/cash-equivalent-eligible` list endpoint, every model's own
+// pre-save backstop, every request validator's fast pre-check) calls this one function - never
+// its own copy of the condition - so the dropdown and the backend validation can never disagree.
+exports.isPaymentAccountEligible = function isPaymentAccountEligible(account) {
+  if (!account) return false;
+  if (account.type !== 'asset') return false;
+  if (account.parentGroupNameEn === exports.CashEquivalentParentGroupName) return true;
+  return ['cash', 'cash-equivalent'].includes(account.state);
+};
 
 exports.JournalEntryStatus = ['draft', 'posted', 'reversed'];
 

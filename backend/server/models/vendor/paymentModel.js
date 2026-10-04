@@ -1,6 +1,7 @@
 const { Schema, model } = require('mongoose');
 const SalesOrder = require('../sales/salesOrderModel');
 const { PaymentMethods } = require('../../utils/appConstant');
+const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 const Warehouse = require('../inventory/warehouseModel');
 const Expense = require('../expense/expenseModel');
 // Explicit require (not just the string `ref:` name) - mirrors salesOrderModel.js's convention for
@@ -76,7 +77,7 @@ paymentSchema.pre('save', async function (next) {
         const ChartOfAccount = this.model('ChartOfAccount');
         const account = await ChartOfAccount.findById(this.paymentAccount).session(session);
         if (!account) throw new Error('The selected payment account does not exist.');
-        if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+        if (!isPaymentAccountEligible(account)) {
           throw new Error('The selected payment account must be a Cash or Cash Equivalent account.');
         }
       }

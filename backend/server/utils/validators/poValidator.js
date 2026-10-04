@@ -6,6 +6,7 @@ const Warehouse = require('../../models/inventory/warehouseModel');
 const Project = require('../../models/project/projectModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { vatAndWithholdingTaxValidators } = require('./taxValidators');
+const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 
 const createPurchaseOrderValidate = [
     body('vendorId').isMongoId().withMessage('Vendor ID must be a mongoID').custom(value => {
@@ -37,7 +38,7 @@ const createPurchaseOrderValidate = [
         .custom(async value => {
             const account = await ChartOfAccount.findById(value);
             if (!account) throw new Error('The selected payment account does not exist');
-            if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+            if (!isPaymentAccountEligible(account)) {
                 throw new Error('The selected payment account must be a Cash or Cash Equivalent account');
             }
             return true;

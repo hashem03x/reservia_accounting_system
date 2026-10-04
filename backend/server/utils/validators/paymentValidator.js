@@ -3,6 +3,7 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 
 const { PaymentMethods } = require('../appConstant');
+const { isPaymentAccountEligible } = require('../accountingConstants');
 
 // Required going forward (docs section "Payment Methods Must Come From Chart of Accounts") - the
 // old hardcoded `paymentMethod` enum below is kept only as an optional field for any caller that
@@ -17,7 +18,7 @@ const paymentAccountValidator = check('paymentAccount')
   .custom(async value => {
     const account = await ChartOfAccount.findById(value);
     if (!account) throw new Error('The selected payment account does not exist');
-    if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+    if (!isPaymentAccountEligible(account)) {
       throw new Error('The selected payment account must be a Cash or Cash Equivalent account');
     }
     return true;

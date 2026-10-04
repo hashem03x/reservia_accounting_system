@@ -6,6 +6,7 @@ const userModel = require('../../models/userModel');
 const Project = require('../../models/project/projectModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { SalesOrderPaymentMethods } = require('../../utils/appConstant');
+const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 const { vatAndWithholdingTaxValidators } = require('./taxValidators');
 
 const createCashierSalesOrderValidator = [
@@ -57,7 +58,7 @@ const createCashierSalesOrderValidator = [
 		.custom(async value => {
 			const account = await ChartOfAccount.findById(value);
 			if (!account) throw new Error('The selected payment account does not exist');
-			if (account.type !== 'asset' || account.parentGroupNameEn !== 'Cash & Cash Equivalents') {
+			if (!isPaymentAccountEligible(account)) {
 				throw new Error('The selected payment account must be a Cash or Cash Equivalent account');
 			}
 			return true;

@@ -11,6 +11,7 @@ const {
 } = require('../../utils/helper');
 const { generateSalesOrderCode } = require('../../utils/helper');
 const { SalesOrderPaymentMethods } = require('../../utils/appConstant');
+const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 // Explicit require (not just the string `ref:` name) - mirrors journalEntryModel.js's convention
 // for every model this schema's hooks look up via `this.model(...)`.
 require('../accounting/chartOfAccountModel');
@@ -153,7 +154,7 @@ salesOrderSchema.pre('save', async function (next) {
         const ChartOfAccount = this.model('ChartOfAccount');
         const account = await ChartOfAccount.findById(this.paymentAccount).session(this.$session());
         if (!account) throw new Error('The selected payment account does not exist.');
-        if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+        if (!isPaymentAccountEligible(account)) {
           throw new Error('The selected payment account must be a Cash or Cash Equivalent account.');
         }
       } else if (this.paymentAccount) {

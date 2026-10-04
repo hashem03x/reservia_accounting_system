@@ -3,6 +3,7 @@ const { Schema, model } = require('mongoose');
 // projectModel.js's existing convention for every model this schema's hooks populate or
 // cross-validate against.
 const Project = require('../project/projectModel');
+const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 require('../accounting/chartOfAccountModel');
 
 // A single consumption (or reversal of a consumption) of an Advanced Payment - this is the audit
@@ -59,10 +60,13 @@ const advancedPaymentSchema = new Schema(
     currency: { type: String, trim: true, default: null },
     // The Cash/Cash-Equivalent ChartOfAccount this advance was actually received into/paid from -
     // mirrors salesOrderModel.js/purchaseOrder.js/paymentModel.js's identical `paymentAccount`
-    // field+validation convention. Optional (legacy advances created before this field existed have
-    // none) - the automatic accounting engine's ADVANCE_PAYMENT_RECEIVED_CUSTOMER/
-    // ADVANCE_PAYMENT_PAID_VENDOR journal entries simply don't post for an advance with no
-    // paymentAccount (see services/accounting/accountingEventService.js) rather than guessing one.
+    // field+validation convention. Required for every NEW advance (docs section "Advanced Payment
+    // Payment Method") - the automatic accounting engine's ADVANCE_PAYMENT_RECEIVED_CUSTOMER/
+    // ADVANCE_PAYMENT_PAID_VENDOR journal entries need a real account to post the cash/bank side of
+    // the entry against (see services/accounting/accountingEventService.js). Not required at the
+    // schema level with Mongoose's own `required: true` (which would also reject `null` on legacy
+    // documents being re-saved for an unrelated reason) - enforced instead in the pre('validate')
+    // hook below, scoped to `this.isNew`, so advances created before this field existed stay valid.
     paymentAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
     reference: { type: String, trim: true, default: null },
     notes: { type: String, trim: true, default: null },
@@ -130,6 +134,13 @@ advancedPaymentSchema.pre('validate', async function (next) {
       this.remainingAmount = this.amount;
     }
 
+    // Required for every new advance (see the field's own comment above) - checked here, not just
+    // via Mongoose's `required`, so a legacy document re-saved for an unrelated reason is never
+    // retroactively rejected for a field it predates.
+    if (this.isNew && !this.paymentAccount) {
+      throw new Error('A payment method (Cash or Cash Equivalent account) is required.');
+    }
+
     // Backstop (mirrors salesOrderModel.js/purchaseOrder.js/paymentModel.js's identical check) -
     // never trust that `paymentAccount` is actually eligible just because a request validator
     // approved it at some earlier point.
@@ -138,7 +149,7 @@ advancedPaymentSchema.pre('validate', async function (next) {
       const accountId = this.paymentAccount?._id || this.paymentAccount;
       const account = await ChartOfAccount.findById(accountId).session(this.$session());
       if (!account) throw new Error('The selected payment account does not exist.');
-      if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+      if (!isPaymentAccountEligible(account)) {
         throw new Error('The selected payment account must be a Cash or Cash Equivalent account.');
       }
     }

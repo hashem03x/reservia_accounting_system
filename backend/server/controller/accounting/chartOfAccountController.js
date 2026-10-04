@@ -6,6 +6,7 @@ const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { getAccountBalance, getTrialBalance } = require('../../services/accounting/generalLedgerService');
 const { getNextSortOrder } = require('../../services/accounting/chartOfAccountOrderingService');
+const { CashEquivalentParentGroupName } = require('../../utils/accountingConstants');
 
 const createAccount = asyncHandler(async (req, res, next) => {
   try {
@@ -56,14 +57,17 @@ const getCogsEligibleAccounts = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Eligible average-cost accounts retrieved successfully', true, accounts));
 });
 
-// Accounts selectable as a Payment Method (Sales/Purchase Orders, Payments) - restricted to
-// asset-type accounts explicitly classified `state: 'cash'` or `state: 'cash-equivalent'` (see
-// accountingConstants.js#AccountStates) - never a name/label match against "Cash"/"Bank", and
-// never auto-inferred from an account's `parentGroupNameEn` CSV label. An admin must explicitly
-// classify an account via Edit Account before it becomes payment-eligible (docs section "Payment
-// Methods Must Come From Chart of Accounts").
+// Accounts selectable as a Payment Method (Sales/Purchase Orders, Payments, Advanced Payments) -
+// the query mirrors `isPaymentAccountEligible` exactly (same two signals, same OR) rather than
+// calling it per-document, since this needs to run as a single indexed Mongo query, not a JS
+// filter over every account - see accountingConstants.js#isPaymentAccountEligible for why both
+// signals exist and which one every real imported account actually carries today.
 const getCashEquivalentAccounts = asyncHandler(async (req, res) => {
-  const accounts = await ChartOfAccount.find({ type: 'asset', parentGroupNameEn: 'Cash & Cash Equivalents', isActive: true }).sort({ sortOrder: 1, code: 1 });
+  const accounts = await ChartOfAccount.find({
+    type: 'asset',
+    isActive: true,
+    $or: [{ parentGroupNameEn: CashEquivalentParentGroupName }, { state: { $in: ['cash', 'cash-equivalent'] } }],
+  }).sort({ sortOrder: 1, code: 1 });
   res.status(200).json(apiResponse('Eligible payment-method accounts retrieved successfully', true, accounts));
 });
 
