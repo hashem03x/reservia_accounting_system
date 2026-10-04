@@ -11,6 +11,8 @@ const PO = require('../../models/vendor/purchaseOrder');
 const Product = require('../../models/inventory/productModel');
 const factory = require('../handlersFactory');
 const ApiError = require('../../utils/apiError'); // DEV_URL
+const { consumeVendorAdvancedPayment } = require('../../services/payments/advancedPaymentService');
+const { postPurchaseOrderJournalEntries, postPurchaseOrderAdvanceAppliedJE } = require('../../services/accounting/accountingEventService');
 
 // Applies a PO's items to the products they reference: recomputes each product's moving-average
 // cost (using stock levels BEFORE this purchase, same formula as before) and increments its stock
@@ -85,16 +87,39 @@ exports.createPO = asyncHandler(async (req, res, next) => {
       items,
       project: project || null,
       paymentMethod: paymentMethod || null,
-      paymentAccount: paymentAccount || null,
+      paymentAccount: paymentMethod === 'account' ? paymentAccount || null : null,
       vatPercentage,
       withholdingTaxPercentage,
       createdBy: req.user._id,
     });
 
+    // Vendor Advanced Payment: never trust a client-submitted amount (mirrors
+    // salesOrderCreation.service.js's identical rule) - the consumed amount always comes from the
+    // live AdvancedPayment balance, inside this same transaction.
+    let consumedAdvanceAmount = null;
+    if (paymentMethod === 'advanced_payment') {
+      const { advancedPaymentId, consumedAmount } = await consumeVendorAdvancedPayment({
+        vendor: vendorId,
+        purchaseOrderId: purchaseOrder._id,
+        session,
+      });
+      purchaseOrder.advancedPayment = advancedPaymentId;
+      purchaseOrder.paidAmount = consumedAmount;
+      consumedAdvanceAmount = consumedAmount;
+    }
+
     await purchaseOrder.save({ session });
 
     // Recompute moving-average cost and increment stock for every product this PO touches.
     await applyPurchaseToProducts(purchaseOrder, warehouseId, session);
+
+    // Automatic accounting engine - one business event (this PO) can produce more than one
+    // JournalEntry (inventory receipt + WIP transfer, or service-to-WIP, or advance applied) - see
+    // services/accounting/accountingEventService.js.
+    await postPurchaseOrderJournalEntries(purchaseOrder, session);
+    if (consumedAdvanceAmount !== null) {
+      await postPurchaseOrderAdvanceAppliedJE(purchaseOrder, consumedAdvanceAmount, session);
+    }
 
     await session.commitTransaction();
 

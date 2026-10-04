@@ -1,5 +1,5 @@
 const { Schema, model } = require('mongoose');
-const { JournalEntryStatus, JournalEntrySources } = require('../../utils/accountingConstants');
+const { JournalEntryStatus, JournalEntrySources, AccountingActions } = require('../../utils/accountingConstants');
 
 // Explicit requires (not just string `ref:` names) for every model this schema's pre(/^find/)
 // hook populates - mirrors paymentModel.js's existing convention of requiring its ref'd models at
@@ -65,11 +65,25 @@ const journalEntrySchema = new Schema(
       enum: { values: JournalEntrySources, message: '{VALUE} is not a valid journal entry source' },
       default: 'manual',
     },
-    // Together with sourceId, this is the idempotency key for system-generated entries (e.g.
-    // PROJECT_CREATION + a project's _id) - see the partial unique index below. Free-text/manual
-    // entries never set these.
+    // Together with sourceId (and accountingAction below), this is the idempotency key for
+    // system-generated entries (e.g. PROJECT_CREATION + a project's _id) - see the partial unique
+    // index below. Free-text/manual entries never set these.
     sourceType: { type: String, trim: true, default: null },
     sourceId: { type: Schema.Types.ObjectId, default: null },
+    // Which specific automatic accounting action this entry represents (see
+    // accountingConstants.js#AccountingActions / services/accounting/accountingEventService.js).
+    // A single business event (one sourceType+sourceId) can legitimately produce MORE than one
+    // JournalEntry - e.g. a Purchase Order receipt produces both a PO_INVENTORY_RECEIPT entry and
+    // a separate PO_INVENTORY_TO_WIP entry. `accountingAction` is what distinguishes them, so the
+    // idempotency index below (sourceType+sourceId+accountingAction) allows exactly one JE per
+    // *action*, not per source document. Never set on manual entries or on the two legacy
+    // automatic flows (project_creation, fixed_asset_purchase), which still only ever produce one
+    // JE each and so never needed this disambiguator.
+    accountingAction: {
+      type: String,
+      enum: { values: [...AccountingActions, null], message: '{VALUE} is not a valid accounting action' },
+      default: null,
+    },
     reference: { type: String, trim: true },
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
     status: {
@@ -101,10 +115,25 @@ journalEntrySchema.index({ date: 1 });
 journalEntrySchema.index({ project: 1 });
 journalEntrySchema.index({ status: 1 });
 journalEntrySchema.index({ source: 1 });
-// Idempotency: at most one journal entry per (sourceType, sourceId) pair - e.g. only one
-// PROJECT_CREATION entry can ever exist for a given project, even under a duplicate/retried
-// request. Partial so manual entries (sourceId: null) never collide with each other.
-journalEntrySchema.index({ sourceType: 1, sourceId: 1 }, { unique: true, partialFilterExpression: { sourceId: { $type: 'objectId' } } });
+// Idempotency, legacy single-JE-per-source flows (project_creation, fixed_asset_purchase): at most
+// one journal entry per (sourceType, sourceId) pair when no accountingAction is set. Partial so
+// manual entries (sourceId: null) never collide with each other, and so it never conflicts with the
+// newer per-action index below (which only applies once accountingAction is actually set).
+journalEntrySchema.index(
+  { sourceType: 1, sourceId: 1 },
+  { unique: true, partialFilterExpression: { sourceId: { $type: 'objectId' }, accountingAction: null } }
+);
+// Idempotency, the automatic accounting engine (docs section "One business event may create
+// multiple automatic journal entries"): at most one journal entry per (sourceType, sourceId,
+// accountingAction) triple. This is what allows a single business event (one sourceId) to
+// legitimately produce several JEs - one per distinct accountingAction - while still blocking a
+// genuine duplicate of the *same* action (e.g. processing the same Purchase Order receipt twice
+// must not create two PO_INVENTORY_RECEIPT entries, but creating both PO_INVENTORY_RECEIPT and
+// PO_INVENTORY_TO_WIP for that same receipt is exactly the intended behavior).
+journalEntrySchema.index(
+  { sourceType: 1, sourceId: 1, accountingAction: 1 },
+  { unique: true, partialFilterExpression: { sourceId: { $type: 'objectId' }, accountingAction: { $type: 'string' } } }
+);
 
 const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 

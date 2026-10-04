@@ -221,16 +221,55 @@ test('PurchaseOrder: paymentMethod "account" with an eligible Cash account succe
   );
 });
 
-test('PurchaseOrder: "advanced_payment" is not a valid paymentMethod (not implemented for vendor-side PO)', async () => {
+test('PurchaseOrder: "advanced_payment" is now a valid paymentMethod (vendor-side Advanced Payment consumption)', async () => {
+  const order = await PurchaseOrder.create({
+    vendorId: vendor._id,
+    warehouseId: warehouse._id,
+    paymentMethod: 'advanced_payment',
+    items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
+  });
+  assert.equal(order.paymentMethod, 'advanced_payment');
+  assert.equal(order.paymentAccount, null);
+});
+
+test('PurchaseOrder: paymentAccount cannot be set unless paymentMethod is "account"', async () => {
   await assert.rejects(
     () =>
       PurchaseOrder.create({
         vendorId: vendor._id,
         warehouseId: warehouse._id,
         paymentMethod: 'advanced_payment',
+        paymentAccount: cashAccount._id,
         items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
       }),
-    /not a valid payment method/
+    /paymentAccount can only be set when paymentMethod is "account"/
+  );
+});
+
+test('PurchaseOrder: advancedPayment cannot be set unless paymentMethod is "advanced_payment"', async () => {
+  await assert.rejects(
+    () =>
+      PurchaseOrder.create({
+        vendorId: vendor._id,
+        warehouseId: warehouse._id,
+        paymentMethod: 'account',
+        paymentAccount: cashAccount._id,
+        advancedPayment: new mongoose.Types.ObjectId(),
+        items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
+      }),
+    /advancedPayment can only be set when paymentMethod is "advanced_payment"/
+  );
+});
+
+test('PurchaseOrder: item costAccount must be a "cogs"-type account when set', async () => {
+  await assert.rejects(
+    () =>
+      PurchaseOrder.create({
+        vendorId: vendor._id,
+        warehouseId: warehouse._id,
+        items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1, costAccount: cashAccount._id }],
+      }),
+    /not eligible as an item cost account/
   );
 });
 

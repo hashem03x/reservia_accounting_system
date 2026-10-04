@@ -3,6 +3,7 @@ const Payment = require('../../models/vendor/paymentModel');
 const factory = require('../handlersFactory');
 const ApiError = require('../../utils/apiError');
 const salesOrderModel = require('../../models/sales/salesOrderModel');
+const { postPurchasePaymentRecordedJE, postSalesPaymentRecordedJE } = require('../../services/accounting/accountingEventService');
 
 exports.createPurchasePayment = async (req, res, next) => {
   const { warehouseId, purchaseOrderId, amountPaid, paymentMethod, paymentAccount, notes } = req.body;
@@ -35,6 +36,11 @@ exports.createPurchasePayment = async (req, res, next) => {
     });
 
     await payment.save({ session });
+
+    // Automatic accounting engine (PO_PAYMENT_RECORDED) - no-ops if this payment has no
+    // paymentAccount (legacy string paymentMethod payments aren't posted, see
+    // accountingEventService.js).
+    await postPurchasePaymentRecordedJE(payment, session);
 
     const updatePurchaseOrder = await PO.findById(purchaseOrderId).session(session);
 
@@ -81,6 +87,10 @@ exports.createSalesPayment = async (req, res, next) => {
     });
 
     await payment.save({ session });
+
+    // Automatic accounting engine (SO_PAYMENT_RECORDED) - no-ops if this payment has no
+    // paymentAccount.
+    await postSalesPaymentRecordedJE(payment, session);
 
     const updateSalesOrder = await salesOrderModel.findById(salesOrderId).session(session);
 

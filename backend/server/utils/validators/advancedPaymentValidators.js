@@ -2,6 +2,7 @@ const { check } = require('express-validator');
 const User = require('../../models/userModel');
 const Vendor = require('../../models/vendor/vendor');
 const Project = require('../../models/project/projectModel');
+const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 
 // Fast pre-check, mirroring projectValidators.js's deliveryNotBeforeStart convention - the model's
@@ -55,6 +56,23 @@ const createAdvancedPaymentValidators = [
   check('project').if((value, { req }) => req.body.type === 'vendor' && value).isMongoId().withMessage('Invalid project id'),
 
   check('amount').notEmpty().withMessage('Amount is required').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
+
+  // Optional - the automatic accounting engine (ADVANCE_PAYMENT_RECEIVED_CUSTOMER/
+  // ADVANCE_PAYMENT_PAID_VENDOR, see accountingEventService.js) only posts a journal entry when
+  // this is set. Fast pre-check mirroring poValidator.js's identical paymentAccount check - the
+  // model's own pre('validate') hook is the real backstop.
+  check('paymentAccount')
+    .optional({ nullable: true })
+    .isMongoId()
+    .withMessage('Payment account ID must be a mongoID')
+    .custom(async value => {
+      const account = await ChartOfAccount.findById(value);
+      if (!account) throw new Error('The selected payment account does not exist');
+      if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+        throw new Error('The selected payment account must be a Cash or Cash Equivalent account');
+      }
+      return true;
+    }),
 
   check('currency').optional({ nullable: true }).isString().trim().isLength({ max: 10 }),
   check('reference').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),

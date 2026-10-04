@@ -25,10 +25,9 @@ const createPurchaseOrderValidate = [
         return true;
     }),
 
-    // Optional - mirrors Sales Order's 'account' case exactly (docs section "Payment Methods Must
-    // Come From Chart of Accounts"). No 'advanced_payment' option here - see purchaseOrder.js's
-    // `paymentMethod` field comment.
-    body('paymentMethod').optional({ nullable: true }).isIn(['account']).withMessage('Payment method must be "account"'),
+    // Optional - mirrors Sales Order's 'account'/'advanced_payment' cases (docs section "Payment
+    // Methods Must Come From Chart of Accounts" / "Vendor Advanced Payments").
+    body('paymentMethod').optional({ nullable: true }).isIn(['account', 'advanced_payment']).withMessage('Payment method must be "account" or "advanced_payment"'),
     body('paymentAccount')
         .if((value, { req }) => req.body.paymentMethod === 'account')
         .notEmpty()
@@ -51,6 +50,11 @@ const createPurchaseOrderValidate = [
     body('items.*.productId').isMongoId().withMessage('Product ID must be a mongoID'),
     body('items.*.unitPrice').isFloat({ gt: 0 }).withMessage('Price must be a positive number'),
     body('items.*.starterQuantity').isInt({ gt: 0 }).withMessage('Quantity must be a positive integer'),
+    // Optional fast pre-check - the real backstop (every service item needs one when the PO has a
+    // project, and it must be a `cogs`-type account) lives in purchaseOrder.js's pre('save') hook
+    // and accountingEventService.js#postPurchaseOrderJournalEntries, since both require knowing each
+    // item's Product.type (service vs. physical), which isn't known at validation time here.
+    body('items.*.costAccount').optional({ nullable: true }).isMongoId().withMessage('Cost account ID must be a mongoID'),
 
     validatorMiddleware
 ];

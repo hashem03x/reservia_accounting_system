@@ -3,6 +3,7 @@ const { Schema, model } = require('mongoose');
 // projectModel.js's existing convention for every model this schema's hooks populate or
 // cross-validate against.
 const Project = require('../project/projectModel');
+require('../accounting/chartOfAccountModel');
 
 // A single consumption (or reversal of a consumption) of an Advanced Payment - this is the audit
 // trail required by docs section "Advanced Payment - Audit/History": `remainingAmount` alone
@@ -56,6 +57,13 @@ const advancedPaymentSchema = new Schema(
     // `currency` field is also a plain string, not a dedicated Currency collection/enum - no such
     // collection exists in Reservia today) - not hardcoded to a single currency.
     currency: { type: String, trim: true, default: null },
+    // The Cash/Cash-Equivalent ChartOfAccount this advance was actually received into/paid from -
+    // mirrors salesOrderModel.js/purchaseOrder.js/paymentModel.js's identical `paymentAccount`
+    // field+validation convention. Optional (legacy advances created before this field existed have
+    // none) - the automatic accounting engine's ADVANCE_PAYMENT_RECEIVED_CUSTOMER/
+    // ADVANCE_PAYMENT_PAID_VENDOR journal entries simply don't post for an advance with no
+    // paymentAccount (see services/accounting/accountingEventService.js) rather than guessing one.
+    paymentAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
     reference: { type: String, trim: true, default: null },
     notes: { type: String, trim: true, default: null },
     status: {
@@ -122,6 +130,19 @@ advancedPaymentSchema.pre('validate', async function (next) {
       this.remainingAmount = this.amount;
     }
 
+    // Backstop (mirrors salesOrderModel.js/purchaseOrder.js/paymentModel.js's identical check) -
+    // never trust that `paymentAccount` is actually eligible just because a request validator
+    // approved it at some earlier point.
+    if (this.paymentAccount) {
+      const ChartOfAccount = this.model('ChartOfAccount');
+      const accountId = this.paymentAccount?._id || this.paymentAccount;
+      const account = await ChartOfAccount.findById(accountId).session(this.$session());
+      if (!account) throw new Error('The selected payment account does not exist.');
+      if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+        throw new Error('The selected payment account must be a Cash or Cash Equivalent account.');
+      }
+    }
+
     next();
   } catch (error) {
     next(error);
@@ -145,6 +166,7 @@ advancedPaymentSchema.pre(/^find/, function (next) {
   this.populate({ path: 'customer', select: 'name email phone type customerNumber' })
     .populate({ path: 'vendor', select: 'name contact' })
     .populate({ path: 'project', select: 'projectNumber name customer' })
+    .populate({ path: 'paymentAccount', select: 'code name nameAr' })
     .populate({ path: 'createdBy', select: 'name' })
     .populate({ path: 'usageHistory.salesOrder', select: 'code totalAmount paidAmount' });
   next();

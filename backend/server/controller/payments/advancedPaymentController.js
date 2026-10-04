@@ -1,9 +1,11 @@
+const mongoose = require('mongoose');
 const asyncHandler = require('express-async-handler');
 const factory = require('../handlersFactory');
 const AdvancedPayment = require('../../models/payments/advancedPaymentModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { getAvailableCustomerAdvancedPayment } = require('../../services/payments/advancedPaymentService');
+const { postAdvancedPaymentJournalEntry } = require('../../services/accounting/accountingEventService');
 
 const createAdvancedPayment = asyncHandler(async (req, res) => {
   // remainingAmount/status are always server-derived (advancedPaymentModel.js) - stripped here so
@@ -11,7 +13,17 @@ const createAdvancedPayment = asyncHandler(async (req, res) => {
   // sortOrder.
   const { remainingAmount, status, usageHistory, ...body } = req.body;
 
-  const advancedPayment = await AdvancedPayment.create({ ...body, createdBy: req.user._id });
+  // Transactional so the AdvancedPayment and its automatic journal entry (ADVANCE_PAYMENT_RECEIVED_
+  // CUSTOMER/ADVANCE_PAYMENT_PAID_VENDOR, see accountingEventService.js) either both commit or
+  // neither does.
+  const session = await mongoose.startSession();
+  let advancedPayment;
+  await session.withTransaction(async () => {
+    [advancedPayment] = await AdvancedPayment.create([{ ...body, createdBy: req.user._id }], { session });
+    await postAdvancedPaymentJournalEntry(advancedPayment, session);
+  });
+  session.endSession();
+
   res.status(201).json(apiResponse('Advanced payment created successfully', true, advancedPayment));
 });
 

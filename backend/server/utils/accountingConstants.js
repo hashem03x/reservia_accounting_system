@@ -35,7 +35,41 @@ exports.JournalEntryStatus = ['draft', 'posted', 'reversed'];
 // Mongoose re-validates every enum path on save, including unmodified ones, so removing a value
 // still in use by historical documents would break something as unrelated as reversing one of
 // them. `fixed_asset_purchase` is still actively used by the optional fixed-asset journal entry.
-exports.JournalEntrySources = ['manual', 'project_creation', 'fixed_asset_purchase'];
+// 'automatic' is for the automatic accounting engine (see services/accounting/accountingEventService.js)
+// - system-generated entries triggered by a real business event (an Advanced Payment, a Purchase/
+// Sales Order, a Payment, a Project's executed-percentage update), never typed by hand through the
+// Journal Entries form. Kept distinct from 'manual' specifically so the mandatory-project rule
+// (journalEntryModel.js RULE 2, scoped to `source === 'manual'`) never applies to these - most of
+// them legitimately have no project (e.g. a customer advance payment not yet tied to one).
+exports.JournalEntrySources = ['manual', 'project_creation', 'fixed_asset_purchase', 'automatic'];
+
+// Every distinct automatic accounting action the engine can post - see
+// services/accounting/accountingEventService.js and docs/entities/automatic-accounting.md for the
+// full Business Event -> Accounting Action -> Journal Entry mapping (derived from
+// "AUTOMATIC ENTERIES.xlsx"). A single business event may resolve to MORE than one of these (e.g.
+// a Purchase Order receipt resolves to both PO_INVENTORY_RECEIPT and PO_INVENTORY_TO_WIP) - each
+// one is its own independent JournalEntry, identified by (sourceType, sourceId, accountingAction).
+exports.AccountingActions = [
+  'ADVANCE_PAYMENT_RECEIVED_CUSTOMER',
+  'ADVANCE_PAYMENT_PAID_VENDOR',
+  'PO_INVENTORY_RECEIPT',
+  'PO_INVENTORY_TO_WIP',
+  'PO_SERVICE_TO_WIP',
+  'PO_SUPPLIER_ADVANCE_APPLIED',
+  'PO_PAYMENT_RECORDED',
+  'SO_CUSTOMER_ADVANCE_APPLIED',
+  'SO_PAYMENT_RECORDED',
+  'PROJECT_REVENUE_RECOGNITION',
+  'PROJECT_COST_RECOGNITION',
+];
+
+// The business-document type that triggered an automatic entry - paired with sourceId (that
+// document's _id) and accountingAction to form the full idempotency key (see
+// journalEntryModel.js's compound unique index). Distinct from JournalEntrySourceTypes below,
+// which is the older (pre-existing) idempotency-key vocabulary for the two legacy automatic flows
+// (project creation, fixed asset purchase) - kept separate rather than merged, since those two
+// still only ever produce exactly one JE each and don't need an `accountingAction` to disambiguate.
+exports.AccountingSourceTypes = ['ADVANCED_PAYMENT', 'PO', 'SO', 'PAYMENT', 'PROJECT'];
 
 exports.ProjectStatuses = ['active', 'completed', 'cancelled', 'on_hold'];
 
@@ -72,4 +106,40 @@ exports.JournalEntrySourceTypes = {
   PROJECT_CREATION: 'PROJECT_CREATION',
   FIXED_ASSET_PURCHASE: 'FIXED_ASSET_PURCHASE',
   MANUAL: 'MANUAL',
+};
+
+// Real account codes (from the actual imported Chart of Accounts - see
+// scripts/importReversiaAccountingData.js) the automatic accounting engine posts to. Deliberately
+// NOT reusing DefaultAccountCodes above - that map predates the CSV import and still holds
+// placeholder codes (e.g. '1100') that don't match any real imported account. Three of these
+// (suppliers, accountsReceivableProjects, revenue) were confirmed against the actual Chart of
+// Accounts after the source "AUTOMATIC ENTERIES.xlsx" was found to reference the wrong codes for
+// them (30000001, 11000011, 40000001 respectively - each an existing, unrelated real account) -
+// see the mapping doc for the full conflict writeup.
+exports.AutomaticJournalAccountCodes = {
+  customerAdvancesPayable: '31000004', // Advance Payments from Customers (liability)
+  advanceToSuppliers: '11000006', // Advance Payments to Suppliers (asset)
+  materialsInventory: '11000007', // Materials Inventory (asset)
+  inputVat: '11000017', // Egyptian Tax Authority - VAT (asset, input VAT receivable)
+  suppliers: '31000001', // Suppliers - Construction Materials (liability) - NOT 30000001
+  withholdingTaxPayable: '31000012', // Withholding Taxes Payable (liability)
+  wipRawMaterials: '11000009', // PUC - Raw Materials (asset)
+  wipLabourWages: '11000010', // PUC - Labour Wages (asset)
+  wipEngineeringDesign: '11000011', // PUC - Engineering & Design (asset)
+  accountsReceivableProjects: '11000004', // Accounts Receivable (Projects) (asset) - NOT 11000011
+  withholdingTaxReceivable: '11000019', // Egyptian Tax Authority - Withholding & Addition (asset)
+  vatPayable: '31000010', // VAT Payable (liability)
+  revenue: '60000001', // Revenue (revenue) - generic, until a dedicated project-execution-revenue account exists
+};
+
+// Maps each `cogs`-type Chart of Accounts code to its corresponding Projects-Under-Construction
+// (WIP) account code, for PROJECT_COST_RECOGNITION (Dr cogs account / Cr matching WIP account, per
+// Project.averageCostLines). Code-based, not name-matched (see this file's AccountTypes comment
+// above for why this codebase avoids string-matching display names for structural decisions).
+// Only 3 pairs exist in the current Chart of Accounts - extend this map if more COGS/WIP account
+// pairs are added later.
+exports.CogsToWipAccountCodeMap = {
+  '50000001': '11000009', // Raw Materials -> PUC Raw Materials
+  '50000002': '11000010', // Labour Wages -> PUC Labour Wages
+  '50000003': '11000011', // Engineering & Design -> PUC Engineering & Design
 };

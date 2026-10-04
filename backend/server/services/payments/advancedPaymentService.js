@@ -83,4 +83,50 @@ async function restoreAdvancedPaymentForSalesOrder({ advancedPaymentId, salesOrd
   await advance.save({ session });
 }
 
-module.exports = { getAvailableCustomerAdvancedPayment, consumeCustomerAdvancedPayment, restoreAdvancedPaymentForSalesOrder };
+/**
+ * The single, currently-available vendor Advanced Payment for a given vendor, or null. Read-only
+ * mirror of getAvailableCustomerAdvancedPayment above, for the Purchase Order side.
+ */
+async function getAvailableVendorAdvancedPayment(vendorId, session) {
+  const AdvancedPayment = require('../../models/payments/advancedPaymentModel'); // eslint-disable-line global-require
+
+  let query = AdvancedPayment.findOne({
+    type: 'vendor',
+    vendor: vendorId,
+    status: { $ne: 'cancelled' },
+    remainingAmount: { $gt: 0 },
+  }).sort({ createdAt: 1 });
+
+  if (session) query = query.session(session);
+  return query;
+}
+
+/**
+ * Vendor-side mirror of consumeCustomerAdvancedPayment - atomically consumes the entire remaining
+ * balance of the oldest available vendor Advanced Payment, recording the consumption against
+ * `purchaseOrderId`. Must be called inside the same transaction as the Purchase Order write (docs
+ * section "PO_SUPPLIER_ADVANCE_APPLIED").
+ *
+ * @returns {Promise<{ advancedPaymentId: ObjectId, consumedAmount: number }>}
+ */
+async function consumeVendorAdvancedPayment({ vendor, purchaseOrderId, session }) {
+  const advance = await getAvailableVendorAdvancedPayment(vendor, session);
+  if (!advance) {
+    throw new ApiError('No available advanced payment exists for this vendor.', 400);
+  }
+
+  const consumedAmount = advance.remainingAmount;
+  advance.remainingAmount = 0;
+  advance.usageHistory.push({ purchaseOrder: purchaseOrderId, amountConsumed: consumedAmount, date: new Date() });
+  await advance.save({ session });
+
+  return { advancedPaymentId: advance._id, consumedAmount };
+}
+
+module.exports = {
+  getAvailableCustomerAdvancedPayment,
+  consumeCustomerAdvancedPayment,
+  restoreAdvancedPaymentForSalesOrder,
+  getAvailableVendorAdvancedPayment,
+  consumeVendorAdvancedPayment,
+};

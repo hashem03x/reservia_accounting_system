@@ -1,8 +1,9 @@
 const { Schema, model } = require('mongoose');
 const { generatePurchaseOrderCode } = require('../../utils/helper');
-// Explicit require (not just the string `ref:` name) - mirrors salesOrderModel.js's convention for
-// every model this schema's hooks look up via `this.model(...)`.
+// Explicit requires (not just the string `ref:` names) - mirrors salesOrderModel.js's convention
+// for every model this schema's hooks look up via `this.model(...)` or populate.
 require('../accounting/chartOfAccountModel');
+require('../payments/advancedPaymentModel');
 
 const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -24,13 +25,16 @@ const purchaseOrderSchema = new Schema(
     // (unlike SalesOrder.customer, a project has no concept of "its vendor"), so unlike the Sales
     // Order form this is never filtered down to a subset of projects.
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
-    // Mirrors SalesOrder's 'account' case exactly (docs section "Payment Methods Must Come From
-    // Chart of Accounts") - 'advanced_payment' is deliberately NOT a valid value here. Vendor-side
-    // Advanced Payment consumption was explicitly deferred as a future enhancement when the
-    // Advanced Payment module was first built (see services/payments/advancedPaymentService.js's
-    // header comment) - this does not implement that, only the Cash/Cash-Equivalent case.
-    paymentMethod: { type: String, enum: { values: ['account', null], message: '{VALUE} is not a valid payment method' }, default: null },
+    // Mirrors SalesOrder's 'account'/'advanced_payment' cases (docs section "Payment Methods Must
+    // Come From Chart of Accounts" / "Vendor Advanced Payments"). 'advanced_payment' consumes the
+    // vendor's existing AdvancedPayment balance (see services/payments/advancedPaymentService.js#
+    // consumeVendorAdvancedPayment) and posts PO_SUPPLIER_ADVANCE_APPLIED instead of requiring a
+    // paymentAccount.
+    paymentMethod: { type: String, enum: { values: ['account', 'advanced_payment', null], message: '{VALUE} is not a valid payment method' }, default: null },
     paymentAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
+    // Set only when paymentMethod === 'advanced_payment' - the specific vendor AdvancedPayment this
+    // order consumed, mirroring SalesOrder.advancedPayment's identical reversal-support purpose.
+    advancedPayment: { type: Schema.Types.ObjectId, ref: 'AdvancedPayment', default: null },
     items: [
       {
         // warehouseId: { type: Schema.Types.ObjectId, ref: 'Warehouse' }, // Not used so far
@@ -46,6 +50,12 @@ const purchaseOrderSchema = new Schema(
         starterSubtotal: { type: Number, min: 0 },
         returnedQuantity: { type: Number, default: 0, min: 0 },
         subtotal: { type: Number, min: 0 }, // Final Subtotal After calculating returned quantity
+        // Which WIP/COGS category this line's cost belongs to (e.g. WIP - Engineering & Design vs.
+        // WIP - Labour Wages) - required only for SERVICE items on a PO with a project set (see the
+        // pre('save') backstop below and accountingEventService.js#postPurchaseOrderJournalEntries,
+        // PO_SERVICE_TO_WIP). Physical-product items never set this - their WIP destination is
+        // always the fixed Raw Materials account, no per-line choice needed.
+        costAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
       },
     ],
     starterTotalAmount: { type: Number, min: 0 },
@@ -144,12 +154,35 @@ purchaseOrderSchema.pre('save', async function (next) {
       } else if (this.paymentAccount) {
         throw new Error('paymentAccount can only be set when paymentMethod is "account".');
       }
+
+      if (this.paymentMethod !== 'advanced_payment' && this.advancedPayment) {
+        throw new Error('advancedPayment can only be set when paymentMethod is "advanced_payment".');
+      }
     }
 
     for (const item of this.items) {
       item.unitPriceAfterDiscount = calculateUnitPriceAfterDiscount(item.itemDiscount.type, item.itemDiscount.value, item.unitPrice);
       item.starterSubtotal = calculateStarterSubtotal(item.unitPriceAfterDiscount, item.starterQuantity);
       item.subtotal = calculateSubtotal(item.unitPriceAfterDiscount, item.starterQuantity, item.returnedQuantity);
+    }
+
+    // Backstop (fast pre-check lives in poValidator.js) - every service item's costAccount, if set,
+    // must be a real `cogs`-type ChartOfAccount (see accountingEventService.js#
+    // postPurchaseOrderJournalEntries, PO_SERVICE_TO_WIP) - never trusted from the request alone.
+    if (this.isNew || this.isModified('items')) {
+      const costAccountIds = [...new Set(this.items.filter(i => i.costAccount).map(i => (i.costAccount?._id || i.costAccount).toString()))];
+      if (costAccountIds.length > 0) {
+        const ChartOfAccount = this.model('ChartOfAccount');
+        const accounts = await ChartOfAccount.find({ _id: { $in: costAccountIds } }).session(this.$session());
+        const accountsById = new Map(accounts.map(a => [a._id.toString(), a]));
+        for (const id of costAccountIds) {
+          const account = accountsById.get(id);
+          if (!account) throw new Error('One of the selected item cost accounts does not exist.');
+          if (account.type !== 'cogs') {
+            throw new Error(`Account "${account.code} - ${account.name}" is not eligible as an item cost account (must be a COGS account).`);
+          }
+        }
+      }
     }
 
     this.starterTotalAmount = calculateStarterTotalAmount(this.items);
@@ -202,6 +235,15 @@ purchaseOrderSchema.pre(/^find/, function () {
   this.populate({
     path: 'paymentAccount',
     select: 'code name nameAr',
+  });
+
+  this.populate({
+    path: 'items.costAccount',
+    select: 'code name nameAr type',
+  });
+
+  this.populate({
+    path: 'advancedPayment',
   });
 });
 

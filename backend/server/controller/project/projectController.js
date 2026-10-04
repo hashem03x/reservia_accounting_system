@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const asyncHandler = require('express-async-handler');
 const factory = require('../handlersFactory');
 const Project = require('../../models/project/projectModel');
@@ -7,6 +8,7 @@ const apiResponse = require('../../utils/apiResponse');
 const { destroyDocument } = require('../../middleware/documentUploadMiddleware');
 const { recalculateRemainingMoney } = require('../../services/project/projectAccountingService');
 const { logAccountingEvent } = require('../../utils/accountingLogger');
+const { postProjectExecutionRecognitionJEs } = require('../../services/accounting/accountingEventService');
 
 // Creating a project ONLY creates the Project document - it deliberately does NOT create any
 // journal entry (an earlier version of this app automatically posted a Dr Accounts Receivable /
@@ -76,7 +78,24 @@ const updateProject = asyncHandler(async (req, res, next) => {
   const contractValueChanged = contractValue !== undefined && contractValue !== project.contractValue;
   if (contractValue !== undefined) project.contractValue = contractValue;
 
-  await project.save();
+  // Transactional only when executedPercentage was actually sent - that's the one case where this
+  // write can also post automatic journal entries (PROJECT_REVENUE_RECOGNITION/
+  // PROJECT_COST_RECOGNITION, see accountingEventService.js), and both must commit together or not
+  // at all. Whether there's actually anything NEW to recognize (executedPercentage increased beyond
+  // the trackers) is decided inside postProjectExecutionRecognitionJEs itself - it safely no-ops
+  // otherwise. The plain-field-update case (the overwhelming majority of calls) keeps the original,
+  // simpler non-transactional save.
+  if (executedPercentage !== undefined) {
+    const session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      await project.save({ session });
+      await postProjectExecutionRecognitionJEs(project, session);
+      await project.save({ session });
+    });
+    session.endSession();
+  } else {
+    await project.save();
+  }
 
   if (contractValueChanged) {
     await recalculateRemainingMoney(project._id);
