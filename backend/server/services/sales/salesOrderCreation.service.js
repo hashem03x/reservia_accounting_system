@@ -4,7 +4,6 @@ const Product = require('../../models/inventory/productModel');
 const Project = require('../../models/project/projectModel');
 const ApiError = require('../../utils/apiError');
 const { consumeCustomerAdvancedPayment } = require('../payments/advancedPaymentService');
-const { postSalesOrderAdvanceAppliedJE } = require('../accounting/accountingEventService');
 
 // Decrements this product's stock in the sale's warehouse AND increments its totalSold in one
 // atomic update - previously two separate writes (decrement Variant.stock, then a second
@@ -137,12 +136,6 @@ async function createSalesOrder(
     }
 
     await salesOrder.save({ session });
-
-    // Automatic accounting engine (SO_CUSTOMER_ADVANCE_APPLIED) - only after the order itself has
-    // successfully saved, same transaction.
-    if (paymentMethod === 'advanced_payment') {
-      await postSalesOrderAdvanceAppliedJE(salesOrder, salesOrder.paidAmount, session);
-    }
   };
 
   try {
