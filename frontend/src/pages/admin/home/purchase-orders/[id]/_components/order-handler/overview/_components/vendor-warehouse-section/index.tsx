@@ -15,13 +15,17 @@ export default function VendorWarehouseSection() {
     <section className="flex flex-col gap-2 text-gray-600">
       <div className="flex items-center gap-1.5">
         {translate("Vendor", "البائع")}:
-        <Link
-          target="_blank"
-          to={`/${paths.admin}/${paths.home}/${paths.vendors}/${order.vendor._id}`}
-          className="font-medium text-gray-800 hover:underline"
-        >
-          {order.vendor.name}
-        </Link>
+        {order.vendor ? (
+          <Link
+            target="_blank"
+            to={`/${paths.admin}/${paths.home}/${paths.vendors}/${order.vendor._id}`}
+            className="font-medium text-gray-800 hover:underline"
+          >
+            {order.vendor.name}
+          </Link>
+        ) : (
+          <span className="font-medium text-gray-500">{translate("Deleted Vendor", "بائع محذوف")}</span>
+        )}
       </div>
       <div className="flex items-center gap-1.5">
         {translate("Warehouse", "المخزن")}:

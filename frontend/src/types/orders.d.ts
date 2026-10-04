@@ -34,7 +34,10 @@ export interface OrderFinancials {
 export type PurchaseOrder = OrderFinancials & {
   _id: string;
   code?: string; // Optional as old orders don't have a code
-  vendor: { _id: string; name: string; contact: { phone: string; email?: string } };
+  // Nullable: the backend's toJSON transform (purchaseOrder.js) now always carries this key, but as
+  // `null` when the referenced Vendor document no longer exists - same reasoning as
+  // `SalesOrder.customer`.
+  vendor: { _id: string; name: string; contact: { phone: string; email?: string } } | null;
   warehouseId: string;
   items: PurchaseOrderItem[];
   starterTotalAmount: number;

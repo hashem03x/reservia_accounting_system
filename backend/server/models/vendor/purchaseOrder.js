@@ -251,17 +251,23 @@ purchaseOrderSchema.pre(/^find/, function () {
 // Transform response format
 purchaseOrderSchema.set('toJSON', {
   transform: function (doc, ret) {
-    // Rename vendorId to vendor
-    if (ret.vendorId) {
-      ret.vendor = ret.vendorId;
+    // Rename vendorId to vendor - using `'vendorId' in ret` (not `if (ret.vendorId)`) and always
+    // normalizing to `null` is deliberate: the old `if (ret.vendorId)` truthiness check meant a
+    // dangling vendor reference (populate resolves it to `null`) silently left the `vendor` key
+    // OFF the response entirely instead of `vendor: null` - the frontend then read `undefined`
+    // where it expected an object and crashed on `.name`. Every response must carry a `vendor` key
+    // (object or null), never omit it.
+    if ('vendorId' in ret) {
+      ret.vendor = ret.vendorId ?? null;
       delete ret.vendorId;
     }
 
-    // Iterate through items to rename productId to product
+    // Iterate through items to rename productId to product - same fix, same reasoning, for a
+    // dangling product reference on a line item.
     if (ret.items) {
       ret.items = ret.items.map(item => {
-        if (item.productId) {
-          item.product = item.productId;
+        if ('productId' in item) {
+          item.product = item.productId ?? null;
           delete item.productId;
         }
 

@@ -164,7 +164,7 @@ export default function PurchaseOrders() {
                     >
                       <Table.Td className="font-semibold text-gray-800">{purchaseOrder._id}</Table.Td>
                       <Table.Td>{getWarehouseNameById(purchaseOrder.warehouseId)}</Table.Td>
-                      <Table.Td>{purchaseOrder.vendor.name}</Table.Td>
+                      <Table.Td>{purchaseOrder.vendor?.name || translate("Deleted Vendor", "بائع محذوف")}</Table.Td>
                       <Table.Td>{purchaseOrder.project?.projectNumber || "-"}</Table.Td>
                       <Table.Td>{getPaymentStatusLabel(purchaseOrder.paymentStatus, language)}</Table.Td>
                       <Table.Td className="font-semibold text-gray-800">{purchaseOrder.totalAmount.toFixed(2)}</Table.Td>

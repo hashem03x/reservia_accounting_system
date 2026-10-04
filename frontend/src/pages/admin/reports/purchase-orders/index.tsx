@@ -239,7 +239,7 @@ export default function PurchaseOrdersReport() {
                   <Table.Tr key={po._id} className="text-gray-600">
                     <Table.Td className="font-semibold text-gray-800">{po._id}</Table.Td>
                     <Table.Td>{getWarehouseNameById(po.warehouseId)}</Table.Td>
-                    <Table.Td>{po.vendor.name}</Table.Td>
+                    <Table.Td>{po.vendor?.name || translate("Deleted Vendor", "بائع محذوف")}</Table.Td>
                     <Table.Td>{getPaymentStatusLabel(po.paymentStatus, language)}</Table.Td>
                     <Table.Td className="font-semibold text-gray-800">
                       {po.totalAmount.toFixed(2)} {translations.currency}

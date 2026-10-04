@@ -70,11 +70,13 @@ export default function PrintInvoice() {
               <strong>Date & Time:</strong> {formatDateAndTime(order.createdAt, "en-US")}
             </span>
             <span>
-              <strong>Vendor Name:</strong> {order.vendor.name}
+              <strong>Vendor Name:</strong> {order.vendor?.name || "Deleted Vendor"}
             </span>
-            <span>
-              <strong>Vendor Phone:</strong> {order.vendor.contact.phone}
-            </span>
+            {order.vendor?.contact.phone && (
+              <span>
+                <strong>Vendor Phone:</strong> {order.vendor.contact.phone}
+              </span>
+            )}
           </div>
 
           <Barcode value={order.code || order._id} margin={0} width={order.code ? 2.45 : 1} height={50} fontSize={15} />
