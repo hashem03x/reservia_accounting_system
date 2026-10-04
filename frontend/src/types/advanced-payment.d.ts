@@ -19,6 +19,10 @@ export interface AdvancedPayment {
   amount: number;
   // Always server-derived - never settable from a create/edit form.
   remainingAmount: number;
+  // The Cash/Cash-Equivalent ChartOfAccount this advance was received into/paid from - required for
+  // every new advance (docs section "Advanced Payment Payment Method"). Nullable only for advances
+  // created before this field existed.
+  paymentAccount?: { _id: string; code: string; name: string; nameAr?: string | null } | null;
   currency?: string | null;
   reference?: string | null;
   notes?: string | null;

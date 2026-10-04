@@ -187,11 +187,24 @@ test('postAdvancedPaymentJournalEntry (customer): posts Dr Cash / Cr Customer Ad
   assert.equal(payableLine.credit, 5000);
 });
 
-test('postAdvancedPaymentJournalEntry: no-ops (returns null, posts nothing) when the advance has no paymentAccount', async () => {
-  const advance = await AdvancedPayment.create({ type: 'customer', customer: customer._id, project: project._id, amount: 2000 });
-  const entry = await accountingEventService.postAdvancedPaymentJournalEntry(advance, null);
+test('postAdvancedPaymentJournalEntry: no-ops (returns null, posts nothing) for a legacy advance with no paymentAccount', async () => {
+  // paymentAccount is required for every NEW advance (advancedPaymentModel.js), so this can no
+  // longer be simulated via AdvancedPayment.create() - a plain mock object (mirroring this file's
+  // `fakePO` convention) simulates a genuinely pre-existing document from before that field
+  // existed/became required, the exact case this no-op guards against. The service function only
+  // ever reads plain fields off whatever it's given, so a real Mongoose document isn't required.
+  const fakeAdvance = {
+    _id: new mongoose.Types.ObjectId(),
+    type: 'customer',
+    customer: customer._id,
+    project: project._id,
+    amount: 2000,
+    createdAt: new Date(),
+  };
+
+  const entry = await accountingEventService.postAdvancedPaymentJournalEntry(fakeAdvance, null);
   assert.equal(entry, null);
-  assert.equal(await JournalEntry.countDocuments({ sourceType: 'ADVANCED_PAYMENT', sourceId: advance._id }), 0);
+  assert.equal(await JournalEntry.countDocuments({ sourceType: 'ADVANCED_PAYMENT', sourceId: fakeAdvance._id }), 0);
 });
 
 // ===================== Purchase Order: product vs. service, single vs. multi-JE =====================

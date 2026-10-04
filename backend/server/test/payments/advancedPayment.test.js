@@ -11,6 +11,7 @@ let Vendor;
 let SalesOrder;
 let Warehouse;
 let Product;
+let ChartOfAccount;
 let consumeCustomerAdvancedPayment;
 let restoreAdvancedPaymentForSalesOrder;
 let createSalesOrder;
@@ -21,6 +22,7 @@ let customerB;
 let vendor;
 let projectA; // belongs to customerA
 let projectB; // belongs to customerB
+let cashAccount; // eligible Payment Method account - paymentAccount is now required on every AdvancedPayment
 
 // Mirrors journalEntry.test.js's transaction-support probe - standalone local MongoDB cannot run
 // multi-document transactions, so the end-to-end `createSalesOrder` (which requires its own
@@ -39,10 +41,11 @@ before(async () => {
   SalesOrder = require('../../models/sales/salesOrderModel');
   Warehouse = require('../../models/inventory/warehouseModel');
   Product = require('../../models/inventory/productModel');
+  ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
   ({ consumeCustomerAdvancedPayment, restoreAdvancedPaymentForSalesOrder } = require('../../services/payments/advancedPaymentService'));
   ({ createSalesOrder } = require('../../services/sales/salesOrderCreation.service'));
 
-  await Promise.all([AdvancedPayment.init(), Project.init(), User.init(), Vendor.init(), SalesOrder.init()]);
+  await Promise.all([AdvancedPayment.init(), Project.init(), User.init(), Vendor.init(), SalesOrder.init(), ChartOfAccount.init()]);
 
   const probeSession = await mongoose.startSession();
   try {
@@ -70,7 +73,9 @@ beforeEach(async () => {
   await Vendor.deleteMany({});
   await Warehouse.deleteMany({});
   await Product.deleteMany({});
+  await ChartOfAccount.deleteMany({});
 
+  cashAccount = await ChartOfAccount.create({ code: `CASH-${Date.now()}`, name: 'Main Cash', type: 'asset', parentGroupNameEn: 'Cash & Cash Equivalents' });
   manager = await User.create({ name: 'PM', email: `pm-${Date.now()}@example.com`, role: 'admin', type: 'online' });
   customerA = await User.create({ name: 'Customer A', email: `customer-a-${Date.now()}@example.com`, role: 'user', type: 'online' });
   customerB = await User.create({ name: 'Customer B', email: `customer-b-${Date.now()}@example.com`, role: 'user', type: 'online' });
@@ -97,14 +102,14 @@ beforeEach(async () => {
 // ===================== Advanced Payment model =====================
 
 test('creates a Customer Advanced Payment with remainingAmount = amount and status "available"', async () => {
-  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, createdBy: manager._id });
+  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, paymentAccount: cashAccount._id, createdBy: manager._id });
   assert.equal(advance.remainingAmount, 50000);
   assert.equal(advance.status, 'available');
   assert.equal(advance.vendor, null);
 });
 
 test('creates a Vendor Advanced Payment (no project required)', async () => {
-  const advance = await AdvancedPayment.create({ type: 'vendor', vendor: vendor._id, amount: 20000, createdBy: manager._id });
+  const advance = await AdvancedPayment.create({ type: 'vendor', vendor: vendor._id, amount: 20000, paymentAccount: cashAccount._id, createdBy: manager._id });
   assert.equal(advance.remainingAmount, 20000);
   assert.equal(advance.status, 'available');
   assert.equal(advance.customer, null);
@@ -145,13 +150,14 @@ test('ignores a client-supplied remainingAmount on create', async () => {
     project: projectA._id,
     amount: 50000,
     remainingAmount: 999999,
+    paymentAccount: cashAccount._id,
     createdBy: manager._id,
   });
   assert.equal(advance.remainingAmount, 50000, 'remainingAmount must always start equal to amount, never a client-supplied value');
 });
 
 test('status transitions: available -> partially_used -> fully_used as remainingAmount changes', async () => {
-  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 100000, createdBy: manager._id });
+  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 100000, paymentAccount: cashAccount._id, createdBy: manager._id });
   assert.equal(advance.status, 'available');
 
   advance.remainingAmount = 60000;
@@ -174,7 +180,7 @@ async function createMinimalSalesOrder() {
 }
 
 test('consumeCustomerAdvancedPayment consumes the full remaining amount and records usage history', async () => {
-  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, createdBy: manager._id });
+  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, paymentAccount: cashAccount._id, createdBy: manager._id });
   const salesOrder = await createMinimalSalesOrder();
 
   const { advancedPaymentId, consumedAmount } = await consumeCustomerAdvancedPayment({
@@ -200,7 +206,7 @@ test('consumeCustomerAdvancedPayment rejects when nothing is available (and tryi
     /No available advanced payment exists for this project/
   );
 
-  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, createdBy: manager._id });
+  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, paymentAccount: cashAccount._id, createdBy: manager._id });
   await consumeCustomerAdvancedPayment({ customer: customerA._id, project: projectA._id, salesOrderId: new mongoose.Types.ObjectId() });
 
   // Trying to spend the same advance a second time (the "no double spending" requirement) must
@@ -213,7 +219,7 @@ test('consumeCustomerAdvancedPayment rejects when nothing is available (and tryi
 });
 
 test('an unrelated customer cannot consume another customer\'s advance for the same project (impossible by construction - project only ever has one customer)', async () => {
-  await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, createdBy: manager._id });
+  await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, paymentAccount: cashAccount._id, createdBy: manager._id });
 
   // customerB has no advance for projectA (and could never have one, since projectA belongs to
   // customerA - AdvancedPayment creation itself would reject that combination).
@@ -224,7 +230,7 @@ test('an unrelated customer cannot consume another customer\'s advance for the s
 });
 
 test('restoreAdvancedPaymentForSalesOrder restores the consumed amount and marks the usage entry reversed', async () => {
-  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, createdBy: manager._id });
+  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, paymentAccount: cashAccount._id, createdBy: manager._id });
   const salesOrder = await createMinimalSalesOrder();
   const { advancedPaymentId } = await consumeCustomerAdvancedPayment({ customer: customerA._id, project: projectA._id, salesOrderId: salesOrder._id });
 
@@ -247,7 +253,7 @@ test('restoreAdvancedPaymentForSalesOrder is a safe no-op when the order never u
 // AdvancedPayment's find hook -> infinite recursion (hung indefinitely, never threw). A hang can't
 // be asserted directly, so this races the real query against a short timeout.
 test('AdvancedPayment <-> SalesOrder is not a circular populate (does not hang) when a Sales Order actually references an Advanced Payment', async () => {
-  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, createdBy: manager._id });
+  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, paymentAccount: cashAccount._id, createdBy: manager._id });
   const salesOrder = await createMinimalSalesOrder();
   // Simulate what a real consumption does: the order references the advance, and the advance's
   // usage history references the order back - the exact mutual-reference shape that recurses.
@@ -270,7 +276,7 @@ test('createSalesOrder with paymentMethod "advanced_payment": amount is derived 
   const warehouse = await Warehouse.create({ name: 'Main Warehouse', location: 'Cairo' });
   const service = await Product.create({ type: 'service', title: { en: 'Consulting', ar: 'استشارات' }, description: { en: 'd', ar: 'د' }, price: 999999, durationValue: 1, durationUnit: 'month' });
 
-  await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, createdBy: manager._id });
+  await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, paymentAccount: cashAccount._id, createdBy: manager._id });
 
   // The client submits a manipulated amount (999999 via the item's unitPrice/paidAmount) - the
   // server must ignore it entirely and derive the real paidAmount from the advance instead (docs
@@ -319,7 +325,7 @@ test('createSalesOrder with paymentMethod "advanced_payment" rejects a project t
   const warehouse = await Warehouse.create({ name: 'Main Warehouse 2', location: 'Cairo' });
   const service = await Product.create({ type: 'service', title: { en: 'Consulting 2', ar: 'استشارات 2' }, description: { en: 'd', ar: 'د' }, price: 500, durationValue: 1, durationUnit: 'month' });
 
-  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerB._id, project: projectB._id, amount: 20000, createdBy: manager._id });
+  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerB._id, project: projectB._id, amount: 20000, paymentAccount: cashAccount._id, createdBy: manager._id });
 
   // customerA is paired with projectB (which belongs to customerB) - must be rejected, and
   // customerB's own advance must remain completely untouched (failed creation = no side effects).

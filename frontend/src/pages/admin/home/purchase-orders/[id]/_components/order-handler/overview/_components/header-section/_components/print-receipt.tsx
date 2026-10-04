@@ -124,11 +124,13 @@ export default function PrintReceipt() {
               <strong>Date & Time:</strong> {formatDateAndTime(order.createdAt, "en-US")}
             </span>
             <span>
-              <strong>Vendor Name:</strong> {order.vendor.name}
+              <strong>Vendor Name:</strong> {order.vendor?.name || "Deleted Vendor"}
             </span>
-            <span>
-              <strong>Vendor Phone:</strong> {order.vendor.contact.phone}
-            </span>
+            {order.vendor?.contact.phone && (
+              <span>
+                <strong>Vendor Phone:</strong> {order.vendor.contact.phone}
+              </span>
+            )}
           </main>
 
           <div className="separtor" />

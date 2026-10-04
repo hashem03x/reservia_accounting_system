@@ -79,6 +79,10 @@ export default function AdvancedPaymentDetail() {
         <InfoCard label={translate("Type", "النوع")} value={payment.type === "customer" ? translate("Customer", "عميل") : translate("Vendor", "بائع")} />
         <InfoCard label={payment.type === "customer" ? translate("Customer", "العميل") : translate("Vendor", "البائع")} value={partyName || "-"} />
         <InfoCard label={translate("Project", "المشروع")} value={payment.project?.projectNumber || "-"} />
+        <InfoCard
+          label={translate("Payment Method", "طريقة الدفع")}
+          value={payment.paymentAccount ? `${payment.paymentAccount.code} - ${payment.paymentAccount.name}` : "-"}
+        />
         <InfoCard label={translate("Status", "الحالة")} value={<Badge color={statusColors[payment.status] || "gray"}>{payment.status}</Badge>} />
         <InfoCard label={translate("Original Amount", "المبلغ الأصلي")} value={`${payment.amount.toLocaleString()} ${payment.currency || ""}`} />
         <InfoCard label={translate("Remaining Amount", "المبلغ المتبقي")} value={`${payment.remainingAmount.toLocaleString()} ${payment.currency || ""}`} />

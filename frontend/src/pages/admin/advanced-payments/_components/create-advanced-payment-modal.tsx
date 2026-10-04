@@ -8,6 +8,7 @@ import usePrivateRequest from "@/hooks/usePrivateRequest";
 import handleRequest from "@/utils/helpers/handle-request";
 import CustomerSearch from "@/components/global/customer-search";
 import VendorSearch from "@/components/global/vendor-search";
+import PaymentAccountSelect from "@/components/global/payment-account-select";
 import { Customer } from "@/types/customer";
 import { Vendor } from "@/types/vendor";
 import { AdvancedPayment } from "@/types/advanced-payment";
@@ -29,6 +30,7 @@ export default function CreateAdvancedPaymentModal({
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [project, setProject] = useState("");
+  const [paymentAccount, setPaymentAccount] = useState("");
   const [amount, setAmount] = useState<string | number>("");
   const [currency, setCurrency] = useState(translations.currency);
   const [reference, setReference] = useState("");
@@ -66,6 +68,7 @@ export default function CreateAdvancedPaymentModal({
           vendor: type === "vendor" ? vendor?._id : undefined,
           project: type === "customer" ? project : undefined,
           amount,
+          paymentAccount,
           currency: currency || undefined,
           reference: reference || undefined,
           notes: notes || undefined,
@@ -84,6 +87,7 @@ export default function CreateAdvancedPaymentModal({
       setCustomer(null);
       setVendor(null);
       setProject("");
+      setPaymentAccount("");
       setAmount("");
       setCurrency(translations.currency);
       setReference("");
@@ -92,7 +96,12 @@ export default function CreateAdvancedPaymentModal({
     }, 250);
   }
 
-  const canSubmit = type === "customer" ? !!customer && !!project && !!amount : type === "vendor" ? !!vendor && !!amount : false;
+  const canSubmit =
+    type === "customer"
+      ? !!customer && !!project && !!amount && !!paymentAccount
+      : type === "vendor"
+        ? !!vendor && !!amount && !!paymentAccount
+        : false;
 
   return (
     <Modal opened={opened} onClose={handleClose} title={translate("Create Advanced Payment", "إنشاء دفعة مقدمة")} size="lg">
@@ -150,6 +159,12 @@ export default function CreateAdvancedPaymentModal({
           decimalScale={2}
           required
         />
+
+        {/* The cash/bank account this advance was received into (customer) or paid from (vendor) -
+            loaded from the Chart of Accounts (Cash & Cash Equivalents only), never hardcoded (docs
+            section "Advanced Payment Payment Method"). Required - the automatic accounting engine
+            needs a real account to post the journal entry against. */}
+        <PaymentAccountSelect value={paymentAccount} onChange={setPaymentAccount} required />
 
         <TextInput label={translate("Currency", "العملة")} value={currency} onChange={(e) => setCurrency(e.target.value)} />
 
