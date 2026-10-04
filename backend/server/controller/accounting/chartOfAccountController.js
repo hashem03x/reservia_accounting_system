@@ -63,7 +63,7 @@ const getCogsEligibleAccounts = asyncHandler(async (req, res) => {
 // classify an account via Edit Account before it becomes payment-eligible (docs section "Payment
 // Methods Must Come From Chart of Accounts").
 const getCashEquivalentAccounts = asyncHandler(async (req, res) => {
-  const accounts = await ChartOfAccount.find({ type: 'asset', state: { $in: ['cash', 'cash-equivalent'] }, isActive: true }).sort({ sortOrder: 1, code: 1 });
+  const accounts = await ChartOfAccount.find({ type: 'asset', parentGroupNameEn: 'Cash & Cash Equivalents', isActive: true }).sort({ sortOrder: 1, code: 1 });
   res.status(200).json(apiResponse('Eligible payment-method accounts retrieved successfully', true, accounts));
 });
 
