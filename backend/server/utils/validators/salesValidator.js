@@ -57,7 +57,7 @@ const createCashierSalesOrderValidator = [
 		.custom(async value => {
 			const account = await ChartOfAccount.findById(value);
 			if (!account) throw new Error('The selected payment account does not exist');
-			if (account.type !== 'asset' || !['cash', 'cash-equivalent'].includes(account.state)) {
+			if (account.type !== 'asset' || !['Cash & Cash Equivalents'].includes(account.parentGroupNameEn)) {
 				throw new Error('The selected payment account must be a Cash or Cash Equivalent account');
 			}
 			return true;
