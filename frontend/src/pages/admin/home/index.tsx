@@ -73,6 +73,8 @@ export default function Home() {
       <div className="flex flex-col gap-5">
         <KpiSection summary={summary} loading={loading} error={error} onRetry={loadSummary} />
 
+        <QuickActionsSection />
+
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <SalesTrendChart summary={summary} loading={loading} error={error} onRetry={loadSummary} />
@@ -89,7 +91,6 @@ export default function Home() {
 
         <RecentJournalEntriesSection />
 
-        <QuickActionsSection />
       </div>
     </AdminLayoutBox>
   );
