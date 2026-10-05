@@ -90,7 +90,6 @@ export default function Home() {
         </div>
 
         <RecentJournalEntriesSection />
-
       </div>
     </AdminLayoutBox>
   );
