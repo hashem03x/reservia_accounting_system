@@ -70,4 +70,277 @@ async function getTrialBalance() {
   return rows.map(row => ({ ...row, debit: round2(row.debit), credit: round2(row.credit), balance: round2(row.debit - row.credit) }));
 }
 
-module.exports = { getAccountBalance, getTrialBalance };
+// ---------------------------------------------------------------------------
+// General Ledger line view (docs section "Journal Entries / General Ledger table") - a flattened,
+// one-row-per-LINE view across every posted entry, each row carrying a running balance for ITS
+// OWN account (see computeRunningBalances below) plus a resolved customer/vendor "Sub Account".
+// This is purely a READ/display concern layered on top of the existing JournalEntry data - it
+// introduces no new write path, no new accounting rule, and no change to how entries are created,
+// posted, or reversed.
+// ---------------------------------------------------------------------------
+
+/**
+ * For each given (already-fetched) JournalEntry, resolves the customer/vendor the entry's own
+ * `sourceType`/`sourceId` relates to, down to that party's real Customer Number / Vendor Number -
+ * never a name, never a MongoDB _id (docs section "Sub Account Mapping"). Entirely read-only:
+ * looks up the EXISTING relationship each automatic accounting flow already records
+ * (SalesOrder.customer, PurchaseOrder.vendorId, Payment.customerId/vendorId,
+ * AdvancedPayment.customer/vendor, Project.customer) - no new relationship is introduced.
+ *
+ * Batched per sourceType (one query per type, not one query per entry) so this scales with the
+ * number of DISTINCT source documents on a page, not the number of entries.
+ *
+ * @returns {Promise<Map<string, {type: 'customer'|'vendor', number: number} | null>>} keyed by
+ *   entry._id.toString()
+ */
+async function resolveSubAccountsForEntries(entries) {
+  const result = new Map();
+  const bySourceType = new Map();
+  for (const entry of entries) {
+    if (!entry.sourceType || !entry.sourceId) continue;
+    if (!bySourceType.has(entry.sourceType)) bySourceType.set(entry.sourceType, []);
+    bySourceType.get(entry.sourceType).push(entry);
+  }
+  if (bySourceType.size === 0) return result;
+
+  const User = require('../../models/userModel'); // eslint-disable-line global-require
+  const Vendor = require('../../models/vendor/vendor'); // eslint-disable-line global-require
+
+  // Several of the sub-queries below (SalesOrder.customer, PurchaseOrder.vendorId,
+  // AdvancedPayment.customer/vendor, Project.customer) run through models whose OWN
+  // pre(/^find/) hook populates that exact path unconditionally - even with `.lean()`, even with
+  // a `.select()` that only asks for the id field. Every reference read from one of those
+  // documents is therefore a populated object, not a raw ObjectId, and MUST be normalized through
+  // this helper before use - the same "populated object vs raw id" pitfall documented repeatedly
+  // elsewhere in this codebase (e.g. advancedPaymentModel.js's project/customer comparisons).
+  const idOf = ref => (ref ? (ref._id || ref).toString() : null);
+
+  async function numbersFor({ customerIds = [], vendorIds = [] }) {
+    const [customers, vendors] = await Promise.all([
+      customerIds.length ? User.find({ _id: { $in: customerIds } }).select('customerNumber').lean() : [],
+      vendorIds.length ? Vendor.find({ _id: { $in: vendorIds } }).select('vendorNumber').lean() : [],
+    ]);
+    return {
+      customerNumberById: new Map(customers.map(c => [c._id.toString(), c.customerNumber])),
+      vendorNumberById: new Map(vendors.map(v => [v._id.toString(), v.vendorNumber])),
+    };
+  }
+
+  // SO -> SalesOrder.customer (User)
+  if (bySourceType.has('SO')) {
+    const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
+    const soEntries = bySourceType.get('SO');
+    const orders = await SalesOrder.find({ _id: { $in: soEntries.map(e => e.sourceId) } }).select('customer').lean();
+    const orderById = new Map(orders.map(o => [o._id.toString(), idOf(o.customer)]));
+    const { customerNumberById } = await numbersFor({ customerIds: [...orderById.values()].filter(Boolean) });
+    for (const entry of soEntries) {
+      const customerId = orderById.get(entry.sourceId.toString());
+      const number = customerId ? customerNumberById.get(customerId) : undefined;
+      result.set(entry._id.toString(), number != null ? { type: 'customer', number } : null);
+    }
+  }
+
+  // PO -> PurchaseOrder.vendorId (Vendor)
+  if (bySourceType.has('PO')) {
+    const PurchaseOrder = require('../../models/vendor/purchaseOrder'); // eslint-disable-line global-require
+    const poEntries = bySourceType.get('PO');
+    const orders = await PurchaseOrder.find({ _id: { $in: poEntries.map(e => e.sourceId) } }).select('vendorId').lean();
+    const vendorIdByOrderId = new Map(orders.map(o => [o._id.toString(), idOf(o.vendorId)]));
+    const { vendorNumberById } = await numbersFor({ vendorIds: [...vendorIdByOrderId.values()].filter(Boolean) });
+    for (const entry of poEntries) {
+      const vendorId = vendorIdByOrderId.get(entry.sourceId.toString());
+      const number = vendorId ? vendorNumberById.get(vendorId) : undefined;
+      result.set(entry._id.toString(), number != null ? { type: 'vendor', number } : null);
+    }
+  }
+
+  // PAYMENT -> Payment.customerId XOR vendorId (Payment does not populate either path, but
+  // normalized through idOf() anyway for consistency/future-proofing)
+  if (bySourceType.has('PAYMENT')) {
+    const Payment = require('../../models/vendor/paymentModel'); // eslint-disable-line global-require
+    const paymentEntries = bySourceType.get('PAYMENT');
+    const payments = await Payment.find({ _id: { $in: paymentEntries.map(e => e.sourceId) } }).select('customerId vendorId').lean();
+    const paymentById = new Map(payments.map(p => [p._id.toString(), { customerId: idOf(p.customerId), vendorId: idOf(p.vendorId) }]));
+    const { customerNumberById, vendorNumberById } = await numbersFor({
+      customerIds: [...paymentById.values()].map(p => p.customerId).filter(Boolean),
+      vendorIds: [...paymentById.values()].map(p => p.vendorId).filter(Boolean),
+    });
+    for (const entry of paymentEntries) {
+      const payment = paymentById.get(entry.sourceId.toString());
+      if (payment?.customerId) {
+        const number = customerNumberById.get(payment.customerId);
+        result.set(entry._id.toString(), number != null ? { type: 'customer', number } : null);
+      } else if (payment?.vendorId) {
+        const number = vendorNumberById.get(payment.vendorId);
+        result.set(entry._id.toString(), number != null ? { type: 'vendor', number } : null);
+      } else {
+        result.set(entry._id.toString(), null);
+      }
+    }
+  }
+
+  // ADVANCED_PAYMENT -> AdvancedPayment.customer (type 'customer') or .vendor (type 'vendor')
+  if (bySourceType.has('ADVANCED_PAYMENT')) {
+    const AdvancedPayment = require('../../models/payments/advancedPaymentModel'); // eslint-disable-line global-require
+    const advEntries = bySourceType.get('ADVANCED_PAYMENT');
+    const advances = await AdvancedPayment.find({ _id: { $in: advEntries.map(e => e.sourceId) } }).select('type customer vendor').lean();
+    const advanceById = new Map(advances.map(a => [a._id.toString(), { type: a.type, customerId: idOf(a.customer), vendorId: idOf(a.vendor) }]));
+    const { customerNumberById, vendorNumberById } = await numbersFor({
+      customerIds: [...advanceById.values()].filter(a => a.type === 'customer').map(a => a.customerId).filter(Boolean),
+      vendorIds: [...advanceById.values()].filter(a => a.type === 'vendor').map(a => a.vendorId).filter(Boolean),
+    });
+    for (const entry of advEntries) {
+      const advance = advanceById.get(entry.sourceId.toString());
+      if (advance?.type === 'customer' && advance.customerId) {
+        const number = customerNumberById.get(advance.customerId);
+        result.set(entry._id.toString(), number != null ? { type: 'customer', number } : null);
+      } else if (advance?.type === 'vendor' && advance.vendorId) {
+        const number = vendorNumberById.get(advance.vendorId);
+        result.set(entry._id.toString(), number != null ? { type: 'vendor', number } : null);
+      } else {
+        result.set(entry._id.toString(), null);
+      }
+    }
+  }
+
+  // PROJECT -> Project.customer (revenue/cost recognition - docs section "Project - Executed
+  // Percentage"). Note: `entry.sourceId` for these is a deterministic hash (see
+  // accountingEventService.js#deterministicSourceId), NOT the real project id - the entry-level
+  // `project` reference (already populated by the main query) is the real link to use here.
+  if (bySourceType.has('PROJECT')) {
+    const Project = require('../../models/project/projectModel'); // eslint-disable-line global-require
+    const projectEntries = bySourceType.get('PROJECT');
+    const projectIds = projectEntries.map(e => idOf(e.project)).filter(Boolean);
+    const projects = await Project.find({ _id: { $in: projectIds } }).select('customer').lean();
+    const customerIdByProjectId = new Map(projects.map(p => [p._id.toString(), idOf(p.customer)]));
+    const { customerNumberById } = await numbersFor({ customerIds: [...customerIdByProjectId.values()].filter(Boolean) });
+    for (const entry of projectEntries) {
+      const projectId = idOf(entry.project);
+      const customerId = projectId ? customerIdByProjectId.get(projectId) : null;
+      const number = customerId ? customerNumberById.get(customerId) : undefined;
+      result.set(entry._id.toString(), number != null ? { type: 'customer', number } : null);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Running balance ("Balance = Previous Balance + Debit - Credit", "respects existing journal-entry
+ * ordering" - docs section "Balance (Document/Local Currency)"), computed per account across that
+ * account's ENTIRE posted history (never just the current page - a page boundary must never reset
+ * or skew a real running balance), via MongoDB's $setWindowFields rather than any React-side
+ * accounting math. Also computes the local-currency running balance in the same pass
+ * (`(debit-credit) * (exchangeRate ?? 1)`, cumulative - docs section "Balance (Local Currency)"),
+ * reusing the same `exchangeRate` every other currency-aware feature in this app already stores,
+ * never a second conversion mechanism.
+ *
+ * @returns {Promise<Map<string, {balance: number, localBalance: number}>>} keyed by
+ *   `${entryId}:${lineIndex}` - lineIndex is the line's position within its own entry's `lines[]`
+ *   array (stable even when an entry has more than one line on the same account).
+ */
+async function computeRunningBalances(accountIds) {
+  const map = new Map();
+  if (accountIds.length === 0) return map;
+
+  const rows = await JournalEntry.aggregate([
+    { $match: { status: 'posted' } },
+    { $unwind: { path: '$lines', includeArrayIndex: 'lineIndex' } },
+    { $match: { 'lines.account': { $in: accountIds } } },
+    {
+      $setWindowFields: {
+        partitionBy: '$lines.account',
+        sortBy: { date: 1, entryNumber: 1, lineIndex: 1 },
+        output: {
+          runningBalance: {
+            $sum: { $subtract: ['$lines.debit', '$lines.credit'] },
+            window: { documents: ['unbounded', 'current'] },
+          },
+          runningLocalBalance: {
+            $sum: { $multiply: [{ $subtract: ['$lines.debit', '$lines.credit'] }, { $ifNull: ['$lines.exchangeRate', 1] }] },
+            window: { documents: ['unbounded', 'current'] },
+          },
+        },
+      },
+    },
+    { $project: { _id: 0, entryId: '$_id', lineIndex: 1, runningBalance: 1, runningLocalBalance: 1 } },
+  ]);
+
+  rows.forEach(row => {
+    map.set(`${row.entryId.toString()}:${row.lineIndex}`, { balance: round2(row.runningBalance), localBalance: round2(row.runningLocalBalance) });
+  });
+  return map;
+}
+
+/**
+ * The flattened, paginated General Ledger line list - one row per JournalEntry line, in
+ * chronological order (oldest first, matching how a running balance must be read). Pagination is
+ * at the ENTRY level (same semantics as every other paginated list in this app - `page`/`limit`
+ * map directly onto `ApiFeatures.paginate()`'s existing response shape, see handlersFactory.js),
+ * so the frontend's existing PaginationHandler/PaginatedData<T> work unmodified; a page's "rows"
+ * are simply every line of every entry on that page. Only `status: 'posted'` entries are included,
+ * matching getAccountBalance/getTrialBalance's existing convention - a draft entry has no real
+ * ledger effect yet.
+ */
+async function getGeneralLedgerLines({ page = 1, limit = 50 } = {}) {
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.max(1, parseInt(limit, 10) || 50);
+  const skip = (pageNum - 1) * limitNum;
+
+  const countDocuments = await JournalEntry.countDocuments({ status: 'posted' });
+  const entries = await JournalEntry.find({ status: 'posted' })
+    .sort({ date: 1, entryNumber: 1 })
+    .skip(skip)
+    .limit(limitNum);
+
+  const [subAccountByEntryId, runningBalanceByKey] = await Promise.all([
+    resolveSubAccountsForEntries(entries),
+    computeRunningBalances([...new Set(entries.flatMap(e => e.lines.map(l => l.account?._id || l.account)))]),
+  ]);
+
+  const rows = [];
+  entries.forEach(entry => {
+    entry.lines.forEach((line, lineIndex) => {
+      const accountId = (line.account?._id || line.account)?.toString();
+      const running = runningBalanceByKey.get(`${entry._id.toString()}:${lineIndex}`) || { balance: 0, localBalance: 0 };
+      // Project Number: prefer the LIVE project's own projectNumber (already populated via this
+      // schema's own pre(/^find/) hook) over the denormalized `line.projectNumber` string, which
+      // the automatic accounting engine never set (only the manual Journal Entry form does) - see
+      // docs section "Project Number". Falls back to the denormalized string, then to null -
+      // never fabricated.
+      const projectNumber = line.project?.projectNumber || line.projectNumber || null;
+      rows.push({
+        entryId: entry._id,
+        lineIndex,
+        documentDate: entry.date,
+        documentNumber: entry.entryNumber,
+        accNumber: line.account?.code || null,
+        accName: line.account?.name || null,
+        accountId,
+        subAccount: subAccountByEntryId.get(entry._id.toString()) || null,
+        projectNumber,
+        currency: line.currency || null,
+        rate: line.exchangeRate ?? 1,
+        debit: line.debit || 0,
+        credit: line.credit || 0,
+        balanceDocumentCurrency: running.balance,
+        balanceLocalCurrency: running.localBalance,
+        description: line.description || entry.description || null,
+      });
+    });
+  });
+
+  return {
+    results: rows.length,
+    paginationResult: {
+      currentPage: pageNum,
+      limit: limitNum,
+      numberOfPages: Math.ceil(countDocuments / limitNum),
+      ...(skip + limitNum < countDocuments ? { next: pageNum + 1 } : {}),
+      ...(skip > 0 ? { prev: pageNum - 1 } : {}),
+    },
+    data: rows,
+  };
+}
+
+module.exports = { getAccountBalance, getTrialBalance, getGeneralLedgerLines };

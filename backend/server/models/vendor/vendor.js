@@ -1,9 +1,14 @@
 const mongooseI18n = require('mongoose-i18n-localize');
 const { Schema, model } = require('mongoose');
 const { taxInfoSchema, bankInfoSchema, businessDocumentSchema } = require('../shared/businessPartnerSchemas');
+const { getNextVendorNumber } = require('../../services/vendor/vendorNumberService');
 
 const vendorSchema = new Schema(
   {
+    // Mirrors User.customerNumber exactly (see that field's comment) - the vendor's own
+    // identifying number, needed for journal-entry/general-ledger "Sub Account" display (docs
+    // section "Sub Account Mapping"). Auto-assigned below, never client-settable.
+    vendorNumber: { type: Number, unique: true, sparse: true, immutable: true },
     type: {
       type: String,
       default: 'current',
@@ -107,6 +112,16 @@ const vendorSchema = new Schema(
   },
   { timestamps: true }
 );
+
+// Mirrors userModel.js's identical customerNumber-assignment hook exactly, including the
+// deliberately unconditional-on-isNew (not "only if unset") assignment, so a request body
+// smuggling a vendorNumber directly can never survive - `immutable: true` above then blocks any
+// later change.
+vendorSchema.pre('save', async function (next) {
+  if (!this.isNew) return next();
+  this.vendorNumber = await getNextVendorNumber();
+  next();
+});
 
 vendorSchema.plugin(mongooseI18n, { locales: ['en', 'ar'], defaultLocale: process.env.DEFAULT_LANGUAGE || 'en' });
 module.exports = model('Vendor', vendorSchema);

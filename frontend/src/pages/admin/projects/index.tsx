@@ -19,6 +19,8 @@ import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import { outlineIcons } from "@/components/icons";
+import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import TruncatedText from "@/components/ui/truncated-text";
 import CreateProjectModal from "./_components/create-project-modal";
 
 const ITEMS_PER_PAGE = import.meta.env.VITE_ITEMS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
@@ -108,73 +110,94 @@ export default function Projects() {
           <EmptySection useDefaultImg message={translate("No projects found", "لا توجد مشاريع")} />
         ) : (
           <>
-            <Table striped highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>{translate("Project Number", "رقم المشروع")}</Table.Th>
-                  <Table.Th>{translate("Sector", "القطاع")}</Table.Th>
-                  <Table.Th>{translate("Name", "الاسم")}</Table.Th>
-                  <Table.Th>{translate("Customer", "العميل")}</Table.Th>
-                  <Table.Th>{translate("Contract Value", "قيمة العقد")}</Table.Th>
-                  <Table.Th>{translate("Remaining", "المتبقي")}</Table.Th>
-                  <Table.Th>{translate("Project Manager", "مدير المشروع")}</Table.Th>
-                  <Table.Th>{translate("Start Date", "تاريخ البدء")}</Table.Th>
-                  <Table.Th>{translate("Delivery Date", "تاريخ التسليم")}</Table.Th>
-                  <Table.Th>{translate("Status", "الحالة")}</Table.Th>
-                  <Table.Th>{translate("Executed %", "نسبة المنفذ")}</Table.Th>
-                  <Table.Th>{translate("Contract", "العقد")}</Table.Th>
-                  <Table.Th>{translate("Actions", "الإجراءات")}</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {paginatedProjects.data.map((project) => (
-                  <Table.Tr key={project._id} className="cursor-pointer" onClick={() => navigate(project._id)}>
-                    <Table.Td className="font-medium">{project.projectNumber}</Table.Td>
-                    <Table.Td>{project.sector || "-"}</Table.Td>
-                    <Table.Td>{project.name || "-"}</Table.Td>
-                    <Table.Td>{project.customer?.name || "-"}</Table.Td>
-                    <Table.Td>
-                      {/* Missing only for a project created before the projectAmount->contractValue
-                          rename that hasn't been through migrateProjectFieldRenames.js yet - shown
-                          as "-", never fabricated as 0, since that would misrepresent a real
-                          contract's value. */}
-                      {project.contractValue != null ? `${project.contractValue.toLocaleString()} ${translations.currency}` : "-"}
-                    </Table.Td>
-                    <Table.Td>
-                      {project.remainingMoney != null ? `${project.remainingMoney.toLocaleString()} ${translations.currency}` : "-"}
-                    </Table.Td>
-                    <Table.Td>{project.projectManager?.name || "-"}</Table.Td>
-                    <Table.Td>{project.startDate ? formatDate(project.startDate, language) : "-"}</Table.Td>
-                    <Table.Td>{project.deliveryDate ? formatDate(project.deliveryDate, language) : "-"}</Table.Td>
-                    <Table.Td>
-                      <Badge color={statusColors[project.status] || "gray"} variant="light">
-                        {project.status}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>{project.executedPercentage ?? 0}%</Table.Td>
-                    <Table.Td>
-                      {project.contract ? (
-                        <outlineIcons.Document className="text-green-600" size={18} />
-                      ) : (
-                        <span className="text-xs text-gray-400">{translate("None", "لا يوجد")}</span>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <Button
-                        variant="light"
-                        size="xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(project._id);
-                        }}
-                      >
-                        {translate("View", "عرض")}
-                      </Button>
-                    </Table.Td>
+            {/* Shared table visual system (see components/ui/data-table.tsx) - same container/
+                header/row presentation as Chart of Accounts; columns below are Projects' own. */}
+            <DataTableContainer>
+              <DataTable className="min-w-[1180px]">
+                <Table.Thead className={dataTableHeadClassName}>
+                  <Table.Tr>
+                    <Table.Th className="whitespace-nowrap">{translate("Project Number", "رقم المشروع")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Sector", "القطاع")}</Table.Th>
+                    <Table.Th>{translate("Name", "الاسم")}</Table.Th>
+                    <Table.Th>{translate("Customer", "العميل")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">{translate("Contract Value", "قيمة العقد")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">{translate("Remaining", "المتبقي")}</Table.Th>
+                    <Table.Th>{translate("Project Manager", "مدير المشروع")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Start Date", "تاريخ البدء")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Delivery Date", "تاريخ التسليم")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Status", "الحالة")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">{translate("Executed %", "نسبة المنفذ")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Contract", "العقد")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Actions", "الإجراءات")}</Table.Th>
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
+                </Table.Thead>
+                <Table.Tbody>
+                  {paginatedProjects.data.map((project) => (
+                    <Table.Tr key={project._id} className="cursor-pointer" onClick={() => navigate(project._id)}>
+                      <Table.Td className="whitespace-nowrap font-medium">{project.projectNumber}</Table.Td>
+                      <Table.Td className="whitespace-nowrap">{project.sector || "-"}</Table.Td>
+                      <Table.Td>
+                        <TruncatedText text={project.name || "-"} maxWidthClassName="max-w-[160px] sm:max-w-[220px]" />
+                      </Table.Td>
+                      <Table.Td>
+                        <TruncatedText
+                          text={project.customer?.name || "-"}
+                          maxWidthClassName="max-w-[140px] sm:max-w-[180px]"
+                        />
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                        {/* Missing only for a project created before the projectAmount->contractValue
+                            rename that hasn't been through migrateProjectFieldRenames.js yet - shown
+                            as "-", never fabricated as 0, since that would misrepresent a real
+                            contract's value. */}
+                        {project.contractValue != null
+                          ? `${project.contractValue.toLocaleString()} ${translations.currency}`
+                          : "-"}
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                        {project.remainingMoney != null
+                          ? `${project.remainingMoney.toLocaleString()} ${translations.currency}`
+                          : "-"}
+                      </Table.Td>
+                      <Table.Td>{project.projectManager?.name || "-"}</Table.Td>
+                      <Table.Td className="whitespace-nowrap">
+                        {project.startDate ? formatDate(project.startDate, language) : "-"}
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap">
+                        {project.deliveryDate ? formatDate(project.deliveryDate, language) : "-"}
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap">
+                        <Badge color={statusColors[project.status] || "gray"} variant="light">
+                          {project.status}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                        {project.executedPercentage ?? 0}%
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap">
+                        {project.contract ? (
+                          <outlineIcons.Document className="text-green-600" size={18} />
+                        ) : (
+                          <span className="text-xs text-gray-400">{translate("None", "لا يوجد")}</span>
+                        )}
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap">
+                        <Button
+                          variant="light"
+                          size="xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(project._id);
+                          }}
+                        >
+                          {translate("View", "عرض")}
+                        </Button>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </DataTable>
+            </DataTableContainer>
 
             <PaginationHandler paginatedData={paginatedProjects} activePage={activePage} setActivePage={setActivePage} />
           </>

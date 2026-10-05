@@ -5,6 +5,7 @@ const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { getNextJournalEntryNumber } = require('../../services/accounting/journalEntryNumberService');
+const { getGeneralLedgerLines } = require('../../services/accounting/generalLedgerService');
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
 
 const createJournalEntry = asyncHandler(async (req, res) => {
@@ -209,6 +210,16 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
   }
 });
 
+// GET /journal-entries/general-ledger - the flattened, one-row-per-line view (docs section
+// "Journal Entries / General Ledger table") - response shape deliberately mirrors
+// handlersFactory.js#getAll exactly (`results`/`paginationResult`/`data`) so the existing
+// PaginationHandler/PaginatedData<T> frontend plumbing works unmodified.
+const getGeneralLedger = asyncHandler(async (req, res) => {
+  const { page, limit } = req.query;
+  const result = await getGeneralLedgerLines({ page, limit });
+  res.status(200).json(result);
+});
+
 module.exports = {
   createJournalEntry,
   getJournalEntries,
@@ -217,4 +228,5 @@ module.exports = {
   updateJournalEntry,
   postJournalEntry,
   reverseJournalEntry,
+  getGeneralLedger,
 };

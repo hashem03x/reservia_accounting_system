@@ -18,11 +18,18 @@ import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
+import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import TruncatedText from "@/components/ui/truncated-text";
 import CreateAdvancedPaymentModal from "./_components/create-advanced-payment-modal";
 
 const ITEMS_PER_PAGE = import.meta.env.VITE_ITEMS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
 
-const statusColors: Record<string, string> = { available: "green", partially_used: "yellow", fully_used: "gray", cancelled: "red" };
+const statusColors: Record<string, string> = {
+  available: "green",
+  partially_used: "yellow",
+  fully_used: "gray",
+  cancelled: "red",
+};
 
 export default function AdvancedPayments() {
   const { language, translate, translations } = useLanguage();
@@ -80,7 +87,15 @@ export default function AdvancedPayments() {
   }
 
   useEffect(() => {
-    setSearchParams({ page: activePage.toString(), ...(typeFilter ? { type: typeFilter } : {}), ...(statusFilter ? { status: statusFilter } : {}), ...(projectFilter ? { project: projectFilter } : {}) }, { replace: true });
+    setSearchParams(
+      {
+        page: activePage.toString(),
+        ...(typeFilter ? { type: typeFilter } : {}),
+        ...(statusFilter ? { status: statusFilter } : {}),
+        ...(projectFilter ? { project: projectFilter } : {}),
+      },
+      { replace: true },
+    );
     window.scrollTo({ top: 0, behavior: "instant" });
     const cancelRequest = load();
     return cancelRequest;
@@ -149,62 +164,83 @@ export default function AdvancedPayments() {
       {loading ? (
         <LoadingSection message={translate("Loading advanced payments...", "جاري تحميل الدفعات المقدمة...")} />
       ) : error ? (
-        <ErrorSection errorTitle={translate("Error loading advanced payments", "خطأ في تحميل الدفعات المقدمة")} errorMessage={error} button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }} />
+        <ErrorSection
+          errorTitle={translate("Error loading advanced payments", "خطأ في تحميل الدفعات المقدمة")}
+          errorMessage={error}
+          button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }}
+        />
       ) : (
         paginatedPayments &&
         (paginatedPayments.data.length === 0 ? (
           <EmptySection useDefaultImg message={translate("No advanced payments found", "لا توجد دفعات مقدمة")} />
         ) : (
           <>
-            <Table striped highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>{translate("Type", "النوع")}</Table.Th>
-                  <Table.Th>{translate("Customer/Vendor", "العميل/البائع")}</Table.Th>
-                  <Table.Th>{translate("Project", "المشروع")}</Table.Th>
-                  <Table.Th>{translate("Original Amount", "المبلغ الأصلي")}</Table.Th>
-                  <Table.Th>{translate("Remaining Amount", "المبلغ المتبقي")}</Table.Th>
-                  <Table.Th>{translate("Currency", "العملة")}</Table.Th>
-                  <Table.Th>{translate("Status", "الحالة")}</Table.Th>
-                  <Table.Th>{translate("Date", "التاريخ")}</Table.Th>
-                  <Table.Th>{translate("Actions", "الإجراءات")}</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {paginatedPayments.data.map((payment) => (
-                  <Table.Tr key={payment._id} className="cursor-pointer" onClick={() => navigate(payment._id)}>
-                    <Table.Td>
-                      <Badge color={payment.type === "customer" ? "blue" : "grape"} variant="light">
-                        {payment.type === "customer" ? translate("Customer", "عميل") : translate("Vendor", "بائع")}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td className="font-medium">{partyLabel(payment)}</Table.Td>
-                    <Table.Td>{payment.project?.projectNumber || "-"}</Table.Td>
-                    <Table.Td>{payment.amount.toLocaleString()}</Table.Td>
-                    <Table.Td className={payment.remainingAmount > 0 ? "font-semibold text-green-700" : ""}>{payment.remainingAmount.toLocaleString()}</Table.Td>
-                    <Table.Td>{payment.currency || "-"}</Table.Td>
-                    <Table.Td>
-                      <Badge color={statusColors[payment.status] || "gray"} variant="light">
-                        {payment.status}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>{formatDate(payment.createdAt, language)}</Table.Td>
-                    <Table.Td>
-                      <Button
-                        variant="light"
-                        size="xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(payment._id);
-                        }}
-                      >
-                        {translate("View", "عرض")}
-                      </Button>
-                    </Table.Td>
+            {/* Shared table visual system (see components/ui/data-table.tsx) - same container/
+                header/row presentation as Chart of Accounts; columns below are Advanced Payments'
+                own. */}
+            <DataTableContainer>
+              <DataTable className="min-w-[980px]">
+                <Table.Thead className={dataTableHeadClassName}>
+                  <Table.Tr>
+                    <Table.Th className="whitespace-nowrap">{translate("Type", "النوع")}</Table.Th>
+                    <Table.Th>{translate("Customer/Vendor", "العميل/البائع")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Project", "المشروع")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">
+                      {translate("Original Amount", "المبلغ الأصلي")}
+                    </Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">
+                      {translate("Remaining Amount", "المبلغ المتبقي")}
+                    </Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Currency", "العملة")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Status", "الحالة")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Date", "التاريخ")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Actions", "الإجراءات")}</Table.Th>
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
+                </Table.Thead>
+                <Table.Tbody>
+                  {paginatedPayments.data.map((payment) => (
+                    <Table.Tr key={payment._id} className="cursor-pointer" onClick={() => navigate(payment._id)}>
+                      <Table.Td className="whitespace-nowrap">
+                        <Badge color={payment.type === "customer" ? "blue" : "grape"} variant="light">
+                          {payment.type === "customer" ? translate("Customer", "عميل") : translate("Vendor", "بائع")}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td className="font-medium">
+                        <TruncatedText text={partyLabel(payment)} maxWidthClassName="max-w-[160px] sm:max-w-[200px]" />
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap">{payment.project?.projectNumber || "-"}</Table.Td>
+                      <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                        {payment.amount.toLocaleString()}
+                      </Table.Td>
+                      <Table.Td
+                        className={`whitespace-nowrap text-right tabular-nums ${payment.remainingAmount > 0 ? "font-semibold text-green-700" : ""}`}
+                      >
+                        {payment.remainingAmount.toLocaleString()}
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap">{payment.currency || "-"}</Table.Td>
+                      <Table.Td className="whitespace-nowrap">
+                        <Badge color={statusColors[payment.status] || "gray"} variant="light">
+                          {payment.status}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap">{formatDate(payment.createdAt, language)}</Table.Td>
+                      <Table.Td className="whitespace-nowrap">
+                        <Button
+                          variant="light"
+                          size="xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(payment._id);
+                          }}
+                        >
+                          {translate("View", "عرض")}
+                        </Button>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </DataTable>
+            </DataTableContainer>
 
             <PaginationHandler paginatedData={paginatedPayments} activePage={activePage} setActivePage={setActivePage} />
           </>

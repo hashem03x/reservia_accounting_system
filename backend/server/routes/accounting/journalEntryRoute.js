@@ -12,10 +12,15 @@ const {
   updateJournalEntry,
   postJournalEntry,
   reverseJournalEntry,
+  getGeneralLedger,
 } = require('../../controller/accounting/journalEntryController');
 const { createJournalEntryValidators, updateJournalEntryValidators, reverseJournalEntryValidators } = require('../../utils/validators/journalEntryValidators');
 
 router.use(authController.protect);
+
+// Registered before '/:id' so "general-ledger" is never matched as an :id param (same convention
+// as advancedPaymentRoute.js's '/available').
+router.get('/general-ledger', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getGeneralLedger);
 
 router.get('/project/:projectId', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalEntriesForProject);
 

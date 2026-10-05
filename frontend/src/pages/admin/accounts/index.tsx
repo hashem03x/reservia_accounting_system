@@ -14,6 +14,7 @@ import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import TruncatedText from "@/components/ui/truncated-text";
+import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
 import CreateAccountModal from "./_components/create-account-modal";
 import EditAccountModal from "./_components/edit-account-modal";
 import TrialBalanceModal from "./_components/trial-balance-modal";
@@ -22,7 +23,14 @@ import { outlineIcons } from "@/components/icons";
 import { AccountType } from "@/types/chart-of-account";
 import { AccountStates } from "@/utils/constants/accounting";
 
-const typeColors: Record<string, string> = { asset: "blue", liability: "red", equity: "grape", revenue: "green", expense: "orange", cogs: "teal" };
+const typeColors: Record<string, string> = {
+  asset: "blue",
+  liability: "red",
+  equity: "grape",
+  revenue: "green",
+  expense: "orange",
+  cogs: "teal",
+};
 const accountTypes: AccountType[] = ["asset", "liability", "equity", "revenue", "cogs", "expense"];
 
 function sortBySortOrder(list: ChartOfAccount[]) {
@@ -40,7 +48,14 @@ export default function ChartOfAccounts() {
 
   useDocumentTitle(`${translations.pages.accounts} | ${translations.adminPanel}`);
 
-  const { loading, setLoading, error, setError, data: accounts, setData: setAccounts } = useDataHandler<ChartOfAccount[]>({
+  const {
+    loading,
+    setLoading,
+    error,
+    setError,
+    data: accounts,
+    setData: setAccounts,
+  } = useDataHandler<ChartOfAccount[]>({
     initialData: [],
     initialLoading: true,
   });
@@ -76,7 +91,7 @@ export default function ChartOfAccounts() {
 
   const visibleAccounts = useMemo(
     () => accounts.filter((a) => (!typeFilter || a.type === typeFilter) && (!stateFilter || a.state === stateFilter)),
-    [accounts, typeFilter, stateFilter]
+    [accounts, typeFilter, stateFilter],
   );
 
   // An account with no posted activity yet simply isn't in the trial balance - it has no
@@ -89,7 +104,10 @@ export default function ChartOfAccounts() {
   // individually balanced (which posting itself enforces - see journalEntryModel.js) - shown, not
   // hidden, so a real data problem (a bug, or data touched outside this app) would be visible
   // immediately instead of silently forced to zero.
-  const totalLedgerBalance = useMemo(() => Math.round(Object.values(balances).reduce((sum, row) => sum + row.balance, 0) * 100) / 100, [balances]);
+  const totalLedgerBalance = useMemo(
+    () => Math.round(Object.values(balances).reduce((sum, row) => sum + row.balance, 0) * 100) / 100,
+    [balances],
+  );
 
   async function handleDeactivate(account: ChartOfAccount) {
     if (!confirm(translate(`Deactivate account "${account.name}"?`, `إلغاء تفعيل الحساب "${account.name}"؟`))) return;
@@ -134,7 +152,11 @@ export default function ChartOfAccounts() {
       {loading ? (
         <LoadingSection message={translate("Loading accounts...", "جاري تحميل الحسابات...")} />
       ) : error ? (
-        <ErrorSection errorTitle={translate("Error loading accounts", "خطأ في تحميل الحسابات")} errorMessage={error} button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }} />
+        <ErrorSection
+          errorTitle={translate("Error loading accounts", "خطأ في تحميل الحسابات")}
+          errorMessage={error}
+          button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }}
+        />
       ) : accounts.length === 0 ? (
         <EmptySection useDefaultImg message={translate("No accounts found", "لا توجد حسابات")} />
       ) : (
@@ -170,101 +192,101 @@ export default function ChartOfAccounts() {
               : ` — ${translate("the ledger is out of balance - this should never happen and needs investigation.", "دفتر الأستاذ غير متوازن - يجب ألا يحدث هذا ويحتاج إلى التحقيق.")}`}
           </Alert>
 
-          {/* The inner min-width forces horizontal scroll (contained to this card only, never the
-              page) instead of crushing columns illegibly on narrow viewports - the outer
-              overflow-hidden+rounded+border gives the table its own card, matching the
-              overflow-x-auto convention used by every other table in the app (e.g. the PO/SO
-              payment history tables). */}
-          <div className="overflow-hidden rounded-lg border border-gray-100">
-            <div className="overflow-x-auto">
-              <Table striped highlightOnHover className="min-w-[960px] text-sm" verticalSpacing="sm" withColumnBorders>
-                <Table.Thead className="bg-gray-50 text-gray-700">
-                  <Table.Tr>
-                    <Table.Th className="whitespace-nowrap">{translate("Code", "الرمز")}</Table.Th>
-                    <Table.Th>{translate("Name", "الاسم")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap">{translate("Type", "النوع")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap">{translate("State", "الحالة الفرعية")}</Table.Th>
-                    <Table.Th>{translate("Parent Account", "الحساب الرئيسي")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap text-right">{translate("Balance", "الرصيد")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap">{translate("Status", "الحالة")}</Table.Th>
-                    {showActionsColumn && <Table.Th className="whitespace-nowrap">{translate("Actions", "الإجراءات")}</Table.Th>}
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {visibleAccounts.map((account) => (
-                    <Table.Tr key={account._id}>
-                      <Table.Td className="whitespace-nowrap font-medium">{account.code}</Table.Td>
-                      <Table.Td>
-                        <TruncatedText text={account.name} maxWidthClassName="max-w-[160px] sm:max-w-[220px]" />
-                        {account.nameAr && (
-                          <TruncatedText
-                            text={account.nameAr}
-                            className="text-xs text-gray-400"
-                            maxWidthClassName="max-w-[160px] sm:max-w-[220px]"
-                          />
-                        )}
-                      </Table.Td>
-                      <Table.Td className="whitespace-nowrap">
-                        <Badge color={typeColors[account.type] || "gray"} variant="light">
-                          {account.type}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td className="whitespace-nowrap">
-                        {account.state ? (
-                          <Badge color="gray" variant="outline">
-                            {account.state}
-                          </Badge>
-                        ) : (
-                          "-"
-                        )}
-                      </Table.Td>
-                      <Table.Td>
+          {/* Shared table visual system (see components/ui/data-table.tsx) - this table is the
+              original source of that shared style; Projects/Journal Entries/Advanced Payments all
+              reuse the same DataTable/DataTableContainer rather than duplicating these classes. */}
+          <DataTableContainer>
+            <DataTable className="min-w-[960px]">
+              <Table.Thead className={dataTableHeadClassName}>
+                <Table.Tr>
+                  <Table.Th className="whitespace-nowrap">{translate("Code", "الرمز")}</Table.Th>
+                  <Table.Th>{translate("Name", "الاسم")}</Table.Th>
+                  <Table.Th className="whitespace-nowrap">{translate("Type", "النوع")}</Table.Th>
+                  <Table.Th className="whitespace-nowrap">{translate("State", "الحالة الفرعية")}</Table.Th>
+                  <Table.Th>{translate("Parent Account", "الحساب الرئيسي")}</Table.Th>
+                  <Table.Th className="whitespace-nowrap text-right">{translate("Balance", "الرصيد")}</Table.Th>
+                  <Table.Th className="whitespace-nowrap">{translate("Status", "الحالة")}</Table.Th>
+                  {showActionsColumn && (
+                    <Table.Th className="whitespace-nowrap">{translate("Actions", "الإجراءات")}</Table.Th>
+                  )}
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {visibleAccounts.map((account) => (
+                  <Table.Tr key={account._id}>
+                    <Table.Td className="whitespace-nowrap font-medium">{account.code}</Table.Td>
+                    <Table.Td>
+                      <TruncatedText text={account.name} maxWidthClassName="max-w-[160px] sm:max-w-[220px]" />
+                      {account.nameAr && (
                         <TruncatedText
-                          text={
-                            account.parentAccount
-                              ? `${account.parentAccount.code} - ${account.parentAccount.name}`
-                              : account.parentGroupNameEn
-                                ? translate(account.parentGroupNameEn, account.parentGroupNameAr || account.parentGroupNameEn)
-                                : "-"
-                          }
+                          text={account.nameAr}
+                          className="text-xs text-gray-400"
                           maxWidthClassName="max-w-[160px] sm:max-w-[220px]"
                         />
-                      </Table.Td>
-                      <Table.Td className={`whitespace-nowrap text-right tabular-nums ${getBalance(account._id) < 0 ? "text-red-600" : ""}`}>
-                        {getBalance(account._id).toLocaleString()}
-                      </Table.Td>
-                      <Table.Td className="whitespace-nowrap">
-                        <Badge color={account.isActive ? "green" : "gray"} variant="light">
-                          {account.isActive ? translate("Active", "نشط") : translate("Inactive", "غير نشط")}
-                        </Badge>
-                        {account.isSystemDefault && (
-                          <Badge color="dark" variant="outline" ml={6}>
-                            {translate("System", "نظام")}
-                          </Badge>
-                        )}
-                      </Table.Td>
-                      {showActionsColumn && (
-                        <Table.Td className="whitespace-nowrap">
-                          <div className="flex gap-2">
-                            {canUpdate && (
-                              <Button variant="light" size="xs" onClick={() => handleEditClick(account)}>
-                                {translate("Edit", "تعديل")}
-                              </Button>
-                            )}
-                            {canDelete && account.isActive && !account.isSystemDefault && (
-                              <Button variant="light" color="red" size="xs" onClick={() => handleDeactivate(account)}>
-                                {translate("Deactivate", "إلغاء تفعيل")}
-                              </Button>
-                            )}
-                          </div>
-                        </Table.Td>
                       )}
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </div>
-          </div>
+                    </Table.Td>
+                    <Table.Td className="whitespace-nowrap">
+                      <Badge color={typeColors[account.type] || "gray"} variant="light">
+                        {account.type}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td className="whitespace-nowrap">
+                      {account.state ? (
+                        <Badge color="gray" variant="outline">
+                          {account.state}
+                        </Badge>
+                      ) : (
+                        "-"
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <TruncatedText
+                        text={
+                          account.parentAccount
+                            ? `${account.parentAccount.code} - ${account.parentAccount.name}`
+                            : account.parentGroupNameEn
+                              ? translate(account.parentGroupNameEn, account.parentGroupNameAr || account.parentGroupNameEn)
+                              : "-"
+                        }
+                        maxWidthClassName="max-w-[160px] sm:max-w-[220px]"
+                      />
+                    </Table.Td>
+                    <Table.Td
+                      className={`whitespace-nowrap text-right tabular-nums ${getBalance(account._id) < 0 ? "text-red-600" : ""}`}
+                    >
+                      {getBalance(account._id).toLocaleString()}
+                    </Table.Td>
+                    <Table.Td className="whitespace-nowrap">
+                      <Badge color={account.isActive ? "green" : "gray"} variant="light">
+                        {account.isActive ? translate("Active", "نشط") : translate("Inactive", "غير نشط")}
+                      </Badge>
+                      {account.isSystemDefault && (
+                        <Badge color="dark" variant="outline" ml={6}>
+                          {translate("System", "نظام")}
+                        </Badge>
+                      )}
+                    </Table.Td>
+                    {showActionsColumn && (
+                      <Table.Td className="whitespace-nowrap">
+                        <div className="flex gap-2">
+                          {canUpdate && (
+                            <Button variant="light" size="xs" onClick={() => handleEditClick(account)}>
+                              {translate("Edit", "تعديل")}
+                            </Button>
+                          )}
+                          {canDelete && account.isActive && !account.isSystemDefault && (
+                            <Button variant="light" color="red" size="xs" onClick={() => handleDeactivate(account)}>
+                              {translate("Deactivate", "إلغاء تفعيل")}
+                            </Button>
+                          )}
+                        </div>
+                      </Table.Td>
+                    )}
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </DataTable>
+          </DataTableContainer>
         </>
       )}
 
@@ -279,7 +301,9 @@ export default function ChartOfAccounts() {
         close={closeEditModal}
         account={editingAccount}
         accounts={accounts}
-        onUpdated={(updated) => setAccounts((prev) => sortBySortOrder(prev.map((a) => (a._id === updated._id ? updated : a))))}
+        onUpdated={(updated) =>
+          setAccounts((prev) => sortBySortOrder(prev.map((a) => (a._id === updated._id ? updated : a))))
+        }
       />
       <TrialBalanceModal opened={trialBalanceOpened} close={closeTrialBalance} />
     </AdminLayoutBox>

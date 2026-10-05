@@ -44,6 +44,32 @@ export interface JournalEntry {
   updatedAt: string;
 }
 
+// One row of the General Ledger line view (GET journal-entries/general-ledger - docs section
+// "Journal Entries / General Ledger table") - one row per JournalEntry LINE (not per entry), each
+// carrying a running balance for its own account. Nullable fields reflect genuinely optional/
+// historical data (never fabricated - see generalLedgerService.js#getGeneralLedgerLines).
+export interface GeneralLedgerRow {
+  entryId: string;
+  lineIndex: number;
+  documentDate: string;
+  documentNumber: number;
+  accNumber: string | null;
+  accName: string | null;
+  accountId: string | null;
+  // Resolved from the entry's source document (Sales/Purchase Order, Payment, Advanced Payment,
+  // Project) - a real Customer/Vendor Number, never a name or _id. `null` when the entry has no
+  // resolvable party (e.g. a manual entry) or the party has no number assigned.
+  subAccount: { type: "customer" | "vendor"; number: number } | null;
+  projectNumber: string | null;
+  currency: string | null;
+  rate: number;
+  debit: number;
+  credit: number;
+  balanceDocumentCurrency: number;
+  balanceLocalCurrency: number;
+  description: string | null;
+}
+
 export interface JournalLineInput {
   account: string;
   subAccount?: string | null;
