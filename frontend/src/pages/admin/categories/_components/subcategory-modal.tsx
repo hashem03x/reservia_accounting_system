@@ -7,7 +7,6 @@ import { Subcategory } from "@/types/categories";
 import { Button, TextInput } from "@mantine/core";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
-import ImgController from "@/components/ui/img-controller";
 
 export default function SubcategoryModal({
   opened,
