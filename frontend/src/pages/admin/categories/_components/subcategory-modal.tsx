@@ -126,7 +126,7 @@ export default function SubcategoryModal({
           <Button
             type="submit"
             loading={loading}
-            disabled={!image || !nameEn || !nameAr || (subcategoryToUpdate ? !dataChanged : false)}
+            disabled={ !nameEn || !nameAr || (subcategoryToUpdate ? !dataChanged : false)}
             fullWidth
           >
             {title}
