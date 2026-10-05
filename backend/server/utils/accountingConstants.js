@@ -161,6 +161,36 @@ exports.AutomaticJournalAccountCodes = {
   revenue: '60000001', // Revenue (revenue) - generic, until a dedicated project-execution-revenue account exists
 };
 
+// The originating business module of a journal entry - a NEW, dedicated "Module" column/field
+// (docs section "Module field") distinct from `sourceType` (SO/PO/PAYMENT/ADVANCED_PAYMENT/PROJECT
+// are internal idempotency-key vocabulary, not a display label). Normalized through this one map
+// so an automatic entry's module can never drift into inconsistent casing/spelling. 'Manual' is
+// the default for every hand-entered journal entry (source: 'manual'); the two legacy automatic
+// flows (project_creation, fixed_asset_purchase) keep their own plain labels for the same reason.
+exports.AccountingModules = ['Advanced Payment', 'Purchase Order', 'Sales Order', 'Payment', 'Manual', 'Fixed Asset', 'Project'];
+
+// accountingAction -> Module label. Deliberately keyed by accountingAction (not sourceType) -
+// PO_PAYMENT_RECORDED/SO_PAYMENT_RECORDED both carry `sourceType: 'PAYMENT'` but their real business
+// module is Purchase Order / Sales Order respectively (matching the reference accounting table's
+// own Module column); PROJECT_REVENUE_RECOGNITION/PROJECT_COST_RECOGNITION carry `sourceType:
+// 'PROJECT'` but are themselves triggered by a Sales Order's contribution to executedPercentage, so
+// the reference table itself labels them "Sales Order", not "Project".
+exports.AccountingModuleByAction = {
+  ADVANCE_PAYMENT_RECEIVED_CUSTOMER: 'Advanced Payment',
+  ADVANCE_PAYMENT_PAID_VENDOR: 'Advanced Payment',
+  PO_INVENTORY_RECEIPT: 'Purchase Order',
+  PO_INVENTORY_TO_WIP: 'Purchase Order',
+  PO_SERVICE_TO_WIP: 'Purchase Order',
+  PO_SUPPLIER_ADVANCE_APPLIED: 'Purchase Order',
+  PO_PAYMENT_RECORDED: 'Purchase Order',
+  SO_CUSTOMER_ADVANCE_APPLIED: 'Sales Order',
+  SO_PAYMENT_RECORDED: 'Sales Order',
+  PAYMENT_CUSTOMER_ADVANCE_APPLIED: 'Payment',
+  PAYMENT_VENDOR_ADVANCE_APPLIED: 'Payment',
+  PROJECT_REVENUE_RECOGNITION: 'Sales Order',
+  PROJECT_COST_RECOGNITION: 'Sales Order',
+};
+
 // Maps each `cogs`-type Chart of Accounts code to its corresponding Projects-Under-Construction
 // (WIP) account code, for PROJECT_COST_RECOGNITION (Dr cogs account / Cr matching WIP account, per
 // Project.averageCostLines). Code-based, not name-matched (see this file's AccountTypes comment

@@ -108,7 +108,7 @@ export default function JournalEntries() {
                 the Chart of Accounts table. Columns below are this page's own - only the
                 container/header/row presentation is shared. */}
             <DataTableContainer>
-              <DataTable className="min-w-[1280px]">
+              <DataTable className="min-w-[1380px]">
                 <Table.Thead className={dataTableHeadClassName}>
                   <Table.Tr>
                     <Table.Th className="whitespace-nowrap">{translate("Document Date", "تاريخ المستند")}</Table.Th>
@@ -128,6 +128,7 @@ export default function JournalEntries() {
                       {translate("Balance (Local Currency)", "الرصيد (العملة المحلية)")}
                     </Table.Th>
                     <Table.Th>{translate("Desc.", "الوصف")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Module", "الوحدة")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -162,6 +163,7 @@ export default function JournalEntries() {
                         {row.balanceLocalCurrency.toLocaleString()}
                       </Table.Td>
                       <Table.Td>{row.description || "-"}</Table.Td>
+                      <Table.Td className="whitespace-nowrap">{row.module || "-"}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>

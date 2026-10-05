@@ -1,5 +1,5 @@
 const { Schema, model } = require('mongoose');
-const { JournalEntryStatus, JournalEntrySources, AccountingActions } = require('../../utils/accountingConstants');
+const { JournalEntryStatus, JournalEntrySources, AccountingActions, AccountingModules } = require('../../utils/accountingConstants');
 
 // Explicit requires (not just string `ref:` names) for every model this schema's pre(/^find/)
 // hook populates - mirrors paymentModel.js's existing convention of requiring its ref'd models at
@@ -21,6 +21,19 @@ const journalLineSchema = new Schema(
     // Optional child of `account` (e.g. account 1100 Accounts Receivable -> sub-account "Project
     // #123 receivable"). Not a separate SubAccount model - see chartOfAccountModel.js.
     subAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
+    // The resolved Customer/Vendor Number for THIS specific line (docs section "Sub Account
+    // behavior") - set only on the one control-account line of an automatic entry that actually
+    // represents a business party (e.g. the Suppliers line of a Purchase Order entry, the
+    // Accounts Receivable - Projects line of a Sales Order entry) - never on every line of the
+    // entry. Written once at creation time by the automatic accounting engine
+    // (accountingEventService.js) - a real, immutable historical snapshot, not a value re-derived
+    // from a live Vendor/Customer lookup on every read (which would incorrectly go blank if that
+    // vendor/customer is later soft-deleted). `partyType` disambiguates which control account
+    // (Customer AR/Advance vs Vendor Payable/Advance) the number belongs to, since both display as
+    // the same "Sub Account" UI column. Never set on manual entries - those keep using the existing
+    // `subAccount` ChartOfAccount-reference field above.
+    partyNumber: { type: Number, default: null },
+    partyType: { type: String, enum: { values: ['customer', 'vendor', null], message: '{VALUE} is not a valid party type' }, default: null },
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
     // Denormalized so the Journal Entries UI table can render "Project Number" per line without a
     // populate - the project reference above remains the source of truth/relational key.
@@ -85,6 +98,16 @@ const journalEntrySchema = new Schema(
       default: null,
     },
     reference: { type: String, trim: true },
+    // The originating business module (docs section "Module field") - normalized through
+    // AccountingModules/AccountingModuleByAction (accountingConstants.js), never a free-text
+    // variation. Automatic entries get this set explicitly by postAutomaticJournalEntry
+    // (accountingEventService.js); manual entries default to 'Manual' in the pre('save') hook
+    // below, so every entry - old or new - always has a non-null value to display.
+    module: {
+      type: String,
+      enum: { values: [...AccountingModules, null], message: '{VALUE} is not a valid accounting module' },
+      default: null,
+    },
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
     status: {
       type: String,
@@ -169,6 +192,12 @@ journalEntrySchema.pre('save', async function (next) {
     //     concept of a project at all; retrofitting it to require one is out of scope here.
     if (this.isNew && !this.reversalOfEntry && this.source === 'manual' && !this.project) {
       throw new Error('Project is required when creating a journal entry.');
+    }
+    // Every entry always has a Module value to display (docs section "Module field") - automatic
+    // entries get theirs set explicitly by postAutomaticJournalEntry; a manual entry (and any other
+    // write path that never set one) falls back to 'Manual' here rather than staying null.
+    if (this.isNew && !this.module) {
+      this.module = this.source === 'manual' ? 'Manual' : null;
     }
     if (this.isNew && this.project) {
       const Project = this.model('Project');

@@ -117,6 +117,7 @@ export default function JournalEntryDetail() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <InfoCard label={translate("Date", "التاريخ")} value={formatDate(entry.date, language)} />
         <InfoCard label={translate("Source", "المصدر")} value={entry.source} />
+        <InfoCard label={translate("Module", "الوحدة")} value={entry.module || "-"} />
         <InfoCard label={translate("Project", "المشروع")} value={entry.project?.projectNumber || "-"} />
         <InfoCard label={translate("Reference", "المرجع")} value={entry.reference || "-"} />
         {entry.reversedByEntry && (
@@ -175,7 +176,17 @@ export default function JournalEntryDetail() {
                   <Table.Td>
                     {line.account.code} - {line.account.name}
                   </Table.Td>
-                  <Table.Td>{line.subAccount ? `${line.subAccount.code} - ${line.subAccount.name}` : "-"}</Table.Td>
+                  <Table.Td>
+                    {/* The automatic accounting engine stamps partyNumber/partyType (the resolved
+                        Customer/Vendor Number) directly on the one control-account line - a manual
+                        entry instead uses the ChartOfAccount-reference `subAccount` field. Never
+                        both at once; prefer the resolved party number when present. */}
+                    {line.partyType && line.partyNumber != null
+                      ? line.partyNumber
+                      : line.subAccount
+                        ? `${line.subAccount.code} - ${line.subAccount.name}`
+                        : "-"}
+                  </Table.Td>
                   <Table.Td>{line.projectNumber || "-"}</Table.Td>
                   <Table.Td>{line.description || "-"}</Table.Td>
                   <Table.Td>{line.debit ? line.debit.toLocaleString() : "-"}</Table.Td>

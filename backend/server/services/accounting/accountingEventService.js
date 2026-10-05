@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { getNextJournalEntryNumber } = require('./journalEntryNumberService');
-const { AutomaticJournalAccountCodes, CogsToWipAccountCodeMap } = require('../../utils/accountingConstants');
+const { AutomaticJournalAccountCodes, CogsToWipAccountCodeMap, AccountingModuleByAction } = require('../../utils/accountingConstants');
 const ApiError = require('../../utils/apiError');
 
 // The automatic accounting engine - see docs/entities/automatic-accounting.md and
@@ -41,6 +41,55 @@ async function getAccountIdByCode(code, session) {
   return account._id;
 }
 
+// Resolves a Vendor/Customer reference (raw id OR an already-populated object - every caller here
+// normalizes via `?._id || ref` first, mirroring generalLedgerService.js's established `idOf()`
+// pattern) down to that party's real Vendor Number / Customer Number, for stamping onto the one JE
+// line that represents that party's control account (docs section "Sub Account behavior").
+//
+// `required: true` (the default) throws a clear ApiError - never silently creates an incorrect JE
+// with a missing/blank Sub Account - when:
+//   - no reference was given at all (the business document has no vendor/customer), or
+//   - the referenced Vendor/Customer document no longer exists, or
+//   - it exists but has no number assigned (a legacy record predating the auto-numbering feature).
+// `required: false` is for the one flow where the party relationship is genuinely optional at the
+// business-document level (Project.customer, for PROJECT_REVENUE_RECOGNITION) - there, a missing
+// reference is not an error, just "no Sub Account for this entry", matching existing behavior.
+async function resolveVendorNumber(vendorRef, { required = true } = {}, session) {
+  const Vendor = require('../../models/vendor/vendor'); // eslint-disable-line global-require
+  const vendorId = vendorRef?._id || vendorRef;
+  if (!vendorId) {
+    if (required) throw new ApiError('The vendor for this automatic journal entry is missing or invalid.', 400);
+    return null;
+  }
+  const vendor = await Vendor.findById(vendorId).select('vendorNumber name').session(session || null);
+  if (!vendor) {
+    if (required) throw new ApiError('The vendor for this automatic journal entry does not exist.', 400);
+    return null;
+  }
+  if (vendor.vendorNumber == null) {
+    throw new ApiError(`The vendor "${vendor.name}" does not have a valid Vendor Number.`, 400);
+  }
+  return vendor.vendorNumber;
+}
+
+async function resolveCustomerNumber(customerRef, { required = true } = {}, session) {
+  const User = require('../../models/userModel'); // eslint-disable-line global-require
+  const customerId = customerRef?._id || customerRef;
+  if (!customerId) {
+    if (required) throw new ApiError('The customer for this automatic journal entry is missing or invalid.', 400);
+    return null;
+  }
+  const customer = await User.findById(customerId).select('customerNumber name').session(session || null);
+  if (!customer) {
+    if (required) throw new ApiError('The customer for this automatic journal entry does not exist.', 400);
+    return null;
+  }
+  if (customer.customerNumber == null) {
+    throw new ApiError(`The customer "${customer.name}" does not have a valid Customer Number.`, 400);
+  }
+  return customer.customerNumber;
+}
+
 /**
  * Idempotently posts ONE automatic JournalEntry for a given accounting action. Safe to call
  * repeatedly for the same (sourceType, sourceId, accountingAction) triple - returns the already-
@@ -61,6 +110,9 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
         date: date || new Date(),
         description,
         source: 'automatic',
+        // Normalized through the one accountingAction -> Module map (docs section "Module field") -
+        // never a free-text/inconsistently-cased variation (see accountingConstants.js).
+        module: AccountingModuleByAction[accountingAction] || null,
         sourceType,
         sourceId,
         accountingAction,
@@ -88,6 +140,10 @@ async function postAdvancePaymentReceivedCustomerJE(advancedPayment, session) {
   const paymentAccountId = advancedPayment.paymentAccount?._id || advancedPayment.paymentAccount;
   const projectId = advancedPayment.project?._id || advancedPayment.project || null;
 
+  // A customer AdvancedPayment always has a customer (schema-required for type: 'customer') - the
+  // real Customer Number must be resolvable, or this fails safely rather than posting a Sub
+  // Account-less entry (docs section "Do not hardcode Vendor/Customer numbers").
+  const customerNumber = await resolveCustomerNumber(advancedPayment.customer, { required: true }, session);
   const customerAdvancesPayableId = await getAccountIdByCode(AutomaticJournalAccountCodes.customerAdvancesPayable, session);
 
   return postAutomaticJournalEntry({
@@ -99,7 +155,14 @@ async function postAdvancePaymentReceivedCustomerJE(advancedPayment, session) {
     project: projectId,
     lines: [
       { account: paymentAccountId, debit: advancedPayment.amount, credit: 0, project: projectId },
-      { account: customerAdvancesPayableId, debit: 0, credit: advancedPayment.amount, project: projectId },
+      {
+        account: customerAdvancesPayableId,
+        debit: 0,
+        credit: advancedPayment.amount,
+        project: projectId,
+        partyNumber: customerNumber,
+        partyType: 'customer',
+      },
     ],
     session,
   });
@@ -111,7 +174,14 @@ async function postAdvancePaymentReceivedCustomerJE(advancedPayment, session) {
 async function postAdvancePaymentPaidVendorJE(advancedPayment, session) {
   if (!advancedPayment.paymentAccount) return null;
   const paymentAccountId = advancedPayment.paymentAccount?._id || advancedPayment.paymentAccount;
+  // A vendor AdvancedPayment's project is optional (not every vendor advance is tied to a specific
+  // project) - BUT when one IS attached, it must flow through to the JE (docs section "Project
+  // Number is mandatory for automatic Journal Entries"/"whenever the originating event is
+  // project-related"). Previously hardcoded to `null` unconditionally, silently discarding a real
+  // project reference - fixed here.
+  const projectId = advancedPayment.project?._id || advancedPayment.project || null;
 
+  const vendorNumber = await resolveVendorNumber(advancedPayment.vendor, { required: true }, session);
   const advanceToSuppliersId = await getAccountIdByCode(AutomaticJournalAccountCodes.advanceToSuppliers, session);
 
   return postAutomaticJournalEntry({
@@ -120,10 +190,17 @@ async function postAdvancePaymentPaidVendorJE(advancedPayment, session) {
     sourceId: advancedPayment._id,
     date: advancedPayment.createdAt || new Date(),
     description: `Vendor advance payment paid${advancedPayment.reference ? ` - ${advancedPayment.reference}` : ''}`,
-    project: null,
+    project: projectId,
     lines: [
-      { account: advanceToSuppliersId, debit: advancedPayment.amount, credit: 0 },
-      { account: paymentAccountId, debit: 0, credit: advancedPayment.amount },
+      {
+        account: advanceToSuppliersId,
+        debit: advancedPayment.amount,
+        credit: 0,
+        project: projectId,
+        partyNumber: vendorNumber,
+        partyType: 'vendor',
+      },
+      { account: paymentAccountId, debit: 0, credit: advancedPayment.amount, project: projectId },
     ],
     session,
   });
@@ -156,6 +233,11 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
   const entries = [];
   const projectId = purchaseOrder.project?._id || purchaseOrder.project || null;
 
+  // A Purchase Order always has a vendor (schema-required) - resolved ONCE here and stamped onto
+  // every control-account (Suppliers) line below, never a second lookup per line (docs section
+  // "Vendor Sub Account").
+  const vendorNumber = await resolveVendorNumber(purchaseOrder.vendorId, { required: true }, session);
+
   const productIds = [...new Set(purchaseOrder.items.map(i => (i.productId?._id || i.productId).toString()))];
   const products = await Product.find({ _id: { $in: productIds } }).session(session || null).lean();
   const typeById = new Map(products.map(p => [p._id.toString(), p.type]));
@@ -184,7 +266,7 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
     const receiptLines = [{ account: inventoryId, debit: physicalSubtotal, credit: 0 }];
     if (physicalVat > 0) receiptLines.push({ account: inputVatId, debit: physicalVat, credit: 0 });
     const supplierOwed = round2(physicalSubtotal + physicalVat - physicalWht);
-    receiptLines.push({ account: suppliersId, debit: 0, credit: supplierOwed });
+    receiptLines.push({ account: suppliersId, debit: 0, credit: supplierOwed, partyNumber: vendorNumber, partyType: 'vendor' });
     if (physicalWht > 0) receiptLines.push({ account: whtPayableId, debit: 0, credit: physicalWht });
 
     entries.push(
@@ -220,7 +302,15 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
     }
   }
 
-  if (serviceItems.length > 0 && projectId) {
+  if (serviceItems.length > 0) {
+    // Project is mandatory for every Purchase Order (salesOrderModel.js's sibling `isNew` backstop
+    // on purchaseOrder.js) - a service item reaching this point with no project would mean that
+    // invariant was somehow bypassed. Fail loudly rather than silently skipping the WIP posting
+    // (docs section "Do not silently continue if the source document has no Project").
+    if (!projectId) {
+      throw new ApiError('Project is required for this automatic Journal Entry (Purchase Order service cost posting).', 400);
+    }
+
     const byCostAccount = new Map();
     for (const item of serviceItems) {
       const costAccountId = item.costAccount?._id || item.costAccount;
@@ -236,7 +326,7 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
     for (const [costAccountId, amount] of byCostAccount) {
       lines.push({ account: costAccountId, debit: amount, credit: 0, project: projectId });
     }
-    lines.push({ account: suppliersId, debit: 0, credit: serviceSubtotal, project: projectId });
+    lines.push({ account: suppliersId, debit: 0, credit: serviceSubtotal, project: projectId, partyNumber: vendorNumber, partyType: 'vendor' });
 
     entries.push(
       await postAutomaticJournalEntry({
@@ -261,6 +351,7 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
  */
 async function postPurchaseOrderAdvanceAppliedJE(purchaseOrder, consumedAmount, session) {
   const projectId = purchaseOrder.project?._id || purchaseOrder.project || null;
+  const vendorNumber = await resolveVendorNumber(purchaseOrder.vendorId, { required: true }, session);
   const [suppliersId, advanceToSuppliersId] = await Promise.all([
     getAccountIdByCode(AutomaticJournalAccountCodes.suppliers, session),
     getAccountIdByCode(AutomaticJournalAccountCodes.advanceToSuppliers, session),
@@ -274,7 +365,7 @@ async function postPurchaseOrderAdvanceAppliedJE(purchaseOrder, consumedAmount, 
     description: `Vendor advance applied against supplier payable - PO ${purchaseOrder.code || purchaseOrder._id}`,
     project: projectId,
     lines: [
-      { account: suppliersId, debit: consumedAmount, credit: 0, project: projectId },
+      { account: suppliersId, debit: consumedAmount, credit: 0, project: projectId, partyNumber: vendorNumber, partyType: 'vendor' },
       { account: advanceToSuppliersId, debit: 0, credit: consumedAmount, project: projectId },
     ],
     session,
@@ -289,10 +380,16 @@ async function postPurchaseOrderAdvanceAppliedJE(purchaseOrder, consumedAmount, 
  * PO_PAYMENT_RECORDED (JV005/007/009): Dr Suppliers, Cr Cash/Bank (payment.paymentAccount).
  * No-ops if the payment has no paymentAccount (a legacy string paymentMethod payment has no real
  * ChartOfAccount to post to - posting would require fabricating a mapping, which is not done).
+ *
+ * `projectId`: the originating Purchase Order's project, passed by the caller (which already has
+ * the order loaded - see PaymentController.js) rather than re-fetched here. Previously hardcoded to
+ * `null` unconditionally, silently discarding a real project reference even though every Purchase
+ * Order has one (docs section "Project Number is mandatory for automatic Journal Entries").
  */
-async function postPurchasePaymentRecordedJE(payment, session) {
+async function postPurchasePaymentRecordedJE(payment, projectId, session) {
   if (!payment.paymentAccount) return null;
   const paymentAccountId = payment.paymentAccount?._id || payment.paymentAccount;
+  const vendorNumber = await resolveVendorNumber(payment.vendorId, { required: true }, session);
   const suppliersId = await getAccountIdByCode(AutomaticJournalAccountCodes.suppliers, session);
 
   return postAutomaticJournalEntry({
@@ -301,10 +398,10 @@ async function postPurchasePaymentRecordedJE(payment, session) {
     sourceId: payment._id,
     date: payment.createdAt || new Date(),
     description: `Supplier payment${payment.notes ? ` - ${payment.notes}` : ''}`,
-    project: null,
+    project: projectId || null,
     lines: [
-      { account: suppliersId, debit: payment.amountPaid, credit: 0 },
-      { account: paymentAccountId, debit: 0, credit: payment.amountPaid },
+      { account: suppliersId, debit: payment.amountPaid, credit: 0, project: projectId || null, partyNumber: vendorNumber, partyType: 'vendor' },
+      { account: paymentAccountId, debit: 0, credit: payment.amountPaid, project: projectId || null },
     ],
     session,
   });
@@ -313,10 +410,15 @@ async function postPurchasePaymentRecordedJE(payment, session) {
 /**
  * SO_PAYMENT_RECORDED (JV012 part B): Dr Cash/Bank (payment.paymentAccount),
  * Cr Accounts Receivable - Projects.
+ *
+ * `projectId`: the originating Sales Order's project, passed by the caller (which already has the
+ * order loaded). Previously hardcoded to `null` unconditionally - see
+ * postPurchasePaymentRecordedJE's identical fix/comment above.
  */
-async function postSalesPaymentRecordedJE(payment, session) {
+async function postSalesPaymentRecordedJE(payment, projectId, session) {
   if (!payment.paymentAccount) return null;
   const paymentAccountId = payment.paymentAccount?._id || payment.paymentAccount;
+  const customerNumber = await resolveCustomerNumber(payment.customerId, { required: true }, session);
   const arProjectsId = await getAccountIdByCode(AutomaticJournalAccountCodes.accountsReceivableProjects, session);
 
   return postAutomaticJournalEntry({
@@ -325,10 +427,17 @@ async function postSalesPaymentRecordedJE(payment, session) {
     sourceId: payment._id,
     date: payment.createdAt || new Date(),
     description: `Customer payment${payment.notes ? ` - ${payment.notes}` : ''}`,
-    project: null,
+    project: projectId || null,
     lines: [
-      { account: paymentAccountId, debit: payment.amountPaid, credit: 0 },
-      { account: arProjectsId, debit: 0, credit: payment.amountPaid },
+      { account: paymentAccountId, debit: payment.amountPaid, credit: 0, project: projectId || null },
+      {
+        account: arProjectsId,
+        debit: 0,
+        credit: payment.amountPaid,
+        project: projectId || null,
+        partyNumber: customerNumber,
+        partyType: 'customer',
+      },
     ],
     session,
   });
@@ -342,6 +451,7 @@ async function postSalesPaymentRecordedJE(payment, session) {
  * accountingAction/sourceType so its idempotency key never collides with that order's own entry.
  */
 async function postPaymentCustomerAdvanceAppliedJE(payment, consumedAmount, projectId, session) {
+  const customerNumber = await resolveCustomerNumber(payment.customerId, { required: true }, session);
   const [customerAdvancesPayableId, arProjectsId] = await Promise.all([
     getAccountIdByCode(AutomaticJournalAccountCodes.customerAdvancesPayable, session),
     getAccountIdByCode(AutomaticJournalAccountCodes.accountsReceivableProjects, session),
@@ -355,7 +465,14 @@ async function postPaymentCustomerAdvanceAppliedJE(payment, consumedAmount, proj
     description: `Customer advance applied via payment against accounts receivable${payment.notes ? ` - ${payment.notes}` : ''}`,
     project: projectId || null,
     lines: [
-      { account: customerAdvancesPayableId, debit: consumedAmount, credit: 0, project: projectId || null },
+      {
+        account: customerAdvancesPayableId,
+        debit: consumedAmount,
+        credit: 0,
+        project: projectId || null,
+        partyNumber: customerNumber,
+        partyType: 'customer',
+      },
       { account: arProjectsId, debit: 0, credit: consumedAmount, project: projectId || null },
     ],
     session,
@@ -366,8 +483,12 @@ async function postPaymentCustomerAdvanceAppliedJE(payment, consumedAmount, proj
  * PAYMENT_VENDOR_ADVANCE_APPLIED: Dr Suppliers, Cr Advance to Suppliers. Same accounting shape as
  * PO_SUPPLIER_ADVANCE_APPLIED, but for a later Add Payment against an EXISTING Purchase Order
  * funded from the vendor's Advanced Payment balance, rather than the order's own creation.
+ *
+ * `projectId`: the originating Purchase Order's project, passed by the caller - previously
+ * hardcoded to `null` unconditionally, same bug/fix as postPurchasePaymentRecordedJE above.
  */
-async function postPaymentVendorAdvanceAppliedJE(payment, consumedAmount, session) {
+async function postPaymentVendorAdvanceAppliedJE(payment, consumedAmount, projectId, session) {
+  const vendorNumber = await resolveVendorNumber(payment.vendorId, { required: true }, session);
   const [suppliersId, advanceToSuppliersId] = await Promise.all([
     getAccountIdByCode(AutomaticJournalAccountCodes.suppliers, session),
     getAccountIdByCode(AutomaticJournalAccountCodes.advanceToSuppliers, session),
@@ -379,10 +500,10 @@ async function postPaymentVendorAdvanceAppliedJE(payment, consumedAmount, sessio
     sourceId: payment._id,
     date: payment.createdAt || new Date(),
     description: `Vendor advance applied via payment against supplier payable${payment.notes ? ` - ${payment.notes}` : ''}`,
-    project: null,
+    project: projectId || null,
     lines: [
-      { account: suppliersId, debit: consumedAmount, credit: 0 },
-      { account: advanceToSuppliersId, debit: 0, credit: consumedAmount },
+      { account: suppliersId, debit: consumedAmount, credit: 0, project: projectId || null, partyNumber: vendorNumber, partyType: 'vendor' },
+      { account: advanceToSuppliersId, debit: 0, credit: consumedAmount, project: projectId || null },
     ],
     session,
   });
@@ -398,6 +519,7 @@ async function postPaymentVendorAdvanceAppliedJE(payment, consumedAmount, sessio
  */
 async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, session) {
   const projectId = salesOrder.project?._id || salesOrder.project || null;
+  const customerNumber = await resolveCustomerNumber(salesOrder.customer, { required: true }, session);
   const [customerAdvancesPayableId, arProjectsId] = await Promise.all([
     getAccountIdByCode(AutomaticJournalAccountCodes.customerAdvancesPayable, session),
     getAccountIdByCode(AutomaticJournalAccountCodes.accountsReceivableProjects, session),
@@ -411,7 +533,14 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
     description: `Customer advance applied against accounts receivable - SO ${salesOrder.code || salesOrder._id}`,
     project: projectId,
     lines: [
-      { account: customerAdvancesPayableId, debit: consumedAmount, credit: 0, project: projectId },
+      {
+        account: customerAdvancesPayableId,
+        debit: consumedAmount,
+        credit: 0,
+        project: projectId,
+        partyNumber: customerNumber,
+        partyType: 'customer',
+      },
       { account: arProjectsId, debit: 0, credit: consumedAmount, project: projectId },
     ],
     session,
@@ -442,6 +571,12 @@ async function postProjectRevenueRecognitionJE(project, session) {
   const deltaAmount = round2((project.contractValue * (currentPct - previousPct)) / 100);
   if (deltaAmount <= 0) return null;
 
+  // A Project's customer is optional at the schema level (e.g. an imported/legacy project with no
+  // linked customer) - `required: false` here means a genuinely absent relationship is not an
+  // error (no Sub Account for this entry), but a PRESENT customer reference that fails to resolve
+  // to a real, numbered Customer still fails safely (docs section "If the Vendor/Customer is
+  // missing or does not have a valid number... fail safely").
+  const customerNumber = await resolveCustomerNumber(project.customer, { required: false }, session);
   const [arProjectsId, revenueId] = await Promise.all([
     getAccountIdByCode(AutomaticJournalAccountCodes.accountsReceivableProjects, session),
     getAccountIdByCode(AutomaticJournalAccountCodes.revenue, session),
@@ -455,7 +590,14 @@ async function postProjectRevenueRecognitionJE(project, session) {
     description: `Revenue recognition - project ${project.projectNumber} (${previousPct}% -> ${currentPct}%)`,
     project: project._id,
     lines: [
-      { account: arProjectsId, debit: deltaAmount, credit: 0, project: project._id },
+      {
+        account: arProjectsId,
+        debit: deltaAmount,
+        credit: 0,
+        project: project._id,
+        partyNumber: customerNumber,
+        partyType: customerNumber != null ? 'customer' : null,
+      },
       { account: revenueId, debit: 0, credit: deltaAmount, project: project._id },
     ],
     session,
@@ -537,6 +679,8 @@ async function postProjectExecutionRecognitionJEs(project, session) {
 
 module.exports = {
   getAccountIdByCode,
+  resolveVendorNumber,
+  resolveCustomerNumber,
   postAutomaticJournalEntry,
   postAdvancedPaymentJournalEntry,
   postPurchaseOrderJournalEntries,

@@ -1,5 +1,16 @@
 const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
+const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
+
+// Which control-account CODE a resolved Sub Account's party type corresponds to, for lines that
+// predate the per-line `partyNumber`/`partyType` fields (see journalLineSchema) and so must fall
+// back to resolveSubAccountsForEntries' entry-level resolution below. Scoping the fallback to ONLY
+// the line whose account matches one of these codes is what keeps the fallback from stamping the
+// same Sub Account onto every line of a multi-line entry (e.g. a Purchase Order receipt's
+// Inventory/VAT/Withholding-Tax lines must stay blank - only the Suppliers line carries the Vendor
+// Number) - see docs section "The Sub Account must represent the relevant business-party account".
+const CUSTOMER_CONTROL_CODES = new Set([AutomaticJournalAccountCodes.accountsReceivableProjects, AutomaticJournalAccountCodes.customerAdvancesPayable]);
+const VENDOR_CONTROL_CODES = new Set([AutomaticJournalAccountCodes.suppliers, AutomaticJournalAccountCodes.advanceToSuppliers]);
 
 // Journal Entries are the single source of truth for the General Ledger - account balances are
 // always derived from posted journal lines at read time, never stored/duplicated on the account
@@ -309,6 +320,27 @@ async function getGeneralLedgerLines({ page = 1, limit = 50 } = {}) {
       // docs section "Project Number". Falls back to the denormalized string, then to null -
       // never fabricated.
       const projectNumber = line.project?.projectNumber || line.projectNumber || null;
+
+      // Sub Account (docs section "Sub Account behavior"): prefer the line's OWN partyNumber/
+      // partyType, written once at creation time by the automatic accounting engine - this is the
+      // authoritative, line-scoped value and the only thing checked for every entry created going
+      // forward. Falls back to the older entry-wide resolveSubAccountsForEntries lookup ONLY for a
+      // line that has neither field set (a historical entry predating this feature) AND whose own
+      // account is actually one of the relevant control-account codes for the resolved party type -
+      // this keeps even the fallback from stamping a Vendor/Customer Number onto an unrelated line
+      // (e.g. the Inventory/VAT lines of a Purchase Order receipt) the way the original blanket,
+      // entry-wide version of this lookup used to.
+      let subAccount = null;
+      if (line.partyType && line.partyNumber != null) {
+        subAccount = { type: line.partyType, number: line.partyNumber };
+      } else {
+        const resolved = subAccountByEntryId.get(entry._id.toString());
+        if (resolved && line.account?.code) {
+          const relevantCodes = resolved.type === 'customer' ? CUSTOMER_CONTROL_CODES : VENDOR_CONTROL_CODES;
+          if (relevantCodes.has(line.account.code)) subAccount = resolved;
+        }
+      }
+
       rows.push({
         entryId: entry._id,
         lineIndex,
@@ -317,7 +349,7 @@ async function getGeneralLedgerLines({ page = 1, limit = 50 } = {}) {
         accNumber: line.account?.code || null,
         accName: line.account?.name || null,
         accountId,
-        subAccount: subAccountByEntryId.get(entry._id.toString()) || null,
+        subAccount,
         projectNumber,
         currency: line.currency || null,
         rate: line.exchangeRate ?? 1,
@@ -326,6 +358,7 @@ async function getGeneralLedgerLines({ page = 1, limit = 50 } = {}) {
         balanceDocumentCurrency: running.balance,
         balanceLocalCurrency: running.localBalance,
         description: line.description || entry.description || null,
+        module: entry.module || null,
       });
     });
   });

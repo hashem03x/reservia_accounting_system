@@ -20,6 +20,10 @@ exports.createPurchasePayment = async (req, res, next) => {
     if (!purchaseOrder) return next(new ApiError('Purchase order not found', 404));
 
     const vendorId = purchaseOrder.vendorId._id;
+    // Project is mandatory for every Purchase Order (purchaseOrder.js's `isNew` backstop) - always
+    // threaded through to the automatic JE below (docs section "Project Number is mandatory for
+    // automatic Journal Entries"), never hardcoded to null.
+    const projectId = purchaseOrder.project?._id || purchaseOrder.project || null;
 
     if (amountPaid > purchaseOrder.remainingAmount) return next(new ApiError('Amount paid cannot be greater than remaining amount', 400));
 
@@ -60,9 +64,9 @@ exports.createPurchasePayment = async (req, res, next) => {
     // has no paymentAccount; PAYMENT_VENDOR_ADVANCE_APPLIED posts instead when funded from an
     // Advanced Payment (see accountingEventService.js).
     if (consumedAdvanceAmount !== null) {
-      await postPaymentVendorAdvanceAppliedJE(payment, consumedAdvanceAmount, session);
+      await postPaymentVendorAdvanceAppliedJE(payment, consumedAdvanceAmount, projectId, session);
     } else {
-      await postPurchasePaymentRecordedJE(payment, session);
+      await postPurchasePaymentRecordedJE(payment, projectId, session);
     }
 
     const updatePurchaseOrder = await PO.findById(purchaseOrderId).session(session);
@@ -144,7 +148,7 @@ exports.createSalesPayment = async (req, res, next) => {
     if (consumedAdvanceAmount !== null) {
       await postPaymentCustomerAdvanceAppliedJE(payment, consumedAdvanceAmount, projectId, session);
     } else {
-      await postSalesPaymentRecordedJE(payment, session);
+      await postSalesPaymentRecordedJE(payment, projectId, session);
     }
 
     const updateSalesOrder = await salesOrderModel.findById(salesOrderId).session(session);

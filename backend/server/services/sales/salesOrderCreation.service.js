@@ -5,6 +5,7 @@ const Project = require('../../models/project/projectModel');
 const ApiError = require('../../utils/apiError');
 const { consumeCustomerAdvancedPayment } = require('../payments/advancedPaymentService');
 const { recalculateExecutedPercentage } = require('../project/projectAccountingService');
+const { postSalesOrderAdvanceAppliedJE } = require('../accounting/accountingEventService');
 
 // Decrements this product's stock in the sale's warehouse AND increments its totalSold in one
 // atomic update - previously two separate writes (decrement Variant.stock, then a second
@@ -110,6 +111,7 @@ async function createSalesOrder(
     // must run inside the same transaction as the SalesOrder save below: either both the advance
     // consumption and the order creation commit together, or neither does (docs section "Atomic
     // database operation").
+    let consumedAdvanceAmount = null;
     if (paymentMethod === 'advanced_payment') {
       if (!project) throw new ApiError('A project must be selected to use Advanced Payment.', 400);
 
@@ -134,9 +136,20 @@ async function createSalesOrder(
 
       salesOrder.paidAmount = consumedAmount;
       salesOrder.advancedPayment = advancedPaymentId;
+      consumedAdvanceAmount = consumedAmount;
     }
 
     await salesOrder.save({ session });
+
+    // Automatic accounting engine (SO_CUSTOMER_ADVANCE_APPLIED / JV012 part A) - this was
+    // previously never called from this flow despite the function existing, meaning a Sales Order
+    // paid via Advanced Payment silently produced NO automatic Journal Entry at all (docs section
+    // "Do not approximate these entries... An event may trigger multiple automatic Journal
+    // Entries") - fixed here, mirroring purchaseOrderController.js's identical call for the
+    // vendor-side equivalent.
+    if (consumedAdvanceAmount !== null) {
+      await postSalesOrderAdvanceAppliedJE(salesOrder, consumedAdvanceAmount, session);
+    }
 
     // Project is mandatory for every new Sales Order (see salesOrderModel.js's pre('save') hook),
     // so this always runs - recomputes Executed % for the project this order's amount now counts
