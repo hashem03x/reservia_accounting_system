@@ -95,14 +95,14 @@ export default function SubcategoryModal({
   return (
     <Modal opened={opened} onClose={handleClose} title={title}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
+        {/* <div className="flex flex-col gap-1">
           <p className="text-xs sm:text-sm">
             {translate("Please upload a squared image for the subcategory.", "يرجى تحميل صورة مربعة للفئة الفرعية.")}{" "}
             <span className="font-bold text-red-500">*</span>
           </p>
-         {/* <ImgController image={image} setImage={setImage} mini className="aspect-square w-[200px]" /> */}
-        </div>
 
+        </div>
+ */}
         <TextInput
           label={translate("Name in English", "الاسم بالإنجليزية")}
           placeholder={translate("Name in English", "الاسم بالإنجليزية")}
@@ -126,7 +126,7 @@ export default function SubcategoryModal({
           <Button
             type="submit"
             loading={loading}
-            disabled={ !nameEn || !nameAr || (subcategoryToUpdate ? !dataChanged : false)}
+            disabled={!nameEn || !nameAr || (subcategoryToUpdate ? !dataChanged : false)}
             fullWidth
           >
             {title}
