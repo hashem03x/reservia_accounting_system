@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import useWarehouseHelpers from "@/hooks/useWarehouseHelpers";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
-import { Button, NumberInput, Textarea } from "@mantine/core";
+import { Alert, Button, NumberInput, Select, Textarea } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import ErrorAlert from "@/components/ui/error-alert";
 import Modal from "@/components/ui/modal";
 import PaymentAccountSelect from "@/components/global/payment-account-select";
+import { AdvancedPayment } from "@/types/advanced-payment";
 import { useOrder } from "../../../../context";
 
 export default function AddPaymentModal({ opened, close }: { opened: boolean; close: () => void }) {
@@ -18,10 +19,32 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
   const { updateWarehouseBalanceById } = useWarehouseHelpers();
 
   const [amountPaid, setAmountPaid] = useState<string | number>("");
+  // Payment Method Options (docs section "Add Payment - Payment Method Options") - a Cash/Cash-
+  // Equivalent Chart of Accounts account, or the vendor's existing Advanced Payment balance.
+  const [paymentSource, setPaymentSource] = useState<"account" | "advanced_payment">("account");
   const [paymentAccount, setPaymentAccount] = useState("");
   const [notes, setNotes] = useState<string>("");
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
+
+  const vendorId = order.vendor?._id;
+  const {
+    privateRequest: fetchAdvanceRequest,
+    data: availableAdvance,
+    setData: setAvailableAdvance,
+    loading: advanceLoading,
+  } = useDataHandler<AdvancedPayment | null>({ initialData: null });
+  useEffect(() => {
+    if (paymentSource !== "advanced_payment" || !vendorId) {
+      setAvailableAdvance(null);
+      return;
+    }
+    fetchAdvanceRequest({ url: "advanced-payments/available", params: { vendor: vendorId }, language })
+      .then((res) => setAvailableAdvance(res.data))
+      .catch(() => setAvailableAdvance(null));
+  }, [paymentSource, vendorId]);
+
+  const isAdvancedPayment = paymentSource === "advanced_payment";
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,6 +84,11 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
       return;
     }
 
+    if (isAdvancedPayment && (!availableAdvance || +amountPaid > availableAdvance.remainingAmount)) {
+      setError(translate(`Amount paid cannot exceed the available advanced payment.`, `لا يمكن أن يتجاوز المبلغ المدفوع الدفعة المقدمة المتاحة.`));
+      return;
+    }
+
     handleRequest(language, setLoading, setError, async () => {
       const response = await privateRequest({
         language,
@@ -70,7 +98,8 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
           warehouseId: order.warehouseId,
           purchaseOrderId: order._id,
           amountPaid: amountPaid,
-          paymentAccount,
+          paymentAccount: isAdvancedPayment ? undefined : paymentAccount,
+          useAdvancedPayment: isAdvancedPayment || undefined,
           notes,
         },
       });
@@ -86,6 +115,7 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
     setTimeout(() => {
       setError("");
       setAmountPaid("");
+      setPaymentSource("account");
       setPaymentAccount("");
       setNotes("");
     }, 250);
@@ -119,7 +149,32 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
             <span className="font-medium">{translate("Enter Full Amount", "ادخل المبلغ الكامل")}</span>
           </Button>
 
-          <PaymentAccountSelect value={paymentAccount} onChange={setPaymentAccount} required />
+          <Select
+            label={translate("Payment Source", "مصدر الدفع")}
+            value={paymentSource}
+            onChange={(v) => setPaymentSource((v as "account" | "advanced_payment") || "account")}
+            data={[
+              { value: "account", label: translate("Cash & Cash Equivalents", "نقدية وما يعادلها") },
+              { value: "advanced_payment", label: translate("Advanced Payment", "دفعة مقدمة") },
+            ]}
+            allowDeselect={false}
+          />
+
+          {isAdvancedPayment ? (
+            advanceLoading ? (
+              <p className="text-sm text-gray-400">{translate("Loading available advance...", "جاري تحميل الدفعة المتاحة...")}</p>
+            ) : availableAdvance && availableAdvance.remainingAmount > 0 ? (
+              <Alert color="green" variant="light">
+                {translate("Available Advanced Payment", "الدفعة المقدمة المتاحة")}: <b>{availableAdvance.remainingAmount.toLocaleString()} {availableAdvance.currency || translations.currency}</b>
+              </Alert>
+            ) : (
+              <Alert color="red" variant="light">
+                {translate("No available advanced payment exists for this vendor.", "لا توجد دفعة مقدمة متاحة لهذا البائع.")}
+              </Alert>
+            )
+          ) : (
+            <PaymentAccountSelect value={paymentAccount} onChange={setPaymentAccount} required />
+          )}
 
           <Textarea
             label={translate("Notes (Optional)", "ملاحظات (اختياري)")}
@@ -135,7 +190,12 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
           <Button onClick={handleClose} variant="light" color="dark" fullWidth>
             {translations.cancel}
           </Button>
-          <Button type="submit" loading={loading} disabled={!amountPaid || !paymentAccount} fullWidth>
+          <Button
+            type="submit"
+            loading={loading}
+            disabled={!amountPaid || (isAdvancedPayment ? !availableAdvance || availableAdvance.remainingAmount <= 0 : !paymentAccount)}
+            fullWidth
+          >
             {title}
           </Button>
         </div>

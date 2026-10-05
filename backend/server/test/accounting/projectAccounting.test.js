@@ -8,11 +8,26 @@ let Project;
 let JournalEntry;
 let User;
 let ChartOfAccount;
+let SalesOrder;
+let recalculateExecutedPercentage;
+let AutomaticJournalAccountCodes;
 let user;
 let customer;
 let cogsAccountA;
 let cogsAccountB;
 let nonCogsAccount;
+
+// SalesOrder.create() needs a real Product ObjectId for `items.*.product` to satisfy the schema's
+// `required: true` cast, but the model itself never checks the referenced Product actually exists
+// (that's a controller/service-layer concern, not this model's) - a fresh fake id is fine here.
+function fakeSalesOrder(overrides = {}) {
+  return {
+    customer: customer._id,
+    orderSource: 'cashier',
+    items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 100, starterQuantity: 1 }],
+    ...overrides,
+  };
+}
 
 // Project.create() no longer takes a session/journal-entry step - creating a project only ever
 // creates the Project document (automatic journal-entry creation on project creation was removed,
@@ -35,7 +50,11 @@ before(async () => {
   JournalEntry = require('../../models/accounting/journalEntryModel');
   User = require('../../models/userModel');
   ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
-  await Promise.all([Project.init(), JournalEntry.init(), ChartOfAccount.init()]);
+  SalesOrder = require('../../models/sales/salesOrderModel');
+  require('../../models/inventory/productModel');
+  ({ recalculateExecutedPercentage } = require('../../services/project/projectAccountingService'));
+  ({ AutomaticJournalAccountCodes } = require('../../utils/accountingConstants'));
+  await Promise.all([Project.init(), JournalEntry.init(), ChartOfAccount.init(), SalesOrder.init()]);
 });
 
 after(async () => {
@@ -48,12 +67,19 @@ beforeEach(async () => {
   await JournalEntry.deleteMany({});
   await User.deleteMany({});
   await ChartOfAccount.deleteMany({});
+  await SalesOrder.deleteMany({});
 
   user = await User.create({ name: 'Test Manager', email: `manager-${Date.now()}@example.com`, role: 'admin', type: 'online' });
   customer = await User.create({ name: 'Test Customer', email: `customer-${Date.now()}@example.com`, role: 'user', type: 'online' });
   cogsAccountA = await ChartOfAccount.create({ code: `COGS-A-${Date.now()}`, name: 'Direct Materials', type: 'cogs' });
   cogsAccountB = await ChartOfAccount.create({ code: `COGS-B-${Date.now()}`, name: 'Direct Labor', type: 'cogs' });
   nonCogsAccount = await ChartOfAccount.create({ code: `CASH-${Date.now()}`, name: 'Cash', type: 'asset' });
+
+  // Required for recalculateExecutedPercentage's automatic PROJECT_REVENUE_RECOGNITION posting
+  // (see accountingEventService.js#postProjectRevenueRecognitionJE) - without these two well-known
+  // codes existing, posting aborts with "required Chart of Accounts account ... was not found".
+  await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.accountsReceivableProjects, name: 'Accounts Receivable (Projects)', type: 'asset' });
+  await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.revenue, name: 'Revenue', type: 'revenue' });
 });
 
 test('creating a project does NOT create any journal entry', async () => {
@@ -326,4 +352,99 @@ test('Average Cost: updating lines recomputes the total', async () => {
   ];
   await project.save();
   assert.equal(project.averageCost, 35000);
+});
+
+// ===================== Executed % = Sales (before tax) / Contract Value x 100 =====================
+
+test('Executed %: defaults to 0 with no Sales Orders', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-01', contractValue: 1000000 }));
+  assert.equal(project.executedPercentage, 0);
+});
+
+test('Executed %: a single Sales Order contributes its pre-tax totalAmount, not its VAT-inclusive grandTotal', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-02', contractValue: 1000000 }));
+
+  await SalesOrder.create(fakeSalesOrder({
+    project: project._id,
+    items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 200000, starterQuantity: 1 }],
+    vatPercentage: 14,
+    withholdingTaxPercentage: 1,
+  }));
+
+  await recalculateExecutedPercentage(project._id);
+  const updated = await Project.findById(project._id);
+  // 200,000 / 1,000,000 x 100 = 20% - VAT/WHT must never be part of the numerator.
+  assert.equal(updated.executedPercentage, 20);
+});
+
+test('Executed %: multiple Sales Orders for the SAME project are summed', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-03', contractValue: 1000000 }));
+
+  await SalesOrder.create(fakeSalesOrder({ project: project._id, items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 200000, starterQuantity: 1 }] }));
+  await SalesOrder.create(fakeSalesOrder({ project: project._id, items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 100000, starterQuantity: 1 }] }));
+  await SalesOrder.create(fakeSalesOrder({ project: project._id, items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 50000, starterQuantity: 1 }] }));
+
+  await recalculateExecutedPercentage(project._id);
+  const updated = await Project.findById(project._id);
+  // (200,000 + 100,000 + 50,000) / 1,000,000 x 100 = 35%
+  assert.equal(updated.executedPercentage, 35);
+});
+
+test('Executed %: a Sales Order for a DIFFERENT project never contributes', async () => {
+  const projectA = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-04A', contractValue: 1000000 }));
+  const projectB = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-04B', contractValue: 1000000 }));
+
+  await SalesOrder.create(fakeSalesOrder({ project: projectB._id, items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 300000, starterQuantity: 1 }] }));
+
+  await recalculateExecutedPercentage(projectA._id);
+  await recalculateExecutedPercentage(projectB._id);
+
+  assert.equal((await Project.findById(projectA._id)).executedPercentage, 0, "Project A must stay at 0% - it has no Sales Orders of its own");
+  assert.equal((await Project.findById(projectB._id)).executedPercentage, 30);
+});
+
+test('Executed %: a canceled Sales Order is excluded from the total', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-05', contractValue: 1000000 }));
+
+  const order = await SalesOrder.create(fakeSalesOrder({ project: project._id, items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 400000, starterQuantity: 1 }] }));
+  await recalculateExecutedPercentage(project._id);
+  assert.equal((await Project.findById(project._id)).executedPercentage, 40);
+
+  order.orderStatus = 'canceled';
+  await order.save();
+  await recalculateExecutedPercentage(project._id);
+  assert.equal((await Project.findById(project._id)).executedPercentage, 0, 'canceling the only Sales Order must drop Executed % back to 0, not leave the stale value');
+});
+
+test('Executed %: contractValue of 0 never produces NaN/Infinity, falls back to 0%', async () => {
+  // contractValue has its own `min: 0.01` validator, so creating one at exactly 0 must bypass
+  // Mongoose validation (raw collection insert) - the same way a genuinely invalid/legacy value
+  // could reach the database by some other path. recalculateExecutedPercentage must still handle
+  // it safely, never dividing by zero.
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-06', contractValue: 1000000 }));
+  await mongoose.connection.collection('projects').updateOne({ _id: project._id }, { $set: { contractValue: 0 } });
+
+  await SalesOrder.create(fakeSalesOrder({ project: project._id, items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 100000, starterQuantity: 1 }] }));
+
+  await recalculateExecutedPercentage(project._id);
+  const updated = await Project.findById(project._id);
+  assert.equal(updated.executedPercentage, 0);
+  assert.ok(Number.isFinite(updated.executedPercentage), 'must never be NaN or Infinity');
+});
+
+test('Executed %: over-selling beyond the contract value clamps to 100%, never exceeds the schema\'s own max', async () => {
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-07', contractValue: 100000 }));
+  await SalesOrder.create(fakeSalesOrder({ project: project._id, items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 150000, starterQuantity: 1 }] }));
+
+  await recalculateExecutedPercentage(project._id);
+  assert.equal((await Project.findById(project._id)).executedPercentage, 100);
+});
+
+test('Executed %: a client-supplied executedPercentage is never accepted by Project.create via the controller field set (model-level default still applies)', async () => {
+  // This locks in the model's own default - the controller-level "never accepted from the client"
+  // behavior is covered by projectController.js no longer destructuring executedPercentage at all
+  // (see createProject/updateProject), which is a controller-layer guarantee this model test
+  // cannot directly exercise, but the schema default documented here is what it falls back to.
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-08', contractValue: 1000000 }));
+  assert.equal(project.executedPercentage, 0);
 });

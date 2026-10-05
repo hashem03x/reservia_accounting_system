@@ -35,7 +35,6 @@ export default function CreateProjectModal({
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [deliveryDate, setDeliveryDate] = useState<Date | null>(null);
   const [sector, setSector] = useState("");
-  const [executedPercentage, setExecutedPercentage] = useState<string | number>(0);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [averageCostLines, setAverageCostLines] = useState<AverageCostLineInput[]>([]);
   const [staff, setStaff] = useState<StaffOption[]>([]);
@@ -59,6 +58,11 @@ export default function CreateProjectModal({
     e.preventDefault();
 
     handleRequest(language, setLoading, setError, async () => {
+      if (!customer) {
+        setError(translate("Customer is required.", "العميل مطلوب."));
+        return;
+      }
+
       // Drop any Average Cost row the user added but never finished filling in (no account
       // selected yet) - partial rows aren't sent at all, rather than sent incomplete.
       const cleanedAverageCostLines = averageCostLines.filter((l) => l.account && l.amount !== "" && l.amount != null);
@@ -76,8 +80,7 @@ export default function CreateProjectModal({
           startDate,
           deliveryDate,
           sector: sector || undefined,
-          executedPercentage,
-          customer: customer?._id || undefined,
+          customer: customer._id,
           averageCostLines: cleanedAverageCostLines,
         },
       });
@@ -98,7 +101,6 @@ export default function CreateProjectModal({
       setStartDate(null);
       setDeliveryDate(null);
       setSector("");
-      setExecutedPercentage(0);
       setCustomer(null);
       setAverageCostLines([]);
       setError("");
@@ -184,27 +186,18 @@ export default function CreateProjectModal({
           clearable
         />
 
-        <NumberInput
-          label={translate("Executed Percentage", "نسبة المنفذ")}
-          placeholder={translate("Enter executed percentage", "أدخل نسبة المنفذ")}
-          value={executedPercentage}
-          onChange={setExecutedPercentage}
-          min={0}
-          max={100}
-          decimalScale={2}
-          suffix="%"
-        />
-
         <CustomerSearch
           customer={customer}
           setCustomer={setCustomer}
-          label={translate("Customer (optional)", "العميل (اختياري)")}
+          label={translate("Customer", "العميل")}
           placeholder={translate("Search for a customer", "ابحث عن عميل")}
+          required
+          withAsterisk
         />
 
         <AverageCostEditor lines={averageCostLines} setLines={setAverageCostLines} />
 
-        <Button type="submit" loading={loading} disabled={!!deliveryBeforeStartError} mt="md">
+        <Button type="submit" loading={loading} disabled={!!deliveryBeforeStartError || !customer} mt="md">
           {translate("Create Project", "إنشاء مشروع")}
         </Button>
       </form>

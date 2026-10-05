@@ -78,11 +78,11 @@ const deliveryNotBeforeStart = check('deliveryDate').custom((value, { req }) => 
   return true;
 });
 
-// نسبة المنفذ - shared by create/update, always optional (defaults to 0 - see projectModel.js).
-const executedPercentage = check('executedPercentage')
-  .optional()
-  .isFloat({ min: 0, max: 100 })
-  .withMessage('Executed percentage must be between 0 and 100');
+// نسبة المنفذ - no longer a client-settable field (docs section "Project Executed % Calculation"):
+// it is always derived as Σ(Sales Order amount before tax for this project) / contractValue × 100,
+// recalculated server-side by projectAccountingService.js#recalculateExecutedPercentage. Any
+// `executedPercentage` sent in a request body is silently ignored, matching this codebase's
+// existing convention for other derived fields (Project.remainingMoney, Project.projectNumber).
 
 const createProjectValidators = [
   check('projectNumber')
@@ -120,7 +120,6 @@ const createProjectValidators = [
 
   customerRequired,
   averageCostLines,
-  executedPercentage,
 
   check('status').optional().isIn(ProjectStatuses),
 
@@ -152,7 +151,6 @@ const updateProjectValidators = [
 
   customerOptional,
   averageCostLines,
-  executedPercentage,
 
   check('status').optional().isIn(ProjectStatuses),
 

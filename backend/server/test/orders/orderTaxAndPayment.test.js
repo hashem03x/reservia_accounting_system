@@ -88,6 +88,7 @@ test('SalesOrder: VAT only (100,000 @ 14%, no withholding) -> VAT 14,000, grandT
   const order = await SalesOrder.create({
     customer: customer._id,
     warehouse: warehouse._id,
+    project: project._id,
     orderSource: 'cashier',
     employee: manager._id,
     vatPercentage: 14,
@@ -104,6 +105,7 @@ test('SalesOrder: VAT + Withholding Tax (100,000 @ 14% VAT, 1% withholding) -> g
   const order = await SalesOrder.create({
     customer: customer._id,
     warehouse: warehouse._id,
+    project: project._id,
     orderSource: 'cashier',
     employee: manager._id,
     vatPercentage: 14,
@@ -139,6 +141,7 @@ test('withholdingTaxPercentage rejects any value other than 0, 1, 3, 5', async (
       SalesOrder.create({
         customer: customer._id,
         warehouse: warehouse._id,
+        project: project._id,
         orderSource: 'cashier',
         employee: manager._id,
         withholdingTaxPercentage: 2,
@@ -152,6 +155,7 @@ test('a client cannot manipulate vatAmount/withholdingTaxAmount/grandTotal direc
   const order = await SalesOrder.create({
     customer: customer._id,
     warehouse: warehouse._id,
+    project: project._id,
     orderSource: 'cashier',
     employee: manager._id,
     vatPercentage: 14,
@@ -173,6 +177,7 @@ test('SalesOrder: paymentMethod "account" with an eligible Cash account succeeds
   const order = await SalesOrder.create({
     customer: customer._id,
     warehouse: warehouse._id,
+    project: project._id,
     orderSource: 'cashier',
     employee: manager._id,
     paymentMethod: 'account',
@@ -188,6 +193,7 @@ test('SalesOrder: paymentMethod "account" with a non-Cash/Cash-Equivalent accoun
       SalesOrder.create({
         customer: customer._id,
         warehouse: warehouse._id,
+        project: project._id,
         orderSource: 'cashier',
         employee: manager._id,
         paymentMethod: 'account',
@@ -202,6 +208,7 @@ test('PurchaseOrder: paymentMethod "account" with an eligible Cash account succe
   const order = await PurchaseOrder.create({
     vendorId: vendor._id,
     warehouseId: warehouse._id,
+    project: project._id,
     paymentMethod: 'account',
     paymentAccount: cashAccount._id,
     items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
@@ -213,6 +220,7 @@ test('PurchaseOrder: paymentMethod "account" with an eligible Cash account succe
       PurchaseOrder.create({
         vendorId: vendor._id,
         warehouseId: warehouse._id,
+        project: project._id,
         paymentMethod: 'account',
         paymentAccount: revenueAccount._id,
         items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
@@ -225,6 +233,7 @@ test('PurchaseOrder: "advanced_payment" is now a valid paymentMethod (vendor-sid
   const order = await PurchaseOrder.create({
     vendorId: vendor._id,
     warehouseId: warehouse._id,
+    project: project._id,
     paymentMethod: 'advanced_payment',
     items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
   });
@@ -238,6 +247,7 @@ test('PurchaseOrder: paymentAccount cannot be set unless paymentMethod is "accou
       PurchaseOrder.create({
         vendorId: vendor._id,
         warehouseId: warehouse._id,
+        project: project._id,
         paymentMethod: 'advanced_payment',
         paymentAccount: cashAccount._id,
         items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
@@ -252,6 +262,7 @@ test('PurchaseOrder: advancedPayment cannot be set unless paymentMethod is "adva
       PurchaseOrder.create({
         vendorId: vendor._id,
         warehouseId: warehouse._id,
+        project: project._id,
         paymentMethod: 'account',
         paymentAccount: cashAccount._id,
         advancedPayment: new mongoose.Types.ObjectId(),
@@ -267,13 +278,14 @@ test('PurchaseOrder: item costAccount must be a "cogs"-type account when set', a
       PurchaseOrder.create({
         vendorId: vendor._id,
         warehouseId: warehouse._id,
+        project: project._id,
         items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1, costAccount: cashAccount._id }],
       }),
     /not eligible as an item cost account/
   );
 });
 
-test('Payment: requires either paymentMethod or paymentAccount', async () => {
+test('Payment: requires a paymentMethod, paymentAccount, or advancedPayment', async () => {
   await assert.rejects(
     () =>
       Payment.create({
@@ -283,7 +295,7 @@ test('Payment: requires either paymentMethod or paymentAccount', async () => {
         amountPaid: 100,
         paymentCategory: 'purchase',
       }),
-    /Either a payment method or a payment account is required/
+    /A payment method, payment account, or advanced payment is required/
   );
 });
 
@@ -310,6 +322,89 @@ test('Payment: paymentAccount eligibility is enforced (Cash accepted, Revenue re
       }),
     /must be a Cash or Cash Equivalent account/
   );
+});
+
+test('Payment: cannot be funded from both a paymentAccount and an advancedPayment at once', async () => {
+  await assert.rejects(
+    () =>
+      Payment.create({
+        warehouseId: warehouse._id,
+        vendorId: vendor._id,
+        type: 'out',
+        amountPaid: 100,
+        paymentCategory: 'purchase',
+        paymentAccount: cashAccount._id,
+        advancedPayment: new mongoose.Types.ObjectId(),
+      }),
+    /cannot be funded from both/
+  );
+});
+
+// ===================== Project is required for new Sales/Purchase Orders =====================
+
+test('SalesOrder: creating a NEW order without a project is rejected (model backstop)', async () => {
+  await assert.rejects(
+    () =>
+      SalesOrder.create({
+        customer: customer._id,
+        warehouse: warehouse._id,
+        orderSource: 'cashier',
+        employee: manager._id,
+        items: [{ product: product._id, unitPrice: 1000, starterQuantity: 1 }],
+      }),
+    /A project is required to create a Sales Order/
+  );
+});
+
+test('SalesOrder: a historical order with no project can still be re-saved (cancel/deliver/return paths are not blocked)', async () => {
+  // Bypasses the model's own `isNew` check by inserting directly, the same way real historical
+  // data created before this rule existed would look - locks in that `isNew`-scoping (not a plain
+  // schema `required: true`) is what prevents this from becoming unreadable/un-resavable.
+  const raw = await mongoose.connection.collection('salesorders').insertOne({
+    customer: customer._id,
+    orderSource: 'cashier',
+    items: [{ product: product._id, unitPrice: 1000, starterQuantity: 1, returnedQuantity: 0, itemDiscount: { type: 'fixed', value: 0 } }],
+    paidAmount: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  const legacyOrder = await SalesOrder.findById(raw.insertedId);
+  legacyOrder.orderStatus = 'canceled';
+  await legacyOrder.save();
+
+  const reloaded = await SalesOrder.findById(raw.insertedId);
+  assert.equal(reloaded.orderStatus, 'canceled');
+});
+
+test('PurchaseOrder: creating a NEW order without a project is rejected (model backstop)', async () => {
+  await assert.rejects(
+    () =>
+      PurchaseOrder.create({
+        vendorId: vendor._id,
+        warehouseId: warehouse._id,
+        items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
+      }),
+    /A project is required to create a Purchase Order/
+  );
+});
+
+test('PurchaseOrder: a historical order with no project can still be re-saved (e.g. a Payment recording against it)', async () => {
+  const raw = await mongoose.connection.collection('purchaseorders').insertOne({
+    vendorId: vendor._id,
+    warehouseId: warehouse._id,
+    items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1, returnedQuantity: 0, itemDiscount: { type: 'fixed', value: 0 } }],
+    paidAmount: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  const legacyOrder = await PurchaseOrder.findById(raw.insertedId);
+  legacyOrder.paidAmount += 100;
+  await legacyOrder.save();
+
+  const reloaded = await PurchaseOrder.findById(raw.insertedId);
+  assert.equal(reloaded.paidAmount, 100);
 });
 
 test('Payment: legacy paymentMethod string (no paymentAccount) still works for backward compatibility', async () => {

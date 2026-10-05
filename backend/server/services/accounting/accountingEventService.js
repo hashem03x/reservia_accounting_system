@@ -334,6 +334,60 @@ async function postSalesPaymentRecordedJE(payment, session) {
   });
 }
 
+/**
+ * PAYMENT_CUSTOMER_ADVANCE_APPLIED: Dr Customer Advances Payable, Cr Accounts Receivable -
+ * Projects. Same accounting shape as SO_CUSTOMER_ADVANCE_APPLIED, but for a later Add Payment
+ * against an EXISTING Sales Order funded from the customer's Advanced Payment balance (docs
+ * section "Add Payment - Advanced Payment") rather than the order's own creation - kept as its own
+ * accountingAction/sourceType so its idempotency key never collides with that order's own entry.
+ */
+async function postPaymentCustomerAdvanceAppliedJE(payment, consumedAmount, projectId, session) {
+  const [customerAdvancesPayableId, arProjectsId] = await Promise.all([
+    getAccountIdByCode(AutomaticJournalAccountCodes.customerAdvancesPayable, session),
+    getAccountIdByCode(AutomaticJournalAccountCodes.accountsReceivableProjects, session),
+  ]);
+
+  return postAutomaticJournalEntry({
+    accountingAction: 'PAYMENT_CUSTOMER_ADVANCE_APPLIED',
+    sourceType: 'PAYMENT',
+    sourceId: payment._id,
+    date: payment.createdAt || new Date(),
+    description: `Customer advance applied via payment against accounts receivable${payment.notes ? ` - ${payment.notes}` : ''}`,
+    project: projectId || null,
+    lines: [
+      { account: customerAdvancesPayableId, debit: consumedAmount, credit: 0, project: projectId || null },
+      { account: arProjectsId, debit: 0, credit: consumedAmount, project: projectId || null },
+    ],
+    session,
+  });
+}
+
+/**
+ * PAYMENT_VENDOR_ADVANCE_APPLIED: Dr Suppliers, Cr Advance to Suppliers. Same accounting shape as
+ * PO_SUPPLIER_ADVANCE_APPLIED, but for a later Add Payment against an EXISTING Purchase Order
+ * funded from the vendor's Advanced Payment balance, rather than the order's own creation.
+ */
+async function postPaymentVendorAdvanceAppliedJE(payment, consumedAmount, session) {
+  const [suppliersId, advanceToSuppliersId] = await Promise.all([
+    getAccountIdByCode(AutomaticJournalAccountCodes.suppliers, session),
+    getAccountIdByCode(AutomaticJournalAccountCodes.advanceToSuppliers, session),
+  ]);
+
+  return postAutomaticJournalEntry({
+    accountingAction: 'PAYMENT_VENDOR_ADVANCE_APPLIED',
+    sourceType: 'PAYMENT',
+    sourceId: payment._id,
+    date: payment.createdAt || new Date(),
+    description: `Vendor advance applied via payment against supplier payable${payment.notes ? ` - ${payment.notes}` : ''}`,
+    project: null,
+    lines: [
+      { account: suppliersId, debit: consumedAmount, credit: 0 },
+      { account: advanceToSuppliersId, debit: 0, credit: consumedAmount },
+    ],
+    session,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // 12a. Sales Order (JV012 part A)
 // ---------------------------------------------------------------------------
@@ -489,6 +543,8 @@ module.exports = {
   postPurchaseOrderAdvanceAppliedJE,
   postPurchasePaymentRecordedJE,
   postSalesPaymentRecordedJE,
+  postPaymentCustomerAdvanceAppliedJE,
+  postPaymentVendorAdvanceAppliedJE,
   postSalesOrderAdvanceAppliedJE,
   postProjectExecutionRecognitionJEs,
 };

@@ -5,6 +5,7 @@ const UserModel = require('../../models/userModel');
 const Payment = require('../../models/vendor/paymentModel');
 const ApiError = require('../../utils/apiError');
 const factory = require('../handlersFactory');
+const { recalculateExecutedPercentage } = require('../../services/project/projectAccountingService');
 
 exports.returnSalesOrderItem = async (req, res, next) => {
   let { salesOrderId, warehouseId, productId, returnedQuantity, paymentMethod, notes } = req.body;
@@ -35,6 +36,12 @@ exports.returnSalesOrderItem = async (req, res, next) => {
     const orderRemainingAmount = salesOrder.remainingAmount;
 
     await salesOrder.save({ session });
+
+    // A return reduces this order's totalAmount, which reduces the project's Executed % numerator
+    // (docs section "Project Executed % Calculation").
+    if (salesOrder.project) {
+      await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, session);
+    }
 
     // Get product to update stock + totalSold (no more variant indirection)
     const product = await Product.findById(productId).session(session);
@@ -196,6 +203,12 @@ exports.returnAllSalesOrderItems = async (req, res, next) => {
 
     // Save the updated sales order
     await salesOrder.save({ session });
+
+    // A return reduces this order's totalAmount, which reduces the project's Executed % numerator
+    // (docs section "Project Executed % Calculation").
+    if (salesOrder.project) {
+      await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, session);
+    }
 
     // Update customer balance
     const customer = await UserModel.findById(salesOrder.customer._id).session(session);

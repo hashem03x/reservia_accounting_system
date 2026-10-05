@@ -200,7 +200,7 @@ test('getGeneralLedgerLines: a line with no currency/exchangeRate defaults to ra
 
 test('getGeneralLedgerLines: Sub Account resolves to the Customer Number for a Sales-Order-sourced entry', async () => {
   const customer = await User.create({ name: 'GL Customer', email: `gl-customer-${Date.now()}@example.com`, role: 'user', type: 'online' });
-  const salesOrder = await SalesOrder.create({ customer: customer._id, orderSource: 'cashier', items: [] });
+  const salesOrder = await SalesOrder.create({ customer: customer._id, orderSource: 'cashier', project: project._id, items: [] });
 
   const entryNumber = await getNextJournalEntryNumber();
   await JournalEntry.create({
@@ -225,7 +225,7 @@ test('getGeneralLedgerLines: Sub Account resolves to the Customer Number for a S
 test('getGeneralLedgerLines: Sub Account resolves to the Vendor Number for a Purchase-Order-sourced entry', async () => {
   const vendor = await Vendor.create({ name: 'GL Vendor', contact: { phone: `010${Date.now()}`.slice(0, 11) } });
   const warehouse = await Warehouse.create({ name: 'GL Warehouse', location: 'Cairo' });
-  const purchaseOrder = await PurchaseOrder.create({ vendorId: vendor._id, warehouseId: warehouse._id, items: [] });
+  const purchaseOrder = await PurchaseOrder.create({ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, items: [] });
 
   const entryNumber = await getNextJournalEntryNumber();
   await JournalEntry.create({

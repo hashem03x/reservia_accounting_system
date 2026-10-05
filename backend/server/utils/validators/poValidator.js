@@ -18,9 +18,11 @@ const createPurchaseOrderValidate = [
         return Warehouse.exists({ _id: value });
     }).withMessage('Warehouse does not exist1'),
 
-    // Optional - mirrors Sales Order's own project validation (existence-checked when provided,
-    // never required for every order - see purchaseOrder.js's `project` field comment).
-    body('project').optional({ nullable: true }).isMongoId().withMessage('Project ID must be a mongoID').custom(async value => {
+    // Project is mandatory for every new Purchase Order (docs section "Purchase Orders - Project is
+    // Required") - fast pre-check; the model's own pre('save') hook (purchaseOrder.js), scoped to
+    // `isNew`, is the real backstop. Scoped to creation only - there is no Purchase Order update
+    // endpoint, so this never applies to a historical order being re-saved for an unrelated reason.
+    body('project').notEmpty().withMessage('A project is required to create a Purchase Order').isMongoId().withMessage('Project ID must be a mongoID').custom(async value => {
         const exists = await Project.exists({ _id: value });
         if (!exists) throw new Error('Project does not exist');
         return true;

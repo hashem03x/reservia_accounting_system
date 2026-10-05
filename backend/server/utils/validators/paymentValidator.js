@@ -5,12 +5,13 @@ const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { PaymentMethods } = require('../appConstant');
 const { isPaymentAccountEligible } = require('../accountingConstants');
 
-// Required going forward (docs section "Payment Methods Must Come From Chart of Accounts") - the
-// old hardcoded `paymentMethod` enum below is kept only as an optional field for any caller that
-// hasn't migrated yet; this is the real pre-check, backed by the model's own pre('save') hook in
-// paymentModel.js, which re-verifies eligibility against the live account regardless of which code
-// path writes to the document.
+// Required unless the payment is funded via Advanced Payment instead (docs section "Add Payment -
+// Payment Method Options") - the old hardcoded `paymentMethod` enum below is kept only as an
+// optional field for any caller that hasn't migrated yet; this is the real pre-check, backed by
+// the model's own pre('save') hook in paymentModel.js, which re-verifies eligibility against the
+// live account regardless of which code path writes to the document.
 const paymentAccountValidator = check('paymentAccount')
+  .if((value, { req }) => !req.body.useAdvancedPayment)
   .notEmpty()
   .withMessage('A payment account is required')
   .isMongoId()
@@ -23,6 +24,12 @@ const paymentAccountValidator = check('paymentAccount')
     }
     return true;
   });
+
+// Discriminator, not an id - mirrors SalesOrder.paymentMethod/PurchaseOrder.paymentMethod's
+// 'advanced_payment' case (docs section "Add Payment - Advanced Payment"). The specific
+// AdvancedPayment document is always resolved server-side (controller/PO/PaymentController.js)
+// from the order's customer/vendor + project, never accepted as a raw id from the client.
+const useAdvancedPaymentValidator = check('useAdvancedPayment').optional().isBoolean().withMessage('useAdvancedPayment must be a boolean');
 
 // Optional/legacy - not required any more now that `paymentAccount` is the primary field, but
 // still validated against the known list when a caller does send it, so historical integrations
@@ -51,6 +58,7 @@ exports.createPurchasePaymentValidator = [
         .withMessage('Amount must be greater than 0'),
 
     paymentAccountValidator,
+    useAdvancedPaymentValidator,
     paymentMethodValidator,
 
     check('notes')
@@ -83,6 +91,7 @@ exports.createSalesPaymentValidator = [
         .withMessage('Amount must be greater than 0'),
 
     paymentAccountValidator,
+    useAdvancedPaymentValidator,
     paymentMethodValidator,
 
     check('notes')

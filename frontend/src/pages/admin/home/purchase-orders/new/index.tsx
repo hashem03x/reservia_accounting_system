@@ -74,6 +74,11 @@ export default function NewPurchaseOrder() {
         return;
       }
 
+      if (!project) {
+        setError(translate("A project is required to create a Purchase Order.", "يجب اختيار مشروع لإنشاء طلب مشتريات."));
+        return;
+      }
+
       if (paymentMethod === "account" && !paymentAccount) {
         setError(translate("A payment account must be selected.", "يجب اختيار حساب الدفع."));
         return;
@@ -111,7 +116,7 @@ export default function NewPurchaseOrder() {
         backLink: true,
         border: true,
         sideElements: (
-          <Button onClick={handleSaveOrder} size="md" px="xl" radius="md" loading={loading} disabled={paymentMethod === "account" && !paymentAccount}>
+          <Button onClick={handleSaveOrder} size="md" px="xl" radius="md" loading={loading} disabled={!project || (paymentMethod === "account" && !paymentAccount)}>
             {translate("Save", "حفظ")}
           </Button>
         ),
@@ -141,15 +146,16 @@ export default function NewPurchaseOrder() {
 
       <hr />
 
-      {/* Project (optional - docs section "Purchase Orders - Add Project Number") */}
+      {/* Project (mandatory - docs section "Purchase Orders - Project is Required") */}
       <Select
-        label={translate("Project (Optional)", "المشروع (اختياري)")}
+        label={translate("Project", "المشروع")}
         placeholder={translate("Select project", "اختر المشروع")}
         value={project || null}
         onChange={(v) => setProject(v || "")}
         data={projects.map((p) => ({ value: p._id, label: `${p.projectNumber}${p.name ? ` - ${p.name}` : ""}` }))}
         searchable
-        clearable
+        required
+        withAsterisk
         style={{ maxWidth: 300 }}
       />
 

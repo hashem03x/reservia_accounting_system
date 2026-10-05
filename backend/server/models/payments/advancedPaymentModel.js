@@ -14,9 +14,15 @@ require('../accounting/chartOfAccountModel');
 const usageEntrySchema = new Schema(
   {
     salesOrder: { type: Schema.Types.ObjectId, ref: 'SalesOrder', default: null },
-    // Reserved for the future vendor-side consumption path (Purchase Orders) - see docs section
-    // "Vendor Advanced Payments". Nothing sets this yet.
     purchaseOrder: { type: Schema.Types.ObjectId, ref: 'PurchaseOrder', default: null },
+    // Set when this consumption came from a later Add Payment against an existing order (docs
+    // section "Add Payment - Advanced Payment") rather than from the order's own creation - a
+    // single advance can be drawn down by more than one Payment over time, each its own entry here.
+    // Deliberately NOT populated by this schema's own pre(/^find/) hook below (unlike
+    // `salesOrder`) - populating it would create the same Payment -> AdvancedPayment -> usageHistory
+    // -> Payment cycle that `usageHistory.salesOrder` already avoids (see salesOrderModel.js's
+    // identical comment on why `advancedPayment` isn't populated from that side either).
+    payment: { type: Schema.Types.ObjectId, ref: 'Payment', default: null },
     amountConsumed: { type: Number, required: true },
     // Set true when a later reversal (e.g. a cancelled Sales Order) restores the amount this entry
     // consumed - the original entry is kept (never deleted/mutated otherwise), and `reversed: true`

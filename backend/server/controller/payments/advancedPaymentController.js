@@ -4,7 +4,7 @@ const factory = require('../handlersFactory');
 const AdvancedPayment = require('../../models/payments/advancedPaymentModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
-const { getAvailableCustomerAdvancedPayment } = require('../../services/payments/advancedPaymentService');
+const { getAvailableCustomerAdvancedPayment, getAvailableVendorAdvancedPayment } = require('../../services/payments/advancedPaymentService');
 const { postAdvancedPaymentJournalEntry } = require('../../services/accounting/accountingEventService');
 
 const createAdvancedPayment = asyncHandler(async (req, res) => {
@@ -31,14 +31,24 @@ const getAdvancedPayments = factory.getAll(AdvancedPayment, 'AdvancedPayment');
 
 const getAdvancedPayment = factory.getOne(AdvancedPayment);
 
-// GET /advanced-payments/available?customer=&project= - read-only lookup the Sales Order creation
-// UI calls to show "Available Advanced Payment: X" before submitting. Never consumes anything -
-// actual consumption only ever happens inside createSalesOrder's transaction (see
-// salesOrderCreation.service.js), so the frontend can poll this freely without side effects.
+// GET /advanced-payments/available?customer=&project= (customer side) or
+// ?vendor= (vendor side, no project needed - see advancedPaymentModel.js's pre('validate') hook:
+// a project is only ever required for `type: 'customer'`) - read-only lookup the Sales/Purchase
+// Order creation UI AND the Add Payment UI call to show "Available Advanced Payment: X" before
+// submitting (docs section "Add Payment - Advanced Payment"). Never consumes anything - actual
+// consumption only ever happens inside the relevant write's own transaction (see
+// salesOrderCreation.service.js / purchaseOrderController.js / PaymentController.js), so the
+// frontend can poll this freely without side effects.
 const getAvailableAdvancedPayment = asyncHandler(async (req, res, next) => {
-  const { customer, project } = req.query;
+  const { customer, project, vendor } = req.query;
+
+  if (vendor) {
+    const advance = await getAvailableVendorAdvancedPayment(vendor);
+    return res.status(200).json(apiResponse('Available advanced payment retrieved successfully', true, advance));
+  }
+
   if (!customer || !project) {
-    return next(new ApiError('Both customer and project are required.', 400));
+    return next(new ApiError('Either a vendor, or both customer and project, are required.', 400));
   }
 
   const advance = await getAvailableCustomerAdvancedPayment(customer, project);

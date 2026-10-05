@@ -103,6 +103,11 @@ export default function NewSalesOrder() {
         return;
       }
 
+      if (!project) {
+        setError(translate("A project is required to create a Sales Order.", "يجب اختيار مشروع لإنشاء طلب مبيعات."));
+        return;
+      }
+
       if (isAdvancedPayment) {
         if (!project) {
           setError(translate("A project must be selected to use Advanced Payment.", "يجب اختيار مشروع لاستخدام الدفعة المقدمة."));
@@ -158,7 +163,8 @@ export default function NewSalesOrder() {
             radius="md"
             loading={loading}
             disabled={
-              (isAdvancedPayment && (!project || !availableAdvance || availableAdvance.remainingAmount <= 0)) ||
+              !project ||
+              (isAdvancedPayment && (!availableAdvance || availableAdvance.remainingAmount <= 0)) ||
               (paymentMethod === "account" && !paymentAccount)
             }
           >
@@ -205,16 +211,17 @@ export default function NewSalesOrder() {
 
       <hr />
 
-      {/* Project (always selectable - docs section "Sales Orders - Add Project Number") */}
+      {/* Project (mandatory - docs section "Sales Orders - Project is Required") */}
       <Select
-        label={translate("Project (Optional)", "المشروع (اختياري)")}
+        label={translate("Project", "المشروع")}
         placeholder={!customer ? translate("Select a customer first", "اختر عميلاً أولاً") : translate("Select project", "اختر المشروع")}
         value={project || null}
         onChange={(v) => setProject(v || "")}
         data={customerProjects.map((p) => ({ value: p._id, label: `${p.projectNumber}${p.name ? ` - ${p.name}` : ""}` }))}
         disabled={!customer}
         searchable
-        clearable
+        required
+        withAsterisk
         style={{ maxWidth: 300 }}
       />
       {customer && customerProjects.length === 0 && (

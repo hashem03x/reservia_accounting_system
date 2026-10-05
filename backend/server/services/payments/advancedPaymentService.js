@@ -25,31 +25,41 @@ async function getAvailableCustomerAdvancedPayment(customerId, projectId, sessio
 }
 
 /**
- * Atomically consumes the ENTIRE remaining balance of the oldest available Customer Advanced
- * Payment for (customer, project), recording the consumption against `salesOrderId`. Must be
- * called inside an active `session.withTransaction(...)` callback alongside the Sales Order write -
- * MongoDB's transaction-level write-conflict detection is what actually prevents double-spending
- * two concurrent requests both reading the same "available" balance (see
+ * Atomically consumes the available Customer Advanced Payment for (customer, project), recording
+ * the consumption against `salesOrderId` (Sales Order creation) and/or `paymentId` (a later Add
+ * Payment against an existing order - docs section "Add Payment - Advanced Payment"). Must be
+ * called inside an active `session.withTransaction(...)` callback alongside the write that triggers
+ * it - MongoDB's transaction-level write-conflict detection is what actually prevents
+ * double-spending two concurrent requests both reading the same "available" balance (see
  * journalEntryController.js#reverseJournalEntry for the same re-fetch-inside-transaction
  * convention this mirrors): if two transactions both touch this same AdvancedPayment document, the
  * second to commit is aborted and retried by `withTransaction`'s built-in retry logic, re-reading
  * on retry and correctly finding nothing left to consume.
  *
- * Throws ApiError (never silently returns null) if nothing is available, so the caller's
- * transaction aborts and no Sales Order is created - see docs section "Do not trust the frontend
- * amount".
+ * `amount`: how much to consume. Omit (the Sales Order creation call site's original behavior) to
+ * consume the ENTIRE remaining balance. When provided (the Add Payment call site), it must not
+ * exceed the advance's remaining balance - checked here, not just by whatever UI collected the
+ * amount, so a direct API call can never over-consume.
+ *
+ * Throws ApiError (never silently returns null) if nothing is available or the amount requested
+ * exceeds what's available, so the caller's transaction aborts - see docs section "Do not trust the
+ * frontend amount".
  *
  * @returns {Promise<{ advancedPaymentId: ObjectId, consumedAmount: number }>}
  */
-async function consumeCustomerAdvancedPayment({ customer, project, salesOrderId, session }) {
+async function consumeCustomerAdvancedPayment({ customer, project, salesOrderId = null, paymentId = null, amount, session }) {
   const advance = await getAvailableCustomerAdvancedPayment(customer, project, session);
   if (!advance) {
     throw new ApiError('No available advanced payment exists for this project.', 400);
   }
 
-  const consumedAmount = advance.remainingAmount;
-  advance.remainingAmount = 0;
-  advance.usageHistory.push({ salesOrder: salesOrderId, amountConsumed: consumedAmount, date: new Date() });
+  const consumedAmount = amount != null ? amount : advance.remainingAmount;
+  if (consumedAmount > advance.remainingAmount) {
+    throw new ApiError('Amount exceeds the available advanced payment balance.', 400);
+  }
+
+  advance.remainingAmount -= consumedAmount;
+  advance.usageHistory.push({ salesOrder: salesOrderId, payment: paymentId, amountConsumed: consumedAmount, date: new Date() });
   await advance.save({ session });
 
   return { advancedPaymentId: advance._id, consumedAmount };
@@ -102,22 +112,31 @@ async function getAvailableVendorAdvancedPayment(vendorId, session) {
 }
 
 /**
- * Vendor-side mirror of consumeCustomerAdvancedPayment - atomically consumes the entire remaining
- * balance of the oldest available vendor Advanced Payment, recording the consumption against
- * `purchaseOrderId`. Must be called inside the same transaction as the Purchase Order write (docs
- * section "PO_SUPPLIER_ADVANCE_APPLIED").
+ * Vendor-side mirror of consumeCustomerAdvancedPayment - atomically consumes the oldest available
+ * vendor Advanced Payment, recording the consumption against `purchaseOrderId` (Purchase Order
+ * creation) and/or `paymentId` (a later Add Payment against an existing order). Must be called
+ * inside the same transaction as the write that triggers it (docs section
+ * "PO_SUPPLIER_ADVANCE_APPLIED" / "Add Payment - Advanced Payment").
+ *
+ * `amount`: see consumeCustomerAdvancedPayment's identical parameter - omit to consume the entire
+ * remaining balance (unchanged Purchase Order creation behavior), or pass an explicit amount
+ * (never exceeding what's available) for a partial Add Payment consumption.
  *
  * @returns {Promise<{ advancedPaymentId: ObjectId, consumedAmount: number }>}
  */
-async function consumeVendorAdvancedPayment({ vendor, purchaseOrderId, session }) {
+async function consumeVendorAdvancedPayment({ vendor, purchaseOrderId = null, paymentId = null, amount, session }) {
   const advance = await getAvailableVendorAdvancedPayment(vendor, session);
   if (!advance) {
     throw new ApiError('No available advanced payment exists for this vendor.', 400);
   }
 
-  const consumedAmount = advance.remainingAmount;
-  advance.remainingAmount = 0;
-  advance.usageHistory.push({ purchaseOrder: purchaseOrderId, amountConsumed: consumedAmount, date: new Date() });
+  const consumedAmount = amount != null ? amount : advance.remainingAmount;
+  if (consumedAmount > advance.remainingAmount) {
+    throw new ApiError('Amount exceeds the available advanced payment balance.', 400);
+  }
+
+  advance.remainingAmount -= consumedAmount;
+  advance.usageHistory.push({ purchaseOrder: purchaseOrderId, payment: paymentId, amountConsumed: consumedAmount, date: new Date() });
   await advance.save({ session });
 
   return { advancedPaymentId: advance._id, consumedAmount };

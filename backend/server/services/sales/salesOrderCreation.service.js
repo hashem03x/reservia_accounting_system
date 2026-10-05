@@ -4,6 +4,7 @@ const Product = require('../../models/inventory/productModel');
 const Project = require('../../models/project/projectModel');
 const ApiError = require('../../utils/apiError');
 const { consumeCustomerAdvancedPayment } = require('../payments/advancedPaymentService');
+const { recalculateExecutedPercentage } = require('../project/projectAccountingService');
 
 // Decrements this product's stock in the sale's warehouse AND increments its totalSold in one
 // atomic update - previously two separate writes (decrement Variant.stock, then a second
@@ -136,6 +137,13 @@ async function createSalesOrder(
     }
 
     await salesOrder.save({ session });
+
+    // Project is mandatory for every new Sales Order (see salesOrderModel.js's pre('save') hook),
+    // so this always runs - recomputes Executed % for the project this order's amount now counts
+    // toward (docs section "Project Executed % Calculation").
+    if (salesOrder.project) {
+      await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, session);
+    }
   };
 
   try {

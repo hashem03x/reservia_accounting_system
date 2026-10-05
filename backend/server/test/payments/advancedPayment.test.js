@@ -14,6 +14,7 @@ let Product;
 let ChartOfAccount;
 let consumeCustomerAdvancedPayment;
 let restoreAdvancedPaymentForSalesOrder;
+let consumeVendorAdvancedPayment;
 let createSalesOrder;
 
 let manager;
@@ -42,7 +43,7 @@ before(async () => {
   Warehouse = require('../../models/inventory/warehouseModel');
   Product = require('../../models/inventory/productModel');
   ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
-  ({ consumeCustomerAdvancedPayment, restoreAdvancedPaymentForSalesOrder } = require('../../services/payments/advancedPaymentService'));
+  ({ consumeCustomerAdvancedPayment, restoreAdvancedPaymentForSalesOrder, consumeVendorAdvancedPayment } = require('../../services/payments/advancedPaymentService'));
   ({ createSalesOrder } = require('../../services/sales/salesOrderCreation.service'));
 
   await Promise.all([AdvancedPayment.init(), Project.init(), User.init(), Vendor.init(), SalesOrder.init(), ChartOfAccount.init()]);
@@ -176,7 +177,7 @@ test('status transitions: available -> partially_used -> fully_used as remaining
 // reference, which would mask the exact "populated object vs raw id" bug this suite caught in
 // advancedPaymentService.js.
 async function createMinimalSalesOrder() {
-  return SalesOrder.create({ customer: customerA._id, orderSource: 'cashier', items: [] });
+  return SalesOrder.create({ customer: customerA._id, orderSource: 'cashier', project: projectA._id, items: [] });
 }
 
 test('consumeCustomerAdvancedPayment consumes the full remaining amount and records usage history', async () => {
@@ -198,6 +199,73 @@ test('consumeCustomerAdvancedPayment consumes the full remaining amount and reco
   assert.equal(reloaded.usageHistory.length, 1);
   assert.equal(reloaded.usageHistory[0].salesOrder._id.toString(), salesOrder._id.toString(), 'the usage entry must reference the real sales order (populated by AdvancedPayment\'s own find hook)');
   assert.equal(reloaded.usageHistory[0].amountConsumed, 50000);
+});
+
+// ===================== Partial consumption via Add Payment (docs section "Add Payment - Advanced Payment") =====================
+
+test('consumeCustomerAdvancedPayment: an explicit `amount` consumes only that much, leaving the rest available, and records the `payment` ref (not `salesOrder`)', async () => {
+  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, paymentAccount: cashAccount._id, createdBy: manager._id });
+  const paymentId = new mongoose.Types.ObjectId();
+
+  const { consumedAmount } = await consumeCustomerAdvancedPayment({
+    customer: customerA._id,
+    project: projectA._id,
+    paymentId,
+    amount: 20000,
+  });
+
+  assert.equal(consumedAmount, 20000);
+
+  const reloaded = await AdvancedPayment.findById(advance._id);
+  assert.equal(reloaded.remainingAmount, 30000, 'only the requested amount is consumed - the rest stays available for a later Add Payment');
+  assert.equal(reloaded.status, 'partially_used');
+  assert.equal(reloaded.usageHistory.length, 1);
+  assert.equal(reloaded.usageHistory[0].amountConsumed, 20000);
+  assert.equal(reloaded.usageHistory[0].salesOrder, null, 'a Payment-sourced consumption must not fabricate a salesOrder reference');
+});
+
+test('consumeCustomerAdvancedPayment: a second partial consumption can draw down the same advance further', async () => {
+  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, paymentAccount: cashAccount._id, createdBy: manager._id });
+
+  await consumeCustomerAdvancedPayment({ customer: customerA._id, project: projectA._id, paymentId: new mongoose.Types.ObjectId(), amount: 20000 });
+  await consumeCustomerAdvancedPayment({ customer: customerA._id, project: projectA._id, paymentId: new mongoose.Types.ObjectId(), amount: 15000 });
+
+  const reloaded = await AdvancedPayment.findById(advance._id);
+  assert.equal(reloaded.remainingAmount, 15000);
+  assert.equal(reloaded.usageHistory.length, 2);
+});
+
+test('consumeCustomerAdvancedPayment: an `amount` exceeding the remaining balance is rejected, and nothing is consumed', async () => {
+  const advance = await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, paymentAccount: cashAccount._id, createdBy: manager._id });
+
+  await assert.rejects(
+    () => consumeCustomerAdvancedPayment({ customer: customerA._id, project: projectA._id, paymentId: new mongoose.Types.ObjectId(), amount: 60000 }),
+    /exceeds the available advanced payment balance/
+  );
+
+  const reloaded = await AdvancedPayment.findById(advance._id);
+  assert.equal(reloaded.remainingAmount, 50000, 'a rejected over-amount request must not partially consume anything');
+  assert.equal(reloaded.usageHistory.length, 0);
+});
+
+test('consumeVendorAdvancedPayment: an explicit `amount` consumes only that much, leaving the rest available', async () => {
+  const advance = await AdvancedPayment.create({ type: 'vendor', vendor: vendor._id, amount: 30000, paymentAccount: cashAccount._id, createdBy: manager._id });
+
+  const { consumedAmount } = await consumeVendorAdvancedPayment({ vendor: vendor._id, paymentId: new mongoose.Types.ObjectId(), amount: 10000 });
+  assert.equal(consumedAmount, 10000);
+
+  const reloaded = await AdvancedPayment.findById(advance._id);
+  assert.equal(reloaded.remainingAmount, 20000);
+  assert.equal(reloaded.status, 'partially_used');
+});
+
+test('consumeVendorAdvancedPayment: an `amount` exceeding the remaining balance is rejected', async () => {
+  await AdvancedPayment.create({ type: 'vendor', vendor: vendor._id, amount: 30000, paymentAccount: cashAccount._id, createdBy: manager._id });
+
+  await assert.rejects(
+    () => consumeVendorAdvancedPayment({ vendor: vendor._id, paymentId: new mongoose.Types.ObjectId(), amount: 40000 }),
+    /exceeds the available advanced payment balance/
+  );
 });
 
 test('consumeCustomerAdvancedPayment rejects when nothing is available (and trying again after full consumption)', async () => {

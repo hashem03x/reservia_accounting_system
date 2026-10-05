@@ -35,4 +35,52 @@ async function recalculateRemainingMoney(projectId, session) {
   await project.save({ session });
 }
 
-module.exports = { recalculateRemainingMoney };
+/**
+ * Recomputes Project.executedPercentage = Σ(SalesOrder.totalAmount for this project, excluding
+ * canceled orders) / contractValue × 100 (docs section "Project Executed % Calculation"). Uses
+ * `totalAmount` (the sales amount BEFORE VAT/withholding tax - see salesOrderModel.js's pre('save')
+ * hook) rather than `grandTotal`, so taxes never affect the result. Clamped to [0, 100] - an
+ * over-sold project (sales exceeding contractValue) still reports 100%, never a value the schema's
+ * own `max: 100` validator would reject. Falls back to 0% (never NaN/Infinity) when contractValue
+ * is missing/zero/negative.
+ *
+ * Called after any event that changes a project's Sales Order totals (creation, cancellation,
+ * returns - see salesOrderCreation.service.js / salesOrderController.js / salesOrderReturnController.js)
+ * or its contractValue (see projectController.js#updateProject). Mirrors
+ * recalculateRemainingMoney's session-optional pattern above - deliberately never starts its own
+ * transaction, so it can safely run both inside an existing one (passed via `session`) and as a
+ * plain standalone call.
+ *
+ * Whenever the recomputed percentage increases, this also posts PROJECT_REVENUE_RECOGNITION/
+ * PROJECT_COST_RECOGNITION the exact same way the old manual-entry path used to (see
+ * accountingEventService.js#postProjectExecutionRecognitionJEs) - only the trigger moved (from an
+ * admin manually typing a percentage, to Sales Orders actually being created against the project),
+ * the recognition accounting itself is completely untouched.
+ */
+async function recalculateExecutedPercentage(projectId, session) {
+  const Project = require('../../models/project/projectModel'); // eslint-disable-line global-require
+  const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
+  const { postProjectExecutionRecognitionJEs } = require('../accounting/accountingEventService'); // eslint-disable-line global-require
+
+  const project = await Project.findById(projectId).session(session);
+  if (!project) return;
+
+  let newPct = 0;
+  if (typeof project.contractValue === 'number' && project.contractValue > 0) {
+    const totals = await SalesOrder.aggregate([
+      { $match: { project: project._id, orderStatus: { $ne: 'canceled' } } },
+      { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+    ]).session(session);
+    const salesAmount = totals[0]?.total || 0;
+    newPct = Math.min(100, Math.max(0, round2((salesAmount / project.contractValue) * 100)));
+  }
+
+  if (newPct === project.executedPercentage) return;
+
+  project.executedPercentage = newPct;
+  await project.save({ session });
+  await postProjectExecutionRecognitionJEs(project, session);
+  await project.save({ session });
+}
+
+module.exports = { recalculateRemainingMoney, recalculateExecutedPercentage };

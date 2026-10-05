@@ -36,6 +36,13 @@ const paymentSchema = Schema(
     // Accounts"). Validated for eligibility (type 'asset' + state 'cash'/'cash-equivalent') in the
     // pre('save') hook below, mirroring salesOrderModel.js's identical check.
     paymentAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
+    // The specific AdvancedPayment this payment was funded from (docs section "Add Payment -
+    // Advanced Payment") - an alternative to `paymentAccount`, never both at once (see the
+    // pre('save') backstop below). Resolved and set server-side (controller/PO/PaymentController.js)
+    // from the order's customer/vendor + project, never accepted as a raw id from the client -
+    // mirrors SalesOrder.advancedPayment/PurchaseOrder.advancedPayment's identical "server resolves
+    // which advance, client only signals intent" pattern.
+    advancedPayment: { type: Schema.Types.ObjectId, ref: 'AdvancedPayment', default: null },
     paymentCategory: {
       type: String,
       enum: ['purchase', 'purchase-return', 'sales', 'sales-return', 'expense', 'transfer', 'finance-charges', 'currency-transfer'],
@@ -68,10 +75,15 @@ paymentSchema.pre('save', async function (next) {
 
     // Backstop (see controller-level validators) - never trust that `paymentAccount` is actually
     // eligible just because a request validator approved it at some earlier point, and never allow
-    // a payment with neither a legacy `paymentMethod` nor a `paymentAccount` set.
-    if (this.isNew || this.isModified('paymentMethod') || this.isModified('paymentAccount')) {
-      if (!this.paymentMethod && !this.paymentAccount) {
-        throw new Error('Either a payment method or a payment account is required.');
+    // a payment with neither a legacy `paymentMethod`, a `paymentAccount`, nor an `advancedPayment`
+    // set. `paymentAccount` and `advancedPayment` are mutually exclusive - a payment is funded from
+    // exactly one source.
+    if (this.isNew || this.isModified('paymentMethod') || this.isModified('paymentAccount') || this.isModified('advancedPayment')) {
+      if (!this.paymentMethod && !this.paymentAccount && !this.advancedPayment) {
+        throw new Error('A payment method, payment account, or advanced payment is required.');
+      }
+      if (this.paymentAccount && this.advancedPayment) {
+        throw new Error('A payment cannot be funded from both a payment account and an advanced payment.');
       }
       if (this.paymentAccount) {
         const ChartOfAccount = this.model('ChartOfAccount');
@@ -206,6 +218,13 @@ paymentSchema.pre(/^find/, function (next) {
   this.populate({
     path: 'paymentAccount',
     select: 'code name nameAr',
+  });
+
+  // Lightweight select only (no deep populate) - see the field's own comment in the schema above
+  // for why `usageHistory.payment` is deliberately NOT populated back from AdvancedPayment's side.
+  this.populate({
+    path: 'advancedPayment',
+    select: 'type amount remainingAmount currency',
   });
 
   next();

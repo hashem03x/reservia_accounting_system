@@ -64,37 +64,31 @@ const createCashierSalesOrderValidator = [
 			return true;
 		}),
 
-	// Required only when paymentMethod is 'advanced_payment' (docs section "Advanced Payment must
-	// only appear when appropriate") - this is a fast pre-check only; the actual
-	// project-belongs-to-customer verification against the live Advanced Payment balance happens
-	// server-side in salesOrderCreation.service.js, which is the real backstop.
+	// Project is mandatory for every new Sales Order (docs section "Sales Orders - Project is
+	// Required") - this is the fast pre-check; the model's own pre('validate') hook
+	// (salesOrderModel.js), scoped to `isNew`, is the real backstop so a direct API call can never
+	// bypass it. Scoped to creation only - there is no Sales Order update endpoint, so this never
+	// applies to a historical order being re-saved for an unrelated reason (cancel/deliver/return).
 	body('project')
-		.if((value, { req }) => req.body.paymentMethod === 'advanced_payment')
 		.notEmpty()
-		.withMessage('A project must be selected to use Advanced Payment')
+		.withMessage('A project is required to create a Sales Order')
 		.isMongoId()
 		.withMessage('Project ID must be a mongoID')
 		.custom(async (value, { req }) => {
 			const project = await Project.findById(value);
 			if (!project) throw new Error('Project not found');
-			// Project.findById() runs Project's own populate hook, turning `.customer` into
-			// `{_id, name, ...}` - see advancedPaymentModel.js's identical comment.
-			const projectCustomerId = project.customer?._id || project.customer;
-			if (!projectCustomerId || projectCustomerId.toString() !== String(req.body.customer)) {
-				throw new Error('This project does not belong to the selected customer');
+			// When paying via Advanced Payment, the project must also belong to the selected
+			// customer (docs section "Advanced Payment must only appear when appropriate") - the
+			// actual live-balance verification happens server-side in
+			// salesOrderCreation.service.js, which is the real backstop for that part.
+			if (req.body.paymentMethod === 'advanced_payment') {
+				// Project.findById() runs Project's own populate hook, turning `.customer` into
+				// `{_id, name, ...}` - see advancedPaymentModel.js's identical comment.
+				const projectCustomerId = project.customer?._id || project.customer;
+				if (!projectCustomerId || projectCustomerId.toString() !== String(req.body.customer)) {
+					throw new Error('This project does not belong to the selected customer');
+				}
 			}
-			return true;
-		}),
-	// General case (docs section "Sales Orders - Add Project Number"): a project may be selected
-	// regardless of payment method - still existence-checked, just not required or customer-scoped
-	// unless Advanced Payment is in play (handled above).
-	body('project')
-		.if((value, { req }) => req.body.paymentMethod !== 'advanced_payment' && value)
-		.isMongoId()
-		.withMessage('Project ID must be a mongoID')
-		.custom(async value => {
-			const exists = await Project.exists({ _id: value });
-			if (!exists) throw new Error('Project not found');
 			return true;
 		}),
 

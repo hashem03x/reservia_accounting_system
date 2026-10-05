@@ -26,11 +26,10 @@ const salesOrderSchema = mongoose.Schema(
     },
     warehouse: { type: Schema.Types.ObjectId, ref: 'Warehouse' },
     customer: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    // Optional - most orders have no project at all (unrelated to the accounting Projects module).
-    // Required only when `paymentMethod === 'advanced_payment'` (enforced in
-    // salesOrderCreation.service.js, not here, since resolving/consuming the advance needs an
-    // async DB lookup against the live AdvancedPayment balance - see docs section "Do not trust the
-    // frontend amount").
+    // Mandatory for every NEW order (docs section "Sales Orders - Project is Required") - enforced
+    // in the pre('save') hook below, scoped to `isNew`, so historical orders created before this
+    // rule existed stay valid when re-saved (cancel/deliver/return). `default: null` (not a plain
+    // schema-level `required: true`) is deliberate for that same reason.
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
     // This order's own "how will this be paid" selection at creation time - a different concept
     // from the separate `Payment` model's `paymentMethod` (a record of an actual payment
@@ -143,6 +142,15 @@ salesOrderSchema.pre('save', async function (next) {
     // Generate unique code for new sales orders if not provided
     if (this.isNew && !this.code) {
       this.code = await generateSalesOrderCode();
+    }
+
+    // Project is mandatory for every NEW Sales Order (docs section "Sales Orders - Project is
+    // Required") - the fast pre-check lives in salesValidator.js; this is the real backstop so a
+    // direct API call can never bypass it. Scoped to `isNew` (not a plain schema-level `required`)
+    // so a historical order created before this rule existed can still be cancelled/delivered/
+    // returned - every one of those re-saves the same document without a project.
+    if (this.isNew && !this.project) {
+      throw new Error('A project is required to create a Sales Order.');
     }
 
     // Backstop (the fast pre-check lives in salesValidator.js) - never trust that `paymentAccount`

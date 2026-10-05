@@ -187,6 +187,42 @@ test('postAdvancedPaymentJournalEntry (customer): posts Dr Cash / Cr Customer Ad
   assert.equal(payableLine.credit, 5000);
 });
 
+test('postPaymentCustomerAdvanceAppliedJE: posts Dr Customer Advances Payable / Cr Accounts Receivable - Projects, sourced from PAYMENT not SO', async () => {
+  const fakePayment = { _id: new mongoose.Types.ObjectId(), createdAt: new Date(), notes: 'Partial advance draw-down' };
+
+  const entry = await accountingEventService.postPaymentCustomerAdvanceAppliedJE(fakePayment, 7500, project._id, null);
+  assert.ok(entry);
+  assert.equal(entry.accountingAction, 'PAYMENT_CUSTOMER_ADVANCE_APPLIED');
+  assert.equal(entry.sourceType, 'PAYMENT');
+  assert.equal(entry.sourceId.toString(), fakePayment._id.toString());
+  assert.equal(entry.totalDebit, 7500);
+  assert.equal(entry.totalCredit, 7500);
+
+  const payableAccountId = accounts[AutomaticJournalAccountCodes.customerAdvancesPayable]._id.toString();
+  const arAccountId = accounts[AutomaticJournalAccountCodes.accountsReceivableProjects]._id.toString();
+  const payableLine = entry.lines.find(l => l.account.toString() === payableAccountId);
+  const arLine = entry.lines.find(l => l.account.toString() === arAccountId);
+  assert.equal(payableLine.debit, 7500);
+  assert.equal(arLine.credit, 7500);
+});
+
+test('postPaymentVendorAdvanceAppliedJE: posts Dr Suppliers / Cr Advance to Suppliers, sourced from PAYMENT not PO', async () => {
+  const fakePayment = { _id: new mongoose.Types.ObjectId(), createdAt: new Date(), notes: null };
+
+  const entry = await accountingEventService.postPaymentVendorAdvanceAppliedJE(fakePayment, 4000, null);
+  assert.ok(entry);
+  assert.equal(entry.accountingAction, 'PAYMENT_VENDOR_ADVANCE_APPLIED');
+  assert.equal(entry.sourceType, 'PAYMENT');
+  assert.equal(entry.sourceId.toString(), fakePayment._id.toString());
+
+  const suppliersAccountId = accounts[AutomaticJournalAccountCodes.suppliers]._id.toString();
+  const advanceToSuppliersAccountId = accounts[AutomaticJournalAccountCodes.advanceToSuppliers]._id.toString();
+  const suppliersLine = entry.lines.find(l => l.account.toString() === suppliersAccountId);
+  const advanceLine = entry.lines.find(l => l.account.toString() === advanceToSuppliersAccountId);
+  assert.equal(suppliersLine.debit, 4000);
+  assert.equal(advanceLine.credit, 4000);
+});
+
 test('postAdvancedPaymentJournalEntry: no-ops (returns null, posts nothing) for a legacy advance with no paymentAccount', async () => {
   // paymentAccount is required for every NEW advance (advancedPaymentModel.js), so this can no
   // longer be simulated via AdvancedPayment.create() - a plain mock object (mirroring this file's

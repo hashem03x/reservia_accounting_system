@@ -3,10 +3,11 @@ const Payment = require('../../models/vendor/paymentModel');
 const factory = require('../handlersFactory');
 const ApiError = require('../../utils/apiError');
 const salesOrderModel = require('../../models/sales/salesOrderModel');
-const { postPurchasePaymentRecordedJE, postSalesPaymentRecordedJE } = require('../../services/accounting/accountingEventService');
+const { postPurchasePaymentRecordedJE, postSalesPaymentRecordedJE, postPaymentCustomerAdvanceAppliedJE, postPaymentVendorAdvanceAppliedJE } = require('../../services/accounting/accountingEventService');
+const { consumeCustomerAdvancedPayment, consumeVendorAdvancedPayment } = require('../../services/payments/advancedPaymentService');
 
 exports.createPurchasePayment = async (req, res, next) => {
-  const { warehouseId, purchaseOrderId, amountPaid, paymentMethod, paymentAccount, notes } = req.body;
+  const { warehouseId, purchaseOrderId, amountPaid, paymentMethod, paymentAccount, useAdvancedPayment, notes } = req.body;
 
   let payment;
 
@@ -29,18 +30,40 @@ exports.createPurchasePayment = async (req, res, next) => {
       amountPaid,
       type: 'out',
       paymentMethod,
-      paymentAccount,
+      // Mutually exclusive with `useAdvancedPayment` (docs section "Add Payment - Payment Method
+      // Options") - the validator already enforces exactly one source was sent.
+      paymentAccount: useAdvancedPayment ? undefined : paymentAccount,
       paymentCategory: 'purchase',
       notes,
       createdBy: req.user.id,
     });
 
+    // Vendor Advanced Payment: never trust a client-submitted amount - the consumed amount is
+    // always `amountPaid`, validated against the live AdvancedPayment balance inside this same
+    // transaction (mirrors purchaseOrderController.js's identical rule for order-creation-time
+    // consumption).
+    let consumedAdvanceAmount = null;
+    if (useAdvancedPayment) {
+      const { advancedPaymentId, consumedAmount } = await consumeVendorAdvancedPayment({
+        vendor: vendorId,
+        paymentId: payment._id,
+        amount: amountPaid,
+        session,
+      });
+      payment.advancedPayment = advancedPaymentId;
+      consumedAdvanceAmount = consumedAmount;
+    }
+
     await payment.save({ session });
 
-    // Automatic accounting engine (PO_PAYMENT_RECORDED) - no-ops if this payment has no
-    // paymentAccount (legacy string paymentMethod payments aren't posted, see
-    // accountingEventService.js).
-    await postPurchasePaymentRecordedJE(payment, session);
+    // Automatic accounting engine - PO_PAYMENT_RECORDED (Cash/Bank source) no-ops if this payment
+    // has no paymentAccount; PAYMENT_VENDOR_ADVANCE_APPLIED posts instead when funded from an
+    // Advanced Payment (see accountingEventService.js).
+    if (consumedAdvanceAmount !== null) {
+      await postPaymentVendorAdvanceAppliedJE(payment, consumedAdvanceAmount, session);
+    } else {
+      await postPurchasePaymentRecordedJE(payment, session);
+    }
 
     const updatePurchaseOrder = await PO.findById(purchaseOrderId).session(session);
 
@@ -57,7 +80,7 @@ exports.createPurchasePayment = async (req, res, next) => {
 };
 
 exports.createSalesPayment = async (req, res, next) => {
-  const { warehouseId, salesOrderId, amountPaid, paymentMethod, paymentAccount, notes } = req.body;
+  const { warehouseId, salesOrderId, amountPaid, paymentMethod, paymentAccount, useAdvancedPayment, notes } = req.body;
 
   let payment;
 
@@ -73,6 +96,12 @@ exports.createSalesPayment = async (req, res, next) => {
 
     if (amountPaid > salesOrder.remainingAmount) return next(new ApiError('Amount paid cannot be greater than remaining amount', 400));
 
+    // Customer Advanced Payments are always tied to a project (see advancedPaymentModel.js's
+    // pre('validate') hook) - an order with no project has nothing to look up.
+    if (useAdvancedPayment && !salesOrder.project) {
+      return next(new ApiError('This order has no project - an advanced payment is not available.', 400));
+    }
+
     payment = new Payment({
       warehouseId,
       salesOrderId,
@@ -80,17 +109,43 @@ exports.createSalesPayment = async (req, res, next) => {
       amountPaid,
       type: 'in',
       paymentMethod,
-      paymentAccount,
+      // Mutually exclusive with `useAdvancedPayment` (docs section "Add Payment - Payment Method
+      // Options") - the validator already enforces exactly one source was sent.
+      paymentAccount: useAdvancedPayment ? undefined : paymentAccount,
       paymentCategory: 'sales',
       notes,
       createdBy: req.user.id,
     });
 
+    const projectId = salesOrder.project?._id || salesOrder.project || null;
+
+    // Customer Advanced Payment: never trust a client-submitted amount - the consumed amount is
+    // always `amountPaid`, validated against the live AdvancedPayment balance inside this same
+    // transaction (mirrors salesOrderCreation.service.js's identical rule for order-creation-time
+    // consumption).
+    let consumedAdvanceAmount = null;
+    if (useAdvancedPayment) {
+      const { advancedPaymentId, consumedAmount } = await consumeCustomerAdvancedPayment({
+        customer: customerId,
+        project: projectId,
+        paymentId: payment._id,
+        amount: amountPaid,
+        session,
+      });
+      payment.advancedPayment = advancedPaymentId;
+      consumedAdvanceAmount = consumedAmount;
+    }
+
     await payment.save({ session });
 
-    // Automatic accounting engine (SO_PAYMENT_RECORDED) - no-ops if this payment has no
-    // paymentAccount.
-    await postSalesPaymentRecordedJE(payment, session);
+    // Automatic accounting engine - SO_PAYMENT_RECORDED (Cash/Bank source) no-ops if this payment
+    // has no paymentAccount; PAYMENT_CUSTOMER_ADVANCE_APPLIED posts instead when funded from an
+    // Advanced Payment.
+    if (consumedAdvanceAmount !== null) {
+      await postPaymentCustomerAdvanceAppliedJE(payment, consumedAdvanceAmount, projectId, session);
+    } else {
+      await postSalesPaymentRecordedJE(payment, session);
+    }
 
     const updateSalesOrder = await salesOrderModel.findById(salesOrderId).session(session);
 

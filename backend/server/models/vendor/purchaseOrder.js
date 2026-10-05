@@ -21,10 +21,12 @@ const purchaseOrderSchema = new Schema(
     },
     vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
     warehouseId: { type: Schema.Types.ObjectId, ref: 'Warehouse', required: true },
-    // Optional - mirrors SalesOrder.project's reference pattern (same Project model, same
-    // "select by projectNumber" UX). No vendor<->project relationship exists in the data model
-    // (unlike SalesOrder.customer, a project has no concept of "its vendor"), so unlike the Sales
-    // Order form this is never filtered down to a subset of projects.
+    // Mandatory for every NEW order (docs section "Purchase Orders - Project is Required") -
+    // enforced in the pre('save') hook below, scoped to `isNew`. Mirrors SalesOrder.project's
+    // reference pattern (same Project model, same "select by projectNumber" UX). No vendor<->
+    // project relationship exists in the data model (unlike SalesOrder.customer, a project has no
+    // concept of "its vendor"), so unlike the Sales Order form this is never filtered down to a
+    // subset of projects.
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
     // Mirrors SalesOrder's 'account'/'advanced_payment' cases (docs section "Payment Methods Must
     // Come From Chart of Accounts" / "Vendor Advanced Payments"). 'advanced_payment' consumes the
@@ -138,6 +140,15 @@ purchaseOrderSchema.pre('save', async function (next) {
     // Generate unique code for new purchase orders if not provided
     if (this.isNew && !this.code) {
       this.code = await generatePurchaseOrderCode();
+    }
+
+    // Project is mandatory for every NEW Purchase Order (docs section "Purchase Orders - Project is
+    // Required") - the fast pre-check lives in poValidator.js; this is the real backstop so a
+    // direct API call can never bypass it. Scoped to `isNew` (not a plain schema-level `required`)
+    // so a historical order created before this rule existed stays valid when re-saved (e.g. a
+    // Payment recording against it, see paymentModel.js).
+    if (this.isNew && !this.project) {
+      throw new Error('A project is required to create a Purchase Order.');
     }
 
     // Backstop (the fast pre-check lives in poValidator.js) - never trust that `paymentAccount` is

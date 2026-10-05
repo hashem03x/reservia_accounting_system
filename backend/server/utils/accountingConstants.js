@@ -82,6 +82,12 @@ exports.AccountingActions = [
   'PO_PAYMENT_RECORDED',
   'SO_CUSTOMER_ADVANCE_APPLIED',
   'SO_PAYMENT_RECORDED',
+  // A later Add Payment (not the order's own creation) funded from an Advanced Payment instead of
+  // a Cash/Cash-Equivalent account (docs section "Add Payment - Advanced Payment") - kept distinct
+  // from SO_CUSTOMER_ADVANCE_APPLIED/PO_SUPPLIER_ADVANCE_APPLIED so the idempotency key (sourceType
+  // 'PAYMENT', not 'SO'/'PO') never collides with that order's own advance-applied entry.
+  'PAYMENT_CUSTOMER_ADVANCE_APPLIED',
+  'PAYMENT_VENDOR_ADVANCE_APPLIED',
   'PROJECT_REVENUE_RECOGNITION',
   'PROJECT_COST_RECOGNITION',
 ];

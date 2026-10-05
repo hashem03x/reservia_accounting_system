@@ -1,4 +1,3 @@
-const mongoose = require('mongoose');
 const asyncHandler = require('express-async-handler');
 const factory = require('../handlersFactory');
 const Project = require('../../models/project/projectModel');
@@ -6,9 +5,8 @@ const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { destroyDocument } = require('../../middleware/documentUploadMiddleware');
-const { recalculateRemainingMoney } = require('../../services/project/projectAccountingService');
+const { recalculateRemainingMoney, recalculateExecutedPercentage } = require('../../services/project/projectAccountingService');
 const { logAccountingEvent } = require('../../utils/accountingLogger');
-const { postProjectExecutionRecognitionJEs } = require('../../services/accounting/accountingEventService');
 
 // Creating a project ONLY creates the Project document - it deliberately does NOT create any
 // journal entry (an earlier version of this app automatically posted a Dr Accounts Receivable /
@@ -18,7 +16,11 @@ const { postProjectExecutionRecognitionJEs } = require('../../services/accountin
 // treatment is wanted) are created separately via the Journal Entries module, unaffected by this
 // change.
 const createProject = asyncHandler(async (req, res, next) => {
-  const { projectNumber, name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines, executedPercentage } = req.body;
+  // executedPercentage is deliberately never destructured/accepted here - it is always derived
+  // (docs section "Project Executed % Calculation"), see projectAccountingService.js#
+  // recalculateExecutedPercentage. A brand-new project has no Sales Orders yet, so it stays at the
+  // schema's own default of 0 until one is created.
+  const { projectNumber, name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines } = req.body;
 
   try {
     const project = await Project.create({
@@ -34,7 +36,6 @@ const createProject = asyncHandler(async (req, res, next) => {
       sector: sector || null,
       customer: customer || null,
       averageCostLines: averageCostLines || [],
-      executedPercentage,
       createdBy: req.user._id,
     });
 
@@ -57,11 +58,12 @@ const updateProject = asyncHandler(async (req, res, next) => {
   const project = await Project.findById(req.params.id);
   if (!project) return next(new ApiError('No project found with that id', 404));
 
-  // projectNumber and remainingMoney are never accepted from a client request body - projectNumber
-  // is immutable business-key data (see master spec), remainingMoney is always derived (see
-  // projectAccountingService.js#recalculateRemainingMoney). Both are silently ignored rather than
-  // rejected, matching updateCustomer's existing partial-update convention.
-  const { name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines, executedPercentage } = req.body;
+  // projectNumber, remainingMoney and executedPercentage are never accepted from a client request
+  // body - projectNumber is immutable business-key data (see master spec), remainingMoney and
+  // executedPercentage are always derived (see projectAccountingService.js#
+  // recalculateRemainingMoney / #recalculateExecutedPercentage). All three are silently ignored
+  // rather than rejected, matching updateCustomer's existing partial-update convention.
+  const { name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines } = req.body;
   if (name !== undefined) project.name = name;
   if (description !== undefined) project.description = description;
   if (projectManager !== undefined) project.projectManager = projectManager;
@@ -70,7 +72,6 @@ const updateProject = asyncHandler(async (req, res, next) => {
   if (status !== undefined) project.status = status;
   if (sector !== undefined) project.sector = sector || null;
   if (customer !== undefined) project.customer = customer || null;
-  if (executedPercentage !== undefined) project.executedPercentage = executedPercentage;
   // Replace semantics (matches journalEntryController.js's handling of `lines`) - the client always
   // sends the full intended set of Average Cost lines, not a delta.
   if (averageCostLines !== undefined) project.averageCostLines = averageCostLines;
@@ -78,30 +79,20 @@ const updateProject = asyncHandler(async (req, res, next) => {
   const contractValueChanged = contractValue !== undefined && contractValue !== project.contractValue;
   if (contractValue !== undefined) project.contractValue = contractValue;
 
-  // Transactional only when executedPercentage was actually sent - that's the one case where this
-  // write can also post automatic journal entries (PROJECT_REVENUE_RECOGNITION/
-  // PROJECT_COST_RECOGNITION, see accountingEventService.js), and both must commit together or not
-  // at all. Whether there's actually anything NEW to recognize (executedPercentage increased beyond
-  // the trackers) is decided inside postProjectExecutionRecognitionJEs itself - it safely no-ops
-  // otherwise. The plain-field-update case (the overwhelming majority of calls) keeps the original,
-  // simpler non-transactional save.
-  if (executedPercentage !== undefined) {
-    const session = await mongoose.startSession();
-    await session.withTransaction(async () => {
-      await project.save({ session });
-      await postProjectExecutionRecognitionJEs(project, session);
-      await project.save({ session });
-    });
-    session.endSession();
-  } else {
-    await project.save();
-  }
+  await project.save();
 
+  // contractValue is the denominator of Executed % (docs section "Project Executed % Calculation")
+  // - changing it changes the derived percentage even with no new Sales Orders, so both derived
+  // figures are recomputed together. recalculateExecutedPercentage internally posts
+  // PROJECT_REVENUE_RECOGNITION/PROJECT_COST_RECOGNITION if the recomputed percentage increased
+  // (see accountingEventService.js), exactly as the old manual-entry path used to.
   if (contractValueChanged) {
     await recalculateRemainingMoney(project._id);
+    await recalculateExecutedPercentage(project._id);
   }
 
-  res.status(200).json(apiResponse('Project updated successfully', true, project));
+  const updated = await Project.findById(project._id);
+  res.status(200).json(apiResponse('Project updated successfully', true, updated));
 });
 
 const deleteProject = asyncHandler(async (req, res, next) => {

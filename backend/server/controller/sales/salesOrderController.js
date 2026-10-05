@@ -8,6 +8,7 @@ const ApiError = require('../../utils/apiError');
 const factory = require('../handlersFactory');
 const { createSalesOrder } = require('../../services/sales/salesOrderCreation.service');
 const { restoreAdvancedPaymentForSalesOrder } = require('../../services/payments/advancedPaymentService');
+const { recalculateExecutedPercentage } = require('../../services/project/projectAccountingService');
 
 // Create a new sales order
 exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
@@ -110,6 +111,11 @@ exports.cancelOrder = asyncHandler(async (req, res, next) => {
         freshOrder.orderStatus = 'canceled';
         await freshOrder.save({ session });
         await restoreAdvancedPaymentForSalesOrder({ advancedPaymentId: freshOrder.advancedPayment, salesOrderId: freshOrder._id, session });
+        // Canceling removes this order's amount from the project's Executed % numerator (docs
+        // section "Project Executed % Calculation").
+        if (freshOrder.project) {
+          await recalculateExecutedPercentage(freshOrder.project._id || freshOrder.project, session);
+        }
       });
     } finally {
       session.endSession();
@@ -120,6 +126,9 @@ exports.cancelOrder = asyncHandler(async (req, res, next) => {
 
   salesOrder.orderStatus = 'canceled';
   await salesOrder.save();
+  if (salesOrder.project) {
+    await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project);
+  }
   res.status(200).json({ status: 'success', data: salesOrder });
 });
 
