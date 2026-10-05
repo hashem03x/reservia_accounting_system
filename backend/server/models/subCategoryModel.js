@@ -17,7 +17,7 @@ const subCategorySchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-    image: String,
+    // image: String,
     tags: [String], // slim, baggy, linen, cotton, plain, new, hot, etc.
     mainCategory: {
       type: mongoose.Schema.ObjectId,

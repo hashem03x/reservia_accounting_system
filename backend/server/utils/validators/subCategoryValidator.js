@@ -12,7 +12,6 @@ exports.createSubCategoryValidator = [
     .withMessage('SubCategory must belong to main category')
     .isMongoId()
     .withMessage('Invalid category id format'),
-  check('image').notEmpty().withMessage('SubCategory image is required'),
   validatorMiddleware,
 ];
 

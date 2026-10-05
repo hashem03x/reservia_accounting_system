@@ -100,7 +100,7 @@ export default function SubcategoryModal({
             {translate("Please upload a squared image for the subcategory.", "يرجى تحميل صورة مربعة للفئة الفرعية.")}{" "}
             <span className="font-bold text-red-500">*</span>
           </p>
-          <ImgController image={image} setImage={setImage} mini className="aspect-square w-[200px]" />
+         {/* <ImgController image={image} setImage={setImage} mini className="aspect-square w-[200px]" /> */}
         </div>
 
         <TextInput
