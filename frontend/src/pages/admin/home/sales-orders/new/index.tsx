@@ -61,7 +61,11 @@ export default function NewSalesOrder() {
   // Available regardless of payment method (docs section "Sales Orders - Add Project Number") -
   // only scoped to the selected customer's own projects (docs section "One Project = One
   // Customer"). Reloaded any time the customer changes, never carried over from a previous one.
-  const { privateRequest: fetchProjectsRequest, data: customerProjects, setData: setCustomerProjects } = useDataHandler<Project[]>({ initialData: [] });
+  const {
+    privateRequest: fetchProjectsRequest,
+    data: customerProjects,
+    setData: setCustomerProjects,
+  } = useDataHandler<Project[]>({ initialData: [] });
   useEffect(() => {
     setProject("");
     if (!customer) {
@@ -110,11 +114,15 @@ export default function NewSalesOrder() {
 
       if (isAdvancedPayment) {
         if (!project) {
-          setError(translate("A project must be selected to use Advanced Payment.", "يجب اختيار مشروع لاستخدام الدفعة المقدمة."));
+          setError(
+            translate("A project must be selected to use Advanced Payment.", "يجب اختيار مشروع لاستخدام الدفعة المقدمة."),
+          );
           return;
         }
         if (!availableAdvance || availableAdvance.remainingAmount <= 0) {
-          setError(translate("No available advanced payment exists for this project.", "لا توجد دفعة مقدمة متاحة لهذا المشروع."));
+          setError(
+            translate("No available advanced payment exists for this project.", "لا توجد دفعة مقدمة متاحة لهذا المشروع."),
+          );
           return;
         }
       } else if (paymentMethod === "account" && !paymentAccount) {
@@ -214,7 +222,9 @@ export default function NewSalesOrder() {
       {/* Project (mandatory - docs section "Sales Orders - Project is Required") */}
       <Select
         label={translate("Project", "المشروع")}
-        placeholder={!customer ? translate("Select a customer first", "اختر عميلاً أولاً") : translate("Select project", "اختر المشروع")}
+        placeholder={
+          !customer ? translate("Select a customer first", "اختر عميلاً أولاً") : translate("Select project", "اختر المشروع")
+        }
         value={project || null}
         onChange={(v) => setProject(v || "")}
         data={customerProjects.map((p) => ({ value: p._id, label: `${p.projectNumber}${p.name ? ` - ${p.name}` : ""}` }))}
@@ -265,21 +275,33 @@ export default function NewSalesOrder() {
 
             {project &&
               (advanceLoading ? (
-                <p className="text-sm text-gray-400">{translate("Loading available advance...", "جاري تحميل الدفعة المتاحة...")}</p>
+                <p className="text-sm text-gray-400">
+                  {translate("Loading available advance...", "جاري تحميل الدفعة المتاحة...")}
+                </p>
               ) : availableAdvance && availableAdvance.remainingAmount > 0 ? (
                 <Alert color="green" variant="light">
                   <div className="flex flex-col gap-1">
                     <span>
-                      {translate("Available Advanced Payment", "الدفعة المقدمة المتاحة")}: <b>{availableAdvance.remainingAmount.toLocaleString()} {availableAdvance.currency || translations.currency}</b>
+                      {translate("Available Advanced Payment", "الدفعة المقدمة المتاحة")}:{" "}
+                      <b>
+                        {availableAdvance.remainingAmount.toLocaleString()}{" "}
+                        {availableAdvance.currency || translations.currency}
+                      </b>
                     </span>
                     <span className="text-sm">
-                      {translate("Sales Order paid amount will be locked to this value.", "سيتم تثبيت المبلغ المدفوع لطلب البيع على هذه القيمة.")}
+                      {translate(
+                        "Sales Order paid amount will be locked to this value.",
+                        "سيتم تثبيت المبلغ المدفوع لطلب البيع على هذه القيمة.",
+                      )}
                     </span>
                   </div>
                 </Alert>
               ) : (
                 <Alert color="red" variant="light">
-                  {translate("No available advanced payment exists for this project.", "لا توجد دفعة مقدمة متاحة لهذا المشروع.")}
+                  {translate(
+                    "No available advanced payment exists for this project.",
+                    "لا توجد دفعة مقدمة متاحة لهذا المشروع.",
+                  )}
                 </Alert>
               ))}
           </>

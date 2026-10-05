@@ -85,7 +85,12 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
     }
 
     if (isAdvancedPayment && (!availableAdvance || +amountPaid > availableAdvance.remainingAmount)) {
-      setError(translate(`Amount paid cannot exceed the available advanced payment.`, `لا يمكن أن يتجاوز المبلغ المدفوع الدفعة المقدمة المتاحة.`));
+      setError(
+        translate(
+          `Amount paid cannot exceed the available advanced payment.`,
+          `لا يمكن أن يتجاوز المبلغ المدفوع الدفعة المقدمة المتاحة.`,
+        ),
+      );
       return;
     }
 
@@ -162,10 +167,15 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
 
           {isAdvancedPayment ? (
             advanceLoading ? (
-              <p className="text-sm text-gray-400">{translate("Loading available advance...", "جاري تحميل الدفعة المتاحة...")}</p>
+              <p className="text-sm text-gray-400">
+                {translate("Loading available advance...", "جاري تحميل الدفعة المتاحة...")}
+              </p>
             ) : availableAdvance && availableAdvance.remainingAmount > 0 ? (
               <Alert color="green" variant="light">
-                {translate("Available Advanced Payment", "الدفعة المقدمة المتاحة")}: <b>{availableAdvance.remainingAmount.toLocaleString()} {availableAdvance.currency || translations.currency}</b>
+                {translate("Available Advanced Payment", "الدفعة المقدمة المتاحة")}:{" "}
+                <b>
+                  {availableAdvance.remainingAmount.toLocaleString()} {availableAdvance.currency || translations.currency}
+                </b>
               </Alert>
             ) : (
               <Alert color="red" variant="light">
@@ -193,7 +203,10 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
           <Button
             type="submit"
             loading={loading}
-            disabled={!amountPaid || (isAdvancedPayment ? !availableAdvance || availableAdvance.remainingAmount <= 0 : !paymentAccount)}
+            disabled={
+              !amountPaid ||
+              (isAdvancedPayment ? !availableAdvance || availableAdvance.remainingAmount <= 0 : !paymentAccount)
+            }
             fullWidth
           >
             {title}

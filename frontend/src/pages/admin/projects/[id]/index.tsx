@@ -25,7 +25,12 @@ import AverageCostEditor from "../_components/average-cost-editor";
 import { ProjectSectors } from "@/utils/constants/accounting";
 import { AdvancedPayment } from "@/types/advanced-payment";
 
-const advanceStatusColors: Record<string, string> = { available: "green", partially_used: "yellow", fully_used: "gray", cancelled: "red" };
+const advanceStatusColors: Record<string, string> = {
+  available: "green",
+  partially_used: "yellow",
+  fully_used: "gray",
+  cancelled: "red",
+};
 
 const statusColors: Record<string, string> = { active: "green", completed: "blue", cancelled: "red", on_hold: "yellow" };
 const statusOptions = ["active", "completed", "cancelled", "on_hold"];
@@ -36,7 +41,15 @@ export default function ProjectDetail() {
   const navigate = useNavigate();
   const canEdit = useHasPermission(resources.projects, actions.update);
 
-  const { privateRequest, loading, setLoading, error, setError, data: project, setData: setProject } = useDataHandler<Project | null>({
+  const {
+    privateRequest,
+    loading,
+    setLoading,
+    error,
+    setError,
+    data: project,
+    setData: setProject,
+  } = useDataHandler<Project | null>({
     initialData: null,
     initialLoading: true,
   });
@@ -44,11 +57,16 @@ export default function ProjectDetail() {
   const {
     privateRequest: entriesRequest,
     loading: entriesLoading,
+    setLoading:setEntriesLoading,
     data: entries,
     setData: setEntries,
   } = useDataHandler<JournalEntry[]>({ initialData: [], initialLoading: true });
 
-  const { privateRequest: advancesRequest, data: advances, setData: setAdvances } = useDataHandler<AdvancedPayment[]>({ initialData: [] });
+  const {
+    privateRequest: advancesRequest,
+    data: advances,
+    setData: setAdvances,
+  } = useDataHandler<AdvancedPayment[]>({ initialData: [] });
 
   useDocumentTitle(project ? `${project.projectNumber} | ${translations.pages.projects}` : translations.pages.projects);
 
@@ -58,9 +76,14 @@ export default function ProjectDetail() {
       setProject(res.data);
       const entriesRes = await entriesRequest({ url: `projects/${id}/journal-entries`, language });
       setEntries(entriesRes.data);
+      setEntriesLoading(false)
       // Retrieved from the Advanced Payment records themselves (docs section "Project Advanced
       // Payment Display") - never duplicated/stored on the Project document.
-      const advancesRes = await advancesRequest({ url: "advanced-payments", params: { project: id as string, type: "customer" }, language });
+      const advancesRes = await advancesRequest({
+        url: "advanced-payments",
+        params: { project: id as string, type: "customer" },
+        language,
+      });
       setAdvances(advancesRes.data);
     });
   }
@@ -127,7 +150,14 @@ export default function ProjectDetail() {
   }
 
   if (loading) return <LoadingSection message={translate("Loading project...", "جاري تحميل المشروع...")} />;
-  if (error) return <ErrorSection errorTitle={translate("Error loading project", "خطأ في تحميل المشروع")} errorMessage={error} button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }} />;
+  if (error)
+    return (
+      <ErrorSection
+        errorTitle={translate("Error loading project", "خطأ في تحميل المشروع")}
+        errorMessage={error}
+        button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }}
+      />
+    );
   if (!project) return null;
 
   return (
@@ -154,13 +184,21 @@ export default function ProjectDetail() {
         />
         <SummaryCard
           label={translate("Remaining", "المتبقي")}
-          value={project.remainingMoney != null ? `${project.remainingMoney.toLocaleString()} ${translations.currency}` : "-"}
+          value={
+            project.remainingMoney != null ? `${project.remainingMoney.toLocaleString()} ${translations.currency}` : "-"
+          }
         />
         <SummaryCard label={translate("Project Manager", "مدير المشروع")} value={project.projectManager?.name || "-"} />
         <SummaryCard label={translate("Customer", "العميل")} value={project.customer?.name || "-"} />
         <SummaryCard label={translate("Sector", "القطاع")} value={project.sector || "-"} />
-        <SummaryCard label={translate("Start Date", "تاريخ البدء")} value={project.startDate ? formatDate(project.startDate, language) : "-"} />
-        <SummaryCard label={translate("Delivery Date", "تاريخ التسليم")} value={project.deliveryDate ? formatDate(project.deliveryDate, language) : "-"} />
+        <SummaryCard
+          label={translate("Start Date", "تاريخ البدء")}
+          value={project.startDate ? formatDate(project.startDate, language) : "-"}
+        />
+        <SummaryCard
+          label={translate("Delivery Date", "تاريخ التسليم")}
+          value={project.deliveryDate ? formatDate(project.deliveryDate, language) : "-"}
+        />
         <SummaryCard
           label={translate("Status", "الحالة")}
           value={<Badge color={statusColors[project.status] || "gray"}>{project.status}</Badge>}
@@ -176,10 +214,7 @@ export default function ProjectDetail() {
               <span>{project.executedPercentage ?? 0}%</span>
               <Progress value={project.executedPercentage ?? 0} size="sm" color="cyan" />
               <span className="text-xs text-gray-400">
-                {translate(
-                  "Calculated: Sales (before tax) ÷ Contract Value",
-                  "محسوبة: المبيعات (قبل الضريبة) ÷ قيمة العقد",
-                )}
+                {translate("Calculated: Sales (before tax) ÷ Contract Value", "محسوبة: المبيعات (قبل الضريبة) ÷ قيمة العقد")}
               </span>
             </div>
           }
@@ -189,8 +224,18 @@ export default function ProjectDetail() {
       {editing ? (
         <div className="mt-4 flex flex-col gap-4 rounded-lg border border-gray-200 p-4">
           {saveError && <ErrorAlert error={saveError} />}
-          <TextInput label={translate("Project Name", "اسم المشروع")} value={name} onChange={(e) => setName(e.target.value)} />
-          <Textarea label={translate("Description", "الوصف")} value={description} onChange={(e) => setDescription(e.target.value)} autosize minRows={2} />
+          <TextInput
+            label={translate("Project Name", "اسم المشروع")}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Textarea
+            label={translate("Description", "الوصف")}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            autosize
+            minRows={2}
+          />
           <Select
             label={translate("Status", "الحالة")}
             value={status}
@@ -205,11 +250,7 @@ export default function ProjectDetail() {
             clearable
           />
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <DateInput
-              label={translate("Start Date", "تاريخ البدء")}
-              value={startDate}
-              onChange={setStartDate}
-            />
+            <DateInput label={translate("Start Date", "تاريخ البدء")} value={startDate} onChange={setStartDate} />
             <DateInput
               label={translate("Delivery Date", "تاريخ التسليم")}
               value={deliveryDate}
@@ -253,7 +294,9 @@ export default function ProjectDetail() {
               </Button>
             </div>
             {advances.length === 0 ? (
-              <p className="text-sm text-gray-400">{translate("No advanced payments for this project yet.", "لا توجد دفعات مقدمة لهذا المشروع بعد.")}</p>
+              <p className="text-sm text-gray-400">
+                {translate("No advanced payments for this project yet.", "لا توجد دفعات مقدمة لهذا المشروع بعد.")}
+              </p>
             ) : (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <SummaryCard label={translate("Customer", "العميل")} value={project.customer?.name || "-"} />
@@ -314,7 +357,9 @@ export default function ProjectDetail() {
         {entriesLoading ? (
           <LoadingSection message={translate("Loading journal entries...", "جاري تحميل القيود...")} />
         ) : entries.length === 0 ? (
-          <EmptySection message={translate("No journal entries for this project yet", "لا توجد قيود يومية لهذا المشروع بعد")} />
+          <EmptySection
+            message={translate("No journal entries for this project yet", "لا توجد قيود يومية لهذا المشروع بعد")}
+          />
         ) : (
           <Table striped highlightOnHover>
             <Table.Thead>

@@ -43,7 +43,11 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
       setAvailableAdvance(null);
       return;
     }
-    fetchAdvanceRequest({ url: "advanced-payments/available", params: { customer: order.customer?._id || "", project: projectId }, language })
+    fetchAdvanceRequest({
+      url: "advanced-payments/available",
+      params: { customer: order.customer?._id || "", project: projectId },
+      language,
+    })
       .then((res) => setAvailableAdvance(res.data))
       .catch(() => setAvailableAdvance(null));
   }, [paymentSource, projectId]);
@@ -68,7 +72,12 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
     }
 
     if (isAdvancedPayment && (!availableAdvance || +amountPaid > availableAdvance.remainingAmount)) {
-      setError(translate(`Amount paid cannot exceed the available advanced payment.`, `لا يمكن أن يتجاوز المبلغ المدفوع الدفعة المقدمة المتاحة.`));
+      setError(
+        translate(
+          `Amount paid cannot exceed the available advanced payment.`,
+          `لا يمكن أن يتجاوز المبلغ المدفوع الدفعة المقدمة المتاحة.`,
+        ),
+      );
       return;
     }
 
@@ -145,17 +154,28 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
           {isAdvancedPayment ? (
             !projectId ? (
               <Alert color="yellow" variant="light">
-                {translate("This order has no project - an advanced payment is not available.", "لا يوجد مشروع لهذا الطلب - الدفعة المقدمة غير متاحة.")}
+                {translate(
+                  "This order has no project - an advanced payment is not available.",
+                  "لا يوجد مشروع لهذا الطلب - الدفعة المقدمة غير متاحة.",
+                )}
               </Alert>
             ) : advanceLoading ? (
-              <p className="text-sm text-gray-400">{translate("Loading available advance...", "جاري تحميل الدفعة المتاحة...")}</p>
+              <p className="text-sm text-gray-400">
+                {translate("Loading available advance...", "جاري تحميل الدفعة المتاحة...")}
+              </p>
             ) : availableAdvance && availableAdvance.remainingAmount > 0 ? (
               <Alert color="green" variant="light">
-                {translate("Available Advanced Payment", "الدفعة المقدمة المتاحة")}: <b>{availableAdvance.remainingAmount.toLocaleString()} {availableAdvance.currency || translations.currency}</b>
+                {translate("Available Advanced Payment", "الدفعة المقدمة المتاحة")}:{" "}
+                <b>
+                  {availableAdvance.remainingAmount.toLocaleString()} {availableAdvance.currency || translations.currency}
+                </b>
               </Alert>
             ) : (
               <Alert color="red" variant="light">
-                {translate("No available advanced payment exists for this project.", "لا توجد دفعة مقدمة متاحة لهذا المشروع.")}
+                {translate(
+                  "No available advanced payment exists for this project.",
+                  "لا توجد دفعة مقدمة متاحة لهذا المشروع.",
+                )}
               </Alert>
             )
           ) : (
@@ -179,7 +199,10 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
           <Button
             type="submit"
             loading={loading}
-            disabled={!amountPaid || (isAdvancedPayment ? !availableAdvance || availableAdvance.remainingAmount <= 0 : !paymentAccount)}
+            disabled={
+              !amountPaid ||
+              (isAdvancedPayment ? !availableAdvance || availableAdvance.remainingAmount <= 0 : !paymentAccount)
+            }
             fullWidth
           >
             {title}
@@ -189,4 +212,5 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
         {error && <ErrorAlert error={error} />}
       </form>
     </Modal>
-  )
+  );
+}

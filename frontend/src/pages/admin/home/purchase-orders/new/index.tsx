@@ -51,7 +51,11 @@ export default function NewPurchaseOrder() {
   // No vendor<->project relationship exists in the data model (unlike Sales Order's customer
   // scoping) - every project is offered regardless of the selected vendor (docs section "Purchase
   // Orders - Add Project Number").
-  const { privateRequest: fetchProjectsRequest, data: projects, setData: setProjects } = useDataHandler<Project[]>({ initialData: [] });
+  const {
+    privateRequest: fetchProjectsRequest,
+    data: projects,
+    setData: setProjects,
+  } = useDataHandler<Project[]>({ initialData: [] });
   useEffect(() => {
     fetchProjectsRequest({ url: "projects", params: { limit: 500 }, language })
       .then((res) => setProjects(res.data))
@@ -116,7 +120,14 @@ export default function NewPurchaseOrder() {
         backLink: true,
         border: true,
         sideElements: (
-          <Button onClick={handleSaveOrder} size="md" px="xl" radius="md" loading={loading} disabled={!project || (paymentMethod === "account" && !paymentAccount)}>
+          <Button
+            onClick={handleSaveOrder}
+            size="md"
+            px="xl"
+            radius="md"
+            loading={loading}
+            disabled={!project || (paymentMethod === "account" && !paymentAccount)}
+          >
             {translate("Save", "حفظ")}
           </Button>
         ),

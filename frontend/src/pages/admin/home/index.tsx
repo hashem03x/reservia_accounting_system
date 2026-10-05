@@ -1,134 +1,96 @@
+import { useEffect } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
+import useDataHandler from "@/hooks/useDataHandler";
+import handleRequest from "@/utils/helpers/handle-request";
+import { DashboardSummary } from "@/types/dashboard";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
-import paths from "@/utils/constants/paths";
-import userImg from "@/assets/user.png";
-import productImg from "@/assets/product.png";
-import orderImg from "@/assets/shopping-bag.png";
-import warehouseImg from "@/assets/warehouse.png";
-import transferImg from "@/assets/transfer.png";
-import expensesImg from "@/assets/money-up.png";
-import BasicLink from "./_components/basic-link";
+import KpiSection from "./_components/kpi-section";
+import SalesTrendChart from "./_components/sales-trend-chart";
+import CashPositionSection from "./_components/cash-position-section";
+import ProjectExecutionSection from "./_components/project-execution-section";
+import RecentJournalEntriesSection from "./_components/recent-journal-entries-section";
+import RecentSalesOrdersSection from "./_components/recent-sales-orders-section";
+import RecentPurchaseOrdersSection from "./_components/recent-purchase-orders-section";
+import QuickActionsSection from "./_components/quick-actions-section";
 
+// Admin Home / Dashboard (docs section "Admin Home / Dashboard") - the central control center for
+// Reservia Integrated Energy. The top KPI row + Sales Trend + Cash position all come from a SINGLE
+// read-only aggregation (GET /dashboard/summary, fetched once here and passed down) - never one
+// API call per widget for those. The "recent activity" sections (Projects, Journal Entries, Sales/
+// Purchase Orders) each fetch independently from their own existing small-limit list endpoints, so
+// one failing section never takes down the rest of the page (docs section "Error Handling").
 export default function Home() {
-  const { translate, translations } = useLanguage();
+  const { language, translate, translations } = useLanguage();
 
   useDocumentTitle(`${translations.pages.home} | ${translations.adminPanel}`);
 
-  const links = [
-    {
-      to: paths.vendors,
-      img: userImg,
-      title: translations.pages.vendors,
-      subTitle: translate("Manage vendor info and relations", "إدارة معلومات وعلاقات البائعين"),
-    },
-    {
-      to: paths.purchaseOrders,
-      img: orderImg,
-      title: translations.pages.purchaseOrders,
-      subTitle: translate("Organize and oversee purchase orders", "تنظيم والإشراف على طلبات الشراء"),
-    },
-    {
-      to: paths.products,
-      img: productImg,
-      title: translations.pages.products,
-      subTitle: translate("Maintain product catalog and details", "إدارة كتالوج وبيانات المنتجات"),
-    },
-    {
-      to: paths.salesOrders,
-      img: orderImg,
-      title: translations.pages.salesOrders,
-      subTitle: translate("Oversee sales from order to delivery", "الإشراف على المبيعات من الطلب للتسليم"),
-    },
-    {
-      to: paths.customers,
-      img: userImg,
-      title: translations.pages.customers,
-      subTitle: translate("Handle customer profiles and history", "إدارة ملفات وسجلات العملاء"),
-    },
-  ];
+  const {
+    privateRequest,
+    loading,
+    setLoading,
+    error,
+    setError,
+    data: summary,
+    setData: setSummary,
+  } = useDataHandler<DashboardSummary | null>({
+    initialData: null,
+    initialLoading: true,
+  });
 
-  const moreOptions = [
-    {
-      to: paths.expenses,
-      img: expensesImg,
-      title: translations.pages.expenses,
-      subTitle: translate("Track and categorize expenses", "تتبع وتصنيف المصروفات"),
-    },
-    {
-      to: paths.warehouses,
-      img: warehouseImg,
-      title: translations.pages.warehouses,
-      subTitle: translate("View and manage warehouses and locations", "عرض وإدارة المخازن والمواقع"),
-    },
-    {
-      to: paths.transfers,
-      img: transferImg,
-      title: translations.pages.transfers,
-      subTitle: translate("Transfer products between warehouses", "نقل المنتجات بين المخازن"),
-    },
-  ];
+  function loadSummary() {
+    const controller = new AbortController();
+    const canceled = { current: false };
+
+    const executeFetch = async () => {
+      const response = await privateRequest({ url: "dashboard/summary", signal: controller.signal, language });
+      setSummary(response.data);
+    };
+
+    handleRequest(language, setLoading, setError, executeFetch, canceled);
+
+    return () => {
+      controller.abort();
+      canceled.current = true;
+    };
+  }
+
+  useEffect(() => {
+    const cancelRequest = loadSummary();
+    return cancelRequest;
+  }, []);
 
   return (
     <AdminLayoutBox
       header={{
         title: translate("Reservia Integrated Energy", "ريزيرفيا للطاقة المتكاملة"),
         subTitle: translate(
-          "Centralized control for managing products, orders, vendors, customers, and more.",
-          "التحكم المركزي لإدارة المنتجات والطلبات والبائعين والعملاء والمزيد.",
+          "Projects, sales, purchases and cash position at a glance.",
+          "المشاريع والمبيعات والمشتريات والوضع النقدي في نظرة واحدة.",
         ),
       }}
     >
-      <div className="root-flex-1 flex h-full flex-col justify-between gap-8">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {links.map((link) => (
-            <BasicLink key={link.to} link={link} />
-          ))}
+      <div className="flex flex-col gap-5">
+        <KpiSection summary={summary} loading={loading} error={error} onRetry={loadSummary} />
+
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <SalesTrendChart summary={summary} loading={loading} error={error} onRetry={loadSummary} />
+          </div>
+          <CashPositionSection summary={summary} loading={loading} error={error} onRetry={loadSummary} />
         </div>
 
-        <div className="flex flex-col gap-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{translate("More Options", "المزيد من الخيارات")}</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {moreOptions.map((link) => (
-              <BasicLink key={link.to} link={link} />
-            ))}
-          </div>
+        <ProjectExecutionSection />
+
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <RecentSalesOrdersSection />
+          <RecentPurchaseOrdersSection />
         </div>
+
+        <RecentJournalEntriesSection />
+
+        <QuickActionsSection />
       </div>
     </AdminLayoutBox>
   );
 }
-
-
-/**
- * i want to create a new page for fixed assets
- *Get  /fixed-assets?limit=2000&page=1
- * there response body: 
- * {
-    "results": 1,
-    "paginationResult": {
-        "currentPage": 1,
-        "limit": 50,
-        "numberOfPages": 1
-    },
-    "data": [
-        {
-            "_id": "679b7d0a2b12dc858f3519ef",
-            "name": "table_2",
-            "bookValue": 1000,
-            "fairValue": 300,
-            "warehouseId": {
-                "_id": "67933fb13bf29b9f172eeab0",
-                "name": "Sheikh Zayed ",
-                "id": "67933fb13bf29b9f172eeab0"
-            },
-            "createdBy": "67950cd8b44ffade51d0d7e9",
-            "createdAt": "2025-01-30T13:22:18.247Z",
-            "updatedAt": "2025-01-30T13:22:18.247Z",
-            "loseValue": 700,
-            "id": "679b7d0a2b12dc858f3519ef"
-        }
-    ]
-}
-    check the project code @src especially @App and take @cash as a reference
- */
