@@ -40,7 +40,7 @@ exports.returnSalesOrderItem = async (req, res, next) => {
     // A return reduces this order's totalAmount, which reduces the project's Executed % numerator
     // (docs section "Project Executed % Calculation").
     if (salesOrder.project) {
-      await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, session);
+      await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, session, salesOrder._id);
     }
 
     // Get product to update stock + totalSold (no more variant indirection)
@@ -207,7 +207,7 @@ exports.returnAllSalesOrderItems = async (req, res, next) => {
     // A return reduces this order's totalAmount, which reduces the project's Executed % numerator
     // (docs section "Project Executed % Calculation").
     if (salesOrder.project) {
-      await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, session);
+      await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, session, salesOrder._id);
     }
 
     // Update customer balance

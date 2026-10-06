@@ -98,7 +98,7 @@ async function resolveCustomerNumber(customerRef, { required = true } = {}, sess
  * of the business operation - see journalEntryModel.js's compound unique index, which is the real
  * backstop against a race duplicating this under concurrent requests).
  */
-async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, project, lines, session }) {
+async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, project, lines, session, triggeredBySalesOrder }) {
   const existing = await JournalEntry.findOne({ sourceType, sourceId, accountingAction }).session(session || null);
   if (existing) return existing;
 
@@ -117,6 +117,11 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
         sourceId,
         accountingAction,
         project: project || null,
+        // Only ever set by postProjectRevenueRecognitionJE/postProjectCostRecognitionJE below,
+        // which are the one case where `sourceId` itself can't point back at the triggering Sales
+        // Order (docs section "Sales Order Source Link") - every other automatic entry leaves this
+        // null, since its own sourceType/sourceId already is the real link.
+        triggeredBySalesOrder: triggeredBySalesOrder || null,
         status: 'posted',
         lines,
       },
@@ -562,7 +567,7 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
  * recognition here is the plain Dr AR / Cr Revenue amount. Extend Project with its own
  * vatPercentage/withholdingTaxPercentage if that treatment is required later.
  */
-async function postProjectRevenueRecognitionJE(project, session) {
+async function postProjectRevenueRecognitionJE(project, session, triggeredBySalesOrder = null) {
   if (!project.contractValue) return null;
   const previousPct = project.revenueRecognizedPercentage || 0;
   const currentPct = project.executedPercentage || 0;
@@ -635,6 +640,7 @@ async function postProjectRevenueRecognitionJE(project, session) {
     project: project._id,
     lines,
     session,
+    triggeredBySalesOrder,
   });
 
   project.revenueRecognizedPercentage = currentPct;
@@ -648,7 +654,7 @@ async function postProjectRevenueRecognitionJE(project, session) {
  * mapped WIP account (an unmapped category is a configuration gap, not something to silently skip
  * and leave the entry incomplete).
  */
-async function postProjectCostRecognitionJE(project, session) {
+async function postProjectCostRecognitionJE(project, session, triggeredBySalesOrder = null) {
   if (!project.averageCostLines || project.averageCostLines.length === 0) return null;
   const previousPct = project.costRecognizedPercentage || 0;
   const currentPct = project.executedPercentage || 0;
@@ -691,6 +697,7 @@ async function postProjectCostRecognitionJE(project, session) {
     project: project._id,
     lines,
     session,
+    triggeredBySalesOrder,
   });
 
   project.costRecognizedPercentage = currentPct;
@@ -702,11 +709,11 @@ async function postProjectCostRecognitionJE(project, session) {
  * Called from projectController.js#updateProject, inside the same session as the project's own
  * save (so the percentage trackers below and the JEs commit together or not at all).
  */
-async function postProjectExecutionRecognitionJEs(project, session) {
+async function postProjectExecutionRecognitionJEs(project, session, triggeredBySalesOrder = null) {
   const entries = [];
-  const revenueJE = await postProjectRevenueRecognitionJE(project, session);
+  const revenueJE = await postProjectRevenueRecognitionJE(project, session, triggeredBySalesOrder);
   if (revenueJE) entries.push(revenueJE);
-  const costJE = await postProjectCostRecognitionJE(project, session);
+  const costJE = await postProjectCostRecognitionJE(project, session, triggeredBySalesOrder);
   if (costJE) entries.push(costJE);
   return entries;
 }

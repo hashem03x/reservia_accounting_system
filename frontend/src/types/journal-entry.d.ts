@@ -39,10 +39,26 @@ export interface JournalEntry {
   sourceId?: string | null;
   reference?: string;
   project?: { _id: string; projectNumber: string; name?: string } | null;
+  // Set only on PROJECT_REVENUE_RECOGNITION/PROJECT_COST_RECOGNITION entries, whose real
+  // sourceId/sourceType can't point back at a Sales Order (it's a project+percentage hash) - the
+  // one reliable link for those two entries back to the Sales Order that triggered them (docs
+  // section "Sales Order Source Link"). `null` for every other entry, including historical
+  // recognition entries created before this field existed.
+  triggeredBySalesOrder?: { _id: string; code: string } | null;
   status: JournalEntryStatus;
   lines: JournalLine[];
   totalDebit: number;
   totalCredit: number;
+  // Derived server-side (docs section "Which balance should the main page show?") - only present
+  // on rows returned by the plain `GET journal-entries` listing (handled by the `withEntryListFields`
+  // transform in journalEntryController.js), never computed in React. `currency`/`rate` reflect the
+  // first line that actually carries them (most entries are single-currency, local-currency-only,
+  // so both are commonly null). `difference` is Total Debit - Total Credit for the WHOLE entry (0
+  // for a valid/balanced entry) - NEVER a per-account running balance, which is a different concept
+  // only shown on the General Ledger view (GeneralLedgerRow below).
+  currency?: string | null;
+  rate?: number | null;
+  difference?: number;
   createdBy?: { _id: string; name: string };
   postedBy?: { _id: string; name: string } | null;
   postedAt?: string | null;

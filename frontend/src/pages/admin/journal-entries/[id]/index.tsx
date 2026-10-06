@@ -52,6 +52,35 @@ export default function JournalEntryDetail() {
     load();
   }, [id]);
 
+  // Source: Sales/Purchase Order two-way navigation (docs section "Source Link") - only shown when
+  // a valid, backend-authoritative relationship exists (never guessed from description/customer
+  // name/Project Number). `triggeredBySalesOrder` is already populated on the entry itself (no
+  // extra request needed) - it's the one reliable link for PROJECT_REVENUE_RECOGNITION/
+  // PROJECT_COST_RECOGNITION entries, whose own sourceId is a project+percentage hash. A direct
+  // sourceType 'SO'/'PO' entry has only the raw order id, so its code is fetched with one extra
+  // request - acceptable on a single-entity detail page (docs section "Performance").
+  const [sourceOrder, setSourceOrder] = useState<{ _id: string; code?: string } | null>(null);
+
+  useEffect(() => {
+    setSourceOrder(null);
+    if (!entry) return;
+    if (entry.triggeredBySalesOrder) {
+      setSourceOrder(entry.triggeredBySalesOrder);
+      return;
+    }
+    if (entry.sourceType === "SO" && entry.sourceId) {
+      privateRequest({ url: `sale-orders/${entry.sourceId}`, language })
+        .then((res) => setSourceOrder(res.data))
+        .catch(() => setSourceOrder(null));
+    } else if (entry.sourceType === "PO" && entry.sourceId) {
+      privateRequest({ url: `purchaseOrder/${entry.sourceId}`, language })
+        .then((res) => setSourceOrder(res.data))
+        .catch(() => setSourceOrder(null));
+    }
+  }, [entry?._id]);
+
+  const sourceOrderIsSalesOrder = entry?.triggeredBySalesOrder != null || entry?.sourceType === "SO";
+
   async function handlePost() {
     handleRequest(language, setActionLoading, setActionError, async () => {
       const res = await privateRequest({ url: `journal-entries/${id}/post`, method: "POST", language });
@@ -120,6 +149,26 @@ export default function JournalEntryDetail() {
         <InfoCard label={translate("Module", "الوحدة")} value={entry.module || "-"} />
         <InfoCard label={translate("Project", "المشروع")} value={entry.project?.projectNumber || "-"} />
         <InfoCard label={translate("Reference", "المرجع")} value={entry.reference || "-"} />
+        {sourceOrder && (
+          <InfoCard
+            label={translate("Source Document", "المستند المصدر")}
+            value={
+              <button
+                type="button"
+                className="text-blue-600 hover:underline"
+                onClick={() =>
+                  navigate(
+                    `/${paths.admin}/${sourceOrderIsSalesOrder ? paths.salesOrders : paths.purchaseOrders}/${sourceOrder._id}`
+                  )
+                }
+              >
+                {sourceOrderIsSalesOrder
+                  ? translate(`Sales Order ${sourceOrder.code || sourceOrder._id} → View Sales Order`, `طلب بيع ${sourceOrder.code || sourceOrder._id} ← عرض طلب البيع`)
+                  : translate(`Purchase Order ${sourceOrder.code || sourceOrder._id} → View Purchase Order`, `طلب شراء ${sourceOrder.code || sourceOrder._id} ← عرض طلب الشراء`)}
+              </button>
+            }
+          />
+        )}
         {entry.reversedByEntry && (
           <InfoCard
             label={translate("Reversed By", "تم عكسه بواسطة")}

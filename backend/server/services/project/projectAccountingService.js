@@ -57,7 +57,7 @@ async function recalculateRemainingMoney(projectId, session) {
  * admin manually typing a percentage, to Sales Orders actually being created against the project),
  * the recognition accounting itself is completely untouched.
  */
-async function recalculateExecutedPercentage(projectId, session) {
+async function recalculateExecutedPercentage(projectId, session, triggeringSalesOrderId = null) {
   const Project = require('../../models/project/projectModel'); // eslint-disable-line global-require
   const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
   const { postProjectExecutionRecognitionJEs } = require('../accounting/accountingEventService'); // eslint-disable-line global-require
@@ -79,7 +79,7 @@ async function recalculateExecutedPercentage(projectId, session) {
 
   project.executedPercentage = newPct;
   await project.save({ session });
-  await postProjectExecutionRecognitionJEs(project, session);
+  await postProjectExecutionRecognitionJEs(project, session, triggeringSalesOrderId);
   await project.save({ session });
 }
 

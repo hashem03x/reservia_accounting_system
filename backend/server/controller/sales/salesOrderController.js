@@ -114,7 +114,7 @@ exports.cancelOrder = asyncHandler(async (req, res, next) => {
         // Canceling removes this order's amount from the project's Executed % numerator (docs
         // section "Project Executed % Calculation").
         if (freshOrder.project) {
-          await recalculateExecutedPercentage(freshOrder.project._id || freshOrder.project, session);
+          await recalculateExecutedPercentage(freshOrder.project._id || freshOrder.project, session, freshOrder._id);
         }
       });
     } finally {
@@ -127,7 +127,7 @@ exports.cancelOrder = asyncHandler(async (req, res, next) => {
   salesOrder.orderStatus = 'canceled';
   await salesOrder.save();
   if (salesOrder.project) {
-    await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project);
+    await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, undefined, salesOrder._id);
   }
   res.status(200).json({ status: 'success', data: salesOrder });
 });

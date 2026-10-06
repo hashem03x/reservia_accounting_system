@@ -35,13 +35,86 @@ const createJournalEntry = asyncHandler(async (req, res) => {
   res.status(201).json(apiResponse('Journal entry created successfully', true, entry));
 });
 
-const getJournalEntries = factory.getAll(JournalEntry, 'JournalEntry');
+// Labels each entry row with currency/rate/difference derived purely from its own already-
+// populated `lines[]` - zero extra queries (docs section "Which balance should the main page
+// show?"). `difference` is the JE-level Total Debit - Total Credit (0 for a valid/balanced entry) -
+// NEVER a per-account running balance, which is a different concept shown only on the General
+// Ledger view (services/accounting/generalLedgerService.js). `currency`/`rate` are read off the
+// first line that actually carries them (most entries are single-currency; a manual entry with no
+// currency recorded falls back to null so the frontend can show the local-currency default).
+function withEntryListFields(entries) {
+  return entries.map(entry => {
+    const withCurrency = entry.lines.find(line => line.currency);
+    const plain = typeof entry.toObject === 'function' ? entry.toObject() : entry;
+    return {
+      ...plain,
+      currency: withCurrency?.currency || null,
+      rate: withCurrency?.exchangeRate || null,
+      difference: Math.round(((entry.totalDebit || 0) - (entry.totalCredit || 0)) * 100) / 100,
+    };
+  });
+}
+
+const getJournalEntries = factory.getAll(JournalEntry, 'JournalEntry', ' ', false, withEntryListFields);
 
 const getJournalEntry = factory.getOne(JournalEntry);
 
 const getJournalEntriesForProject = asyncHandler(async (req, res) => {
   const entries = await JournalEntry.find({ project: req.params.projectId }).sort({ date: 1, entryNumber: 1 });
   res.status(200).json(apiResponse('Project journal entries retrieved successfully', true, entries));
+});
+
+// GET /journal-entries/sales-order/:salesOrderId - every automatic Journal Entry genuinely linked
+// to this Sales Order (docs section "Sales Order -> Automatic JE Display"). A single SO can
+// legitimately produce several, via three distinct, backend-authoritative relationships - never a
+// text/customer-name/Project-Number search:
+//   1. Direct: sourceType 'SO' & sourceId = this order's _id (SO_CUSTOMER_ADVANCE_APPLIED,
+//      SO_PAYMENT_RECORDED when posted straight off the order's own creation flow).
+//   2. Via Payment: a later Add Payment against this order creates its own Payment document first
+//      (sourceType 'PAYMENT', sourceId = that payment's _id) - found by one extra query on
+//      Payment.salesOrderId, never by matching on amount/date/description.
+//   3. triggeredBySalesOrder: PROJECT_REVENUE_RECOGNITION/PROJECT_COST_RECOGNITION entries, whose
+//      real sourceId is a deterministic project+percentage hash (not this order's id) - this field
+//      is the one reliable link back to the specific Sales Order that pushed the project's executed
+//      percentage up (see projectAccountingService.js#recalculateExecutedPercentage).
+// One request total besides the Payment lookup - acceptable on a single-entity detail page (docs
+// section "Performance" - the N+1 constraint is about LIST pages, not this).
+const getJournalEntriesForSalesOrder = asyncHandler(async (req, res) => {
+  const Payment = require('../../models/vendor/paymentModel'); // eslint-disable-line global-require
+  const { salesOrderId } = req.params;
+
+  const payments = await Payment.find({ salesOrderId }).select('_id').lean();
+  const paymentIds = payments.map(p => p._id);
+
+  const entries = await JournalEntry.find({
+    $or: [
+      { sourceType: 'SO', sourceId: salesOrderId },
+      { sourceType: 'PAYMENT', sourceId: { $in: paymentIds } },
+      { triggeredBySalesOrder: salesOrderId },
+    ],
+  }).sort({ date: 1, entryNumber: 1 });
+
+  res.status(200).json(apiResponse('Sales order journal entries retrieved successfully', true, entries));
+});
+
+// GET /journal-entries/purchase-order/:purchaseOrderId - mirrors getJournalEntriesForSalesOrder
+// above for the vendor side. No PROJECT-hash equivalent exists on the Purchase Order side (there is
+// no PO-triggered project recognition flow), so only the direct + via-Payment relationships apply.
+const getJournalEntriesForPurchaseOrder = asyncHandler(async (req, res) => {
+  const Payment = require('../../models/vendor/paymentModel'); // eslint-disable-line global-require
+  const { purchaseOrderId } = req.params;
+
+  const payments = await Payment.find({ purchaseOrderId }).select('_id').lean();
+  const paymentIds = payments.map(p => p._id);
+
+  const entries = await JournalEntry.find({
+    $or: [
+      { sourceType: 'PO', sourceId: purchaseOrderId },
+      { sourceType: 'PAYMENT', sourceId: { $in: paymentIds } },
+    ],
+  }).sort({ date: 1, entryNumber: 1 });
+
+  res.status(200).json(apiResponse('Purchase order journal entries retrieved successfully', true, entries));
 });
 
 const updateJournalEntry = asyncHandler(async (req, res, next) => {
@@ -228,6 +301,8 @@ module.exports = {
   getJournalEntries,
   getJournalEntry,
   getJournalEntriesForProject,
+  getJournalEntriesForSalesOrder,
+  getJournalEntriesForPurchaseOrder,
   updateJournalEntry,
   postJournalEntry,
   reverseJournalEntry,

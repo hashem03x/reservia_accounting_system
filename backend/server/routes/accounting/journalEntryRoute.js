@@ -9,6 +9,8 @@ const {
   getJournalEntries,
   getJournalEntry,
   getJournalEntriesForProject,
+  getJournalEntriesForSalesOrder,
+  getJournalEntriesForPurchaseOrder,
   updateJournalEntry,
   postJournalEntry,
   reverseJournalEntry,
@@ -23,6 +25,8 @@ router.use(authController.protect);
 router.get('/general-ledger', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getGeneralLedger);
 
 router.get('/project/:projectId', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalEntriesForProject);
+router.get('/sales-order/:salesOrderId', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalEntriesForSalesOrder);
+router.get('/purchase-order/:purchaseOrderId', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalEntriesForPurchaseOrder);
 
 router
   .route('/')

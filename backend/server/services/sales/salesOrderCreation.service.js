@@ -155,7 +155,7 @@ async function createSalesOrder(
     // so this always runs - recomputes Executed % for the project this order's amount now counts
     // toward (docs section "Project Executed % Calculation").
     if (salesOrder.project) {
-      await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, session);
+      await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, session, salesOrder._id);
     }
   };
 

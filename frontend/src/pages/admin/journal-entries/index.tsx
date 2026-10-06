@@ -1,4 +1,4 @@
-import { GeneralLedgerRow } from "@/types/journal-entry";
+import { JournalEntry } from "@/types/journal-entry";
 import { PaginatedData } from "@/types/global";
 import { useEffect, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
@@ -12,7 +12,7 @@ import { formatDate } from "@/utils/helpers/date-formaters";
 import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
-import { Button, Table } from "@mantine/core";
+import { Badge, Button, Table } from "@mantine/core";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
@@ -22,6 +22,8 @@ import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/compone
 import CreateJournalEntryModal from "./_components/create-journal-entry-modal";
 
 const ITEMS_PER_PAGE = import.meta.env.VITE_ITEMS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
+
+const statusColors: Record<string, string> = { draft: "yellow", posted: "green", reversed: "gray" };
 
 export default function JournalEntries() {
   const { language, translate, translations } = useLanguage();
@@ -34,19 +36,21 @@ export default function JournalEntries() {
   const [activePage, setActivePage] = useState(parseInt(searchParams.get("page") || "1"));
   const params = { page: activePage.toString() };
 
-  // The General Ledger line view (docs section "Journal Entries / General Ledger table") - one
-  // row per JournalEntry LINE (not per entry), each already carrying its own resolved Sub Account
-  // and running balance from the backend (services/accounting/generalLedgerService.js) - never
-  // computed here in React.
+  // One row per Journal Entry DOCUMENT (never per line) - `JournalEntry.lines[]` is already the
+  // "one entry, many lines" grouping structure (docs section "Grouping Key" - prefer the real
+  // document id, never date/module/project/description/account). Plain `GET journal-entries`
+  // (not `general-ledger`, which is the flattened per-LINE General Ledger view used by a different
+  // page) - each row already carries its own server-derived currency/rate/difference (see
+  // journalEntryController.js#withEntryListFields), never computed here in React.
   const {
     privateRequest,
     loading,
     setLoading,
     error,
     setError,
-    data: paginatedLines,
-    setData: setPaginatedLines,
-  } = useDataHandler<PaginatedData<GeneralLedgerRow>>({ initialData: null, initialLoading: true });
+    data: paginatedEntries,
+    setData: setPaginatedEntries,
+  } = useDataHandler<PaginatedData<JournalEntry>>({ initialData: null, initialLoading: true });
 
   function handleLoadEntries() {
     const controller = new AbortController();
@@ -54,12 +58,12 @@ export default function JournalEntries() {
 
     const executeFetch = async () => {
       const response = await privateRequest({
-        url: "journal-entries/general-ledger",
-        params: { limit: ITEMS_PER_PAGE, ...params },
+        url: "journal-entries",
+        params: { limit: ITEMS_PER_PAGE, sort: "-date", ...params },
         signal: controller.signal,
         language,
       });
-      setPaginatedLines(response);
+      setPaginatedEntries(response);
     };
 
     handleRequest(language, setLoading, setError, executeFetch, canceled);
@@ -99,8 +103,8 @@ export default function JournalEntries() {
           button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: handleLoadEntries }}
         />
       ) : (
-        paginatedLines &&
-        (paginatedLines.data.length === 0 ? (
+        paginatedEntries &&
+        (paginatedEntries.data.length === 0 ? (
           <EmptySection useDefaultImg message={translate("No journal entries found", "لا توجد قيود يومية")} />
         ) : (
           <>
@@ -108,69 +112,56 @@ export default function JournalEntries() {
                 the Chart of Accounts table. Columns below are this page's own - only the
                 container/header/row presentation is shared. */}
             <DataTableContainer>
-              <DataTable className="min-w-[1380px]">
+              <DataTable className="min-w-[1200px]">
                 <Table.Thead className={dataTableHeadClassName}>
                   <Table.Tr>
                     <Table.Th className="whitespace-nowrap">{translate("Document Date", "تاريخ المستند")}</Table.Th>
                     <Table.Th className="whitespace-nowrap">{translate("Document Number", "رقم المستند")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap">{translate("Acc Number", "رقم الحساب")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap">{translate("Sub Account", "الحساب الفرعي")}</Table.Th>
-                    <Table.Th>{translate("ACC Name", "اسم الحساب")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Module", "الوحدة")}</Table.Th>
                     <Table.Th className="whitespace-nowrap">{translate("Project Number", "رقم المشروع")}</Table.Th>
                     <Table.Th className="whitespace-nowrap">{translate("Currency", "العملة")}</Table.Th>
                     <Table.Th className="whitespace-nowrap text-right">{translate("Rate", "السعر")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap text-right">{translate("Debit", "مدين")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap text-right">{translate("Credit", "دائن")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap text-right">
-                      {translate("Balance (Document Currency)", "الرصيد (عملة المستند)")}
-                    </Table.Th>
-                    <Table.Th className="whitespace-nowrap text-right">
-                      {translate("Balance (Local Currency)", "الرصيد (العملة المحلية)")}
-                    </Table.Th>
-                    <Table.Th>{translate("Desc.", "الوصف")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap">{translate("Module", "الوحدة")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">{translate("Total Debit", "إجمالي المدين")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">{translate("Total Credit", "إجمالي الدائن")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">{translate("Balance", "الرصيد")}</Table.Th>
+                    <Table.Th>{translate("Description", "الوصف")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Status", "الحالة")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {paginatedLines.data.map((row) => (
-                    <Table.Tr
-                      key={`${row.entryId}-${row.lineIndex}`}
-                      className="cursor-pointer text-gray-600"
-                      onClick={() => navigate(row.entryId)}
-                    >
-                      <Table.Td className="whitespace-nowrap">{formatDate(row.documentDate, language)}</Table.Td>
-                      <Table.Td className="whitespace-nowrap font-medium text-gray-800">{row.documentNumber}</Table.Td>
-                      <Table.Td className="whitespace-nowrap">{row.accNumber || "-"}</Table.Td>
-                      <Table.Td className="whitespace-nowrap">{row.subAccount ? row.subAccount.number : "-"}</Table.Td>
-                      <Table.Td>{row.accName || "-"}</Table.Td>
-                      <Table.Td className="whitespace-nowrap">{row.projectNumber || "-"}</Table.Td>
-                      <Table.Td className="whitespace-nowrap">{row.currency || translations.currency}</Table.Td>
-                      <Table.Td className="whitespace-nowrap text-right tabular-nums">{row.rate.toLocaleString()}</Table.Td>
-                      <Table.Td className="whitespace-nowrap text-right tabular-nums">
-                        {row.debit ? row.debit.toLocaleString() : "-"}
-                      </Table.Td>
-                      <Table.Td className="whitespace-nowrap text-right tabular-nums">
-                        {row.credit ? row.credit.toLocaleString() : "-"}
-                      </Table.Td>
-                      <Table.Td
-                        className={`whitespace-nowrap text-right tabular-nums ${row.balanceDocumentCurrency < 0 ? "text-red-600" : ""}`}
-                      >
-                        {row.balanceDocumentCurrency.toLocaleString()}
-                      </Table.Td>
-                      <Table.Td
-                        className={`whitespace-nowrap text-right tabular-nums ${row.balanceLocalCurrency < 0 ? "text-red-600" : ""}`}
-                      >
-                        {row.balanceLocalCurrency.toLocaleString()}
-                      </Table.Td>
-                      <Table.Td>{row.description || "-"}</Table.Td>
-                      <Table.Td className="whitespace-nowrap">{row.module || "-"}</Table.Td>
-                    </Table.Tr>
-                  ))}
+                  {paginatedEntries.data.map((entry) => {
+                    // The entry-level Balance/Difference = Total Debit - Total Credit (0.00 for a
+                    // valid/balanced entry) - NEVER a per-account running balance, which is a
+                    // different concept shown only on the General Ledger line view (docs section
+                    // "Which balance should the main page show?").
+                    const difference = entry.difference ?? Math.round((entry.totalDebit - entry.totalCredit) * 100) / 100;
+                    return (
+                      <Table.Tr key={entry._id} className="cursor-pointer text-gray-600" onClick={() => navigate(entry._id)}>
+                        <Table.Td className="whitespace-nowrap">{formatDate(entry.date, language)}</Table.Td>
+                        <Table.Td className="whitespace-nowrap font-medium text-gray-800">{entry.entryNumber}</Table.Td>
+                        <Table.Td className="whitespace-nowrap">{entry.module || "-"}</Table.Td>
+                        <Table.Td className="whitespace-nowrap">{entry.project?.projectNumber || "-"}</Table.Td>
+                        <Table.Td className="whitespace-nowrap">{entry.currency || "-"}</Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{entry.rate ? entry.rate.toLocaleString() : "-"}</Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{entry.totalDebit.toLocaleString()}</Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{entry.totalCredit.toLocaleString()}</Table.Td>
+                        <Table.Td className={`whitespace-nowrap text-right tabular-nums ${difference !== 0 ? "text-red-600" : ""}`}>
+                          {difference.toLocaleString()}
+                        </Table.Td>
+                        <Table.Td>{entry.description || "-"}</Table.Td>
+                        <Table.Td className="whitespace-nowrap">
+                          <Badge color={statusColors[entry.status] || "gray"} size="sm">
+                            {entry.status}
+                          </Badge>
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
                 </Table.Tbody>
               </DataTable>
             </DataTableContainer>
 
-            <PaginationHandler paginatedData={paginatedLines} activePage={activePage} setActivePage={setActivePage} />
+            <PaginationHandler paginatedData={paginatedEntries} activePage={activePage} setActivePage={setActivePage} />
           </>
         ))
       )}

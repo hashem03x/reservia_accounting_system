@@ -4,8 +4,9 @@ import NavigationTabs from "@/components/ui/navigation-tabs";
 import Overview from "./overview";
 import Payment from "./payment";
 import Returns from "./returns";
+import Accounting from "./accounting";
 
-type OrderTab = "overview" | "payments" | "retrun";
+type OrderTab = "overview" | "payments" | "retrun" | "accounting";
 
 const TABS: LocalizedEntity<OrderTab> = {
   overview: {
@@ -19,6 +20,10 @@ const TABS: LocalizedEntity<OrderTab> = {
   retrun: {
     value: "retrun",
     label: { en: "Returns", ar: "المرتجعات" },
+  },
+  accounting: {
+    value: "accounting",
+    label: { en: "Accounting", ar: "المحاسبة" },
   },
 };
 
@@ -39,6 +44,7 @@ export default function OrderHandler() {
       {activeTab === TABS.overview.value && <Overview />}
       {activeTab === TABS.payments.value && <Payment />}
       {activeTab === TABS.retrun.value && <Returns />}
+      {activeTab === TABS.accounting.value && <Accounting />}
     </div>
   );
 }

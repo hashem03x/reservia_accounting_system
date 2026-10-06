@@ -9,6 +9,7 @@ const { JournalEntryStatus, JournalEntrySources, AccountingActions, AccountingMo
 require('./chartOfAccountModel');
 require('../project/projectModel');
 require('../userModel');
+require('../sales/salesOrderModel');
 
 // A single debit-or-credit line. Embedded (not a separate collection) - matches this codebase's
 // existing convention for line items (PurchaseOrder.items, SalesOrder.items) rather than
@@ -109,6 +110,15 @@ const journalEntrySchema = new Schema(
       default: null,
     },
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
+    // Additive, optional link from a PROJECT_REVENUE_RECOGNITION/PROJECT_COST_RECOGNITION entry
+    // back to the specific Sales Order whose creation/cancellation/return pushed the project's
+    // executedPercentage up and triggered this entry (docs section "Sales Order Source Link").
+    // These two actions' real `sourceId` is a deterministic project+percentage hash (see
+    // accountingEventService.js#deterministicSourceId), not a real document id, so it can never
+    // itself point back at a Sales Order - this field exists specifically to fill that gap without
+    // disturbing the existing idempotency key. `null` for every other entry, including historical
+    // recognition entries created before this field existed (never backfilled/guessed).
+    triggeredBySalesOrder: { type: Schema.Types.ObjectId, ref: 'SalesOrder', default: null },
     status: {
       type: String,
       enum: { values: JournalEntryStatus, message: '{VALUE} is not a valid journal entry status' },
@@ -246,6 +256,7 @@ journalEntrySchema.pre(/^find/, function (next) {
     // logic depends on this path being populated vs. raw.
     .populate({ path: 'lines.project', select: 'projectNumber name' })
     .populate({ path: 'project', select: 'projectNumber name' })
+    .populate({ path: 'triggeredBySalesOrder', select: 'code' })
     .populate({ path: 'createdBy', select: 'name' })
     .populate({ path: 'postedBy', select: 'name' });
   next();
