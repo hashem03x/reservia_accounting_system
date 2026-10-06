@@ -76,10 +76,16 @@ beforeEach(async () => {
   nonCogsAccount = await ChartOfAccount.create({ code: `CASH-${Date.now()}`, name: 'Cash', type: 'asset' });
 
   // Required for recalculateExecutedPercentage's automatic PROJECT_REVENUE_RECOGNITION posting
-  // (see accountingEventService.js#postProjectRevenueRecognitionJE) - without these two well-known
+  // (see accountingEventService.js#postProjectRevenueRecognitionJE) - without these well-known
   // codes existing, posting aborts with "required Chart of Accounts account ... was not found".
+  // vatPayable/withholdingTaxReceivable are only actually looked up when a test's Sales Order
+  // carries a non-zero VAT/withholding percentage (see postProjectRevenueRecognitionJE's own
+  // `if (deltaVat > 0)`/`if (deltaWht > 0)` guards) - seeded unconditionally here anyway so no
+  // individual test needs to remember to add them.
   await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.accountsReceivableProjects, name: 'Accounts Receivable (Projects)', type: 'asset' });
   await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.revenue, name: 'Revenue', type: 'revenue' });
+  await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.vatPayable, name: 'VAT Payable', type: 'liability' });
+  await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.withholdingTaxReceivable, name: 'Withholding Tax Receivable', type: 'asset' });
 });
 
 test('creating a project does NOT create any journal entry', async () => {

@@ -198,9 +198,17 @@ test('getGeneralLedgerLines: a line with no currency/exchangeRate defaults to ra
   assert.equal(cashRow.balanceLocalCurrency, cashRow.balanceDocumentCurrency);
 });
 
-test('getGeneralLedgerLines: Sub Account resolves to the Customer Number for a Sales-Order-sourced entry', async () => {
+test('getGeneralLedgerLines: Sub Account resolves to the Customer Number for a Sales-Order-sourced entry (fallback path, pre-dating partyNumber)', async () => {
   const customer = await User.create({ name: 'GL Customer', email: `gl-customer-${Date.now()}@example.com`, role: 'user', type: 'online' });
   const salesOrder = await SalesOrder.create({ customer: customer._id, orderSource: 'cashier', project: project._id, items: [] });
+
+  // Simulates a historical entry created BEFORE the partyNumber/partyType fields existed (no
+  // `partyNumber`/`partyType` set on either line) - exercises the entry-wide
+  // resolveSubAccountsForEntries FALLBACK, which is only applied to the line whose account is the
+  // real Accounts Receivable - Projects control account (AutomaticJournalAccountCodes), never the
+  // Cash line - see generalLedgerService.js's CUSTOMER_CONTROL_CODES/VENDOR_CONTROL_CODES.
+  const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
+  const arProjectsAccount = await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.accountsReceivableProjects, name: 'Accounts Receivable (Projects)', type: 'asset' });
 
   const entryNumber = await getNextJournalEntryNumber();
   await JournalEntry.create({
@@ -213,19 +221,24 @@ test('getGeneralLedgerLines: Sub Account resolves to the Customer Number for a S
     project: project._id,
     lines: [
       { account: cash._id, debit: 777, credit: 0 },
-      { account: receivable._id, debit: 0, credit: 777 },
+      { account: arProjectsAccount._id, debit: 0, credit: 777 },
     ],
   });
 
   const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
-  const row = result.data.find(r => r.debit === 777);
-  assert.deepEqual(row.subAccount, { type: 'customer', number: customer.customerNumber });
+  const creditRow = result.data.find(r => r.credit === 777);
+  const debitRow = result.data.find(r => r.debit === 777);
+  assert.deepEqual(creditRow.subAccount, { type: 'customer', number: customer.customerNumber });
+  assert.equal(debitRow.subAccount, null, 'the Cash line must never also carry the resolved Sub Account');
 });
 
-test('getGeneralLedgerLines: Sub Account resolves to the Vendor Number for a Purchase-Order-sourced entry', async () => {
+test('getGeneralLedgerLines: Sub Account resolves to the Vendor Number for a Purchase-Order-sourced entry (fallback path, pre-dating partyNumber)', async () => {
   const vendor = await Vendor.create({ name: 'GL Vendor', contact: { phone: `010${Date.now()}`.slice(0, 11) } });
   const warehouse = await Warehouse.create({ name: 'GL Warehouse', location: 'Cairo' });
   const purchaseOrder = await PurchaseOrder.create({ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, items: [] });
+
+  const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
+  const suppliersAccount = await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.suppliers, name: 'Suppliers', type: 'liability' });
 
   const entryNumber = await getNextJournalEntryNumber();
   await JournalEntry.create({
@@ -236,14 +249,42 @@ test('getGeneralLedgerLines: Sub Account resolves to the Vendor Number for a Pur
     sourceId: purchaseOrder._id,
     accountingAction: 'PO_PAYMENT_RECORDED',
     lines: [
-      { account: receivable._id, debit: 888, credit: 0 },
+      { account: suppliersAccount._id, debit: 888, credit: 0 },
       { account: cash._id, debit: 0, credit: 888 },
     ],
   });
 
   const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
-  const row = result.data.find(r => r.debit === 888);
-  assert.deepEqual(row.subAccount, { type: 'vendor', number: vendor.vendorNumber });
+  const debitRow = result.data.find(r => r.debit === 888);
+  const creditRow = result.data.find(r => r.credit === 888);
+  assert.deepEqual(debitRow.subAccount, { type: 'vendor', number: vendor.vendorNumber });
+  assert.equal(creditRow.subAccount, null, 'the Cash line must never also carry the resolved Sub Account');
+});
+
+test('getGeneralLedgerLines: a NEW-style entry with partyNumber/partyType stamped on a line never falls back to entry-wide resolution', async () => {
+  const customer = await User.create({ name: 'GL Customer 2', email: `gl-customer2-${Date.now()}@example.com`, role: 'user', type: 'online' });
+  const salesOrder = await SalesOrder.create({ customer: customer._id, orderSource: 'cashier', project: project._id, items: [] });
+
+  const entryNumber = await getNextJournalEntryNumber();
+  await JournalEntry.create({
+    entryNumber,
+    status: 'posted',
+    source: 'automatic',
+    sourceType: 'SO',
+    sourceId: salesOrder._id,
+    accountingAction: 'SO_PAYMENT_RECORDED',
+    project: project._id,
+    lines: [
+      { account: cash._id, debit: 555, credit: 0 },
+      { account: receivable._id, debit: 0, credit: 555, partyNumber: 99999, partyType: 'customer' },
+    ],
+  });
+
+  const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
+  const creditRow = result.data.find(r => r.credit === 555);
+  // 99999 (the line's OWN stamped value), never the customer's real customerNumber - proves the
+  // stamped field is authoritative and the fallback lookup is never consulted when it's present.
+  assert.deepEqual(creditRow.subAccount, { type: 'customer', number: 99999 });
 });
 
 test('getGeneralLedgerLines: a manual entry (no sourceType/sourceId) has a null Sub Account, never fabricated', async () => {

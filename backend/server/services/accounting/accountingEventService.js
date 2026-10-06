@@ -571,6 +571,30 @@ async function postProjectRevenueRecognitionJE(project, session) {
   const deltaAmount = round2((project.contractValue * (currentPct - previousPct)) / 100);
   if (deltaAmount <= 0) return null;
 
+  // VAT/Withholding Tax on the recognized revenue slice (docs section "Sales Order VAT fix") -
+  // derived from the project's ACTUAL Sales Orders, never a hardcoded/invented rate. Executed % is
+  // itself defined as Σ(this project's Sales Order totalAmount, pre-tax) / contractValue × 100 (see
+  // projectAccountingService.js#recalculateExecutedPercentage), so `deltaAmount` is already
+  // mathematically equal to the real pre-tax sales amount behind this recognition step. The
+  // weighted-average VAT%/Withholding% across the SAME Sales Orders is what lets that exact amount
+  // carry a proportionally correct tax effect, rather than silently posting none at all (the
+  // engine's previous behavior).
+  const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
+  const [taxTotals] = await SalesOrder.aggregate([
+    { $match: { project: project._id, orderStatus: { $ne: 'canceled' } } },
+    { $group: { _id: null, totalAmount: { $sum: '$totalAmount' }, totalVat: { $sum: '$vatAmount' }, totalWht: { $sum: '$withholdingTaxAmount' } } },
+  ]).session(session || null);
+
+  const totalPreTax = taxTotals?.totalAmount || 0;
+  const vatRatio = totalPreTax > 0 ? (taxTotals.totalVat || 0) / totalPreTax : 0;
+  const whtRatio = totalPreTax > 0 ? (taxTotals.totalWht || 0) / totalPreTax : 0;
+  const deltaVat = round2(deltaAmount * vatRatio);
+  const deltaWht = round2(deltaAmount * whtRatio);
+  // The receivable side nets exactly like SalesOrder.grandTotal does (totalAmount + vatAmount -
+  // withholdingTaxAmount) - never the plain revenue amount, so VAT/WHT never silently vanish from
+  // what the customer is actually deemed to owe for this recognized slice.
+  const arAmount = round2(deltaAmount + deltaVat - deltaWht);
+
   // A Project's customer is optional at the schema level (e.g. an imported/legacy project with no
   // linked customer) - `required: false` here means a genuinely absent relationship is not an
   // error (no Sub Account for this entry), but a PRESENT customer reference that fails to resolve
@@ -582,6 +606,26 @@ async function postProjectRevenueRecognitionJE(project, session) {
     getAccountIdByCode(AutomaticJournalAccountCodes.revenue, session),
   ]);
 
+  const lines = [
+    {
+      account: arProjectsId,
+      debit: arAmount,
+      credit: 0,
+      project: project._id,
+      partyNumber: customerNumber,
+      partyType: customerNumber != null ? 'customer' : null,
+    },
+    { account: revenueId, debit: 0, credit: deltaAmount, project: project._id },
+  ];
+  if (deltaVat > 0) {
+    const vatPayableId = await getAccountIdByCode(AutomaticJournalAccountCodes.vatPayable, session);
+    lines.push({ account: vatPayableId, debit: 0, credit: deltaVat, project: project._id });
+  }
+  if (deltaWht > 0) {
+    const withholdingTaxReceivableId = await getAccountIdByCode(AutomaticJournalAccountCodes.withholdingTaxReceivable, session);
+    lines.push({ account: withholdingTaxReceivableId, debit: deltaWht, credit: 0, project: project._id });
+  }
+
   const entry = await postAutomaticJournalEntry({
     accountingAction: 'PROJECT_REVENUE_RECOGNITION',
     sourceType: 'PROJECT',
@@ -589,17 +633,7 @@ async function postProjectRevenueRecognitionJE(project, session) {
     date: new Date(),
     description: `Revenue recognition - project ${project.projectNumber} (${previousPct}% -> ${currentPct}%)`,
     project: project._id,
-    lines: [
-      {
-        account: arProjectsId,
-        debit: deltaAmount,
-        credit: 0,
-        project: project._id,
-        partyNumber: customerNumber,
-        partyType: customerNumber != null ? 'customer' : null,
-      },
-      { account: revenueId, debit: 0, credit: deltaAmount, project: project._id },
-    ],
+    lines,
     session,
   });
 

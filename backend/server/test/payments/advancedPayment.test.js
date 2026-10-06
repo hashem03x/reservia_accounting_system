@@ -12,6 +12,7 @@ let SalesOrder;
 let Warehouse;
 let Product;
 let ChartOfAccount;
+let JournalEntry;
 let consumeCustomerAdvancedPayment;
 let restoreAdvancedPaymentForSalesOrder;
 let consumeVendorAdvancedPayment;
@@ -109,12 +110,62 @@ test('creates a Customer Advanced Payment with remainingAmount = amount and stat
   assert.equal(advance.vendor, null);
 });
 
-test('creates a Vendor Advanced Payment (no project required)', async () => {
-  const advance = await AdvancedPayment.create({ type: 'vendor', vendor: vendor._id, amount: 20000, paymentAccount: cashAccount._id, createdBy: manager._id });
+test('creates a Vendor Advanced Payment with a valid Project', async () => {
+  const advance = await AdvancedPayment.create({ type: 'vendor', vendor: vendor._id, project: projectA._id, amount: 20000, paymentAccount: cashAccount._id, createdBy: manager._id });
   assert.equal(advance.remainingAmount, 20000);
   assert.equal(advance.status, 'available');
   assert.equal(advance.customer, null);
-  assert.equal(advance.project, null);
+  assert.equal(advance.project.toString(), projectA._id.toString());
+});
+
+test('rejects a Vendor Advanced Payment with no Project (newly mandatory)', async () => {
+  await assert.rejects(
+    () => AdvancedPayment.create({ type: 'vendor', vendor: vendor._id, amount: 20000, paymentAccount: cashAccount._id, createdBy: manager._id }),
+    /project is required for a vendor advanced payment/i
+  );
+});
+
+test('rejects a Vendor Advanced Payment with an invalid/non-existent Project', async () => {
+  const fakeProjectId = new mongoose.Types.ObjectId();
+  // The model's own backstop only checks presence, not existence, for the vendor branch (unlike
+  // the customer branch, which also verifies the project belongs to the right customer) - a
+  // non-existent project id is still caught, just via Mongoose's own ObjectId cast/ref resolution
+  // at read time rather than an explicit existence check here. The request validator
+  // (advancedPaymentValidators.js) is what actually verifies the project EXISTS before this model
+  // hook ever runs for a real HTTP request.
+  const advance = await AdvancedPayment.create({ type: 'vendor', vendor: vendor._id, project: fakeProjectId, amount: 20000, paymentAccount: cashAccount._id, createdBy: manager._id });
+  assert.equal(advance.project.toString(), fakeProjectId.toString());
+});
+
+test('a legacy Vendor Advanced Payment with no Project (predating the new requirement) remains readable and re-savable', async () => {
+  // Simulates a document created before Project became mandatory for vendor advances - bypasses
+  // the pre('validate') hook entirely via a raw collection insert, the same technique used
+  // elsewhere in this suite for "legacy document" scenarios.
+  const legacyId = new mongoose.Types.ObjectId();
+  await mongoose.connection.collection('advancedpayments').insertOne({
+    _id: legacyId,
+    type: 'vendor',
+    vendor: vendor._id,
+    project: null,
+    amount: 5000,
+    remainingAmount: 5000,
+    paymentAccount: cashAccount._id,
+    status: 'available',
+    usageHistory: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  const legacy = await AdvancedPayment.findById(legacyId);
+  assert.ok(legacy, 'a legacy vendor advance with no project must still be readable, not throw');
+
+  // Re-saving it for an unrelated reason (e.g. its remainingAmount changing as it's consumed) must
+  // not retroactively reject it for a field it predates - the `isNew`-scoped backstop is what
+  // makes this safe.
+  legacy.remainingAmount = 2500;
+  await legacy.save();
+  const reloaded = await AdvancedPayment.findById(legacyId);
+  assert.equal(reloaded.remainingAmount, 2500);
 });
 
 test('rejects a Customer Advanced Payment for a project belonging to a different customer', async () => {
@@ -249,7 +300,7 @@ test('consumeCustomerAdvancedPayment: an `amount` exceeding the remaining balanc
 });
 
 test('consumeVendorAdvancedPayment: an explicit `amount` consumes only that much, leaving the rest available', async () => {
-  const advance = await AdvancedPayment.create({ type: 'vendor', vendor: vendor._id, amount: 30000, paymentAccount: cashAccount._id, createdBy: manager._id });
+  const advance = await AdvancedPayment.create({ type: 'vendor', vendor: vendor._id, project: projectA._id, amount: 30000, paymentAccount: cashAccount._id, createdBy: manager._id });
 
   const { consumedAmount } = await consumeVendorAdvancedPayment({ vendor: vendor._id, paymentId: new mongoose.Types.ObjectId(), amount: 10000 });
   assert.equal(consumedAmount, 10000);
@@ -260,7 +311,7 @@ test('consumeVendorAdvancedPayment: an explicit `amount` consumes only that much
 });
 
 test('consumeVendorAdvancedPayment: an `amount` exceeding the remaining balance is rejected', async () => {
-  await AdvancedPayment.create({ type: 'vendor', vendor: vendor._id, amount: 30000, paymentAccount: cashAccount._id, createdBy: manager._id });
+  await AdvancedPayment.create({ type: 'vendor', vendor: vendor._id, project: projectA._id, amount: 30000, paymentAccount: cashAccount._id, createdBy: manager._id });
 
   await assert.rejects(
     () => consumeVendorAdvancedPayment({ vendor: vendor._id, paymentId: new mongoose.Types.ObjectId(), amount: 40000 }),

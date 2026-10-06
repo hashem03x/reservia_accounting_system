@@ -53,8 +53,21 @@ const createAdvancedPaymentValidators = [
         }
       })
     ),
-  // Optional for vendor advances, but still validated when provided.
-  check('project').if((value, { req }) => req.body.type === 'vendor' && value).isMongoId().withMessage('Invalid project id'),
+  // Newly mandatory for vendor advances too (docs section "Vendor Advanced Payment Project
+  // Number") - fast pre-check; the model's own pre('validate') hook (advancedPaymentModel.js) is
+  // the real backstop, scoped to `isNew` there so a legacy vendor advance predating this
+  // requirement stays valid when re-saved later.
+  check('project')
+    .if((value, { req }) => req.body.type === 'vendor')
+    .notEmpty()
+    .withMessage('Project is required for a vendor advanced payment')
+    .isMongoId()
+    .withMessage('Invalid project id')
+    .custom(value =>
+      Project.findById(value).then(project => {
+        if (!project) return Promise.reject(new Error('Project not found.'));
+      })
+    ),
 
   check('amount').notEmpty().withMessage('Amount is required').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
 

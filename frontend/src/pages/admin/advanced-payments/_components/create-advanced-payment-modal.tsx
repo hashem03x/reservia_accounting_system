@@ -39,6 +39,13 @@ export default function CreateAdvancedPaymentModal({
   const { privateRequest: fetchProjectsRequest, data: customerProjects, setData: setCustomerProjects, loading: projectsLoading } = useDataHandler<Project[]>({
     initialData: [],
   });
+  // Vendor Advanced Payments are also now required to carry a Project (docs section "Vendor
+  // Advanced Payment Project Number") - but unlike Customer advances, a project has no concept of
+  // "its vendor" (same reasoning as purchaseOrder.js's identical `project` field comment), so every
+  // project is offered here, not scoped down to anything vendor-specific.
+  const { privateRequest: fetchVendorProjectsRequest, data: vendorProjects, setData: setVendorProjects, loading: vendorProjectsLoading } = useDataHandler<Project[]>({
+    initialData: [],
+  });
   const { loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
   // Only Projects belonging to the selected customer are ever offered - the one customer/one
@@ -54,6 +61,16 @@ export default function CreateAdvancedPaymentModal({
       .catch(() => setCustomerProjects([]));
   }, [type, customer]);
 
+  useEffect(() => {
+    if (type !== "vendor") {
+      setVendorProjects([]);
+      return;
+    }
+    fetchVendorProjectsRequest({ url: "projects", params: { limit: 500 }, language })
+      .then((res) => setVendorProjects(res.data))
+      .catch(() => setVendorProjects([]));
+  }, [type]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -66,7 +83,7 @@ export default function CreateAdvancedPaymentModal({
           type,
           customer: type === "customer" ? customer?._id : undefined,
           vendor: type === "vendor" ? vendor?._id : undefined,
-          project: type === "customer" ? project : undefined,
+          project: type === "customer" || type === "vendor" ? project : undefined,
           amount,
           paymentAccount,
           currency: currency || undefined,
@@ -100,7 +117,7 @@ export default function CreateAdvancedPaymentModal({
     type === "customer"
       ? !!customer && !!project && !!amount && !!paymentAccount
       : type === "vendor"
-        ? !!vendor && !!amount && !!paymentAccount
+        ? !!vendor && !!project && !!amount && !!paymentAccount
         : false;
 
   return (
@@ -148,7 +165,23 @@ export default function CreateAdvancedPaymentModal({
           </>
         )}
 
-        {type === "vendor" && <VendorSearch vendor={vendor} setVendor={setVendor} label={translate("Vendor", "البائع")} placeholder={translate("Search for a vendor", "ابحث عن بائع")} required />}
+        {type === "vendor" && (
+          <>
+            <VendorSearch vendor={vendor} setVendor={setVendor} label={translate("Vendor", "البائع")} placeholder={translate("Search for a vendor", "ابحث عن بائع")} required />
+
+            <Select
+              label={translate("Project", "المشروع")}
+              placeholder={vendorProjectsLoading ? translate("Loading projects...", "جاري تحميل المشاريع...") : translate("Select project", "اختر المشروع")}
+              value={project || null}
+              onChange={(v) => setProject(v || "")}
+              data={vendorProjects.map((p) => ({ value: p._id, label: `${p.projectNumber}${p.name ? ` - ${p.name}` : ""}` }))}
+              disabled={vendorProjectsLoading}
+              searchable
+              required
+              withAsterisk
+            />
+          </>
+        )}
 
         <NumberInput
           label={translate("Amount", "المبلغ")}

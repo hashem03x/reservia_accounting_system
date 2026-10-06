@@ -46,9 +46,14 @@ const advancedPaymentSchema = new Schema(
     // collection.
     customer: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     vendor: { type: Schema.Types.ObjectId, ref: 'Vendor', default: null },
-    // Required for `type: 'customer'` (the core "Customer + Project -> available advance" flow this
-    // feature exists for) - optional for `type: 'vendor'`, since a vendor advance is not always tied
-    // to a specific project. See the pre('validate') hook below for the actual enforcement.
+    // Required for every NEW advance, both `type: 'customer'` (the core "Customer + Project ->
+    // available advance" flow this feature exists for) and `type: 'vendor'` (docs section "Vendor
+    // Advanced Payment Project Number" - every automatic JE this engine posts must be able to
+    // carry a real Project Number). Not a plain schema-level `required: true` (which would also
+    // reject a legacy vendor advance, created before this requirement existed, being re-saved for
+    // an unrelated reason) - enforced instead in the pre('validate') hook below, scoped to
+    // `this.isNew`, mirroring every other "newly mandatory" field in this codebase
+    // (SalesOrder.project/PurchaseOrder.project).
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
     amount: {
       type: Number,
@@ -105,10 +110,16 @@ advancedPaymentSchema.pre('validate', async function (next) {
     if (this.type === 'customer') {
       if (!this.customer) throw new Error('A customer is required for a customer advanced payment.');
       this.vendor = null;
+      // Preserved exactly as before (unconditional, not isNew-scoped) - customer advances have
+      // always required a project, there is no legacy gap to protect here.
       if (!this.project) throw new Error('A project is required for a customer advanced payment.');
     } else if (this.type === 'vendor') {
       if (!this.vendor) throw new Error('A vendor is required for a vendor advanced payment.');
       this.customer = null;
+      // Newly mandatory (docs section "Vendor Advanced Payment Project Number") - scoped to
+      // `isNew` so a vendor advance created before this requirement existed stays valid when
+      // re-saved later (e.g. its status/remainingAmount changing as it's consumed).
+      if (this.isNew && !this.project) throw new Error('A project is required for a vendor advanced payment.');
     }
 
     // The single most important rule this whole feature depends on: an Advanced Payment can never
