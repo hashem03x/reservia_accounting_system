@@ -99,7 +99,7 @@ export default function OrderJournalEntriesSection({
               <Table.Tr
                 key={entry._id}
                 className="cursor-pointer text-gray-600"
-                onClick={() => navigate(`/${paths.admin}/${paths.journalEntries}/${entry._id}`)}
+                onClick={() => navigate(`/${paths.admin}/home/${paths.journalEntries}/${entry._id}`)}
               >
                 <Table.Td className="whitespace-nowrap font-medium text-gray-800">{entry.entryNumber}</Table.Td>
                 <Table.Td className="whitespace-nowrap">{formatDate(entry.date, language)}</Table.Td>
