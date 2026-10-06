@@ -71,8 +71,11 @@ export default function KpiSection({
     },
   ];
 
+  // Capped at 4 columns even on very large screens (7 cards wrap to a clean 4+3) rather than
+  // forcing all seven into one row - cramming 7 columns left too little width per card for a long
+  // formatted currency value like "EGP 2,100,000.00" to fit (docs section "Responsive Grid").
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {cards.map((card) => (
         <KpiCard key={card.label} loading={loading} {...card} />
       ))}
