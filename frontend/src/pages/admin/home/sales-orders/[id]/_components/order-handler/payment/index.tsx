@@ -13,7 +13,10 @@ import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { notifyError } from "@/utils/helpers/notifiers";
 import PayAllModal from "./_components/pay-all-modal";
+<<<<<<< HEAD
 import { getOrderTotal } from "@/utils/helpers/order-totals";
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 export default function Payment() {
   const { translate, language, translations } = useLanguage();
@@ -79,7 +82,11 @@ export default function Payment() {
                     {order.remainingAmount.toFixed(2)} {translations.currency}
                   </Table.Td>
                   <Table.Td>
+<<<<<<< HEAD
                     {getOrderTotal(order).toFixed(2)} {translations.currency}
+=======
+                    {order.totalAmount.toFixed(2)} {translations.currency}
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                   </Table.Td>
                 </Table.Tr>
               </Table.Tbody>

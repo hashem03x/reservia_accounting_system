@@ -5,7 +5,12 @@ const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 // for every model this schema's hooks look up via `this.model(...)` or populate.
 require('../accounting/chartOfAccountModel');
 require('../payments/advancedPaymentModel');
+<<<<<<< HEAD
 const { computeOrderTotals } = require('../../utils/orderTotals');
+=======
+
+const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 // const { createCanvas } = require('canvas');
 // const JsBarcode = require('jsbarcode');
@@ -52,10 +57,18 @@ const purchaseOrderSchema = new Schema(
         starterSubtotal: { type: Number, min: 0 },
         returnedQuantity: { type: Number, default: 0, min: 0 },
         subtotal: { type: Number, min: 0 }, // Final Subtotal After calculating returned quantity
+<<<<<<< HEAD
         // LEGACY - no longer used for accounting. Service purchases now always post to the
         // Service's own PUC Account (Product.pucAccount, see accountingEventService.js#
         // postPurchaseOrderJournalEntries, PO_SERVICE_TO_WIP). Kept on the schema only so existing
         // orders that carry it stay readable/valid.
+=======
+        // Which WIP/COGS category this line's cost belongs to (e.g. WIP - Engineering & Design vs.
+        // WIP - Labour Wages) - required only for SERVICE items on a PO with a project set (see the
+        // pre('save') backstop below and accountingEventService.js#postPurchaseOrderJournalEntries,
+        // PO_SERVICE_TO_WIP). Physical-product items never set this - their WIP destination is
+        // always the fixed Raw Materials account, no per-line choice needed.
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         costAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
       },
     ],
@@ -68,8 +81,12 @@ const purchaseOrderSchema = new Schema(
     vatAmount: { type: Number, default: 0, min: 0 },
     withholdingTaxPercentage: { type: Number, enum: { values: [0, 1, 3, 5], message: '{VALUE} is not a valid withholding tax percentage' }, default: 0 },
     withholdingTaxAmount: { type: Number, default: 0, min: 0 },
+<<<<<<< HEAD
     // = totalAmount + vatAmount - withholdingTaxAmount - the canonical ORDER TOTAL AMOUNT
     // (utils/orderTotals.js) and the real payable figure (remainingAmount/
+=======
+    // = totalAmount + vatAmount - withholdingTaxAmount - the real payable figure (remainingAmount/
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     // paymentStatus/the vendor-balance adjustment below are all based on this, not the pre-tax
     // totalAmount). Function default so an order predating this field still reports its real total
     // if read before ever being re-saved.
@@ -199,6 +216,7 @@ purchaseOrderSchema.pre('save', async function (next) {
     this.starterTotalAmount = calculateStarterTotalAmount(this.items);
     this.totalAmount = calculateTotalAmount(this.items);
 
+<<<<<<< HEAD
     // Same canonical formula as SalesOrder (utils/orderTotals.js).
     const totals = computeOrderTotals({
       subtotal: this.totalAmount,
@@ -208,6 +226,11 @@ purchaseOrderSchema.pre('save', async function (next) {
     this.vatAmount = totals.vatAmount;
     this.withholdingTaxAmount = totals.withholdingTaxAmount;
     this.grandTotal = totals.total;
+=======
+    this.vatAmount = round2((this.totalAmount * (this.vatPercentage || 0)) / 100);
+    this.withholdingTaxAmount = round2((this.totalAmount * (this.withholdingTaxPercentage || 0)) / 100);
+    this.grandTotal = round2(this.totalAmount + this.vatAmount - this.withholdingTaxAmount);
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
     this.remainingAmount = calculateRemainingAmount(this.grandTotal, this.paidAmount);
     this.paymentStatus = getPaymentStatus(this.paidAmount, this.grandTotal);
@@ -229,6 +252,7 @@ purchaseOrderSchema.pre('save', async function (next) {
 
 // Populate fields
 purchaseOrderSchema.pre(/^find/, function () {
+<<<<<<< HEAD
   // The Purchase Order "Supplier" IS a Vendor - `vendorNumber` is that vendor's Sub Account (the
   // same number the automatic JE stamps on the Suppliers control-account line, see
   // accountingEventService.js#resolveVendorNumber), exposed here so every PO view can show it
@@ -236,6 +260,11 @@ purchaseOrderSchema.pre(/^find/, function () {
   this.populate({
     path: 'vendorId',
     select: 'name contact vendorNumber',
+=======
+  this.populate({
+    path: 'vendorId',
+    select: 'name contact',
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   });
 
   this.populate({

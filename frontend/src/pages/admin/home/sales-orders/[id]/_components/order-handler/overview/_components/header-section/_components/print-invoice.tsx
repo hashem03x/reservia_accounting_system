@@ -8,7 +8,10 @@ import { solidIcons } from "@/components/icons";
 import useWarehouseHelpers from "@/hooks/useWarehouseHelpers";
 import { isCashierOrder } from "@/utils/constants/order-sources";
 import { stringifyCustomerAddress } from "@/utils/helpers/stringify-address";
+<<<<<<< HEAD
 import { getOrderTotal } from "@/utils/helpers/order-totals";
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 export default function PrintInvoice() {
   const { translate } = useLanguage();
@@ -19,9 +22,13 @@ export default function PrintInvoice() {
 
   // Calculate order summary including shipping cost
   const totalPaidAmount = order.paidAmount + (order.shippingCostPaid ? order.shippingCost : 0);
+<<<<<<< HEAD
   // Order Total Amount (incl. VAT, net of withholding) + shipping, which is tracked separately.
   const totalAmountWithShipping = getOrderTotal(order) + (order.shippingCost || 0);
   const totalRemainingAmount = totalAmountWithShipping - totalPaidAmount;
+=======
+  const totalRemainingAmount = order.totalAmountPlusShipping - totalPaidAmount;
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
   return (
     <PrintDocument
@@ -190,7 +197,11 @@ export default function PrintInvoice() {
             </thead>
             <tbody>
               <tr>
+<<<<<<< HEAD
                 <td style={{ fontWeight: 600 }}>{totalAmountWithShipping.toFixed(2)} EGP</td>
+=======
+                <td style={{ fontWeight: 600 }}>{order.totalAmountPlusShipping.toFixed(2)} EGP</td>
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                 <td>{totalPaidAmount.toFixed(2)} EGP</td>
                 <td>{totalRemainingAmount.toFixed(2)} EGP</td>
               </tr>

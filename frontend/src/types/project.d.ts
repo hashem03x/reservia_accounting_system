@@ -51,8 +51,12 @@ export interface Project {
 }
 
 export interface AverageCostLine {
+<<<<<<< HEAD
   // Nullable: populate resolves a reference to a since-removed account to null.
   account: { _id: string; code: string; name: string; nameAr?: string | null; type: string } | null;
+=======
+  account: { _id: string; code: string; name: string; nameAr?: string | null; type: string };
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   amount: number;
 }
 

@@ -22,7 +22,10 @@ import usePrivateRequest from "@/hooks/usePrivateRequest";
 import { outlineIcons } from "@/components/icons";
 import { AccountType } from "@/types/chart-of-account";
 import { AccountStates } from "@/utils/constants/accounting";
+<<<<<<< HEAD
 import { sortAccountsByCode } from "@/utils/helpers/account-sort";
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const typeColors: Record<string, string> = {
   asset: "blue",
@@ -34,6 +37,13 @@ const typeColors: Record<string, string> = {
 };
 const accountTypes: AccountType[] = ["asset", "liability", "equity", "revenue", "cogs", "expense"];
 
+<<<<<<< HEAD
+=======
+function sortBySortOrder(list: ChartOfAccount[]) {
+  return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+}
+
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 type TrialBalanceRow = { account: { _id: string }; debit: number; credit: number; balance: number };
 
 export default function ChartOfAccounts() {
@@ -67,6 +77,7 @@ export default function ChartOfAccounts() {
 
   function load() {
     handleRequest(language, setLoading, setError, async () => {
+<<<<<<< HEAD
       // The Chart of Accounts is always ordered by account number (code), numerically - the API
       // already returns that order; sortAccountsByCode keeps it after any local insert/update.
       const [accountsRes, trialBalanceRes] = await Promise.all([
@@ -74,6 +85,15 @@ export default function ChartOfAccounts() {
         privateRequest({ url: "accounts/trial-balance", language }),
       ]);
       setAccounts(sortAccountsByCode(accountsRes.data));
+=======
+      // Sorted by sortOrder (not code) so this list reflects the same order everywhere else in the
+      // app (selectors, reports) - see chartOfAccountOrderingService.js. `code` is a tie-break only.
+      const [accountsRes, trialBalanceRes] = await Promise.all([
+        privateRequest({ url: "accounts", params: { limit: 500, sort: "sortOrder,code" }, language }),
+        privateRequest({ url: "accounts/trial-balance", language }),
+      ]);
+      setAccounts(sortBySortOrder(accountsRes.data));
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
       const map: Record<string, TrialBalanceRow> = {};
       (trialBalanceRes.data as TrialBalanceRow[]).forEach((row) => {
         map[row.account._id] = row;
@@ -196,7 +216,11 @@ export default function ChartOfAccounts() {
             <DataTable className="min-w-[960px]">
               <Table.Thead className={dataTableHeadClassName}>
                 <Table.Tr>
+<<<<<<< HEAD
                   <Table.Th className="whitespace-nowrap">{translate("Account Number", "رقم الحساب")}</Table.Th>
+=======
+                  <Table.Th className="whitespace-nowrap">{translate("Code", "الرمز")}</Table.Th>
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                   <Table.Th>{translate("Name", "الاسم")}</Table.Th>
                   <Table.Th className="whitespace-nowrap">{translate("Type", "النوع")}</Table.Th>
                   <Table.Th className="whitespace-nowrap">{translate("State", "الحالة الفرعية")}</Table.Th>
@@ -291,7 +315,11 @@ export default function ChartOfAccounts() {
         opened={createModalOpened}
         close={closeCreateModal}
         accounts={accounts}
+<<<<<<< HEAD
         onCreated={(account) => setAccounts((prev) => sortAccountsByCode([...prev, account]))}
+=======
+        onCreated={(account) => setAccounts((prev) => sortBySortOrder([...prev, account]))}
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
       />
       <EditAccountModal
         opened={editModalOpened}
@@ -299,7 +327,11 @@ export default function ChartOfAccounts() {
         account={editingAccount}
         accounts={accounts}
         onUpdated={(updated) =>
+<<<<<<< HEAD
           setAccounts((prev) => sortAccountsByCode(prev.map((a) => (a._id === updated._id ? updated : a))))
+=======
+          setAccounts((prev) => sortBySortOrder(prev.map((a) => (a._id === updated._id ? updated : a))))
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         }
       />
       <TrialBalanceModal opened={trialBalanceOpened} close={closeTrialBalance} />

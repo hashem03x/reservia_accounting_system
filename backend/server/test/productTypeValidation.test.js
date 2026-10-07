@@ -24,12 +24,15 @@ test('a service rejects any duration unit other than "month"', () => {
   assert.match(validateProductTypeFields({ type: 'service', durationValue: 1, durationUnit: 'year' }), /durationUnit/);
 });
 
+<<<<<<< HEAD
 test('a NEW service requires a PUC account; a product can never have one', () => {
   assert.match(validateProductTypeFields({ type: 'service', durationValue: 12, durationUnit: 'month', requirePucAccount: true }), /PUC account/);
   assert.equal(validateProductTypeFields({ type: 'service', durationValue: 12, durationUnit: 'month', pucAccount: 'acc1', requirePucAccount: true }), null);
   assert.match(validateProductTypeFields({ type: 'product', cost: 50, category: 'c1', subcategory: 'sc1', pucAccount: 'acc1' }), /Only a service/);
 });
 
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 test('rejects an unknown type value', () => {
   assert.match(validateProductTypeFields({ type: 'bundle' }), /type must be/i);
 });

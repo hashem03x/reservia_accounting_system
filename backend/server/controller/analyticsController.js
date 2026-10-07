@@ -8,6 +8,7 @@ const Expense = require('../models/expense/expenseModel');
 const FixedAsset = require('../models/fixedAssets');
 const { getNetProfit } = require('./reports/incomeStatementController');
 const mongoose = require('mongoose');
+<<<<<<< HEAD
 const { ORDER_TOTAL_AMOUNT_EXPR } = require('../utils/orderTotals');
 
 // Order-value statistics use each order's final Total Amount (subtotal + VAT - withholding, see
@@ -16,6 +17,8 @@ const { ORDER_TOTAL_AMOUNT_EXPR } = require('../utils/orderTotals');
 const ORDER_TOTAL = ORDER_TOTAL_AMOUNT_EXPR;
 const ORDER_TOTAL_PLUS_SHIPPING = { $add: [ORDER_TOTAL_AMOUNT_EXPR, { $ifNull: ['$shippingCost', 0] }] };
 
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 // Get Sales Overview
 exports.getSalesOverview = asyncHandler(async (req, res) => {
   const { startDate, endDate } = req.query;
@@ -32,10 +35,17 @@ exports.getSalesOverview = asyncHandler(async (req, res) => {
     {
       $group: {
         _id: null,
+<<<<<<< HEAD
         totalAmount: { $sum: ORDER_TOTAL_PLUS_SHIPPING }, // Include shipping in total
         count: { $sum: 1 },
         totalShipping: { $sum: '$shippingCost' },
         totalWithoutShipping: { $sum: ORDER_TOTAL },
+=======
+        totalAmount: { $sum: '$totalAmountPlusShipping' }, // Include shipping in total
+        count: { $sum: 1 },
+        totalShipping: { $sum: '$shippingCost' },
+        totalWithoutShipping: { $sum: '$totalAmount' },
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
       },
     },
   ]);
@@ -50,8 +60,13 @@ exports.getSalesOverview = asyncHandler(async (req, res) => {
     {
       $group: {
         _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+<<<<<<< HEAD
         totalAmount: { $sum: ORDER_TOTAL_PLUS_SHIPPING }, // Include shipping in total
         totalWithoutShipping: { $sum: ORDER_TOTAL },
+=======
+        totalAmount: { $sum: '$totalAmountPlusShipping' }, // Include shipping in total
+        totalWithoutShipping: { $sum: '$totalAmount' },
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         totalShipping: { $sum: '$shippingCost' },
         count: { $sum: 1 },
         orders: {
@@ -301,8 +316,13 @@ exports.getCustomerInsights = asyncHandler(async (req, res) => {
       $group: {
         _id: '$customer',
         orderCount: { $sum: 1 },
+<<<<<<< HEAD
         totalSpent: { $sum: ORDER_TOTAL },
         averageOrderValue: { $avg: ORDER_TOTAL },
+=======
+        totalSpent: { $sum: '$totalAmount' },
+        averageOrderValue: { $avg: '$totalAmount' },
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         lastOrderDate: { $max: '$createdAt' },
         orderSources: { $addToSet: '$orderSource' },
       },
@@ -1084,15 +1104,26 @@ exports.getOrderStatistics = asyncHandler(async (req, res) => {
       $group: {
         _id: null,
         totalOrders: { $sum: 1 },
+<<<<<<< HEAD
         maxOrderValue: { $max: ORDER_TOTAL },
         minOrderValue: { $min: ORDER_TOTAL },
         averageOrderValue: { $avg: ORDER_TOTAL },
         totalRevenue: { $sum: ORDER_TOTAL },
+=======
+        maxOrderValue: { $max: '$totalAmount' },
+        minOrderValue: { $min: '$totalAmount' },
+        averageOrderValue: { $avg: '$totalAmount' },
+        totalRevenue: { $sum: '$totalAmount' },
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         totalShippingCost: { $sum: '$shippingCost' },
         totalPaidAmount: { $sum: '$paidAmount' },
         pendingPayments: {
           $sum: {
+<<<<<<< HEAD
             $subtract: [ORDER_TOTAL, { $ifNull: ['$paidAmount', 0] }],
+=======
+            $subtract: ['$totalAmount', '$paidAmount'],
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
           },
         },
       },
@@ -1108,7 +1139,11 @@ exports.getOrderStatistics = asyncHandler(async (req, res) => {
       $group: {
         _id: '$orderStatus',
         count: { $sum: 1 },
+<<<<<<< HEAD
         totalAmount: { $sum: ORDER_TOTAL },
+=======
+        totalAmount: { $sum: '$totalAmount' },
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
       },
     },
     {
@@ -1140,7 +1175,11 @@ exports.getOrderStatistics = asyncHandler(async (req, res) => {
       $group: {
         _id: '$paymentStatus',
         count: { $sum: 1 },
+<<<<<<< HEAD
         totalAmount: { $sum: ORDER_TOTAL },
+=======
+        totalAmount: { $sum: '$totalAmount' },
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
       },
     },
     {
@@ -1172,7 +1211,11 @@ exports.getOrderStatistics = asyncHandler(async (req, res) => {
       $group: {
         _id: '$orderSource',
         count: { $sum: 1 },
+<<<<<<< HEAD
         totalAmount: { $sum: ORDER_TOTAL },
+=======
+        totalAmount: { $sum: '$totalAmount' },
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
       },
     },
     {
@@ -1530,7 +1573,11 @@ exports.getBestSellingGovernorates = asyncHandler(async (req, res) => {
       $group: {
         _id: '$governorate._id',
         governorateName: { $first: '$governorate.name' },
+<<<<<<< HEAD
         totalAmount: { $sum: ORDER_TOTAL_PLUS_SHIPPING },
+=======
+        totalAmount: { $sum: '$totalAmountPlusShipping' },
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         totalOrders: { $sum: 1 },
         totalShipping: { $sum: '$shippingCost' },
         paidAmount: { $sum: '$paidAmount' },

@@ -48,6 +48,7 @@ exports.isPaymentAccountEligible = function isPaymentAccountEligible(account) {
   return ['cash', 'cash-equivalent'].includes(account.state);
 };
 
+<<<<<<< HEAD
 // Single source of truth for "can this ChartOfAccount document be a Service's PUC Account"
 // (Product.pucAccount - the Projects-Under-Construction / WIP account a Service purchase posts to,
 // see accountingEventService.js#postPurchaseOrderJournalEntries, PO_SERVICE_TO_WIP). PUC accounts
@@ -62,6 +63,8 @@ exports.isPucAccountEligible = function isPucAccountEligible(account) {
   return !exports.isPaymentAccountEligible(account);
 };
 
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 exports.JournalEntryStatus = ['draft', 'posted', 'reversed'];
 
 // "source" identifies what business event produced a journal entry. `manual` covers everything an

@@ -34,7 +34,10 @@ import PaginationHandler from "@/components/ui/pagination-handler";
 import ScannerModal from "./_components/scanner-modal";
 import UnauthorizedSection from "@/components/ui/sections/unauthorized";
 import { isCanceledOrder } from "@/utils/constants/order-statuses";
+<<<<<<< HEAD
 import { getOrderTotal } from "@/utils/helpers/order-totals";
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const SALES_ORDERS_PER_PAGE = import.meta.env.VITE_SALES_ORDERS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
 
@@ -410,7 +413,11 @@ export default function SalesOrders() {
                         <Table.Td>{salesOrder.customer?.name || translate("Deleted Customer", "عميل محذوف")}</Table.Td>
                         <Table.Td>{salesOrder.project?.projectNumber || "-"}</Table.Td>
                         <Table.Td>{getPaymentStatusLabel(salesOrder.paymentStatus, language)}</Table.Td>
+<<<<<<< HEAD
                         <Table.Td className="font-semibold text-gray-800">{getOrderTotal(salesOrder).toFixed(2)}</Table.Td>
+=======
+                        <Table.Td className="font-semibold text-gray-800">{salesOrder.totalAmount.toFixed(2)}</Table.Td>
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                         <Table.Td>{salesOrder.paidAmount.toFixed(2)}</Table.Td>
                         <Table.Td>{salesOrder.remainingAmount.toFixed(2)}</Table.Td>
                         <Table.Td>{formatDate(salesOrder.createdAt, language)}</Table.Td>

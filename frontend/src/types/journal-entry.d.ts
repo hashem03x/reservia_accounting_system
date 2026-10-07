@@ -8,8 +8,12 @@ export type JournalEntrySource = "manual" | "project_creation" | "fixed_asset_pu
 export type AccountingModule = "Advanced Payment" | "Purchase Order" | "Sales Order" | "Payment" | "Manual" | "Fixed Asset" | "Project";
 
 export interface JournalLine {
+<<<<<<< HEAD
   // Nullable: populate resolves a reference to a since-removed account to null - never assume it.
   account: ChartOfAccount | null;
+=======
+  account: ChartOfAccount;
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   subAccount?: ChartOfAccount | null;
   // The resolved Customer/Vendor Number for THIS specific line (docs section "Sub Account
   // behavior") - set only on the one control-account line of an automatic entry that actually
@@ -26,7 +30,10 @@ export interface JournalLine {
   currency?: string | null;
   exchangeRate?: number | null;
   description?: string;
+<<<<<<< HEAD
   // Historical data field - kept on the type for compatibility, no longer displayed anywhere.
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   unearnedRevenue?: number;
 }
 
@@ -47,9 +54,12 @@ export interface JournalEntry {
   // section "Sales Order Source Link"). `null` for every other entry, including historical
   // recognition entries created before this field existed.
   triggeredBySalesOrder?: { _id: string; code: string } | null;
+<<<<<<< HEAD
   // The Advanced Payment this entry belongs to (its creation entry or an entry that consumed it).
   // `null` for every other entry and for entries created before this link existed.
   advancedPayment?: string | null;
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   status: JournalEntryStatus;
   lines: JournalLine[];
   totalDebit: number;

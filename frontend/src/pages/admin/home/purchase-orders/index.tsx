@@ -24,7 +24,10 @@ import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import ScannerModal from "./_components/scanner-modal";
+<<<<<<< HEAD
 import { getOrderTotal } from "@/utils/helpers/order-totals";
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const PURCHASE_ORDERS_PER_PAGE = import.meta.env.VITE_PURCHASE_ORDERS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
 
@@ -168,7 +171,11 @@ export default function PurchaseOrders() {
                       <Table.Td>{purchaseOrder.vendor?.name || translate("Deleted Vendor", "بائع محذوف")}</Table.Td>
                       <Table.Td>{purchaseOrder.project?.projectNumber || "-"}</Table.Td>
                       <Table.Td>{getPaymentStatusLabel(purchaseOrder.paymentStatus, language)}</Table.Td>
+<<<<<<< HEAD
                       <Table.Td className="font-semibold text-gray-800">{getOrderTotal(purchaseOrder).toFixed(2)}</Table.Td>
+=======
+                      <Table.Td className="font-semibold text-gray-800">{purchaseOrder.totalAmount.toFixed(2)}</Table.Td>
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                       <Table.Td>{purchaseOrder.paidAmount.toFixed(2)}</Table.Td>
                       <Table.Td>{purchaseOrder.remainingAmount.toFixed(2)}</Table.Td>
                       <Table.Td>{formatDate(purchaseOrder.createdAt, language)}</Table.Td>

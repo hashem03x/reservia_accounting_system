@@ -31,23 +31,34 @@ export default function VendorWarehouseSection({
 
   return (
     <section className="flex flex-col gap-3 lg:flex-row lg:items-center">
+<<<<<<< HEAD
       {/* Supplier = a Vendor. Its Vendor Number is the Sub Account the PO's journal entries post the
           supplier payable to (stamped server-side - see accountingEventService.js). */}
       <div className="flex flex-1 items-end gap-2">
         <div className="flex-1">
           <VendorSearch
             label={translate("Supplier (Vendor)", "المورد (البائع)")}
+=======
+      {/* Vendor */}
+      <div className="flex flex-1 items-end gap-2">
+        <div className="flex-1">
+          <VendorSearch
+            label={translate("Vendor", "البائع")}
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
             placeholder={translate("Select Vendor", "اختر البائع")}
             vendor={vendor}
             setVendor={setVendor}
             withAsterisk
           />
+<<<<<<< HEAD
           {vendor && (
             <p className="mt-1 text-xs text-gray-500">
               {translate("Sub Account (Vendor No.)", "الحساب الفرعي (رقم البائع)")}:{" "}
               <span className="font-medium text-gray-700">{vendor.vendorNumber ?? translate("Not assigned", "غير محدد")}</span>
             </p>
           )}
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         </div>
         {canICreateVendors && !vendor && (
           <>

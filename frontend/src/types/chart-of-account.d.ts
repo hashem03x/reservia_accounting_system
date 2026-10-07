@@ -22,9 +22,15 @@ export interface ChartOfAccount {
   // account has no real `parentAccount` link.
   parentGroupNameEn?: string | null;
   parentGroupNameAr?: string | null;
+<<<<<<< HEAD
   // Legacy insertion-order field - always server-computed, never user-editable. NOT used for
   // display ordering: the Chart of Accounts is always listed by account number (`code`),
   // numerically (see utils/helpers/account-sort.ts).
+=======
+  // Display/insertion order within the account's type group - always server-computed, never
+  // user-editable. Sort ascending on this (not `code`) everywhere accounts are listed so new
+  // accounts consistently land at the bottom of their group.
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   sortOrder?: number;
   description?: string;
   isActive: boolean;

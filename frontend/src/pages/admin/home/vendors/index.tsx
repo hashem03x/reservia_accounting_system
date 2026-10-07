@@ -168,7 +168,10 @@ export default function Vendors() {
               <Table className="text-nowrap" verticalSpacing="xs" highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
+<<<<<<< HEAD
                     <Table.Th>{translate("Vendor No.", "رقم البائع")}</Table.Th>
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                     <Table.Th>{translate("Name", "الاسم")}</Table.Th>
                     <Table.Th>{translate("Phone", "الهاتف")}</Table.Th>
                     <Table.Th>{translate("Email", "البريد الإلكتروني")}</Table.Th>
@@ -187,7 +190,10 @@ export default function Vendors() {
                       className="cursor-pointer text-gray-600"
                       onClick={() => navigate(`${vendor._id}`)}
                     >
+<<<<<<< HEAD
                       <Table.Td className="tabular-nums">{vendor.vendorNumber ?? "-"}</Table.Td>
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                       <Table.Td className="font-semibold text-gray-800">{vendor.name}</Table.Td>
                       <Table.Td>{vendor.contact?.phone || ""}</Table.Td>
                       <Table.Td>{vendor.contact?.email || ""}</Table.Td>
@@ -195,7 +201,11 @@ export default function Vendors() {
                       <Table.Td>{vendor.taxInfo?.taxRegistrationNumber || "-"}</Table.Td>
                       <AdminGaurd>
                         <Table.Td className="font-semibold text-gray-800">
+<<<<<<< HEAD
                           {(vendor.balance || 0).toFixed(2)} {translations.currency}
+=======
+                          {vendor.balance.toFixed(2)} {translations.currency}
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                         </Table.Td>
                       </AdminGaurd>
                       <Table.Td>{stringifyAddress(vendor)}</Table.Td>

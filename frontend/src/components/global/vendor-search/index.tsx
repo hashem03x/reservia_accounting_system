@@ -154,11 +154,16 @@ export default function VendorSearch({
                 dir={translations.dir}
                 className="flex items-center justify-between gap-1"
               >
+<<<<<<< HEAD
                 <div>
                   {vendor.vendorNumber != null && <span className="me-1.5 text-xs text-gray-500">#{vendor.vendorNumber}</span>}
                   {vendor.name}
                 </div>
                 <div className="text-gray-600">{vendor.contact?.phone || ""}</div>
+=======
+                <div>{vendor.name}</div>
+                <div className="text-gray-600">{vendor.contact.phone}</div>
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
               </Combobox.Option>
             ))
           )}

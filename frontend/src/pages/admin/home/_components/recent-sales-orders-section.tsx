@@ -15,13 +15,21 @@ import TruncatedText from "@/components/ui/truncated-text";
 import EmptySection from "@/components/ui/sections/empty";
 import ErrorSection from "@/components/ui/sections/error";
 import LoadingSection from "@/components/ui/sections/loading";
+<<<<<<< HEAD
 import { getOrderTotal } from "@/utils/helpers/order-totals";
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const statusColors: Record<string, string> = { pending: "yellow", delivered: "green", canceled: "red" };
 
 // Recent Sales Orders (docs section "Recent Sales Orders") - newest 5 orders, not the full Sales
+<<<<<<< HEAD
 // Orders page. Amount shown is the order's Total Amount (incl. VAT, net of withholding - see
 // utils/helpers/order-totals.ts), the same figure every order view/report uses. Sales
+=======
+// Orders page. Amount shown is `totalAmount` (pre-tax - see salesOrderModel.js), never
+// `grandTotal`, so VAT never leaks into a figure meant to represent sales excluding taxes. Sales
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 // Orders have no ResourceGuard on their read route (see App.tsx), so this section is always shown.
 export default function RecentSalesOrdersSection() {
   const { language, translate } = useLanguage();
@@ -105,7 +113,11 @@ export default function RecentSalesOrdersSection() {
                   </Table.Td>
                   <Table.Td className="whitespace-nowrap">{order.project?.projectNumber || "-"}</Table.Td>
                   <Table.Td className="whitespace-nowrap text-right tabular-nums">
+<<<<<<< HEAD
                     {formatCurrency(getOrderTotal(order), language)}
+=======
+                    {formatCurrency(order.totalAmount, language)}
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                   </Table.Td>
                   <Table.Td className="whitespace-nowrap">
                     <Badge color={statusColors[order.orderStatus] || "gray"} variant="light">

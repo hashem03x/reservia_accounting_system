@@ -8,8 +8,11 @@ import { useOrder } from "../../../../../context";
 import PrintInvoice from "./_components/print-invoice";
 import PrintReceipt from "./_components/print-receipt";
 import InfoItem from "@/components/ui/info-item";
+<<<<<<< HEAD
 import OrderAmounts from "@/components/global/order-amounts";
 import { getOrderTotal } from "@/utils/helpers/order-totals";
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 import OrderStatus from "@/components/global/order-status";
 import { isDeliveredOrder, isPendingOrder } from "@/utils/constants/order-statuses";
 import { useDisclosure } from "@mantine/hooks";
@@ -29,9 +32,36 @@ export default function HeaderSection() {
         <h1>{translate("Overview", "نظرة عامة")}</h1>
         <InfoItem label={translate("Order ID", "رقم الطلب")} value={order._id} />
         <InfoItem label={translate("Payment Status", "حالة الدفع")} value={orderPaymentStatusElement} />
+<<<<<<< HEAD
         <OrderAmounts order={order} />
         {order.project && (
           <InfoItem label={translate("Project", "المشروع")} value={order.project.projectNumber || "-"} />
+=======
+        <InfoItem
+          label={translate("Order Amount", "سعر الطلب")}
+          value={`${order.totalAmount.toFixed(2)} ${translations.currency}`}
+        />
+        {order.project && (
+          <InfoItem label={translate("Project", "المشروع")} value={order.project.projectNumber} />
+        )}
+        {!!order.vatPercentage && (
+          <InfoItem
+            label={translate("VAT", "ضريبة القيمة المضافة")}
+            value={`(${order.vatPercentage}%) ${(order.vatAmount || 0).toFixed(2)} ${translations.currency}`}
+          />
+        )}
+        {!!order.withholdingTaxPercentage && (
+          <InfoItem
+            label={translate("Withholding Tax", "ضريبة الخصم")}
+            value={`(${order.withholdingTaxPercentage}%) -${(order.withholdingTaxAmount || 0).toFixed(2)} ${translations.currency}`}
+          />
+        )}
+        {(!!order.vatPercentage || !!order.withholdingTaxPercentage) && (
+          <InfoItem
+            label={translate("Total (incl. VAT/Withholding)", "الإجمالي (شامل الضريبة)")}
+            value={`${(order.grandTotal ?? order.totalAmount).toFixed(2)} ${translations.currency}`}
+          />
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         )}
         {order.paymentMethod === "account" && order.paymentAccount && (
           <InfoItem
@@ -73,8 +103,13 @@ export default function HeaderSection() {
               </span>
             </div>
             <InfoItem
+<<<<<<< HEAD
               label={translate("Total Amount incl. Shipping", "الإجمالي شامل الشحن")}
               value={`${(getOrderTotal(order) + (order.shippingCost || 0)).toFixed(2)} ${translations.currency}`}
+=======
+              label={translate("Total Amount", "المبلغ الإجمالي")}
+              value={`${order.totalAmountPlusShipping.toFixed(2)} ${translations.currency}`}
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
             />
             <div className="flex items-center gap-2">
               <InfoItem label={translate("Order Status", "حالة الطلب")} value={<OrderStatus order={order} />} />

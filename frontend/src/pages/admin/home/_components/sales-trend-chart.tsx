@@ -21,7 +21,11 @@ import { Skeleton } from "@mantine/core";
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip);
 
 // Sales Performance trend (docs section "Sales / Revenue Trend") - uses the pre-computed, already
+<<<<<<< HEAD
 // order-Total-Amount `salesTrend` from GET /dashboard/summary (6 trailing months, server-aggregated) - never
+=======
+// pre-tax `salesTrend` from GET /dashboard/summary (6 trailing months, server-aggregated) - never
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 // a second client-side recomputation, and never every historical Sales Order loaded into the
 // browser just to draw this chart.
 export default function SalesTrendChart({
@@ -49,7 +53,11 @@ export default function SalesTrendChart({
     labels: trend.map((p) => dayjs(`${p.month}-01`).format("MMM YYYY")),
     datasets: [
       {
+<<<<<<< HEAD
         label: translate("Sales (Total Amount incl. VAT)", "المبيعات (الإجمالي شامل الضريبة)"),
+=======
+        label: translate("Sales (excl. tax)", "المبيعات (بدون ضريبة)"),
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         data: trend.map((p) => p.total),
         borderColor: "#123B5D",
         backgroundColor: "rgba(18, 59, 93, 0.08)",

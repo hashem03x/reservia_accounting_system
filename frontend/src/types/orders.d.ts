@@ -25,8 +25,12 @@ export interface OrderFinancials {
   vatAmount?: number;
   withholdingTaxPercentage?: number;
   withholdingTaxAmount?: number;
+<<<<<<< HEAD
   // = totalAmount + vatAmount - withholdingTaxAmount - the ORDER TOTAL AMOUNT. Always read it through
   // utils/helpers/order-totals.ts#getOrderTotal (handles legacy orders without this field).
+=======
+  // = totalAmount + vatAmount - withholdingTaxAmount
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   grandTotal?: number;
 }
 
@@ -38,12 +42,19 @@ export type PurchaseOrder = OrderFinancials & {
   // Nullable: the backend's toJSON transform (purchaseOrder.js) now always carries this key, but as
   // `null` when the referenced Vendor document no longer exists - same reasoning as
   // `SalesOrder.customer`.
+<<<<<<< HEAD
   // The PO Supplier IS this Vendor; `vendorNumber` is its Sub Account on the PO's journal entries.
   vendor: { _id: string; name: string; vendorNumber?: number | null; contact?: { phone: string; email?: string } } | null;
   warehouseId: string;
   items: PurchaseOrderItem[];
   starterTotalAmount: number;
   // Pre-tax SUBTOTAL (legacy field name) - NOT the order amount; see grandTotal.
+=======
+  vendor: { _id: string; name: string; contact: { phone: string; email?: string } } | null;
+  warehouseId: string;
+  items: PurchaseOrderItem[];
+  starterTotalAmount: number;
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   totalAmount: number;
   paidAmount: number;
   remainingAmount: number;
@@ -89,7 +100,10 @@ export type SalesOrder = OrderFinancials & {
   warehouse: string;
   items: SalesOrderItem[];
   starterTotalAmount: number;
+<<<<<<< HEAD
   // Pre-tax SUBTOTAL (legacy field name) - NOT the order amount; see grandTotal.
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   totalAmount: number;
   paidAmount: number;
   remainingAmount: number;

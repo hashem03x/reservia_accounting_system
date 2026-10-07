@@ -21,7 +21,10 @@ import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
+<<<<<<< HEAD
 import { getOrderTotal } from "@/utils/helpers/order-totals";
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const URL = "reports/sales-orders";
 const FILENAME = "sales-orders-report.xlsx";
@@ -262,7 +265,11 @@ export default function SalesOrdersReport() {
                     <Table.Td>{order.customer?.name || translate("Deleted Customer", "عميل محذوف")}</Table.Td>
                     <Table.Td>{getPaymentStatusLabel(order.paymentStatus, language)}</Table.Td>
                     <Table.Td className="font-semibold text-gray-800">
+<<<<<<< HEAD
                       {getOrderTotal(order).toFixed(2)} {translations.currency}
+=======
+                      {order.totalAmount.toFixed(2)} {translations.currency}
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                     </Table.Td>
                     <Table.Td>
                       {order.paidAmount.toFixed(2)} {translations.currency}
@@ -282,7 +289,11 @@ export default function SalesOrdersReport() {
                   <Table.Td />
                   <Table.Td />
                   <Table.Td>
+<<<<<<< HEAD
                     {data.reduce((acc, po) => acc + getOrderTotal(po), 0).toFixed(2)} {translations.currency}
+=======
+                    {data.reduce((acc, po) => acc + po.totalAmount, 0).toFixed(2)} {translations.currency}
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                   </Table.Td>
                   <Table.Td>
                     {data.reduce((acc, po) => acc + po.paidAmount, 0).toFixed(2)} {translations.currency}
@@ -299,7 +310,11 @@ export default function SalesOrdersReport() {
             <p className="text-sm text-gray-600">
               {translate("Total Orders", "إجمالي الطلبات")}:{" "}
               <span className="font-bold text-gray-800">
+<<<<<<< HEAD
                 {data.length} ({data.reduce((acc, order) => acc + getOrderTotal(order), 0).toFixed(2)} {translations.currency})
+=======
+                {data.length} ({data.reduce((acc, order) => acc + order.totalAmount, 0).toFixed(2)} {translations.currency})
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
               </span>
             </p>
             {/* Total Shipped Orders */}
@@ -309,7 +324,11 @@ export default function SalesOrdersReport() {
                 {data.filter((order) => order.shippingCost > 0).length} (
                 {data
                   .filter((order) => order.shippingCost > 0)
+<<<<<<< HEAD
                   .reduce((acc, order) => acc + getOrderTotal(order), 0)
+=======
+                  .reduce((acc, order) => acc + order.totalAmount, 0)
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                   .toFixed(2)}{" "}
                 {translations.currency})
               </span>
@@ -321,7 +340,11 @@ export default function SalesOrdersReport() {
                 {data.filter((order) => order.shippingCost === 0).length} (
                 {data
                   .filter((order) => order.shippingCost === 0)
+<<<<<<< HEAD
                   .reduce((acc, order) => acc + getOrderTotal(order), 0)
+=======
+                  .reduce((acc, order) => acc + order.totalAmount, 0)
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                   .toFixed(2)}{" "}
                 {translations.currency})
               </span>

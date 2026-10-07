@@ -12,11 +12,19 @@ const {
 const { generateSalesOrderCode } = require('../../utils/helper');
 const { SalesOrderPaymentMethods } = require('../../utils/appConstant');
 const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
+<<<<<<< HEAD
 const { computeOrderTotals } = require('../../utils/orderTotals');
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 // Explicit require (not just the string `ref:` name) - mirrors journalEntryModel.js's convention
 // for every model this schema's hooks look up via `this.model(...)`.
 require('../accounting/chartOfAccountModel');
 
+<<<<<<< HEAD
+=======
+const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 const salesOrderSchema = mongoose.Schema(
   {
     code: {
@@ -85,8 +93,12 @@ const salesOrderSchema = mongoose.Schema(
     withholdingTaxPercentage: { type: Number, enum: { values: [0, 1, 3, 5], message: '{VALUE} is not a valid withholding tax percentage' }, default: 0 },
     withholdingTaxAmount: { type: Number, default: 0, min: 0 },
     // = totalAmount + vatAmount - withholdingTaxAmount - always server-computed (see pre('save')
+<<<<<<< HEAD
     // below), never accepted from a request body. This is the canonical ORDER TOTAL AMOUNT used by
     // every display/report/KPI (utils/orderTotals.js) and the real payable/receivable figure
+=======
+    // below), never accepted from a request body. This is the real payable/receivable figure
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     // (remainingAmount/paymentStatus/the customer-balance deduction below are all based on this,
     // not the pre-tax `totalAmount`) - shipping remains a deliberately separate concern (see
     // `shippingCostPaid`/`payShippingCost` - shipping was never part of paidAmount/remainingAmount
@@ -179,6 +191,7 @@ salesOrderSchema.pre('save', async function (next) {
     this.starterTotalAmount = calculateStarterTotalAmount(this.items);
     this.totalAmount = calculateTotalAmount(this.items);
 
+<<<<<<< HEAD
     // One canonical formula for both order types (utils/orderTotals.js). No VAT/withholding
     // percentage on the order -> exactly 0 tax, never an invented amount.
     const totals = computeOrderTotals({
@@ -191,13 +204,21 @@ salesOrderSchema.pre('save', async function (next) {
     this.vatAmount = totals.vatAmount;
     this.withholdingTaxAmount = totals.withholdingTaxAmount;
     this.grandTotal = totals.total;
+=======
+    this.vatAmount = round2((this.totalAmount * (this.vatPercentage || 0)) / 100);
+    this.withholdingTaxAmount = round2((this.totalAmount * (this.withholdingTaxPercentage || 0)) / 100);
+    this.grandTotal = round2(this.totalAmount + this.vatAmount - this.withholdingTaxAmount);
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
     this.remainingAmount = calculateRemainingAmount(this.grandTotal, this.paidAmount);
     this.paymentStatus = getPaymentStatus(this.paidAmount, this.grandTotal);
 
     this.starterTotalAmountPlusShipping = this.starterTotalAmount + (this.shippingCost || 0);
+<<<<<<< HEAD
     // Legacy field, kept as-is (pre-tax subtotal + shipping) for existing print/analytics consumers -
     // "Order Total Amount + shipping" is grandTotal + shippingCost (see utils/orderTotals.js).
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     this.totalAmountPlusShipping = this.totalAmount + (this.shippingCost || 0);
     if (this.isNew) this.orderStatus = this.shippingCost > 0 ? 'pending' : 'delivered';
 

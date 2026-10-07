@@ -119,6 +119,7 @@ const journalEntrySchema = new Schema(
     // disturbing the existing idempotency key. `null` for every other entry, including historical
     // recognition entries created before this field existed (never backfilled/guessed).
     triggeredBySalesOrder: { type: Schema.Types.ObjectId, ref: 'SalesOrder', default: null },
+<<<<<<< HEAD
     // The Advanced Payment this entry belongs to - set by the automatic accounting engine on the
     // advance's own creation entry (ADVANCE_PAYMENT_RECEIVED_CUSTOMER/ADVANCE_PAYMENT_PAID_VENDOR)
     // and on every entry that CONSUMED it (SO_CUSTOMER_ADVANCE_APPLIED, PO_SUPPLIER_ADVANCE_APPLIED,
@@ -127,6 +128,8 @@ const journalEntrySchema = new Schema(
     // other entry; historical entries created before this field existed are still found there
     // through their own persisted source references (sourceType/sourceId + usageHistory).
     advancedPayment: { type: Schema.Types.ObjectId, ref: 'AdvancedPayment', default: null },
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     status: {
       type: String,
       enum: { values: JournalEntryStatus, message: '{VALUE} is not a valid journal entry status' },
@@ -156,7 +159,10 @@ journalEntrySchema.index({ date: 1 });
 journalEntrySchema.index({ project: 1 });
 journalEntrySchema.index({ status: 1 });
 journalEntrySchema.index({ source: 1 });
+<<<<<<< HEAD
 journalEntrySchema.index({ advancedPayment: 1 });
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 // Idempotency, legacy single-JE-per-source flows (project_creation, fixed_asset_purchase): at most
 // one journal entry per (sourceType, sourceId) pair when no accountingAction is set. Partial so
 // manual entries (sourceId: null) never collide with each other, and so it never conflicts with the

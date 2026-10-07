@@ -23,9 +23,12 @@ type ProductContextProps = {
   setDurationValue: React.Dispatch<React.SetStateAction<string | number>>;
   durationUnit: DurationUnit;
   setDurationUnit: React.Dispatch<React.SetStateAction<DurationUnit>>;
+<<<<<<< HEAD
   // Service-only: id of the PUC Chart of Accounts account a purchase of this service posts to.
   pucAccount: string | null;
   setPucAccount: React.Dispatch<React.SetStateAction<string | null>>;
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   titleEn: string;
   setTitleEn: React.Dispatch<React.SetStateAction<string>>;
   titleAr: string;
@@ -72,8 +75,11 @@ export const ProductContext = createContext<ProductContextProps>({
   setDurationValue: () => {},
   durationUnit: "month",
   setDurationUnit: () => {},
+<<<<<<< HEAD
   pucAccount: null,
   setPucAccount: () => {},
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   titleEn: "",
   setTitleEn: () => {},
   titleAr: "",
@@ -113,7 +119,10 @@ export default function ProductFormProvider({ product, children }: { product?: P
   const [type, setType] = useState<ProductType>(product?.type || "product");
   const [durationValue, setDurationValue] = useState<string | number>(product?.durationValue || "");
   const [durationUnit, setDurationUnit] = useState<DurationUnit>(product?.durationUnit || "month");
+<<<<<<< HEAD
   const [pucAccount, setPucAccount] = useState<string | null>(getPucAccountId(product));
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   const [titleEn, setTitleEn] = useState(product?.title.en || "");
   const [titleAr, setTitleAr] = useState(product?.title.ar || "");
   const [descriptionEn, setDescriptionEn] = useState(product?.description.en || "");
@@ -147,8 +156,11 @@ export default function ProductFormProvider({ product, children }: { product?: P
         setDurationValue,
         durationUnit,
         setDurationUnit,
+<<<<<<< HEAD
         pucAccount,
         setPucAccount,
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         titleEn,
         setTitleEn,
         titleAr,
@@ -190,6 +202,7 @@ export default function ProductFormProvider({ product, children }: { product?: P
 }
 
 export const useProduct = () => useContext(ProductContext);
+<<<<<<< HEAD
 
 // The API returns pucAccount populated ({ _id, code, name }); older services have none.
 export function getPucAccountId(product?: Product | null): string | null {
@@ -197,3 +210,5 @@ export function getPucAccountId(product?: Product | null): string | null {
   if (!value) return null;
   return typeof value === "string" ? value : value._id || null;
 }
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628

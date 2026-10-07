@@ -184,7 +184,10 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
 
           <Textarea
             label={translate("Notes (Optional)", "ملاحظات (اختياري)")}
+<<<<<<< HEAD
             description={translate("Used as the description of the journal entry created for this payment.", "تُستخدم كوصف لقيد اليومية الذي يتم إنشاؤه لهذه الدفعة.")}
+=======
+>>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
             placeholder={translate("Enter notes", "ادخل الملاحظات")}
             autosize
             minRows={3}
