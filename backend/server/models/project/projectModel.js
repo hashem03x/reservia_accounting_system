@@ -126,14 +126,13 @@ const projectSchema = new Schema(
       min: [0, 'Executed percentage cannot be less than 0'],
       max: [100, 'Executed percentage cannot be greater than 100'],
     },
-    // How much of `executedPercentage` has already had its corresponding revenue/cost recognized
-    // via the automatic accounting engine's PROJECT_REVENUE_RECOGNITION/PROJECT_COST_RECOGNITION
-    // entries (see services/accounting/accountingEventService.js) - never accepted from a request
-    // body, only ever advanced by those postings themselves. Tracked separately (not just "equal to
-    // executedPercentage after posting") because the two recognitions can fail independently (e.g.
-    // cost recognition throws on an unmapped COGS/WIP account while revenue recognition already
-    // succeeded) - each tracker only advances once its own posting actually commits.
+    // How much of `executedPercentage` has already had its revenue recognized via the automatic
+    // accounting engine's PROJECT_REVENUE_RECOGNITION entry (see
+    // services/accounting/accountingEventService.js) - never accepted from a request body, only
+    // ever advanced by that posting itself, once it actually commits.
     revenueRecognizedPercentage: { type: Number, default: 0, min: 0, max: 100 },
+    // Historical: advanced by the removed PROJECT_COST_RECOGNITION (COGS -> WIP) posting. No longer
+    // written; kept so existing project documents keep their stored value.
     costRecognizedPercentage: { type: Number, default: 0, min: 0, max: 100 },
     // Renamed from `department` - see docs/entities/projects.md. Optional - `null` is explicitly
     // included in the enum's own value list (Mongoose's built-in enum validator otherwise rejects

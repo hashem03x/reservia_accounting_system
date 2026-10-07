@@ -16,12 +16,7 @@ export interface ChartOfAccount {
   // Secondary classification on top of `type` (e.g. Current/Non-Current, Direct/Indirect) - see
   // utils/constants/accounting.ts#AccountStates. Never auto-assigned to imported accounts.
   state?: AccountState | null;
-  parentAccount?: { _id: string; code: string; name: string; type: AccountType } | null;
-  // COGS accounts only: the WIP (PUC) account this cost category's project costs are relieved from
-  // when a Sales Order triggers cost recognition. When unset, the backend's built-in COGS -> WIP map
-  // is used (accountingConstants.js#CogsToWipAccountCodeMap).
-  wipAccount?: { _id: string; code: string; name: string; type: AccountType } | null;
-  // Descriptive group label copied verbatim from a bilingual source's "Parent" column (e.g. the
+  parentAccount?: { _id: string; code: string; name: string; type: AccountType } | null;  // Descriptive group label copied verbatim from a bilingual source's "Parent" column (e.g. the
   // accounting CSV import) - NOT a reference to another account, just text. Only set when the
   // account has no real `parentAccount` link.
   parentGroupNameEn?: string | null;

@@ -5,7 +5,6 @@ const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { getNextJournalEntryNumber } = require('./journalEntryNumberService');
 const {
   AutomaticJournalAccountCodes,
-  CogsToWipAccountCodeMap,
   AccountingModuleByAction,
   ProjectRequiredAccountingActions,
   isPucAccountEligible,
@@ -143,7 +142,7 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
         sourceId,
         accountingAction,
         project: project || null,
-        // Only ever set by postProjectRevenueRecognitionJE/postProjectCostRecognitionJE below,
+        // Only ever set by postProjectRevenueRecognitionJE below,
         // which are the one case where `sourceId` itself can't point back at the triggering Sales
         // Order (docs section "Sales Order Source Link") - every other automatic entry leaves this
         // null, since its own sourceType/sourceId already is the real link.
@@ -659,7 +658,7 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
 }
 
 // ---------------------------------------------------------------------------
-// 10-11. Project revenue/cost recognition (JV0010/JV0011)
+// 10. Project revenue recognition (JV0010)
 // ---------------------------------------------------------------------------
 
 /**
@@ -774,110 +773,20 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
 }
 
 /**
- * The WIP (PUC) account a COGS account's project costs are relieved from, or null when none is
- * configured. Resolution order - always a real Chart of Accounts record, never a guessed code:
- *   1. the COGS account's own `wipAccount` reference (chosen by an admin in the Chart of Accounts),
- *      which must still be an active PUC account - a stale one fails loudly instead of posting;
- *   2. the built-in code map (CogsToWipAccountCodeMap) for the original COGS/PUC pairs.
- */
-async function resolveCogsWipAccountId(cogsAccount, session) {
-  const configuredId = cogsAccount.wipAccount?._id || cogsAccount.wipAccount;
-  if (configuredId) {
-    const wip = await ChartOfAccount.findById(configuredId).session(session || null).lean();
-    if (!isPucAccountEligible(wip)) {
-      throw new ApiError(
-        `The WIP account configured on COGS account ${cogsAccount.code} - ${cogsAccount.name} ${wip ? `(${wip.code} - ${wip.name}) ` : ''}is missing, inactive or not a PUC (asset) account. Update the account's WIP (PUC) Account in the Chart of Accounts.`,
-        400
-      );
-    }
-    return wip._id;
-  }
-  const mappedCode = CogsToWipAccountCodeMap[cogsAccount.code];
-  return mappedCode ? getAccountIdByCode(mappedCode, session) : null;
-}
-
-/**
- * PROJECT_COST_RECOGNITION (JV0011): for each of the project's averageCostLines, Dr the COGS
- * account / Cr its WIP account (resolveCogsWipAccountId), for the incremental executed-percentage
- * share of that line's amount. Throws - before anything is posted - if a line's COGS account has
- * no WIP account (an unmapped category is a configuration gap, not something to silently skip
- * and leave the entry incomplete).
- */
-async function postProjectCostRecognitionJE(project, session, triggeredBySalesOrder = null) {
-  if (!project.averageCostLines || project.averageCostLines.length === 0) return null;
-  const previousPct = project.costRecognizedPercentage || 0;
-  const currentPct = project.executedPercentage || 0;
-  if (currentPct <= previousPct) return null;
-
-  const deltaPct = currentPct - previousPct;
-  const accountIds = project.averageCostLines.map(line => (line.account?._id || line.account).toString());
-  const accounts = await ChartOfAccount.find({ _id: { $in: accountIds } }).session(session || null).lean();
-  const accountsById = new Map(accounts.map(a => [a._id.toString(), a]));
-
-  const lines = [];
-  let totalDelta = 0;
-  for (const [index, costLine] of project.averageCostLines.entries()) {
-    const accountId = (costLine.account?._id || costLine.account).toString();
-    const account = accountsById.get(accountId);
-    if (!account) throw new ApiError('One of the project\'s Average Cost accounts no longer exists.', 500);
-
-    // eslint-disable-next-line no-await-in-loop
-    const wipAccountId = await resolveCogsWipAccountId(account, session);
-    if (!wipAccountId) {
-      const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
-      const triggeringId = triggeredBySalesOrder?._id || triggeredBySalesOrder;
-      // eslint-disable-next-line no-await-in-loop
-      const order = triggeringId ? await SalesOrder.findById(triggeringId).select('code').session(session || null).lean() : null;
-      const orderLabel = triggeringId ? ` while posting Sales Order ${order?.code || triggeringId}` : '';
-      throw new ApiError(
-        `No WIP account is configured for COGS account ${account.code} - ${account.name} (Average Cost line ${index + 1} of project ${project.projectNumber}${orderLabel}). Configure a valid COGS → WIP mapping (Chart of Accounts → edit account ${account.code} → WIP (PUC) Account) before creating this Sales Order.`,
-        400
-      );
-    }
-
-    const deltaAmount = round2((costLine.amount * deltaPct) / 100);
-    if (deltaAmount <= 0) continue;
-    totalDelta += deltaAmount;
-
-    lines.push({ account: accountId, debit: deltaAmount, credit: 0, project: project._id });
-    lines.push({ account: wipAccountId, debit: 0, credit: deltaAmount, project: project._id });
-  }
-
-  if (lines.length === 0) return null;
-
-  const entry = await postAutomaticJournalEntry({
-    accountingAction: 'PROJECT_COST_RECOGNITION',
-    sourceType: 'PROJECT',
-    sourceId: deterministicSourceId(`${project._id}:PROJECT_COST_RECOGNITION:${currentPct}`),
-    date: new Date(),
-    description: `Cost recognition - project ${project.projectNumber} (${previousPct}% -> ${currentPct}%)`,
-    project: project._id,
-    lines,
-    session,
-    triggeredBySalesOrder,
-  });
-
-  project.costRecognizedPercentage = currentPct;
-  return entry;
-}
-
-/**
- * Posts both revenue and cost recognition for a project whose executedPercentage just increased.
- * Called from projectController.js#updateProject, inside the same session as the project's own
- * save (so the percentage trackers below and the JEs commit together or not at all).
+ * Posts revenue recognition for a project whose executedPercentage just increased. Called from
+ * projectAccountingService.js#recalculateExecutedPercentage (Sales Order create/cancel/return) and
+ * projectController.js#updateProject, inside the same session as the project's own save (so the
+ * percentage tracker and the JE commit together or not at all). Returns the posted entries (0 or 1).
  */
 async function postProjectExecutionRecognitionJEs(project, session, triggeredBySalesOrder = null) {
   const entries = [];
   const revenueJE = await postProjectRevenueRecognitionJE(project, session, triggeredBySalesOrder);
   if (revenueJE) entries.push(revenueJE);
-  const costJE = await postProjectCostRecognitionJE(project, session, triggeredBySalesOrder);
-  if (costJE) entries.push(costJE);
   return entries;
 }
 
 module.exports = {
   getAccountIdByCode,
-  resolveCogsWipAccountId,
   resolveVendorNumber,
   resolveCustomerNumber,
   postAutomaticJournalEntry,

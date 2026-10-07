@@ -103,6 +103,9 @@ exports.AccountingActions = [
   'PAYMENT_CUSTOMER_ADVANCE_APPLIED',
   'PAYMENT_VENDOR_ADVANCE_APPLIED',
   'PROJECT_REVENUE_RECOGNITION',
+  // No longer posted (the COGS -> WIP cost recognition was removed). Kept so journal entries
+  // already stored with this action stay valid - Mongoose re-validates enums on every save, e.g.
+  // when such an entry is reversed.
   'PROJECT_COST_RECOGNITION',
 ];
 
@@ -118,7 +121,6 @@ exports.ProjectRequiredAccountingActions = [
   'PO_SUPPLIER_ADVANCE_APPLIED',
   'SO_CUSTOMER_ADVANCE_APPLIED',
   'PROJECT_REVENUE_RECOGNITION',
-  'PROJECT_COST_RECOGNITION',
 ];
 
 // The business-document type that triggered an automatic entry - paired with sourceId (that
@@ -218,17 +220,4 @@ exports.AccountingModuleByAction = {
   PAYMENT_VENDOR_ADVANCE_APPLIED: 'Payment',
   PROJECT_REVENUE_RECOGNITION: 'Sales Order',
   PROJECT_COST_RECOGNITION: 'Sales Order',
-};
-
-// Built-in COGS -> Projects-Under-Construction (WIP) account codes for PROJECT_COST_RECOGNITION
-// (Dr cogs account / Cr matching WIP account, per Project.averageCostLines) - the three pairs the
-// source accounting sheet ("AUTOMATIC ENTERIES.xlsx", JV0011) defines. Code-based, not name-matched.
-// Any OTHER COGS account (e.g. one added to the Chart of Accounts later) is mapped in the data, not
-// here: an admin sets that COGS account's own WIP (PUC) Account in the Chart of Accounts
-// (ChartOfAccount.wipAccount), which takes precedence over this map - see
-// accountingEventService.js#resolveCogsWipAccountId.
-exports.CogsToWipAccountCodeMap = {
-  '50000001': '11000009', // Raw Materials -> PUC Raw Materials
-  '50000002': '11000010', // Labour Wages -> PUC Labour Wages
-  '50000003': '11000011', // Engineering & Design -> PUC Engineering & Design
 };

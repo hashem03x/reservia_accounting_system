@@ -2,14 +2,10 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 
-// Two journal-entry integrity rules:
-//   1. Project propagation (journalEntryModel.js RULE 3 + journalEntryProjectService.js): every line
-//      of a project-related entry carries the entry's Project and that Project's real Project Number.
-//   2. COGS -> WIP resolution for PROJECT_COST_RECOGNITION (accountingEventService.js#
-//      resolveCogsWipAccountId): a COGS account's own `wipAccount` first, then the built-in code map,
-//      otherwise a clear error before anything is posted.
+// Project propagation (journalEntryModel.js RULE 3 + journalEntryProjectService.js): every line of
+// a project-related entry carries the entry's Project and that Project's real Project Number.
 
-const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_test_project_lines_cogs_wip';
+const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_test_journal_entry_project_lines';
 
 let JournalEntry;
 let ChartOfAccount;
@@ -23,7 +19,7 @@ let accountingEventService;
 let accounts;
 let customer, vendor, project;
 
-const { AutomaticJournalAccountCodes, CogsToWipAccountCodeMap } = require('../../utils/accountingConstants');
+const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
 
 const idStr = ref => String(ref?._id || ref);
 
@@ -80,9 +76,7 @@ beforeEach(async () => {
     accounts[code] = await ChartOfAccount.create({ code, name: `Account ${code}`, type });
   }
   accounts.cash = await ChartOfAccount.create({ code: 'CASH-TEST', name: 'Cash', type: 'asset', state: 'cash' });
-  for (const cogsCode of Object.keys(CogsToWipAccountCodeMap)) {
-    accounts[cogsCode] = await ChartOfAccount.create({ code: cogsCode, name: `COGS ${cogsCode}`, type: 'cogs' });
-  }
+  accounts['50000001'] = await ChartOfAccount.create({ code: '50000001', name: 'Raw Materials', type: 'cogs' });
   accounts.fuel = await ChartOfAccount.create({ code: '50000004', name: 'Fuel & Logistics', type: 'cogs' });
 
   customer = await User.create({ name: 'Project Lines Customer', email: `pl-customer-${Date.now()}@example.com`, role: 'user', type: 'online' });
@@ -273,21 +267,48 @@ test('Case 5 - PO_SERVICE_TO_WIP (service purchase): every line carries the Proj
   assert.equal(entry.lines.some(l => idStr(l.account) === idStr(accounts[AutomaticJournalAccountCodes.materialsInventory])), false);
 });
 
-test('Case 6 - Sales Order JEs (advance applied, revenue + cost recognition) carry the Project on every line', async () => {
+test('Case 6 - Sales Order JEs (advance applied, revenue recognition) carry the Project on every line', async () => {
   const salesOrder = await SalesOrder.create({ customer: customer._id, orderSource: 'cashier', project: project._id, items: [] });
   const advanceJE = await accountingEventService.postSalesOrderAdvanceAppliedJE(salesOrder, 1000, null);
   assertProjectOnEveryLine(advanceJE, project);
 
-  project.averageCostLines = [{ account: accounts['50000001']._id, amount: 100000 }];
-  await project.save();
   project.executedPercentage = 10;
   const entries = await accountingEventService.postProjectExecutionRecognitionJEs(project, null, salesOrder._id);
-  assert.equal(entries.length, 2);
+  assert.deepEqual(entries.map(e => e.accountingAction), ['PROJECT_REVENUE_RECOGNITION']);
   entries.forEach(e => assertProjectOnEveryLine(e, project));
 });
 
+test('a real Sales Order on a project whose Average Cost uses 50000004 Fuel & Logistics is created without any WIP mapping', async () => {
+  const projectAccounting = require('../../services/project/projectAccountingService');
+  project.averageCostLines = [
+    { account: accounts['50000001']._id, amount: 100000 },
+    { account: accounts.fuel._id, amount: 20000 },
+  ];
+  await project.save();
+
+  const service = await makeService(accounts[AutomaticJournalAccountCodes.wipEngineeringDesign]);
+  const salesOrder = await SalesOrder.create({
+    customer: customer._id,
+    orderSource: 'cashier',
+    project: project._id,
+    items: [{ product: service._id, unitPrice: 100000, starterQuantity: 1 }],
+  });
+  assert.equal(salesOrder.totalAmount, 100000);
+
+  // The same call salesOrderCreation.service.js makes right after saving a Sales Order.
+  await projectAccounting.recalculateExecutedPercentage(project._id, null, salesOrder._id);
+
+  const updated = await Project.findById(project._id);
+  assert.equal(updated.executedPercentage, 10, '100,000 / 1,000,000 contract value');
+  const entries = await JournalEntry.find({ triggeredBySalesOrder: salesOrder._id });
+  assert.deepEqual(entries.map(e => e.accountingAction), ['PROJECT_REVENUE_RECOGNITION']);
+  entries.forEach(e => assertProjectOnEveryLine(e, project));
+  assert.equal(await JournalEntry.countDocuments({ accountingAction: 'PROJECT_COST_RECOGNITION' }), 0);
+  assert.equal(await JournalEntry.countDocuments({ 'lines.account': accounts[AutomaticJournalAccountCodes.materialsInventory]._id }), 0, 'a Sales Order never touches Materials Inventory');
+});
+
 test('inherently project-related actions are refused without a project', async () => {
-  for (const accountingAction of ['PO_INVENTORY_RECEIPT', 'PO_SERVICE_TO_WIP', 'SO_CUSTOMER_ADVANCE_APPLIED', 'PROJECT_COST_RECOGNITION']) {
+  for (const accountingAction of ['PO_INVENTORY_RECEIPT', 'PO_SERVICE_TO_WIP', 'SO_CUSTOMER_ADVANCE_APPLIED', 'PROJECT_REVENUE_RECOGNITION']) {
     await assert.rejects(
       () =>
         accountingEventService.postAutomaticJournalEntry({
@@ -340,80 +361,4 @@ test('reversing a historical project entry whose lines lack the Project fills th
   original.status = 'reversed';
   original.reversedByEntry = reversal._id;
   await original.save();
-});
-
-// ===================== COGS -> WIP =====================
-
-test('COGS 1 - 50000004 Fuel & Logistics with no WIP configured: clear error naming the account, project, Sales Order and line; nothing posted', async () => {
-  const salesOrder = await SalesOrder.create({ customer: customer._id, orderSource: 'cashier', project: project._id, items: [] });
-  project.averageCostLines = [
-    { account: accounts['50000001']._id, amount: 100000 },
-    { account: accounts.fuel._id, amount: 20000 },
-  ];
-  await project.save();
-  project.executedPercentage = 10;
-
-  await assert.rejects(
-    () => accountingEventService.postProjectExecutionRecognitionJEs(project, null, salesOrder._id),
-    err =>
-      err.statusCode === 400 &&
-      err.message.includes('No WIP account is configured for COGS account 50000004 - Fuel & Logistics') &&
-      err.message.includes(`Average Cost line 2 of project ${project.projectNumber}`) &&
-      err.message.includes(`Sales Order ${salesOrder.code || salesOrder._id}`)
-  );
-  assert.equal(await JournalEntry.countDocuments({ accountingAction: 'PROJECT_COST_RECOGNITION' }), 0, 'no partial cost entry');
-});
-
-test('COGS 2 - once 50000004 has a WIP (PUC) account configured in the Chart of Accounts, cost recognition posts Dr COGS / Cr that WIP account', async () => {
-  const fuelWip = await ChartOfAccount.create({ code: 'PUC-FUEL-TEST', name: 'PUC - Fuel & Logistics (test)', type: 'asset' });
-  accounts.fuel.wipAccount = fuelWip._id;
-  await accounts.fuel.save();
-
-  const salesOrder = await SalesOrder.create({ customer: customer._id, orderSource: 'cashier', project: project._id, items: [] });
-  project.averageCostLines = [{ account: accounts.fuel._id, amount: 20000 }];
-  await project.save();
-  project.executedPercentage = 25;
-
-  const entries = await accountingEventService.postProjectExecutionRecognitionJEs(project, null, salesOrder._id);
-  const costJE = entries.find(e => e.accountingAction === 'PROJECT_COST_RECOGNITION');
-  assert.ok(costJE);
-  assert.ok(costJE.lines.some(l => idStr(l.account) === idStr(accounts.fuel) && l.debit === 5000));
-  assert.ok(costJE.lines.some(l => idStr(l.account) === idStr(fuelWip) && l.credit === 5000));
-  assert.equal(costJE.totalDebit, costJE.totalCredit);
-  assertProjectOnEveryLine(costJE, project);
-});
-
-test('COGS 3 - the three built-in pairs still map through CogsToWipAccountCodeMap', async () => {
-  project.averageCostLines = Object.keys(CogsToWipAccountCodeMap).map(code => ({ account: accounts[code]._id, amount: 10000 }));
-  await project.save();
-  project.executedPercentage = 50;
-
-  const entries = await accountingEventService.postProjectExecutionRecognitionJEs(project, null);
-  const costJE = entries.find(e => e.accountingAction === 'PROJECT_COST_RECOGNITION');
-  for (const [cogsCode, wipCode] of Object.entries(CogsToWipAccountCodeMap)) {
-    assert.ok(costJE.lines.some(l => idStr(l.account) === idStr(accounts[cogsCode]) && l.debit === 5000), `${cogsCode} debited`);
-    assert.ok(costJE.lines.some(l => idStr(l.account) === idStr(accounts[wipCode]) && l.credit === 5000), `${wipCode} credited`);
-  }
-  assertProjectOnEveryLine(costJE, project);
-});
-
-test('COGS 4 - a configured WIP account that is no longer usable fails loudly instead of posting', async () => {
-  const fuelWip = await ChartOfAccount.create({ code: 'PUC-FUEL-OLD', name: 'Old PUC', type: 'asset' });
-  accounts.fuel.wipAccount = fuelWip._id;
-  await accounts.fuel.save();
-  await ChartOfAccount.updateOne({ _id: fuelWip._id }, { $set: { isActive: false } });
-
-  project.averageCostLines = [{ account: accounts.fuel._id, amount: 20000 }];
-  await project.save();
-  project.executedPercentage = 10;
-  await assert.rejects(() => accountingEventService.postProjectExecutionRecognitionJEs(project, null), /WIP account configured on COGS account 50000004 - Fuel & Logistics .*is missing, inactive or not a PUC/);
-});
-
-test('COGS 5 - the Chart of Accounts only accepts a WIP account on a COGS account, and only an eligible PUC (asset, non-cash) one', async () => {
-  const asset = await ChartOfAccount.create({ code: 'PUC-OK', name: 'PUC ok', type: 'asset' });
-  await assert.rejects(() => ChartOfAccount.create({ code: 'REV-X', name: 'Revenue x', type: 'revenue', wipAccount: asset._id }), /Only a COGS account/);
-  await assert.rejects(() => ChartOfAccount.create({ code: 'COGS-X', name: 'Cogs x', type: 'cogs', wipAccount: accounts.cash._id }), /must be an active asset account/);
-  const ok = await ChartOfAccount.create({ code: 'COGS-Y', name: 'Cogs y', type: 'cogs', wipAccount: asset._id });
-  const reloaded = await ChartOfAccount.findById(ok._id);
-  assert.equal(reloaded.wipAccount.code, 'PUC-OK', 'populated for display');
 });

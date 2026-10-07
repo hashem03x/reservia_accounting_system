@@ -20,10 +20,13 @@ let SalesOrder;
 let accountingEventService;
 let transactionsSupported = true;
 
-let accounts; // code -> ChartOfAccount doc, for every AutomaticJournalAccountCodes/CogsToWipAccountCodeMap entry
+let accounts; // code -> ChartOfAccount doc, for every AutomaticJournalAccountCodes entry + the COGS accounts below
 let customer, vendor, project;
 
-const { AutomaticJournalAccountCodes, CogsToWipAccountCodeMap } = require('../../utils/accountingConstants');
+const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
+
+// Real COGS accounts (type 'cogs') from the Chart of Accounts, used as Project Average Cost lines.
+const COGS_CODES = ['50000001', '50000002', '50000003', '50000004'];
 
 before(async () => {
   await mongoose.connect(DB_URI);
@@ -88,8 +91,7 @@ beforeEach(async () => {
   accounts[cashCode] = await ChartOfAccount.create({ code: cashCode, name: 'Cash', type: 'asset', state: 'cash' });
   accounts.cashCode = cashCode;
 
-  // The 3 real COGS accounts (type 'cogs') CogsToWipAccountCodeMap maps.
-  for (const cogsCode of Object.keys(CogsToWipAccountCodeMap)) {
+  for (const cogsCode of COGS_CODES) {
     accounts[cogsCode] = await ChartOfAccount.create({ code: cogsCode, name: `COGS ${cogsCode}`, type: 'cogs' });
   }
 
@@ -757,22 +759,14 @@ test('postProjectExecutionRecognitionJEs: revenue recognition posts BOTH VAT and
   assert.equal(revenueJE.totalDebit, 228000); // AR(218,000) + WHT(10,000) = Revenue(200,000) + VAT(28,000)
 });
 
-test('postProjectExecutionRecognitionJEs: posts PROJECT_COST_RECOGNITION Dr COGS / Cr mapped WIP for each averageCostLine, proportional to the delta', async () => {
-  const rawMaterialsCogs = accounts['50000001'];
-  project.averageCostLines = [{ account: rawMaterialsCogs._id, amount: 500000 }];
+test('postProjectExecutionRecognitionJEs: Average Cost lines on ANY COGS account (incl. 50000004 Fuel & Logistics) need no WIP mapping - only revenue recognition is posted', async () => {
+  project.averageCostLines = COGS_CODES.map(code => ({ account: accounts[code]._id, amount: 100000 }));
   await project.save();
 
   project.executedPercentage = 10;
   const entries = await accountingEventService.postProjectExecutionRecognitionJEs(project, null);
-  const costJE = entries.find(e => e.accountingAction === 'PROJECT_COST_RECOGNITION');
-  assert.ok(costJE);
-  assert.equal(costJE.totalDebit, 50000); // 10% of 500,000
-  const wipAccount = accounts[CogsToWipAccountCodeMap[rawMaterialsCogs.code]];
-  const cogsLine = costJE.lines.find(l => l.account.toString() === rawMaterialsCogs._id.toString());
-  const wipLine = costJE.lines.find(l => l.account.toString() === wipAccount._id.toString());
-  assert.equal(cogsLine.debit, 50000);
-  assert.equal(wipLine.credit, 50000);
-  assert.equal(costJE.module, 'Sales Order');
+  assert.deepEqual(entries.map(e => e.accountingAction), ['PROJECT_REVENUE_RECOGNITION']);
+  assert.equal(await JournalEntry.countDocuments({ accountingAction: 'PROJECT_COST_RECOGNITION' }), 0);
 });
 
 test('postProjectExecutionRecognitionJEs: revenue recognition no-ops the Sub Account (never throws) when the project has no customer at all', async () => {

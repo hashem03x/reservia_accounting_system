@@ -84,7 +84,7 @@ const updateProject = asyncHandler(async (req, res, next) => {
   // contractValue is the denominator of Executed % (docs section "Project Executed % Calculation")
   // - changing it changes the derived percentage even with no new Sales Orders, so both derived
   // figures are recomputed together. recalculateExecutedPercentage internally posts
-  // PROJECT_REVENUE_RECOGNITION/PROJECT_COST_RECOGNITION if the recomputed percentage increased
+  // PROJECT_REVENUE_RECOGNITION if the recomputed percentage increased
   // (see accountingEventService.js), exactly as the old manual-entry path used to.
   if (contractValueChanged) {
     await recalculateRemainingMoney(project._id);

@@ -7,7 +7,6 @@ import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { AccountType, ChartOfAccount } from "@/types/chart-of-account";
 import { AccountStates } from "@/utils/constants/accounting";
-import WipAccountSelect, { useWipAccountOptions } from "./wip-account-select";
 
 const accountTypes: AccountType[] = ["asset", "liability", "equity", "revenue", "cogs", "expense"];
 
@@ -31,10 +30,8 @@ export default function CreateAccountModal({
   const [state, setState] = useState("");
   const [parentAccount, setParentAccount] = useState("");
   const [description, setDescription] = useState("");
-  const [wipAccount, setWipAccount] = useState("");
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
-  const wipAccounts = useWipAccountOptions(opened && type === "cogs");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,16 +41,7 @@ export default function CreateAccountModal({
         language,
         method: "POST",
         url: "accounts",
-        data: {
-          code,
-          name,
-          nameAr: nameAr || undefined,
-          type,
-          state: state || undefined,
-          parentAccount: parentAccount || undefined,
-          description,
-          wipAccount: type === "cogs" && wipAccount ? wipAccount : undefined,
-        },
+        data: { code, name, nameAr: nameAr || undefined, type, state: state || undefined, parentAccount: parentAccount || undefined, description },
       });
 
       onCreated(res.data);
@@ -71,7 +59,6 @@ export default function CreateAccountModal({
       setState("");
       setParentAccount("");
       setDescription("");
-      setWipAccount("");
       setError("");
     }, 250);
   }
@@ -110,7 +97,6 @@ export default function CreateAccountModal({
           searchable
           clearable
         />
-        {type === "cogs" && <WipAccountSelect value={wipAccount} onChange={setWipAccount} options={wipAccounts} />}
         <Textarea label={translate("Description (optional)", "الوصف (اختياري)")} value={description} onChange={(e) => setDescription(e.target.value)} autosize minRows={2} />
 
         <Button type="submit" loading={loading} mt="md">
