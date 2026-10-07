@@ -220,10 +220,42 @@ journalEntrySchema.pre('save', async function (next) {
     }
     if (this.isNew && this.project) {
       const Project = this.model('Project');
-      const projectExists = await Project.exists({ _id: this.project });
+      const projectExists = await Project.exists({ _id: this.project }).session(this.$session() || null);
       if (!projectExists) {
         throw new Error('The selected project does not exist.');
       }
+    }
+
+    // RULE 3: a project-related entry carries its Project on EVERY line - the parent entry having a
+    // project is not enough. Checked whenever an entry is created, its lines/project change, or a
+    // draft is posted; historical entries are never re-validated just for being touched (e.g. a
+    // posted entry being marked 'reversed'). Builders fill the lines through
+    // services/accounting/journalEntryProjectService.js; this is the backstop that refuses to
+    // persist anything else. Reversal entries mirror a historical entry, so a reversal line may keep
+    // a different project of its own - but never a missing one.
+    const projectRuleApplies = this.isNew || this.isModified('lines') || this.isModified('project') || (this.isModified('status') && this.status === 'posted');
+    if (this.project && projectRuleApplies) {
+      const Project = this.model('Project');
+      const project = await Project.findById(this.project).select('projectNumber').session(this.$session() || null).lean();
+      if (!project) throw new Error('The selected project does not exist.');
+      const entryProjectId = String(this.project?._id || this.project);
+      const describe = (line, index) => `Journal line ${index + 1} (${line.debit > 0 ? `debit ${line.debit}` : `credit ${line.credit}`})`;
+      this.lines.forEach((line, index) => {
+        const lineProjectId = line.project ? String(line.project._id || line.project) : null;
+        if (!lineProjectId) {
+          throw new Error(`${describe(line, index)} is missing the Project of its journal entry (Project ${project.projectNumber}). Every line of a project-related journal entry must carry the same Project and Project Number.`);
+        }
+        if (!line.projectNumber) {
+          throw new Error(`${describe(line, index)} is missing the Project Number of its journal entry's Project (${project.projectNumber}).`);
+        }
+        if (lineProjectId !== entryProjectId) {
+          if (!this.reversalOfEntry) {
+            throw new Error(`${describe(line, index)} references a different Project than its journal entry (Project ${project.projectNumber}).`);
+          }
+        } else if (line.projectNumber !== project.projectNumber) {
+          throw new Error(`${describe(line, index)} has Project Number "${line.projectNumber}", but its Project's number is "${project.projectNumber}".`);
+        }
+      });
     }
 
     this.totalDebit = round2(this.lines.reduce((sum, line) => sum + (line.debit || 0), 0));

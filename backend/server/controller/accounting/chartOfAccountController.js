@@ -106,6 +106,8 @@ const updateAccount = asyncHandler(async (req, res, next) => {
   try {
     // sortOrder is never editable through this endpoint - see chartOfAccountOrderingService.js.
     const { sortOrder, ...body } = req.body;
+    // A WIP (PUC) account only belongs on a COGS account - changing the type away clears it.
+    if (body.type && body.type !== 'cogs') body.wipAccount = null;
     const account = await ChartOfAccount.findByIdAndUpdate(req.params.id, { $set: body }, { new: true, runValidators: true });
     if (!account) return next(new ApiError('No account found with that id', 404));
     res.status(200).json(apiResponse('Account updated successfully', true, account));

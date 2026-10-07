@@ -6,6 +6,7 @@ const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { getNextJournalEntryNumber } = require('../../services/accounting/journalEntryNumberService');
 const { getGeneralLedgerLines } = require('../../services/accounting/generalLedgerService');
+const { applyEntryProjectToLines } = require('../../services/accounting/journalEntryProjectService');
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
 
 const createJournalEntry = asyncHandler(async (req, res) => {
@@ -24,7 +25,9 @@ const createJournalEntry = asyncHandler(async (req, res) => {
     description,
     reference,
     project,
-    lines: (lines || []).map(line => ({ ...line, projectNumber: line.projectNumber || null })),
+    // Every line gets the entry's Project and that Project's real Project Number (a client-typed
+    // projectNumber is never trusted) - see journalEntryProjectService.js.
+    lines: await applyEntryProjectToLines({ project, lines: lines || [] }),
     source: 'manual',
     status: 'draft',
     createdBy: req.user._id,
@@ -172,7 +175,11 @@ const updateJournalEntry = asyncHandler(async (req, res, next) => {
   if (description !== undefined) entry.description = description;
   if (reference !== undefined) entry.reference = reference;
   if (project !== undefined) entry.project = project || null;
-  if (lines !== undefined) entry.lines = lines.map(line => ({ ...line, projectNumber: line.projectNumber || null }));
+  // Re-applied whenever the lines OR the entry's project change, so the lines always follow the
+  // entry's current Project (a project change on an unchanged set of lines re-stamps them too).
+  if (lines !== undefined || project !== undefined) {
+    entry.lines = await applyEntryProjectToLines({ project: entry.project, lines: lines !== undefined ? lines : entry.lines.map(l => l.toObject({ depopulate: true })) });
+  }
 
   await entry.save();
   res.status(200).json(apiResponse('Journal entry updated successfully', true, entry));
@@ -271,18 +278,28 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
             sourceType: null,
             sourceId: null,
             status: 'posted',
-            lines: currentOriginal.lines.map(line => ({
-              account: line.account._id || line.account,
-              subAccount: line.subAccount?._id || line.subAccount || null,
-              partyNumber: line.partyNumber ?? null,
-              partyType: line.partyType ?? null,
-              project: line.project?._id || line.project || null,
-              projectNumber: line.projectNumber,
-              debit: line.credit,
-              credit: line.debit,
-              description: line.description,
-              unearnedRevenue: 0,
-            })),
+            // Lines mirror the original with debit/credit swapped. A project-related original's
+            // lines all get the entry's Project and its real Project Number - this also completes
+            // a historical original whose lines were posted without them, so reversing it never
+            // fails. A historical line that named a different project keeps it (a reversal must
+            // mirror the original exactly).
+            lines: await applyEntryProjectToLines({
+              project: currentOriginal.project,
+              session,
+              allowLineProjectOverride: true,
+              lines: currentOriginal.lines.map(line => ({
+                account: line.account._id || line.account,
+                subAccount: line.subAccount?._id || line.subAccount || null,
+                partyNumber: line.partyNumber ?? null,
+                partyType: line.partyType ?? null,
+                project: line.project?._id || line.project || null,
+                projectNumber: line.projectNumber,
+                debit: line.credit,
+                credit: line.debit,
+                description: line.description,
+                unearnedRevenue: 0,
+              })),
+            }),
             reversalOfEntry: currentOriginal._id,
             // A reversal belongs to the same Advanced Payment as the entry it reverses.
             advancedPayment: currentOriginal.advancedPayment || null,

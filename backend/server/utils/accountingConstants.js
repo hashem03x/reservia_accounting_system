@@ -106,6 +106,21 @@ exports.AccountingActions = [
   'PROJECT_COST_RECOGNITION',
 ];
 
+// Automatic actions that are inherently project-related: they are only ever posted for a document
+// that must have a project (every new Purchase/Sales Order requires one, and recognition is per
+// project), so postAutomaticJournalEntry refuses to post them without one. Payment and Advanced
+// Payment actions are NOT listed - a payment against a legacy project-less order, or an advance not
+// yet tied to a project, legitimately has none; when they DO have one, every line still gets it.
+exports.ProjectRequiredAccountingActions = [
+  'PO_INVENTORY_RECEIPT',
+  'PO_INVENTORY_TO_WIP',
+  'PO_SERVICE_TO_WIP',
+  'PO_SUPPLIER_ADVANCE_APPLIED',
+  'SO_CUSTOMER_ADVANCE_APPLIED',
+  'PROJECT_REVENUE_RECOGNITION',
+  'PROJECT_COST_RECOGNITION',
+];
+
 // The business-document type that triggered an automatic entry - paired with sourceId (that
 // document's _id) and accountingAction to form the full idempotency key (see
 // journalEntryModel.js's compound unique index). Distinct from JournalEntrySourceTypes below,
@@ -205,12 +220,13 @@ exports.AccountingModuleByAction = {
   PROJECT_COST_RECOGNITION: 'Sales Order',
 };
 
-// Maps each `cogs`-type Chart of Accounts code to its corresponding Projects-Under-Construction
-// (WIP) account code, for PROJECT_COST_RECOGNITION (Dr cogs account / Cr matching WIP account, per
-// Project.averageCostLines). Code-based, not name-matched (see this file's AccountTypes comment
-// above for why this codebase avoids string-matching display names for structural decisions).
-// Only 3 pairs exist in the current Chart of Accounts - extend this map if more COGS/WIP account
-// pairs are added later.
+// Built-in COGS -> Projects-Under-Construction (WIP) account codes for PROJECT_COST_RECOGNITION
+// (Dr cogs account / Cr matching WIP account, per Project.averageCostLines) - the three pairs the
+// source accounting sheet ("AUTOMATIC ENTERIES.xlsx", JV0011) defines. Code-based, not name-matched.
+// Any OTHER COGS account (e.g. one added to the Chart of Accounts later) is mapped in the data, not
+// here: an admin sets that COGS account's own WIP (PUC) Account in the Chart of Accounts
+// (ChartOfAccount.wipAccount), which takes precedence over this map - see
+// accountingEventService.js#resolveCogsWipAccountId.
 exports.CogsToWipAccountCodeMap = {
   '50000001': '11000009', // Raw Materials -> PUC Raw Materials
   '50000002': '11000010', // Labour Wages -> PUC Labour Wages

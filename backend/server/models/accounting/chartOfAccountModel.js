@@ -1,5 +1,5 @@
 const { Schema, model } = require('mongoose');
-const { AccountTypes, AccountStates } = require('../../utils/accountingConstants');
+const { AccountTypes, AccountStates, isPucAccountEligible } = require('../../utils/accountingConstants');
 
 // Chart of Accounts - the accounting classification hierarchy that Journal Entry lines post
 // against. Nothing equivalent exists in the codebase today (see reversia-roadmap.md's Phase-2
@@ -77,6 +77,16 @@ const chartOfAccountSchema = new Schema(
       type: Number,
       default: 0,
     },
+    // COGS accounts only: the Projects-Under-Construction (WIP) asset account this cost category's
+    // project costs accumulate in. PROJECT_COST_RECOGNITION (triggered by Sales Orders, see
+    // accountingEventService.js#postProjectCostRecognitionJE) posts Dr this COGS / Cr this WIP
+    // account. A real ChartOfAccount reference chosen by an admin - never a guessed code. When unset,
+    // the built-in code map (accountingConstants.js#CogsToWipAccountCodeMap) is used.
+    wipAccount: {
+      type: Schema.Types.ObjectId,
+      ref: 'ChartOfAccount',
+      default: null,
+    },
     description: {
       type: String,
       trim: true,
@@ -113,8 +123,23 @@ chartOfAccountSchema.pre('validate', function (next) {
   next();
 });
 
+// Backstop for `wipAccount` (the request validators are the fast pre-check): only a COGS account
+// can have one, and it must be an active PUC (asset, non-cash) account.
+chartOfAccountSchema.pre('validate', async function (next) {
+  try {
+    const wipId = this.wipAccount?._id || this.wipAccount;
+    if (!wipId) return next();
+    if (this.type !== 'cogs') throw new Error('Only a COGS account can have a WIP (PUC) account.');
+    const wip = await this.constructor.findById(wipId).session(this.$session() || null).lean();
+    if (!isPucAccountEligible(wip)) throw new Error('The WIP (PUC) account must be an active asset account that is not a cash/bank account.');
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 chartOfAccountSchema.pre(/^find/, function (next) {
-  this.populate({ path: 'parentAccount', select: 'code name type' });
+  this.populate({ path: 'parentAccount', select: 'code name type' }).populate({ path: 'wipAccount', select: 'code name type' });
   next();
 });
 

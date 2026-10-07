@@ -21,6 +21,11 @@ let unearnedRevenue;
 let receivable;
 let project;
 
+
+// Every line of a project-related journal entry carries the entry's Project and Project Number
+// (journalEntryModel.js RULE 3) - fixtures build their lines through this.
+const projectLines = lines => lines.map(line => ({ project: project._id, projectNumber: project.projectNumber, ...line }));
+
 before(async () => {
   await mongoose.connect(DB_URI);
   await mongoose.connection.dropDatabase();
@@ -67,7 +72,7 @@ beforeEach(async () => {
 
 async function postEntry(lines) {
   const entryNumber = await getNextJournalEntryNumber();
-  return JournalEntry.create({ entryNumber, status: 'posted', project: project._id, lines });
+  return JournalEntry.create({ entryNumber, status: 'posted', project: project._id, lines: projectLines(lines) });
 }
 
 test('account balance = total debits - total credits, even when credits exceed debits (no account-type sign flip)', async () => {
@@ -109,10 +114,10 @@ test('draft (unposted) entries do not affect account balances', async () => {
     entryNumber,
     status: 'draft',
     project: project._id,
-    lines: [
+    lines: projectLines([
       { account: cash._id, debit: 500, credit: 0 },
       { account: receivable._id, debit: 0, credit: 500 },
-    ],
+    ]),
   });
 
   const balance = await getAccountBalance(cash._id);
@@ -219,10 +224,10 @@ test('getGeneralLedgerLines: Sub Account resolves to the Customer Number for a S
     sourceId: salesOrder._id,
     accountingAction: 'SO_PAYMENT_RECORDED',
     project: project._id,
-    lines: [
+    lines: projectLines([
       { account: cash._id, debit: 777, credit: 0 },
       { account: arProjectsAccount._id, debit: 0, credit: 777 },
-    ],
+    ]),
   });
 
   const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
@@ -274,10 +279,10 @@ test('getGeneralLedgerLines: a NEW-style entry with partyNumber/partyType stampe
     sourceId: salesOrder._id,
     accountingAction: 'SO_PAYMENT_RECORDED',
     project: project._id,
-    lines: [
+    lines: projectLines([
       { account: cash._id, debit: 555, credit: 0 },
       { account: receivable._id, debit: 0, credit: 555, partyNumber: 99999, partyType: 'customer' },
-    ],
+    ]),
   });
 
   const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
@@ -319,10 +324,13 @@ test('getGeneralLedgerLines: a dangling sourceId (referenced document no longer 
 });
 
 test('getGeneralLedgerLines: Project Number prefers the live project\'s own projectNumber over a denormalized/stale lines.projectNumber', async () => {
-  await postEntry([
-    { account: cash._id, debit: 15, credit: 0, project: project._id, projectNumber: 'STALE-NUMBER' },
-    { account: receivable._id, debit: 0, credit: 15, project: project._id, projectNumber: 'STALE-NUMBER' },
+  const entry = await postEntry([
+    { account: cash._id, debit: 15, credit: 0 },
+    { account: receivable._id, debit: 0, credit: 15 },
   ]);
+  // A stale denormalized number can no longer be saved through the model (RULE 3) - it is planted
+  // directly, as historical data written before that rule would look.
+  await JournalEntry.collection.updateOne({ _id: entry._id }, { $set: { 'lines.$[].projectNumber': 'STALE-NUMBER' } });
 
   const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
   const row = result.data.find(r => r.debit === 15);

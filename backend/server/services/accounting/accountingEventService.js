@@ -3,8 +3,15 @@ const mongoose = require('mongoose');
 const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { getNextJournalEntryNumber } = require('./journalEntryNumberService');
-const { AutomaticJournalAccountCodes, CogsToWipAccountCodeMap, AccountingModuleByAction, isPucAccountEligible } = require('../../utils/accountingConstants');
+const {
+  AutomaticJournalAccountCodes,
+  CogsToWipAccountCodeMap,
+  AccountingModuleByAction,
+  ProjectRequiredAccountingActions,
+  isPucAccountEligible,
+} = require('../../utils/accountingConstants');
 const ApiError = require('../../utils/apiError');
+const { applyEntryProjectToLines } = require('./journalEntryProjectService');
 
 // The automatic accounting engine - see docs/entities/automatic-accounting.md and
 // scratchpad/automatic-entries-mapping.md for the full Business Event -> Accounting Action -> JE
@@ -110,6 +117,17 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
     throw new ApiError(`Automatic accounting (${accountingAction}): journal entry is not balanced (debit ${totalDebit} != credit ${totalCredit}). Posting aborted.`, 500);
   }
 
+  // Actions that only ever arise from a project-bound document (every new Purchase/Sales Order
+  // requires a project, and recognition is per project) - posting one without its project would
+  // be a project-less WIP/AR entry, so it fails instead.
+  if (ProjectRequiredAccountingActions.includes(accountingAction) && !(project?._id || project)) {
+    throw new ApiError(`Project is required for this automatic Journal Entry (${accountingAction}).`, 400);
+  }
+
+  // Every line carries the entry's Project and that Project's real Project Number (never only the
+  // parent entry) - see journalEntryProjectService.js.
+  const projectLines = await applyEntryProjectToLines({ project, lines, session });
+
   const entryNumber = await getNextJournalEntryNumber(session);
   const [entry] = await JournalEntry.create(
     [
@@ -135,7 +153,7 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
         // match. Null for every entry unrelated to an advance.
         advancedPayment: advancedPayment?._id || advancedPayment || null,
         status: 'posted',
-        lines,
+        lines: projectLines,
       },
     ],
     { session }
@@ -756,10 +774,33 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
 }
 
 /**
+ * The WIP (PUC) account a COGS account's project costs are relieved from, or null when none is
+ * configured. Resolution order - always a real Chart of Accounts record, never a guessed code:
+ *   1. the COGS account's own `wipAccount` reference (chosen by an admin in the Chart of Accounts),
+ *      which must still be an active PUC account - a stale one fails loudly instead of posting;
+ *   2. the built-in code map (CogsToWipAccountCodeMap) for the original COGS/PUC pairs.
+ */
+async function resolveCogsWipAccountId(cogsAccount, session) {
+  const configuredId = cogsAccount.wipAccount?._id || cogsAccount.wipAccount;
+  if (configuredId) {
+    const wip = await ChartOfAccount.findById(configuredId).session(session || null).lean();
+    if (!isPucAccountEligible(wip)) {
+      throw new ApiError(
+        `The WIP account configured on COGS account ${cogsAccount.code} - ${cogsAccount.name} ${wip ? `(${wip.code} - ${wip.name}) ` : ''}is missing, inactive or not a PUC (asset) account. Update the account's WIP (PUC) Account in the Chart of Accounts.`,
+        400
+      );
+    }
+    return wip._id;
+  }
+  const mappedCode = CogsToWipAccountCodeMap[cogsAccount.code];
+  return mappedCode ? getAccountIdByCode(mappedCode, session) : null;
+}
+
+/**
  * PROJECT_COST_RECOGNITION (JV0011): for each of the project's averageCostLines, Dr the COGS
- * account / Cr the matching WIP account (via CogsToWipAccountCodeMap), for the incremental
- * executed-percentage share of that line's amount. Throws if a line's COGS account code has no
- * mapped WIP account (an unmapped category is a configuration gap, not something to silently skip
+ * account / Cr its WIP account (resolveCogsWipAccountId), for the incremental executed-percentage
+ * share of that line's amount. Throws - before anything is posted - if a line's COGS account has
+ * no WIP account (an unmapped category is a configuration gap, not something to silently skip
  * and leave the entry incomplete).
  */
 async function postProjectCostRecognitionJE(project, session, triggeredBySalesOrder = null) {
@@ -775,16 +816,24 @@ async function postProjectCostRecognitionJE(project, session, triggeredBySalesOr
 
   const lines = [];
   let totalDelta = 0;
-  for (const costLine of project.averageCostLines) {
+  for (const [index, costLine] of project.averageCostLines.entries()) {
     const accountId = (costLine.account?._id || costLine.account).toString();
     const account = accountsById.get(accountId);
     if (!account) throw new ApiError('One of the project\'s Average Cost accounts no longer exists.', 500);
 
-    const wipCode = CogsToWipAccountCodeMap[account.code];
-    if (!wipCode) {
-      throw new ApiError(`No WIP account is mapped for COGS account "${account.code} - ${account.name}". Extend CogsToWipAccountCodeMap.`, 500);
+    // eslint-disable-next-line no-await-in-loop
+    const wipAccountId = await resolveCogsWipAccountId(account, session);
+    if (!wipAccountId) {
+      const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
+      const triggeringId = triggeredBySalesOrder?._id || triggeredBySalesOrder;
+      // eslint-disable-next-line no-await-in-loop
+      const order = triggeringId ? await SalesOrder.findById(triggeringId).select('code').session(session || null).lean() : null;
+      const orderLabel = triggeringId ? ` while posting Sales Order ${order?.code || triggeringId}` : '';
+      throw new ApiError(
+        `No WIP account is configured for COGS account ${account.code} - ${account.name} (Average Cost line ${index + 1} of project ${project.projectNumber}${orderLabel}). Configure a valid COGS → WIP mapping (Chart of Accounts → edit account ${account.code} → WIP (PUC) Account) before creating this Sales Order.`,
+        400
+      );
     }
-    const wipAccountId = await getAccountIdByCode(wipCode, session);
 
     const deltaAmount = round2((costLine.amount * deltaPct) / 100);
     if (deltaAmount <= 0) continue;
@@ -828,6 +877,7 @@ async function postProjectExecutionRecognitionJEs(project, session, triggeredByS
 
 module.exports = {
   getAccountIdByCode,
+  resolveCogsWipAccountId,
   resolveVendorNumber,
   resolveCustomerNumber,
   postAutomaticJournalEntry,

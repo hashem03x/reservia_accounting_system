@@ -29,6 +29,11 @@ let journalEntryController;
 let accountingEventService;
 let cash, revenue, project;
 
+
+// Every line of a project-related journal entry carries the entry's Project and Project Number
+// (journalEntryModel.js RULE 3) - fixtures build their lines through this.
+const projectLines = lines => lines.map(line => ({ project: project._id, projectNumber: project.projectNumber, ...line }));
+
 before(async () => {
   await mongoose.connect(DB_URI);
   await mongoose.connection.dropDatabase();
@@ -96,10 +101,10 @@ async function createBalancedEntry(overrides = {}) {
     entryNumber,
     status: 'posted',
     project: project._id,
-    lines: [
+    lines: projectLines([
       { account: cash._id, debit: 100, credit: 0 },
       { account: revenue._id, debit: 0, credit: 100 },
-    ],
+    ]),
     ...overrides,
   });
 }
@@ -112,12 +117,12 @@ test('getJournalEntries: a single entry with many lines is returned as exactly O
     entryNumber,
     status: 'posted',
     project: project._id,
-    lines: [
+    lines: projectLines([
       { account: cash._id, debit: 25, credit: 0 },
       { account: cash._id, debit: 25, credit: 0 },
       { account: revenue._id, debit: 0, credit: 25 },
       { account: revenue._id, debit: 0, credit: 25 },
-    ],
+    ]),
   });
 
   const { body } = await invoke((req, res) => journalEntryController.getJournalEntries(req, res));
@@ -153,10 +158,10 @@ test('getJournalEntries: an unbalanced historical entry (bypassing validation) s
     project: project._id,
     totalDebit: 100,
     totalCredit: 40,
-    lines: [
+    lines: projectLines([
       { account: cash._id, debit: 100, credit: 0 },
       { account: revenue._id, debit: 0, credit: 40 },
-    ],
+    ]),
     createdAt: new Date(),
     updatedAt: new Date(),
   });

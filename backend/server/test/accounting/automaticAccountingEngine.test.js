@@ -145,6 +145,7 @@ test('two DIFFERENT accounting actions for the SAME sourceId both post independe
     sourceType: 'PO',
     sourceId,
     description: 'receipt',
+    project: project._id,
     lines: lineSet('a'),
   });
   await accountingEventService.postAutomaticJournalEntry({
@@ -152,6 +153,7 @@ test('two DIFFERENT accounting actions for the SAME sourceId both post independe
     sourceType: 'PO',
     sourceId,
     description: 'wip transfer',
+    project: project._id,
     lines: lineSet('b'),
   });
 
@@ -307,7 +309,26 @@ test('postAdvancedPaymentJournalEntry: no-ops (returns null, posts nothing) for 
 
 // ===================== Purchase Order: product vs. service, single vs. multi-JE =====================
 
-test('postPurchaseOrderJournalEntries: product item with NO project -> only PO_INVENTORY_RECEIPT (no WIP transfer)', async () => {
+test('postPurchaseOrderJournalEntries: a product PO with NO project is rejected (PO_INVENTORY_RECEIPT is project-related) and posts nothing', async () => {
+  const Product = require('../../models/inventory/productModel');
+  const product = await Product.create({ type: 'product', title: { en: 'Steel No Project', ar: 'صلب بدون مشروع' }, description: { en: 'd', ar: 'د' }, price: 100, cost: 50, category: new mongoose.Types.ObjectId(), subcategory: new mongoose.Types.ObjectId() });
+  const fakePO = {
+    _id: new mongoose.Types.ObjectId(),
+    code: 'PO-TEST-NO-PROJECT',
+    vendorId: vendor._id,
+    project: null,
+    totalAmount: 1000,
+    vatAmount: 0,
+    withholdingTaxAmount: 0,
+    createdAt: new Date(),
+    items: [{ productId: product._id, subtotal: 1000 }],
+  };
+
+  await assert.rejects(() => accountingEventService.postPurchaseOrderJournalEntries(fakePO, null), /Project is required for this automatic Journal Entry \(PO_INVENTORY_RECEIPT\)/);
+  assert.equal(await JournalEntry.countDocuments({ sourceType: 'PO', sourceId: fakePO._id }), 0);
+});
+
+test('postPurchaseOrderJournalEntries: product item -> PO_INVENTORY_RECEIPT carries the Vendor Number on the Suppliers line only', async () => {
   const Product = require('../../models/inventory/productModel');
   const product = await Product.create({ type: 'product', title: { en: 'Steel', ar: 'صلب' }, description: { en: 'd', ar: 'د' }, price: 100, cost: 50, category: new mongoose.Types.ObjectId(), subcategory: new mongoose.Types.ObjectId() });
 
@@ -315,7 +336,7 @@ test('postPurchaseOrderJournalEntries: product item with NO project -> only PO_I
     _id: new mongoose.Types.ObjectId(),
     code: 'PO-TEST-1',
     vendorId: vendor._id,
-    project: null,
+    project: project._id,
     totalAmount: 1000,
     vatAmount: 140,
     withholdingTaxAmount: 0,
@@ -324,7 +345,6 @@ test('postPurchaseOrderJournalEntries: product item with NO project -> only PO_I
   };
 
   const entries = await accountingEventService.postPurchaseOrderJournalEntries(fakePO, null);
-  assert.equal(entries.length, 1);
   assert.equal(entries[0].accountingAction, 'PO_INVENTORY_RECEIPT');
   assert.equal(entries[0].totalDebit, entries[0].totalCredit);
   assert.equal(entries[0].totalDebit, 1140); // 1000 inventory + 140 input VAT
