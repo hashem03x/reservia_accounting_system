@@ -26,7 +26,12 @@ export interface Project {
   // - every read site must now handle the missing case explicitly (see projects/index.tsx and
   // projects/[id]/index.tsx for the pattern), which is what TypeScript's `strict` mode is for.
   contractValue?: number;
+  // Both computed by the backend from contractValue and executedPercentage (one calculation,
+  // backend/server/utils/projectExecution.js): executedAmount = contractValue × executedPercentage
+  // / 100, remainingMoney = contractValue − executedAmount. Absent when the project has no
+  // contractValue - display only, never recalculated here.
   remainingMoney?: number;
+  executedAmount?: number;
   projectManager?: { _id: string; name: string; email?: string; role?: string };
   startDate?: string;
   deliveryDate?: string;

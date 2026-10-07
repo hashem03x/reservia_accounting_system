@@ -9,6 +9,7 @@ import useDataHandler from "@/hooks/useDataHandler";
 import useHasPermission from "@/hooks/useHasPermission";
 import handleRequest from "@/utils/helpers/handle-request";
 import { formatDate } from "@/utils/helpers/date-formaters";
+import { formatAmount } from "@/utils/helpers/format-amount";
 import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
@@ -150,14 +151,11 @@ export default function Projects() {
                             rename that hasn't been through migrateProjectFieldRenames.js yet - shown
                             as "-", never fabricated as 0, since that would misrepresent a real
                             contract's value. */}
-                        {project.contractValue != null
-                          ? `${project.contractValue.toLocaleString()} ${translations.currency}`
-                          : "-"}
+                        {formatAmount(project.contractValue, translations.currency)}
                       </Table.Td>
+                      {/* Same backend-computed value as the Project details page. */}
                       <Table.Td className="whitespace-nowrap text-right tabular-nums">
-                        {project.remainingMoney != null
-                          ? `${project.remainingMoney.toLocaleString()} ${translations.currency}`
-                          : "-"}
+                        {formatAmount(project.remainingMoney, translations.currency)}
                       </Table.Td>
                       <Table.Td>{project.projectManager?.name || "-"}</Table.Td>
                       <Table.Td className="whitespace-nowrap">

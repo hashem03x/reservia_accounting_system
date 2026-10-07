@@ -172,6 +172,7 @@ refresh would fail.
 | `npm run db:create-admin -- --email ... --name ...` | create the first admin user | `DB_URI` |
 | `npm run db:import-accounting-data -- --dry-run` / `--yes` | **replaces** the ChartOfAccount, JournalEntry, and Project collections from `csv_files/` | `DB_URI`, `csv_files/` |
 | `npm run db:migrate-project-fields` / `db:migrate-variants-to-products` | one-off data migrations | `DB_URI` |
+| `npm run db:recalculate-project-remaining` (report) / `-- --yes` (apply) | re-derives the stored `remainingMoney` of existing projects as Contract Value − Executed Amount (writes only that field, only where it differs) | `DB_URI` |
 | `npm run db:backfill-journal-line-projects` (report) / `-- --yes` (apply) | fills missing Project / Project Number on the lines of journal entries whose entry has a Project (from that Project's own number; never guesses, never touches amounts) | `DB_URI` |
 | `npm run db:reset -- --yes` | **deletes all data** in every Reservia collection (refuses when `NODE_ENV=production`) | `DB_URI` |
 | `npm run pm2:*` / `npm run prod` / `npm run staging` | process-manager and production-style starts (not needed locally) | — |

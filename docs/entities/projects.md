@@ -15,7 +15,7 @@ screenshots that mention the old names or an auto-created journal entry, they pr
 |---|---|---|
 | `projectNumber` | User-supplied at creation, required, unique | **Not** auto-generated (unlike `customerNumber`) - the master spec's Project Creation UX explicitly lists it as a field the user fills in, so no numbering-sequence infrastructure was added for it. Never accepted on `PATCH /projects/:id` - the update controller silently ignores it in the request body, same partial-update convention as `updateCustomer`. |
 | `contractValue` | User input, required, `min: 0.01` | The signed contract value. Plain `Number` - matches this codebase's existing monetary convention everywhere else (`Product.price`, `PurchaseOrder.totalAmount`, `Payment.amountPaid` are all `Number`, not `Decimal128`). |
-| `remainingMoney` | Derived, never accepted from a request body | `= contractValue - confirmed Payment receipts`. See "Remaining money" below. |
+| `remainingMoney` | Derived, never accepted from a request body | `= contractValue - executedAmount`, where `executedAmount = contractValue × executedPercentage / 100`. See "Remaining money" below. |
 | `projectManager` | Ref `User` | The person responsible for managing the project. Reuses the existing `User` model (staff accounts) rather than duplicating name/contact fields - same precedent as `createdBy: ref User` elsewhere in this codebase. |
 | `startDate` | User input, required | Plain `Date`. |
 | `deliveryDate` | User input, required | Plain `Date`. Must not be before `startDate` - enforced in the model's `pre('validate')` hook (covers every write path, including a partial `PATCH` that only changes one of the two dates against the other's already-saved value) and, as a faster/friendlier pre-check, in `projectValidators.js` for the common case where both are present in the same request body. |
@@ -84,22 +84,30 @@ specifically for clearing a previously-set sector through `PATCH /projects/:id`:
 treats `undefined` as "no change" when computing what to persist), but assigning `null` does. Both
 `createProject` and `updateProject` normalize an empty/falsy incoming value to `null` before
 touching the document for this reason. Projects created before this field existed (or before the
-department->sector rename ran) simply have the key absent, which reads identically to `null`
-everywhere it's used.
+department->sector rename ran) simply have the key absent, wh## Remaining money - how it's computed
 
-## Remaining money - how it's actually computed today
+One calculation, in `server/utils/projectExecution.js`:
 
-`Payment` (`models/vendor/paymentModel.js`) already existed as the de facto cash ledger in this
-codebase (it mutates Warehouse/Vendor/Customer/PurchaseOrder/SalesOrder balances in its own
-`pre('save')` hook), but had no concept of a Project. An optional `projectId` field on `Payment`
-(additive - every existing Payment flow is unaffected since nothing sets it) plus a branch in
-`Payment`'s `pre('save')` hook calls `services/project/projectAccountingService.js#recalculateRemainingMoney`
-whenever a Payment does carry a `projectId`.
+```text
+Executed Amount  = Contract Value × Executed Percentage / 100
+Remaining Amount = Contract Value − Executed Amount
+```
 
-**No project-payment UI exists yet** - nothing creates a `Payment` with a `projectId` set today.
-`remainingMoney` is initialized to the full `contractValue` at project creation and will only ever
-change once a future phase adds a way to record a payment against a project - the calculation is
-already live and correct (remaining = full amount, since nothing is paid yet), and needs zero API
+Executed Percentage keeps its own rule (pre-tax Sales Orders ÷ Contract Value, clamped to 0-100,
+see `projectAccountingService.js#recalculateExecutedPercentage`), so Remaining follows Sales Orders
+automatically: every Sales Order create/cancel/return and every Contract Value change re-saves the
+project, and the Project model's `pre('validate')` hook re-derives `remainingMoney` on every save.
+Amounts are computed in whole cents (1,000,000 at 20% → 200,000 executed, 800,000 remaining).
+
+`remainingMoney` stays a stored field for existing readers, and every Project API response
+re-derives it (plus `executedAmount`) from the same function, so a record saved before this rule
+can never be displayed with values that contradict its Executed %. A project without a Contract
+Value keeps its stored value untouched.
+
+Before this rule, `remainingMoney` was `contractValue − net Payment receipts linked via
+Payment.projectId`. Nothing in the app sets `Payment.projectId`, so Remaining never moved when
+Executed % changed. Payments no longer affect it.
+d yet), and needs zero API
 changes when that happens.
 
 ## New required date fields and existing data

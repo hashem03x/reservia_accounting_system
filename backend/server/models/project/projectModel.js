@@ -1,5 +1,6 @@
 const { Schema, model } = require('mongoose');
 const { ProjectStatuses, ProjectSectors } = require('../../utils/accountingConstants');
+const { computeProjectExecution } = require('../../utils/projectExecution');
 // Explicit require (not just the string `ref:` name) so this model can be used standalone without
 // a hard dependency on load order - mirrors journalEntryModel.js's existing convention for the
 // same reason.
@@ -66,10 +67,10 @@ const projectSchema = new Schema(
       min: [0.01, 'Contract value must be greater than 0'],
       default: null,
     },
-    // Automatically derived (contractValue minus confirmed Payment receipts linked to this
-    // project via Payment.projectId - see paymentModel.js) - never accepted from request bodies.
-    // Defaults to the full contractValue at creation since no payments exist yet. See
-    // services/project/projectAccountingService.js#recalculateRemainingMoney.
+    // Always derived: contractValue − executed amount (contractValue × executedPercentage / 100),
+    // via utils/projectExecution.js - recomputed by the pre('validate') hook below on every save and
+    // re-derived again in every API response (toJSON), never accepted from request bodies. Stored
+    // (not only virtual) so existing readers/queries of this field keep working.
     remainingMoney: {
       type: Number,
       default: 0,
@@ -167,8 +168,33 @@ const projectSchema = new Schema(
       default: false,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: {
+      // Every Project API response carries the executed and remaining amounts from the same single
+      // calculation as the stored value, so a record saved before this rule (stale stored
+      // remainingMoney) can never be shown with numbers that contradict its Executed %.
+      transform(doc, ret) {
+        const execution = computeProjectExecution(ret);
+        if (execution) {
+          ret.executedAmount = execution.executedAmount;
+          ret.remainingMoney = execution.remainingMoney;
+        }
+        return ret;
+      },
+    },
+  }
 );
+
+// Remaining Amount is never independently editable: whenever a project is saved (created, its
+// contractValue edited, or its executedPercentage recalculated from Sales Orders), it is
+// re-derived from contractValue and executedPercentage. Runs before validation so `min: 0` checks
+// the derived value. A project without a usable contractValue keeps its stored value untouched.
+projectSchema.pre('validate', function (next) {
+  const execution = computeProjectExecution(this);
+  if (execution) this.remainingMoney = execution.remainingMoney;
+  next();
+});
 
 projectSchema.index({ projectManager: 1 });
 projectSchema.index({ status: 1 });

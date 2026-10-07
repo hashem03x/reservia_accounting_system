@@ -6,6 +6,7 @@ import useDataHandler from "@/hooks/useDataHandler";
 import useHasPermission from "@/hooks/useHasPermission";
 import handleRequest from "@/utils/helpers/handle-request";
 import { formatDate } from "@/utils/helpers/date-formaters";
+import { formatAmount } from "@/utils/helpers/format-amount";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
 import { Badge, Button, Progress, Select, Table, Textarea, TextInput } from "@mantine/core";
@@ -183,20 +184,13 @@ export default function ProjectDetail() {
           value={<span className="font-mono tracking-wide text-cyan-700">{project.projectNumber || "-"}</span>}
         />
         <SummaryCard label={translate("Project Name", "اسم المشروع")} value={project.name || "-"} />
-        {/* contractValue/remainingMoney can be missing on a project created before the
-            projectAmount->contractValue rename that hasn't been through
+        {/* contractValue/executedAmount/remainingMoney can be missing on a project created before
+            the projectAmount->contractValue rename that hasn't been through
             migrateProjectFieldRenames.js yet - shown as "-", never fabricated as 0 (that would
-            misrepresent a real contract's value). */}
-        <SummaryCard
-          label={translate("Contract Value", "قيمة العقد")}
-          value={project.contractValue != null ? `${project.contractValue.toLocaleString()} ${translations.currency}` : "-"}
-        />
-        <SummaryCard
-          label={translate("Remaining", "المتبقي")}
-          value={
-            project.remainingMoney != null ? `${project.remainingMoney.toLocaleString()} ${translations.currency}` : "-"
-          }
-        />
+            misrepresent a real contract's value). Executed/Remaining are the backend's values. */}
+        <SummaryCard label={translate("Contract Value", "قيمة العقد")} value={formatAmount(project.contractValue, translations.currency)} />
+        <SummaryCard label={translate("Executed Amount", "قيمة المنفذ")} value={formatAmount(project.executedAmount, translations.currency)} />
+        <SummaryCard label={translate("Remaining", "المتبقي")} value={formatAmount(project.remainingMoney, translations.currency)} />
         <SummaryCard label={translate("Project Manager", "مدير المشروع")} value={project.projectManager?.name || "-"} />
         <SummaryCard label={translate("Customer", "العميل")} value={project.customer?.name || "-"} />
         <SummaryCard label={translate("Sector", "القطاع")} value={project.sector || "-"} />

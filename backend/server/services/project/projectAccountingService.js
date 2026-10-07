@@ -1,4 +1,4 @@
-const Payment = require('../../models/vendor/paymentModel');
+const { computeProjectExecution } = require('../../utils/projectExecution');
 
 const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -10,10 +10,13 @@ const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 // unaffected by this removal; a project's journal entries can still be created/linked by hand.
 
 /**
- * Recomputes Project.remainingMoney = contractValue - (confirmed Payment receipts linked to this
- * project). See paymentModel.js's pre('save') hook, which calls this whenever a Payment carries a
- * projectId - no project-payment UI exists yet, but the calculation is already live so a future
- * one needs no API contract change (per master spec's "REMAINING MONEY" section).
+ * Re-derives and persists Project.remainingMoney = contractValue − (contractValue ×
+ * executedPercentage / 100) - the single calculation in utils/projectExecution.js, applied by the
+ * Project model's own pre('validate') hook on save. Remaining Amount is driven by the project's
+ * execution, not by Payments: this used to compute contractValue − net Payment receipts linked via
+ * Payment.projectId, which nothing in the app sets, so Remaining never moved when Executed %
+ * changed. Kept (same name/signature) for its existing callers (paymentModel.js,
+ * projectController.js#updateProject).
  */
 async function recalculateRemainingMoney(projectId, session) {
   const Project = require('../../models/project/projectModel'); // eslint-disable-line global-require
@@ -21,17 +24,13 @@ async function recalculateRemainingMoney(projectId, session) {
   const project = await Project.findById(projectId).session(session);
   if (!project) return;
 
-  // A project created before the projectAmount->contractValue rename, and not yet run through
-  // scripts/migrateProjectFieldRenames.js, has no contractValue at all - `undefined - x` is NaN,
-  // which would otherwise get written straight into remainingMoney. Skip the recompute rather than
-  // persist a NaN; there is nothing correct to calculate until that project's data is migrated.
-  if (typeof project.contractValue !== 'number') return;
+  // A project without a usable contractValue (e.g. one created before the projectAmount ->
+  // contractValue rename and not yet migrated) has nothing correct to calculate - its stored value
+  // is left untouched rather than overwritten.
+  const execution = computeProjectExecution(project);
+  if (!execution || execution.remainingMoney === project.remainingMoney) return;
 
-  const totals = await Payment.aggregate([{ $match: { projectId: project._id } }, { $group: { _id: '$type', total: { $sum: '$amountPaid' } } }]).session(session);
-  const inTotal = totals.find(t => t._id === 'in')?.total || 0;
-  const outTotal = totals.find(t => t._id === 'out')?.total || 0;
-
-  project.remainingMoney = round2(project.contractValue - (inTotal - outTotal));
+  project.remainingMoney = execution.remainingMoney;
   await project.save({ session });
 }
 

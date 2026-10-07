@@ -18,9 +18,8 @@ const paymentSchema = Schema(
     // Optional link to a Project (see models/project/projectModel.js) - lets a future
     // payment-collection flow record money received against a project's contract amount without
     // any schema change to Project itself. Nothing in the app sets this yet (no project payment
-    // UI exists today), but Project.remainingMoney is already wired to recompute from it the
-    // moment something does - see the pre('save') branch below and
-    // services/project/projectAccountingService.js#recalculateRemainingMoney.
+    // UI exists today). Project.remainingMoney does NOT depend on payments - it is derived from the
+    // project's contractValue and executedPercentage (utils/projectExecution.js).
     projectId: { type: Schema.Types.ObjectId, ref: 'Project' },
     type: { type: String, enum: ['in', 'out'], required: true },
     amountPaid: { type: Number, required: true, min: 0 },
@@ -196,7 +195,8 @@ paymentSchema.pre('save', async function (next) {
       await salesOrder.save({ session });
     }
 
-    // Recompute Project.remainingMoney if projectId exists - see projectModel.js's comment.
+    // Re-derive Project.remainingMoney if projectId exists (a no-op unless the stored value is
+    // stale - it depends only on contractValue/executedPercentage, see projectModel.js).
     if (this.projectId) {
       // eslint-disable-next-line global-require
       const { recalculateRemainingMoney } = require('../../services/project/projectAccountingService');
