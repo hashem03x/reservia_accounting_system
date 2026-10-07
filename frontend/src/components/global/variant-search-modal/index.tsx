@@ -13,6 +13,7 @@ import Modal from "@/components/ui/modal";
 import { Button, Select, Table, TextInput } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import { getProductFinalPrice } from "@/utils/helpers/product-helpers";
+import { getPurchaseUnitPrice } from "@/utils/helpers/purchase-unit-price";
 
 // A Product is the sellable/stock-tracked item itself now - there is no separate Variant to search
 // for (see docs/entities/products.md). `onSelect` receives the chosen product's barcode, the same
@@ -190,7 +191,7 @@ export default function ProductSearchModal({
                         <Table.Td>{product.barcode}</Table.Td>
                         {mode === "purchase" ? (
                           <Table.Td className="font-semibold text-gray-800">
-                            {(product.cost || 0).toFixed(2)} {translations.currency}
+                            {getPurchaseUnitPrice(product).toFixed(2)} {translations.currency}
                           </Table.Td>
                         ) : mode === "sales" ? (
                           <>

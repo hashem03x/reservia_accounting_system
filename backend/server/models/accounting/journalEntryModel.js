@@ -291,10 +291,10 @@ journalEntrySchema.pre(/^find/, function (next) {
   this.populate({ path: 'lines.account', select: 'code name type' })
     .populate({ path: 'lines.subAccount', select: 'code name type' })
     // Per-line project (distinct from the entry-level `project` below) - was never populated
-    // before, so any reader had to fall back to the denormalized `lines.projectNumber` string,
-    // which the automatic accounting engine never sets (only the manual Journal Entry form does -
-    // see generalLedgerService.js#getGeneralLedgerLines). Purely additive/read-only - no business
-    // logic depends on this path being populated vs. raw.
+    // before, so any reader had to fall back to the denormalized `lines.projectNumber` string
+    // (historical automatic entries lack it - see RULE 3 in pre('save') and
+    // scripts/backfillJournalLineProjects.js). Purely additive/read-only - no business logic
+    // depends on this path being populated vs. raw.
     .populate({ path: 'lines.project', select: 'projectNumber name' })
     .populate({ path: 'project', select: 'projectNumber name' })
     .populate({ path: 'triggeredBySalesOrder', select: 'code' })

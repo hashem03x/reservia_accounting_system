@@ -10,6 +10,7 @@ import ProductSearchModal from "@/components/global/variant-search-modal";
 import { OrderItemInput } from "../../../types";
 import { calculateSubTotal, calculateUnitPriceAfterDiscount } from "../../../_utils/calculations";
 import noProductDetails from "../../../_utils/no-variant-details";
+import { getPurchaseUnitPrice } from "@/utils/helpers/purchase-unit-price";
 
 const innerTableCells = 6; // Number of cells between the barcode cell and the deleteItem cell
 
@@ -93,15 +94,17 @@ export default function OrderItemRow({
               signal: abortController.signal,
               language,
             });
+            // A product is bought at its cost; a service has no cost field, so it starts at its price.
+            const unitPrice = getPurchaseUnitPrice(response.data);
             updateItem({
               productCode: newProductCode,
               productError: false,
               productData: response.data,
               starterQuantity: 1,
-              unitPrice: response.data.cost,
+              unitPrice,
               itemDiscount: { type: "percentage", value: 0 },
-              unitPriceAfterDiscount: response.data.cost,
-              starterSubtotal: response.data.cost,
+              unitPriceAfterDiscount: unitPrice,
+              starterSubtotal: unitPrice,
             });
           } catch (error) {
             updateItem({
