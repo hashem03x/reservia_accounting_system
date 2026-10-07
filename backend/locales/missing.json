@@ -1,0 +1,434 @@
+{
+  "min_length": "min_length",
+  "You_are_not_a_tasker": "You_are_not_a_tasker",
+  "created_success": "created_success",
+  "Task_is_not_open": "Task_is_not_open",
+  "Cannot populate path `ownerId` because it is not in your schema": {
+    " Set the `strictPopulate` option to false to override": {
+      "": "Cannot populate path `ownerId` because it is not in your schema. Set the `strictPopulate` option to false to override."
+    }
+  },
+  "task_opened": "task_opened",
+  "Cannot read properties of undefined (reading 'commissionToPay')": "Cannot read properties of undefined (reading 'commissionToPay')",
+  "The field 'completedTasks' must be an array but is of type int in document {_id: ObjectId('65b64c83ac819f33de11df9d')}": "The field 'completedTasks' must be an array but is of type int in document {_id: ObjectId('65b64c83ac819f33de11df9d')}",
+  "task_completed": "task_completed",
+  "task_canceled": "task_canceled",
+  "bad_request": "bad_request",
+  "Not found - /api/v1/coupons": "Not found - /api/v1/coupons",
+  "code is required": "code is required",
+  "code must be a string": "code must be a string",
+  "value is required": "value is required",
+  "value must be a number": "value must be a number",
+  "maxUses is required": "maxUses is required",
+  "maxUses must be a number": "maxUses must be a number",
+  "Cannot read properties of undefined (reading 'length')": "Cannot read properties of undefined (reading 'length')",
+  "Tasker validation failed: netEarnings: Cast to Number failed for value \"NaN\" (type number) at path \"netEarnings\"": "Tasker validation failed: netEarnings: Cast to Number failed for value \"NaN\" (type number) at path \"netEarnings\"",
+  "task is already completed or canceled": "task is already completed or canceled",
+  "Task validation failed: commission: Cast to Number failed for value \"NaN\" (type number) at path \"commission\"": "Task validation failed: commission: Cast to Number failed for value \"NaN\" (type number) at path \"commission\"",
+  "commission is not defined": "commission is not defined",
+  "You_have_not_paid_tasks": "You_have_not_paid_tasks",
+  "coupon_not_found": "coupon_not_found",
+  "coupon_applied": "coupon_applied",
+  "You_already_made_an_offer_on_this_task": "You_already_made_an_offer_on_this_task",
+  "dueDate": {
+    "flexible should be true or on or before should be set": "dueDate.flexible should be true or on or before should be set"
+  },
+  "Cannot read properties of undefined (reading 'online')": "Cannot read properties of undefined (reading 'online')",
+  "Category not found": "Category not found",
+  "Not found - /api/v1/auth/me": "Not found - /api/v1/auth/me",
+  "Not found - /": "Not found - /",
+  "ENOENT: no such file or directory, stat 'D:\\FCAL\\level 4\\GP\\implementation\\backend\\indext": {
+    "html'": "ENOENT: no such file or directory, stat 'D:\\FCAL\\level 4\\GP\\implementation\\backend\\indext.html'"
+  },
+  "Not found - /favicon": {
+    "ico": "Not found - /favicon.ico"
+  },
+  "Not found - /index": {
+    "html": "Not found - /index.html"
+  },
+  "Unauthorized": "Unauthorized",
+  "Chat validation failed: user: Path `user` is required": {
+    "": "Chat validation failed: user: Path `user` is required."
+  },
+  "No chat found": "No chat found",
+  "Message validation failed: sender: Path `sender` is required": {
+    "": "Message validation failed: sender: Path `sender` is required."
+  },
+  "Not found - /api/v1/messages/65cb6c970cc9cd8c05f60b30": "Not found - /api/v1/messages/65cb6c970cc9cd8c05f60b30",
+  "E11000 duplicate key error collection: TasksRunner": {
+    "taskers index: userId_1 dup key: { userId: \"6531fb0c4b050167705db4a5\" }": "E11000 duplicate key error collection: TasksRunner.taskers index: userId_1 dup key: { userId: \"6531fb0c4b050167705db4a5\" }",
+    "coupons index: code_1 dup key: { code: \"fix-flex\" }": "E11000 duplicate key error collection: TasksRunner.coupons index: code_1 dup key: { code: \"fix-flex\" }",
+    "users index: phoneNumber_1 dup key: { phoneNumber: \"01066666666\" }": "E11000 duplicate key error collection: TasksRunner.users index: phoneNumber_1 dup key: { phoneNumber: \"01066666666\" }",
+    "users index: phoneNumber_1 dup key: { phoneNumber: \"01086666666\" }": "E11000 duplicate key error collection: TasksRunner.users index: phoneNumber_1 dup key: { phoneNumber: \"01086666666\" }",
+    "users index: phoneNumber_1 dup key: { phoneNumber: null }": "E11000 duplicate key error collection: TasksRunner.users index: phoneNumber_1 dup key: { phoneNumber: null }"
+  },
+  "Cannot read properties of null (reading 'email')": "Cannot read properties of null (reading 'email')",
+  "invalid_authorization_code": "invalid_authorization_code",
+  "user_logged_out": "user_logged_out",
+  "read ECONNRESET": "read ECONNRESET",
+  "Request failed with status code 403": "Request failed with status code 403",
+  "Request failed with status code 400": "Request failed with status code 400",
+  "Cannot read properties of undefined (reading 'toString')": "Cannot read properties of undefined (reading 'toString')",
+  "Not found - /api/v1/offers/65d351bd1ec3a0ac75046aa4/accept/checkout": "Not found - /api/v1/offers/65d351bd1ec3a0ac75046aa4/accept/checkout",
+  "Not found - /api/v1/offers/65d351bd1ec3a0ac75046aa4/accept/checkout%20": "Not found - /api/v1/offers/65d351bd1ec3a0ac75046aa4/accept/checkout%20",
+  "Request failed with status code 422": "Request failed with status code 422",
+  "Not found - /api/v1/offers/webhook-checkout/success": "Not found - /api/v1/offers/webhook-checkout/success",
+  "Not found - /api/v1/webhook-checkout/success": "Not found - /api/v1/webhook-checkout/success",
+  "Not found - /api/v1/webhook-checkout": "Not found - /api/v1/webhook-checkout",
+  "Cannot read properties of undefined (reading 'data')": "Cannot read properties of undefined (reading 'data')",
+  "AxiosError: Request failed with status code 400": "AxiosError: Request failed with status code 400",
+  "Cannot read properties of undefined (reading 'redirect_url')": "Cannot read properties of undefined (reading 'redirect_url')",
+  "Not found - /webhook-checkout/success?id=165558364&pending=false&amount_cents=92000&success=false&is_auth=false&is_capture=false&is_standalone_payment=true&is_voided=false&is_refunded=false&is_3d_secure=false&integration_id=4502581&profile_id=961349&has_parent_transaction=false&order=188263528&created_at=2024-02-25T03%3A58%3A40": {
+    "491896&currency=EGP&merchant_commission=0&discount_details=%5B%5D&is_void=false&is_refund=false&error_occured=true&refunded_amount_cents=0&captured_amount=0&updated_at=2024-02-25T03%3A58%3A40": {
+      "903936&is_settled=false&bill_balanced=false&is_bill=false&owner=1755822&merchant_order_id=12765d7ca2e4a55fe471a8ae463&data": {
+        "message=Already+being+processed+for+payment&source_data": {
+          "type=card&source_data": {
+            "pan=2346&source_data": {
+              "sub_type=MasterCard&txn_response_code=6&hmac=773987b6b5a807cce4adb61f762f4643607da14da28acb4954a2367121f9972d05ffb12806531c365dcf8b0ec3581bb1bc700975e52a13d89d6d0104c9802303": "Not found - /webhook-checkout/success?id=165558364&pending=false&amount_cents=92000&success=false&is_auth=false&is_capture=false&is_standalone_payment=true&is_voided=false&is_refunded=false&is_3d_secure=false&integration_id=4502581&profile_id=961349&has_parent_transaction=false&order=188263528&created_at=2024-02-25T03%3A58%3A40.491896&currency=EGP&merchant_commission=0&discount_details=%5B%5D&is_void=false&is_refund=false&error_occured=true&refunded_amount_cents=0&captured_amount=0&updated_at=2024-02-25T03%3A58%3A40.903936&is_settled=false&bill_balanced=false&is_bill=false&owner=1755822&merchant_order_id=12765d7ca2e4a55fe471a8ae463&data.message=Already+being+processed+for+payment&source_data.type=card&source_data.pan=2346&source_data.sub_type=MasterCard&txn_response_code=6&hmac=773987b6b5a807cce4adb61f762f4643607da14da28acb4954a2367121f9972d05ffb12806531c365dcf8b0ec3581bb1bc700975e52a13d89d6d0104c9802303"
+            }
+          }
+        }
+      }
+    }
+  },
+  "AxiosError: Request failed with status code 422": "AxiosError: Request failed with status code 422",
+  "Error: AxiosError: Request failed with status code 422": "Error: AxiosError: Request failed with status code 422",
+  "Transaction validation failed: wallet": {
+    "phoneNumber: Path `wallet": {
+      "phoneNumber` (`2346`) is shorter than the minimum allowed length (11)": {
+        "": "Transaction validation failed: wallet.phoneNumber: Path `wallet.phoneNumber` (`2346`) is shorter than the minimum allowed length (11)."
+      }
+    }
+  },
+  "Error: AxiosError: Request failed with status code 404": "Error: AxiosError: Request failed with status code 404",
+  "You_cant_make_an_offer_on_your_task": "You_cant_make_an_offer_on_your_task",
+  "AxiosError: Request failed with status code 404": "AxiosError: Request failed with status code 404",
+  "You should assign the task to a tasker first": "You should assign the task to a tasker first",
+  "invalid_payment_method": "invalid_payment_method",
+  "Tasker validation failed: phoneNumber: Path `phoneNumber` is required": {
+    "": "Tasker validation failed: phoneNumber: Path `phoneNumber` is required."
+  },
+  "Cannot read properties of undefined (reading 'price')": "Cannot read properties of undefined (reading 'price')",
+  "You have to accept an offer first": "You have to accept an offer first",
+  "Not found - /api/v1/offers/65dd5ceb2ced35509672421a/accept/checkout": "Not found - /api/v1/offers/65dd5ceb2ced35509672421a/accept/checkout",
+  "Not found - /v1/webhook-checkout?hmac=61a50d5c68e88d498ae0d21cef15f928bd50f6a4cea09c33761ed49a009f15b5a59d4097687964fead09205dc69b6f7754124effa2c8948c5a05049a1d38a1a2": "Not found - /v1/webhook-checkout?hmac=61a50d5c68e88d498ae0d21cef15f928bd50f6a4cea09c33761ed49a009f15b5a59d4097687964fead09205dc69b6f7754124effa2c8948c5a05049a1d38a1a2",
+  "Client network socket disconnected before secure TLS connection was established": "Client network socket disconnected before secure TLS connection was established",
+  "Not found - /api/v1/webhooks/paymob?hmac=ce64104977a1e0b803b758161e95d87c1108d0e25c3202b9cbc2a7f1010d4b4238edbb5624dac66be6af42e3636a3f29fc12eef4e625a1fcd5e0b22d38456e6b": "Not found - /api/v1/webhooks/paymob?hmac=ce64104977a1e0b803b758161e95d87c1108d0e25c3202b9cbc2a7f1010d4b4238edbb5624dac66be6af42e3636a3f29fc12eef4e625a1fcd5e0b22d38456e6b",
+  "Not found - /api/v1/webhooks/paymob?id=166244029&pending=false&amount_cents=10000000&success=false&is_auth=false&is_capture=false&is_standalone_payment=true&is_voided=false&is_refunded=false&is_3d_secure=false&integration_id=4502581&profile_id=961349&has_parent_transaction=false&order=189019618&created_at=2024-02-28T01%3A59%3A07": {
+    "317411&currency=EGP&merchant_commission=0&discount_details=%5B%5D&is_void=false&is_refund=false&error_occured=true&refunded_amount_cents=0&captured_amount=0&updated_at=2024-02-28T01%3A59%3A10": {
+      "315320&is_settled=false&bill_balanced=false&is_bill=false&owner=1755822&merchant_order_id=65de6cc2be9567e989164f06&data": {
+        "message=3DS+Authentication+Failure&source_data": {
+          "type=card&source_data": {
+            "pan=2346&source_data": {
+              "sub_type=MasterCard&acq_response_code=-1&txn_response_code=-1&hmac=ce64104977a1e0b803b758161e95d87c1108d0e25c3202b9cbc2a7f1010d4b4238edbb5624dac66be6af42e3636a3f29fc12eef4e625a1fcd5e0b22d38456e6b": "Not found - /api/v1/webhooks/paymob?id=166244029&pending=false&amount_cents=10000000&success=false&is_auth=false&is_capture=false&is_standalone_payment=true&is_voided=false&is_refunded=false&is_3d_secure=false&integration_id=4502581&profile_id=961349&has_parent_transaction=false&order=189019618&created_at=2024-02-28T01%3A59%3A07.317411&currency=EGP&merchant_commission=0&discount_details=%5B%5D&is_void=false&is_refund=false&error_occured=true&refunded_amount_cents=0&captured_amount=0&updated_at=2024-02-28T01%3A59%3A10.315320&is_settled=false&bill_balanced=false&is_bill=false&owner=1755822&merchant_order_id=65de6cc2be9567e989164f06&data.message=3DS+Authentication+Failure&source_data.type=card&source_data.pan=2346&source_data.sub_type=MasterCard&acq_response_code=-1&txn_response_code=-1&hmac=ce64104977a1e0b803b758161e95d87c1108d0e25c3202b9cbc2a7f1010d4b4238edbb5624dac66be6af42e3636a3f29fc12eef4e625a1fcd5e0b22d38456e6b"
+            }
+          }
+        }
+      }
+    }
+  },
+  "Not found - /api/v1/webhooks/paymob?id=166252124&pending=false&amount_cents=74700&success=true&is_auth=false&is_capture=false&is_standalone_payment=true&is_voided=false&is_refunded=false&is_3d_secure=true&integration_id=4502581&profile_id=961349&has_parent_transaction=false&order=189033419&created_at=2024-02-28T03%3A56%3A42": {
+    "648768&currency=EGP&merchant_commission=0&discount_details=%5B%5D&is_void=false&is_refund=false&error_occured=false&refunded_amount_cents=0&captured_amount=0&updated_at=2024-02-28T03%3A57%3A07": {
+      "188365&is_settled=false&bill_balanced=false&is_bill=false&owner=1755822&merchant_order_id=65de922b5f62f71256c897f8&data": {
+        "message=Approved&source_data": {
+          "type=card&source_data": {
+            "pan=2346&source_data": {
+              "sub_type=MasterCard&acq_response_code=00&txn_response_code=APPROVED&hmac=60da5b41084741f003300438cee96f6e49cde95d7c7804fa70697efdceeb810d4e7001f241b4905dfefa2819fe6521252e6f9826e63194450ef7fd60955b7623": "Not found - /api/v1/webhooks/paymob?id=166252124&pending=false&amount_cents=74700&success=true&is_auth=false&is_capture=false&is_standalone_payment=true&is_voided=false&is_refunded=false&is_3d_secure=true&integration_id=4502581&profile_id=961349&has_parent_transaction=false&order=189033419&created_at=2024-02-28T03%3A56%3A42.648768&currency=EGP&merchant_commission=0&discount_details=%5B%5D&is_void=false&is_refund=false&error_occured=false&refunded_amount_cents=0&captured_amount=0&updated_at=2024-02-28T03%3A57%3A07.188365&is_settled=false&bill_balanced=false&is_bill=false&owner=1755822&merchant_order_id=65de922b5f62f71256c897f8&data.message=Approved&source_data.type=card&source_data.pan=2346&source_data.sub_type=MasterCard&acq_response_code=00&txn_response_code=APPROVED&hmac=60da5b41084741f003300438cee96f6e49cde95d7c7804fa70697efdceeb810d4e7001f241b4905dfefa2819fe6521252e6f9826e63194450ef7fd60955b7623"
+            }
+          }
+        }
+      }
+    }
+  },
+  "Not found - /api/v1/webhooks/paymob?id=166250908&pending=false&amount_cents=600000&success=true&is_auth=false&is_capture=false&is_standalone_payment=true&is_voided=false&is_refunded=false&is_3d_secure=true&integration_id=4502581&profile_id=961349&has_parent_transaction=false&order=189031958&created_at=2024-02-28T03%3A31%3A57": {
+    "702908&currency=EGP&merchant_commission=0&discount_details=%5B%5D&is_void=false&is_refund=false&error_occured=false&refunded_amount_cents=0&captured_amount=0&updated_at=2024-02-28T03%3A32%3A19": {
+      "637235&is_settled=false&bill_balanced=false&is_bill=false&owner=1755822&merchant_order_id=65de8c4658c4938a650657e5&data": {
+        "message=Approved&source_data": {
+          "type=card&source_data": {
+            "pan=2346&source_data": {
+              "sub_type=MasterCard&acq_response_code=00&txn_response_code=APPROVED&hmac=3f58cc218b78eb485ca5a7fd6b454ae624d848e1691f7a52037c002534ebf011bfad97e10c28d1d5f4f4ad65fa904388bed2bf16e120a86517d49f196dcbfe62": "Not found - /api/v1/webhooks/paymob?id=166250908&pending=false&amount_cents=600000&success=true&is_auth=false&is_capture=false&is_standalone_payment=true&is_voided=false&is_refunded=false&is_3d_secure=true&integration_id=4502581&profile_id=961349&has_parent_transaction=false&order=189031958&created_at=2024-02-28T03%3A31%3A57.702908&currency=EGP&merchant_commission=0&discount_details=%5B%5D&is_void=false&is_refund=false&error_occured=false&refunded_amount_cents=0&captured_amount=0&updated_at=2024-02-28T03%3A32%3A19.637235&is_settled=false&bill_balanced=false&is_bill=false&owner=1755822&merchant_order_id=65de8c4658c4938a650657e5&data.message=Approved&source_data.type=card&source_data.pan=2346&source_data.sub_type=MasterCard&acq_response_code=00&txn_response_code=APPROVED&hmac=3f58cc218b78eb485ca5a7fd6b454ae624d848e1691f7a52037c002534ebf011bfad97e10c28d1d5f4f4ad65fa904388bed2bf16e120a86517d49f196dcbfe62"
+            }
+          }
+        }
+      }
+    }
+  },
+  "Not found - /api/v1/webhooks/paymob?id=166249962&pending=false&amount_cents=53000&success=true&is_auth=false&is_capture=false&is_standalone_payment=true&is_voided=false&is_refunded=false&is_3d_secure=true&integration_id=4502581&profile_id=961349&has_parent_transaction=false&order=189030862&created_at=2024-02-28T03%3A15%3A12": {
+    "017587&currency=EGP&merchant_commission=0&discount_details=%5B%5D&is_void=false&is_refund=false&error_occured=false&refunded_amount_cents=0&captured_amount=0&updated_at=2024-02-28T03%3A15%3A36": {
+      "318504&is_settled=false&bill_balanced=false&is_bill=false&owner=1755822&merchant_order_id=65de884d791678beaed55ae3&data": {
+        "message=Approved&source_data": {
+          "type=card&source_data": {
+            "pan=2346&source_data": {
+              "sub_type=MasterCard&acq_response_code=00&txn_response_code=APPROVED&hmac=ed0373ed8e095d145e5fd9635e7b942ff1146419a98098e3cb4792f7dedc6fa63352287e269102465d7c039589edb96114d7411438dd7fad1d2a238913cff0c6": "Not found - /api/v1/webhooks/paymob?id=166249962&pending=false&amount_cents=53000&success=true&is_auth=false&is_capture=false&is_standalone_payment=true&is_voided=false&is_refunded=false&is_3d_secure=true&integration_id=4502581&profile_id=961349&has_parent_transaction=false&order=189030862&created_at=2024-02-28T03%3A15%3A12.017587&currency=EGP&merchant_commission=0&discount_details=%5B%5D&is_void=false&is_refund=false&error_occured=false&refunded_amount_cents=0&captured_amount=0&updated_at=2024-02-28T03%3A15%3A36.318504&is_settled=false&bill_balanced=false&is_bill=false&owner=1755822&merchant_order_id=65de884d791678beaed55ae3&data.message=Approved&source_data.type=card&source_data.pan=2346&source_data.sub_type=MasterCard&acq_response_code=00&txn_response_code=APPROVED&hmac=ed0373ed8e095d145e5fd9635e7b942ff1146419a98098e3cb4792f7dedc6fa63352287e269102465d7c039589edb96114d7411438dd7fad1d2a238913cff0c6"
+            }
+          }
+        }
+      }
+    }
+  },
+  "Not found - /api/v1/webhooks/paymob": "Not found - /api/v1/webhooks/paymob",
+  "MongoServerError: E11000 duplicate key error collection: TasksRunner": {
+    "transactions index: transactionId_1 dup key: { transactionId: \"166260745\" }": "MongoServerError: E11000 duplicate key error collection: TasksRunner.transactions index: transactionId_1 dup key: { transactionId: \"166260745\" }"
+  },
+  "Cast to ObjectId failed for value \"xz\" (type string) at path \"_id\" for model \"Offer\"": "Cast to ObjectId failed for value \"xz\" (type string) at path \"_id\" for model \"Offer\"",
+  "You must pay the previous tasks commissions": "You must pay the previous tasks commissions",
+  "payment_link_generated": "payment_link_generated",
+  "Error: tasker_not_found": "Error: tasker_not_found",
+  "CastError: Cast to ObjectId failed for value \"0": {
+    "5805971973924029NaN\" (type string) at path \"_id\" for model \"Tasker\"": "CastError: Cast to ObjectId failed for value \"0.5805971973924029NaN\" (type string) at path \"_id\" for model \"Tasker\""
+  },
+  "CastError: Cast to ObjectId failed for value \"120665-65363f10710eb745dec15d43\" (type string) at path \"_id\" for model \"Tasker\"": "CastError: Cast to ObjectId failed for value \"120665-65363f10710eb745dec15d43\" (type string) at path \"_id\" for model \"Tasker\"",
+  "document must have an _id before saving": "document must have an _id before saving",
+  "Task not found": "Task not found",
+  "invalid_rating": "invalid_rating",
+  "review_lenght": "review_lenght",
+  "review_created": "review_created",
+  "Not found - /api/v1/reviews": "Not found - /api/v1/reviews",
+  "Not found - /api/v1/reviews/65e19872078beaa7fd797f86": "Not found - /api/v1/reviews/65e19872078beaa7fd797f86",
+  "review_fetched": "review_fetched",
+  "review_updated": "review_updated",
+  "review_deleted": "review_deleted",
+  "Not found - /api/v1/tasks/642ea75135225b86f681581b/reviews/643880470b2fa613879f48ea": "Not found - /api/v1/tasks/642ea75135225b86f681581b/reviews/643880470b2fa613879f48ea",
+  "review_not_found": "review_not_found",
+  "reviews_fetched": "reviews_fetched",
+  "Not found - /api/v1/tasks/65e1b76101ebc99621e38244/reviews": "Not found - /api/v1/tasks/65e1b76101ebc99621e38244/reviews",
+  "Not found - /api/v1/tasks/642ea75135225b86f681581b/reviews": "Not found - /api/v1/tasks/642ea75135225b86f681581b/reviews",
+  "Not found - /api/v1/tasks/65e197c8078beaa7fd797f5d/reviews/643880470b2fa613879f48ea": "Not found - /api/v1/tasks/65e197c8078beaa7fd797f5d/reviews/643880470b2fa613879f48ea",
+  "Not found - /api/v1/tasks/65e197c8078beaa7fd797f5d/reviews/643880470b2fa613879f48ex": "Not found - /api/v1/tasks/65e197c8078beaa7fd797f5d/reviews/643880470b2fa613879f48ex",
+  "Not found - //api/v1/tasks/65e197c8078beaa7fd797f5d/reviews/643880470b2fa613879f48ea": "Not found - //api/v1/tasks/65e197c8078beaa7fd797f5d/reviews/643880470b2fa613879f48ea",
+  "Not found - /api/v1/tasks/65e197c8078beaa7fd797f5d/reviews/643880470b2fa613879f48exa": "Not found - /api/v1/tasks/65e197c8078beaa7fd797f5d/reviews/643880470b2fa613879f48exa",
+  "required": "required",
+  "Coupon validation failed: expirationDate: Path `expirationDate` is required": {
+    "": "Coupon validation failed: expirationDate: Path `expirationDate` is required."
+  },
+  "task_not_completed": "task_not_completed",
+  "Cannot populate path `reviewss` because it is not in your schema": {
+    " Set the `strictPopulate` option to false to override": {
+      "": "Cannot populate path `reviewss` because it is not in your schema. Set the `strictPopulate` option to false to override."
+    }
+  },
+  "Not found - /api/v1/taskers/verify-phone": "Not found - /api/v1/taskers/verify-phone",
+  "You must have a phone number to verify": "You must have a phone number to verify",
+  "You_must_verify_your_phone_number": "You_must_verify_your_phone_number",
+  "Something went wrong, please try again later": "Something went wrong, please try again later",
+  "user": {
+    "save is not a function": "user.save is not a function"
+  },
+  "Evaluation failed: Error: wid error: invalid wid\n    at e (https://web": {
+    "whatsapp": {
+      "com/:2:4914)\n    at new f (https://web": {
+        "whatsapp": {
+          "com/app": {
+            "1348daccac22f513cdcb": {
+              "js:306:226527)\n    at Object": {
+                "c [as createWid] (https://web": {
+                  "whatsapp": {
+                    "com/app": {
+                      "1348daccac22f513cdcb": {
+                        "js:306:232828)\n    at __puppeteer_evaluation_script__:2:53": "Evaluation failed: Error: wid error: invalid wid\n    at e (https://web.whatsapp.com/:2:4914)\n    at new f (https://web.whatsapp.com/app.1348daccac22f513cdcb.js:306:226527)\n    at Object.c [as createWid] (https://web.whatsapp.com/app.1348daccac22f513cdcb.js:306:232828)\n    at __puppeteer_evaluation_script__:2:53"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "93d671bef3a2901dc458": {
+              "js:306:223022)\n    at Object": {
+                "c [as createWid] (https://web": {
+                  "whatsapp": {
+                    "com/app": {
+                      "93d671bef3a2901dc458": {
+                        "js:306:229323)\n    at __puppeteer_evaluation_script__:2:53": "Evaluation failed: Error: wid error: invalid wid\n    at e (https://web.whatsapp.com/:2:4914)\n    at new f (https://web.whatsapp.com/app.93d671bef3a2901dc458.js:306:223022)\n    at Object.c [as createWid] (https://web.whatsapp.com/app.93d671bef3a2901dc458.js:306:229323)\n    at __puppeteer_evaluation_script__:2:53"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "verification_code_sent": "verification_code_sent",
+  "Cannot read properties of undefined (reading 'body')": "Cannot read properties of undefined (reading 'body')",
+  "Cannot read properties of undefined (reading '_data')": "Cannot read properties of undefined (reading '_data')",
+  "verification_code_required": "verification_code_required",
+  "invalid_verification_code": "invalid_verification_code",
+  "phone_verified": "phone_verified",
+  "Not found - /api/v1/users/me/profile-picture-upload": "Not found - /api/v1/users/me/profile-picture-upload",
+  "Not found - /api/v1/users/me": "Not found - /api/v1/users/me",
+  "Not found - /not-found-endpoint": "Not found - /not-found-endpoint",
+  "this_field_is_required": "this_field_is_required",
+  "Cannot read properties of undefined (reading 'coordinates')": "Cannot read properties of undefined (reading 'coordinates')",
+  "taskers_found": "taskers_found",
+  "Not found - /api/v1/taskers/me": "Not found - /api/v1/taskers/me",
+  "Duplicate field value: \"01066666666\"": {
+    " Please use another value!": "Duplicate field value: \"01066666666\". Please use another value!"
+  },
+  "Duplicate field": {
+    " Please use another value!": "Duplicate field. Please use another value!"
+  },
+  "Duplicate field value: [object Object]": {
+    " Please use another value!": "Duplicate field value: [object Object]. Please use another value!"
+  },
+  "Duplicate field value: ": {
+    " Please use another value!": "Duplicate field value: . Please use another value!"
+  },
+  "Duplicate field value: undefined": {
+    " Please use another value!": "Duplicate field value: undefined. Please use another value!"
+  },
+  "Duplicate field value: null": {
+    " Please use another value!": "Duplicate field value: null. Please use another value!"
+  },
+  "Duplicate field value: aisha@gmail": {
+    "com": {
+      " Please use another value!": "Duplicate field value: aisha@gmail.com. Please use another value!"
+    }
+  },
+  "Duplicate field value: email: aisha@gmail": {
+    "com": {
+      " Please use another value!": "Duplicate field value: email: aisha@gmail.com. Please use another value!"
+    }
+  },
+  "Duplicate field value: email => aisha@gmail": {
+    "com": {
+      " Please use another value!": "Duplicate field value: email => aisha@gmail.com. Please use another value!"
+    }
+  },
+  "E11000 duplicate key error collection: fixflex-dev": {
+    "users index: phoneNumber_1 dup key: { phoneNumber: null }": "E11000 duplicate key error collection: fixflex-dev.users index: phoneNumber_1 dup key: { phoneNumber: null }",
+    "users index: phoneNumber_1 dup key: { phoneNumber: \"01066032811\" }": "E11000 duplicate key error collection: fixflex-dev.users index: phoneNumber_1 dup key: { phoneNumber: \"01066032811\" }",
+    "users index: phoneNumber_1 dup key: { phoneNumber: \"01066032813\" }": "E11000 duplicate key error collection: fixflex-dev.users index: phoneNumber_1 dup key: { phoneNumber: \"01066032813\" }",
+    "taskers index: phoneNumber_1 dup key: { phoneNumber: null }": "E11000 duplicate key error collection: fixflex-dev.taskers index: phoneNumber_1 dup key: { phoneNumber: null }"
+  },
+  "Plan executor error during findAndModify :: caused by :: E11000 duplicate key error collection: fixflex-dev": {
+    "users index: phoneNumber_1 dup key: { phoneNumber: \"01066666666\" }": "Plan executor error during findAndModify :: caused by :: E11000 duplicate key error collection: fixflex-dev.users index: phoneNumber_1 dup key: { phoneNumber: \"01066666666\" }",
+    "users index: phoneNumber_1 dup key: { phoneNumber: \"01066032817\" }": "Plan executor error during findAndModify :: caused by :: E11000 duplicate key error collection: fixflex-dev.users index: phoneNumber_1 dup key: { phoneNumber: \"01066032817\" }"
+  },
+  "Plan executor error during findAndModify :: caused by :: E11000 duplicate key error collection: TasksRunner": {
+    "users index: phoneNumber_1 dup key: { phoneNumber: \"01066666666\" }": "Plan executor error during findAndModify :: caused by :: E11000 duplicate key error collection: TasksRunner.users index: phoneNumber_1 dup key: { phoneNumber: \"01066666666\" }"
+  },
+  "Evaluation failed: TypeError: Cannot read properties of undefined (reading 'WidFactory')\n    at __puppeteer_evaluation_script__:2:42": "Evaluation failed: TypeError: Cannot read properties of undefined (reading 'WidFactory')\n    at __puppeteer_evaluation_script__:2:42",
+  "password_reset": "password_reset",
+  "Not found - /api/v1/users": "Not found - /api/v1/users",
+  "Unexpected field": "Unexpected field",
+  "Cannot read properties of undefined (reading 'en')": "Cannot read properties of undefined (reading 'en')",
+  "Not found - /api/v1/categories/6611ada9defeb5072e9f0deb": "Not found - /api/v1/categories/6611ada9defeb5072e9f0deb",
+  "Not found - /api/v1/categories/6611af616e263d3d27b0f62d": "Not found - /api/v1/categories/6611af616e263d3d27b0f62d",
+  "Not found - /api/v1/categories/6611afff3ddb2cdb1f1d60fc": "Not found - /api/v1/categories/6611afff3ddb2cdb1f1d60fc",
+  "Not found - /api/v1/categories/6611b0263aee99fd2480e1ed": "Not found - /api/v1/categories/6611b0263aee99fd2480e1ed",
+  "Not found - /api/v1/categories/6611b0510a9fe88311fcf5d4": "Not found - /api/v1/categories/6611b0510a9fe88311fcf5d4",
+  "Not found - /api/v1/categories/6611b07fbcbd0329376de3fa": "Not found - /api/v1/categories/6611b07fbcbd0329376de3fa",
+  "Not found - /api/v1/categories/6611b0f2d7f49bad76b3a774": "Not found - /api/v1/categories/6611b0f2d7f49bad76b3a774",
+  "No service found": "No service found",
+  "Not found - /api/v1/categories/6611b1ac2196530d628dfbda": "Not found - /api/v1/categories/6611b1ac2196530d628dfbda",
+  "Not found - /api/v1/categories/6611b1bfff12df69ec5a6249": "Not found - /api/v1/categories/6611b1bfff12df69ec5a6249",
+  "No category found": "No category found",
+  "Invalid image type": "Invalid image type",
+  "Not found - /task": "Not found - /task",
+  "Not found - /tasks": "Not found - /tasks",
+  "Not found - /taskss": "Not found - /taskss",
+  "Not found - /api/v1/tasks/6611c40b6001ebdde1798f9a": "Not found - /api/v1/tasks/6611c40b6001ebdde1798f9a",
+  "Not found - /api/v1/tasks/6611c43828ada58eb0dcc682": "Not found - /api/v1/tasks/6611c43828ada58eb0dcc682",
+  "Not found - /api/v1/tasks/undefined": "Not found - /api/v1/tasks/undefined",
+  "Service [object Object] is already exists, please pick a different one": {
+    "": "Service [object Object] is already exists, please pick a different one."
+  },
+  "Not found - /api/v1/auth/logout": "Not found - /api/v1/auth/logout",
+  "Not found - /api/v1/offers/66154ce6cc7b8932a4fec060": "Not found - /api/v1/offers/66154ce6cc7b8932a4fec060",
+  "Not found - /api/v1/tasks/661550a65481383582d8e20f/images": "Not found - /api/v1/tasks/661550a65481383582d8e20f/images",
+  "Not found - /api/v1/tasks/661551bf38c4b1ba0b424fde/images": "Not found - /api/v1/tasks/661551bf38c4b1ba0b424fde/images",
+  "Not found - /api/v1/offers/66155416ec3957ac3f53cbfa": "Not found - /api/v1/offers/66155416ec3957ac3f53cbfa",
+  "Not found - /api/v1/offers/661554e9d838475c214f44e8": "Not found - /api/v1/offers/661554e9d838475c214f44e8",
+  "Not found - /api/v1/offers/66155527ccc4eb79d3b817c7": "Not found - /api/v1/offers/66155527ccc4eb79d3b817c7",
+  "Not found - /api/v1/offers/661555b678ff947875fad71e": "Not found - /api/v1/offers/661555b678ff947875fad71e",
+  "Not found - /api/v1/offers/6615574150e4b801dd3180db": "Not found - /api/v1/offers/6615574150e4b801dd3180db",
+  "Not found - /api/v1/offers/6615583d708441e8ad783d6c": "Not found - /api/v1/offers/6615583d708441e8ad783d6c",
+  "Not found - /api/v1/users/send-verification-code": "Not found - /api/v1/users/send-verification-code",
+  "Not found - /api/v1/offers/661564a4d4e1a9d52a2955cb": "Not found - /api/v1/offers/661564a4d4e1a9d52a2955cb",
+  "Not found - /api/v1/offers/6615671694a3e366f366883d": "Not found - /api/v1/offers/6615671694a3e366f366883d",
+  "Not found - /api/v1/offers/6616863ca1c163781ce3cabd": "Not found - /api/v1/offers/6616863ca1c163781ce3cabd",
+  "Not found - /api/v1/offers/66168754a3920c2814e0e0f7": "Not found - /api/v1/offers/66168754a3920c2814e0e0f7",
+  "Not found - /api/v1/offers/6616ae7cad4b3bc8b0d412d5": "Not found - /api/v1/offers/6616ae7cad4b3bc8b0d412d5",
+  "Not found - /api/v1/offers/6616af3db406e1035f3c8324": "Not found - /api/v1/offers/6616af3db406e1035f3c8324",
+  "Not found - /api/v1/tasks/6616bb0cf067bd2be836711d/reviews": "Not found - /api/v1/tasks/6616bb0cf067bd2be836711d/reviews",
+  "Not found - /api/v1/tasks/6616bc8c5339eb10ced1a7b1/reviews": "Not found - /api/v1/tasks/6616bc8c5339eb10ced1a7b1/reviews",
+  "Not found - /api/v1/tasks/6616c04d0d9418c68d56f857/reviews": "Not found - /api/v1/tasks/6616c04d0d9418c68d56f857/reviews",
+  "Not found - /api/v1/tasks/6616c0ff1169dae4ea9c7ba6/reviews": "Not found - /api/v1/tasks/6616c0ff1169dae4ea9c7ba6/reviews",
+  "Not found - /api/v1/tasks/6616c164a91e15391dad5acc/reviews": "Not found - /api/v1/tasks/6616c164a91e15391dad5acc/reviews",
+  "Not found - /api/v1/taskers/6616c2e0296332bd24cfa7c1/chats": "Not found - /api/v1/taskers/6616c2e0296332bd24cfa7c1/chats",
+  "must be a string": "must be a string",
+  "must be a valid mongo id": "must be a valid mongo id",
+  "Chat not found": "Chat not found",
+  "Not found - /api/v1/messages": "Not found - /api/v1/messages",
+  "Message not found": "Message not found",
+  "Not found - /api/v1/messages/6616cad19cd447634bc4c5d1": "Not found - /api/v1/messages/6616cad19cd447634bc4c5d1",
+  "Not found - /api/v1/messages/6616cb38666f0da47d45066b": "Not found - /api/v1/messages/6616cb38666f0da47d45066b",
+  "Not found - /api/v1/messages/6616cc8b2874beb212daba49": "Not found - /api/v1/messages/6616cc8b2874beb212daba49",
+  "Invalid sort() argument, must be array of arrays": "Invalid sort() argument, must be array of arrays",
+  "Invalid value": "Invalid value",
+  "whatsappclient": {
+    "sendMessage is not a function": "whatsappclient.sendMessage is not a function"
+  },
+  "Not found - //api/v1/users/me": "Not found - //api/v1/users/me",
+  "Not found - /api/v1/me": "Not found - /api/v1/me",
+  "jwt expired": "jwt expired",
+  "Cannot read properties of undefined (reading 'password')": "Cannot read properties of undefined (reading 'password')",
+  "User validation failed: phoneNumber: Please provide a valid phone number (11 digits)": "User validation failed: phoneNumber: Please provide a valid phone number (11 digits)",
+  "result": {
+    "forEach is not a function": "result.forEach is not a function"
+  },
+  "this": {
+    "isModified is not a function": "this.isModified is not a function"
+  },
+  "Cannot read properties of null (reading 'phoneNumber')": "Cannot read properties of null (reading 'phoneNumber')",
+  "Not found - /api/v1/users/66311502824932d512dd2093/profile-picture": "Not found - /api/v1/users/66311502824932d512dd2093/profile-picture",
+  "Not found - /api/v1/auth/login": "Not found - /api/v1/auth/login",
+  "Cannot populate path `userId": {
+    "taskerId` because it is not in your schema": {
+      " Set the `strictPopulate` option to false to override": {
+        "": "Cannot populate path `userId.taskerId` because it is not in your schema. Set the `strictPopulate` option to false to override."
+      }
+    }
+  },
+  "Cannot do exclusion on field __v in inclusion projection": "Cannot do exclusion on field __v in inclusion projection",
+  "\"expiresIn\" should be a number of seconds or string representing a timespan": "\"expiresIn\" should be a number of seconds or string representing a timespan",
+  "Not found - /api/v1users/660d1a65cf9b9da36da5222d": "Not found - /api/v1users/660d1a65cf9b9da36da5222d",
+  "Not found - /api/v1categories": "Not found - /api/v1categories",
+  "Not found - /api/v1auth/login": "Not found - /api/v1auth/login",
+  "Not found - /api/v1taskers/me": "Not found - /api/v1taskers/me",
+  "Not found - //api/v1/auth/login": "Not found - //api/v1/auth/login",
+  "Not found - /api/v1": "Not found - /api/v1",
+  "Not found - /api/v1/auth/refresh-token": "Not found - /api/v1/auth/refresh-token",
+  "Not found - /api/v1/offers/66353ed40e82c2c11c97f75f/accept/checkout": "Not found - /api/v1/offers/66353ed40e82c2c11c97f75f/accept/checkout",
+  "Cannot read properties of null (reading '_id')": "Cannot read properties of null (reading '_id')",
+  "Not found - /api/v1/offers/663559cccc5734759e8387e8/accept/checkout": "Not found - /api/v1/offers/663559cccc5734759e8387e8/accept/checkout",
+  "Please upload files": "Please upload files",
+  "Can't extract geo keys: { _id: ObjectId('663cab1fef163c15915195fd'), userId: \"663526710e82c2c11c97f2a6\", dueDate: { flexible: true }, time: [], title: \"Carpentry\", details: \"I want to fix my door\", imageCover: { publicId: null }, categoryId: \"662bb8080f0d3501e870cb5e\", status: \"OPEN\", location: { online: true, type: \"Point\" }, budget: 159, offers: [], paymentMethod: \"CASH\", paid: false, images: [], createdAt: new Date(1715251999894), updatedAt: new Date(1715251999894), __v: 0 }  Point must be an array or object, instead got type missing": "Can't extract geo keys: { _id: ObjectId('663cab1fef163c15915195fd'), userId: \"663526710e82c2c11c97f2a6\", dueDate: { flexible: true }, time: [], title: \"Carpentry\", details: \"I want to fix my door\", imageCover: { publicId: null }, categoryId: \"662bb8080f0d3501e870cb5e\", status: \"OPEN\", location: { online: true, type: \"Point\" }, budget: 159, offers: [], paymentMethod: \"CASH\", paid: false, images: [], createdAt: new Date(1715251999894), updatedAt: new Date(1715251999894), __v: 0 }  Point must be an array or object, instead got type missing",
+  "Can't extract geo keys: { _id: ObjectId('663cac32675334c52a0cbb9b'), userId: \"663526710e82c2c11c97f2a6\", dueDate: { flexible: true }, time: [], title: \"Carpentry\", details: \"I want to fix my door\", imageCover: { publicId: null }, categoryId: \"662bb8080f0d3501e870cb5e\", status: \"OPEN\", location: { online: true, type: \"Point\" }, budget: 159, offers: [], paymentMethod: \"CASH\", paid: false, images: [], createdAt: new Date(1715252274697), updatedAt: new Date(1715252274697), __v: 0 }  Point must be an array or object, instead got type missing": "Can't extract geo keys: { _id: ObjectId('663cac32675334c52a0cbb9b'), userId: \"663526710e82c2c11c97f2a6\", dueDate: { flexible: true }, time: [], title: \"Carpentry\", details: \"I want to fix my door\", imageCover: { publicId: null }, categoryId: \"662bb8080f0d3501e870cb5e\", status: \"OPEN\", location: { online: true, type: \"Point\" }, budget: 159, offers: [], paymentMethod: \"CASH\", paid: false, images: [], createdAt: new Date(1715252274697), updatedAt: new Date(1715252274697), __v: 0 }  Point must be an array or object, instead got type missing",
+  "Cannot read properties of undefined (reading '0')": "Cannot read properties of undefined (reading '0')",
+  "Invalid date format, must be YYYY-MM-DD": "Invalid date format, must be YYYY-MM-DD",
+  "invalid_dueDate": "invalid_dueDate",
+  "Invalid_Password": "Invalid_Password",
+  "Invalid time value": "Invalid time value",
+  "Can't extract geo keys: { _id: ObjectId('663cdf10d02eb83cd5fa8d09'), userId: \"663526710e82c2c11c97f2a6\", dueDate: { on: new Date(1715299200000) }, time: [], title: \"Carpentry\", details: \"I want to fix my door\", imageCover: { publicId: null }, categoryId: \"662bb8080f0d3501e870cb5e\", status: \"OPEN\", location: { online: true, type: \"Point\" }, budget: 159, offers: [], paymentMethod: \"CASH\", paid: false, images: [], createdAt: new Date(1715265296833), updatedAt: new Date(1715265296833), __v: 0 }  Point must be an array or object, instead got type missing": "Can't extract geo keys: { _id: ObjectId('663cdf10d02eb83cd5fa8d09'), userId: \"663526710e82c2c11c97f2a6\", dueDate: { on: new Date(1715299200000) }, time: [], title: \"Carpentry\", details: \"I want to fix my door\", imageCover: { publicId: null }, categoryId: \"662bb8080f0d3501e870cb5e\", status: \"OPEN\", location: { online: true, type: \"Point\" }, budget: 159, offers: [], paymentMethod: \"CASH\", paid: false, images: [], createdAt: new Date(1715265296833), updatedAt: new Date(1715265296833), __v: 0 }  Point must be an array or object, instead got type missing",
+  " \"Invalid date format, must be YYYY-MM-DD\",": " \"Invalid date format, must be YYYY-MM-DD\",",
+  "Multipart: Boundary not found": "Multipart: Boundary not found",
+  "You_are_not_active": "You_are_not_active",
+  "Not found - /api/v1/taskers/portfolio": "Not found - /api/v1/taskers/portfolio",
+  "connection timed out": "connection timed out",
+  "Cast to ObjectId failed for value \"66115f84857a0db926ef85f700000000000000000000000000000000\" (type string) at path \"_id\" for model \"Category\"": "Cast to ObjectId failed for value \"66115f84857a0db926ef85f700000000000000000000000000000000\" (type string) at path \"_id\" for model \"Category\"",
+  "Not found - /api/v1/api/v1/chats": "Not found - /api/v1/api/v1/chats",
+  "Not found - /api/v1/api/v1/auth/login": "Not found - /api/v1/api/v1/auth/login",
+  "Not found - /api/v1//api/v1/auth/login": "Not found - /api/v1//api/v1/auth/login",
+  "Not found - /api/": "Not found - /api/",
+  "already_reviewed": "already_reviewed",
+  "services_found": "services_found",
+  "Plan executor error during findAndModify :: caused by :: E11000 duplicate key error collection: fixflex": {
+    "users index: phoneNumber_1 dup key: { phoneNumber: \"01066032817\" }": "Plan executor error during findAndModify :: caused by :: E11000 duplicate key error collection: fixflex.users index: phoneNumber_1 dup key: { phoneNumber: \"01066032817\" }"
+  },
+  "Not found - /api/v1/caategories": "Not found - /api/v1/caategories",
+  "Not found - /api/v1/auth/logins": "Not found - /api/v1/auth/logins",
+  "appRunning": "appRunning"
+}

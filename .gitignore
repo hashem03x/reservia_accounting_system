@@ -1,0 +1,17 @@
+node_modules
+/backups
+
+# Ignore backup settings e.g. { "backupTime": "02:00", "timezone": "Africa/Cairo", "maxFiles": 10 }
+settings.json 
+
+ecommerce-api.postman_collection.json
+config.env
+.env
+.env.local
+z_test
+login.txt
+# *.webp
+uploads/import/*.csv
+config copy.env
+newCluadetxt.txt
+csv_files

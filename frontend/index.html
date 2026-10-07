@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script type="text/javascript">
+      // Resolves and applies the color scheme BEFORE the first paint, to avoid a light->dark flash
+      // on load. Reads the same localStorage key the app's localStorageColorSchemeManager uses
+      // (src/index.tsx) and sets both Mantine's own attribute and the `dark` class Tailwind's
+      // `darkMode: "class"` (tailwind.config.js) depends on - kept in sync at runtime afterwards by
+      // src/hooks/useColorScheme.ts.
+      (function () {
+        try {
+          var stored = localStorage.getItem('reversia-color-scheme') || 'auto';
+          var resolved = stored === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : stored;
+          document.documentElement.setAttribute('data-mantine-color-scheme', resolved);
+          document.documentElement.classList.toggle('dark', resolved === 'dark');
+        } catch (e) {
+          // localStorage can throw in some privacy modes - fall back to light, same as the default.
+        }
+      })();
+    </script>
+    <script type="text/javascript">
+      // Single Page Apps for GitHub Pages - https://github.com/rafgraph/spa-github-pages
+      // Counterpart to public/404.html's redirect - decodes the original path back out of the
+      // query string 404.html encoded it into, and restores it via history.replaceState BEFORE
+      // React Router (loaded by the module script below) ever reads window.location. Must run
+      // first, before any other script that might read the URL.
+      (function (l) {
+        if (l.search[1] === "/") {
+          var decoded = l.search
+            .slice(1)
+            .split("&")
+            .map(function (s) {
+              return s.replace(/~and~/g, "&");
+            })
+            .join("?");
+          window.history.replaceState(null, null, l.pathname.slice(0, -1) + decoded + l.hash);
+        }
+      })(window.location);
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Inter (Latin/English) + Cairo (Arabic) - replaces Tajawal. Both loaded together (one
+         stylesheet request) since the app switches between them at runtime based on the current
+         language/direction rather than at build time - see src/index.css and
+         src/context/LanguageContext.tsx. -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Cairo:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <meta name="description" content="Reservia Integrated Energy - inventory, sales, and finance management dashboard." />
+    <title>Reservia Integrated Energy</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>

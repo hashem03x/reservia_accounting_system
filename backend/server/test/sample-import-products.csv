@@ -1,0 +1,6 @@
+title_en,title_ar,description_en,description_ar,cost,price,price_after_discount,season,category_id,subcategory_id,colors,sizes
+Cotton T-Shirt,تيشيرت قطن,"Comfortable cotton t-shirt perfect for casual wear",تيشيرت قطن مريح مثالي للملابس العادية,50,100,90,summer,66dae0d5327268fca95fa25e,6741c56413d2b50374cc264d,blue;white;black,M;L;XL
+Polo Shirt,بولو شيرت,"Classic polo shirt with embroidered logo",بولو شيرت كلاسيكي مع شعار مطرز,75,150,130,summer,66dae0d5327268fca95fa25e,6741c56413d2b50374cc264d,red;navy;white,S;M;L
+Denim Jeans,جينز دنيم,"Slim-fit denim jeans with stretch comfort",جينز دنيم ضيق مع مرونة مريحة,100,200,180,all,66dae0d5327268fca95fa25e,6741c56413d2b50374cc264d,black;blue;navy,30;32;34
+Linen Shirt,قميص كتان,"Premium linen shirt for summer comfort",قميص كتان فاخر للراحة في الصيف,90,180,160,summer,66dae0d5327268fca95fa25e,6741c56413d2b50374cc264d,white;beige;cream,M;L;XL
+Hoodie,هودي,"Comfortable cotton hoodie with kangaroo pocket",هودي قطن مريح مع جيب كنغر,85,170,150,winter,66dae0d5327268fca95fa25e,6741c56413d2b50374cc264d,green;gray;black,S;M;L

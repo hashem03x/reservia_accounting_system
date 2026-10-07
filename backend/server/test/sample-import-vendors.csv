@@ -1,0 +1,6 @@
+type,name,contact.phone,contact.email,balance,address.street,address.city,address.state,address.country,address.postalCode
+current,Ahmed Trading Co.,01234567890,ahmed@trading.com,5000,123 El Tahrir St.,Cairo,Cairo,Egypt,11511
+current,Mohamed Fabrics,01123456789,mohamed@fabrics.com,3000,45 El Haram St.,Giza,Giza,Egypt,12511
+equity,Nour Textiles,01012345678,nour@textiles.com,8000,78 El Nasr St.,Alexandria,Alexandria,Egypt,21511
+current,Ali & Sons Trading,01198765432,ali@sons-trading.com,6000,15 Port Said St.,Port Said,Port Said,Egypt,42511
+equity,Hassan Wholesale,01187654321,hassan@wholesale.com,10000,92 El Gomhoria St.,Mansoura,Dakahlia,Egypt,35511
