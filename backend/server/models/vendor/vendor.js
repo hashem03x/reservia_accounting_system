@@ -123,5 +123,16 @@ vendorSchema.pre('save', async function (next) {
   next();
 });
 
+// insertMany() (the vendor CSV import) does not run pre('save') - number those vendors the same
+// way, one atomic counter allocation per vendor, overwriting any client-supplied value.
+vendorSchema.pre('insertMany', async function (next, docs) {
+  const list = Array.isArray(docs) ? docs : [docs];
+  for (const doc of list) {
+    // eslint-disable-next-line no-await-in-loop
+    doc.vendorNumber = await getNextVendorNumber();
+  }
+  next();
+});
+
 vendorSchema.plugin(mongooseI18n, { locales: ['en', 'ar'], defaultLocale: process.env.DEFAULT_LANGUAGE || 'en' });
 module.exports = model('Vendor', vendorSchema);

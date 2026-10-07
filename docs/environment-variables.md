@@ -44,7 +44,7 @@ Templates: [`backend/.env.example`](../backend/.env.example) · [`frontend/.env.
 | `ACCOUNT_CODE_ACCOUNTS_RECEIVABLE`, `_UNEARNED_REVENUE`, `_CASH`, `_PROJECT_REVENUE`, `_FIXED_ASSETS`, `_ACCOUNTS_PAYABLE`, `_CAPITAL` | Optional (defaults 1100, 2400, 1000, 4000, 1500, 2000, 3000) | No | Lookup codes for the legacy fixed-asset / project-creation entries (`DefaultAccountCodes`). The automatic accounting engine uses its own fixed codes (`AutomaticJournalAccountCodes`) | `server/utils/accountingConstants.js` |
 | `TEST_DB_URI` | Optional - leave unset | **Secret** if it pointed at a real DB (never do that) | Overrides every test file's throw-away DB (default `mongodb://127.0.0.1:27017/reversia_test_<name>`) - tests **drop** this database | `server/test/**` |
 
-**No longer read:** `VENDOR_NUMBER_RANGE_START` / `VENDOR_NUMBER_RANGE_END` - vendor numbers are now always 5-digit numbers starting with 2 (20001-29999), a fixed business rule in `server/services/vendor/vendorNumberService.js`. Existing vendors keep their numbers.
+**No longer read:** `VENDOR_NUMBER_RANGE_START` / `VENDOR_NUMBER_RANGE_END` - vendor numbers start at 2000 and increment by one (2000-2999), a fixed business rule in `server/services/vendor/vendorNumberService.js`. Existing vendors keep their numbers.
 
 **Removed in the Shopify-removal pass** (previously documented here, no longer read by any code):
 `SHOPIFY_SHOP_DOMAIN`, `SHOPIFY_ADMIN_API_ACCESS_TOKEN`, `SHOPIFY_API_VERSION`,

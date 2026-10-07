@@ -4,7 +4,7 @@ export type VendorType = "current" | "equity";
 
 export type Vendor = {
   _id: string;
-  // The vendor's own number - 5 digits starting with 2 (2xxxx) for vendors created from now on; older
+  // The vendor's own number - issued from 2000 upwards (2000, 2001, ...) for vendors created from now on; older
   // vendors keep the number they already had, and a vendor created before numbering existed has none.
   // This number is the vendor's Sub Account on journal entries (e.g. the Suppliers line of a PO).
   vendorNumber?: number | null;
