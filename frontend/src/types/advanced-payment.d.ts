@@ -2,11 +2,7 @@ export type AdvancedPaymentType = "customer" | "vendor";
 export type AdvancedPaymentStatus = "available" | "partially_used" | "fully_used" | "cancelled";
 
 export interface AdvancedPaymentUsageEntry {
-<<<<<<< HEAD
   salesOrder?: { _id: string; code: string; totalAmount: number; grandTotal?: number; paidAmount: number } | null;
-=======
-  salesOrder?: { _id: string; code: string; totalAmount: number; paidAmount: number } | null;
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   purchaseOrder?: string | null;
   amountConsumed: number;
   reversed: boolean;

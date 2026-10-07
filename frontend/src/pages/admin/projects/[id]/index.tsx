@@ -121,13 +121,9 @@ export default function ProjectDetail() {
     // CustomerSearch only ever reads `.name`/`._id` off this object - the populated customer
     // sub-document here carries fewer fields than the full Customer type, which is fine at runtime.
     setCustomer((project.customer as unknown as Customer) || null);
-<<<<<<< HEAD
     setAverageCostLines(
       (project.averageCostLines || []).filter((l) => l.account).map((l) => ({ account: l.account!._id, amount: l.amount })),
     );
-=======
-    setAverageCostLines((project.averageCostLines || []).map((l) => ({ account: l.account._id, amount: l.amount })));
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     setEditing(true);
   }
 
@@ -180,7 +176,6 @@ export default function ProjectDetail() {
       }}
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-<<<<<<< HEAD
         {/* The project's persisted, unique business identifier (Project.projectNumber) - the same
             number shown on every Sales/Purchase Order and Journal Entry linked to this project. */}
         <SummaryCard
@@ -188,8 +183,6 @@ export default function ProjectDetail() {
           value={<span className="font-mono tracking-wide text-cyan-700">{project.projectNumber || "-"}</span>}
         />
         <SummaryCard label={translate("Project Name", "اسم المشروع")} value={project.name || "-"} />
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         {/* contractValue/remainingMoney can be missing on a project created before the
             projectAmount->contractValue rename that hasn't been through
             migrateProjectFieldRenames.js yet - shown as "-", never fabricated as 0 (that would
@@ -342,11 +335,7 @@ export default function ProjectDetail() {
                   {project.averageCostLines.map((line, i) => (
                     <Table.Tr key={i}>
                       <Table.Td>
-<<<<<<< HEAD
                         {line.account ? `${line.account.code} - ${line.account.name}` : "-"}
-=======
-                        {line.account.code} - {line.account.name}
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                       </Table.Td>
                       <Table.Td>
                         {line.amount.toLocaleString()} {translations.currency}

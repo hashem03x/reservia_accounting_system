@@ -9,10 +9,7 @@ import { solidIcons } from "@/components/icons";
 import { Button, Table } from "@mantine/core";
 import { useOrder } from "../../../context";
 import AddPaymentModal from "./_components/add-payment-modal";
-<<<<<<< HEAD
 import { getOrderTotal } from "@/utils/helpers/order-totals";
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 export default function Payment() {
   const { translate, language, translations } = useLanguage();
@@ -43,11 +40,7 @@ export default function Payment() {
                     {order.remainingAmount.toFixed(2)} {translations.currency}
                   </Table.Td>
                   <Table.Td>
-<<<<<<< HEAD
                     {getOrderTotal(order).toFixed(2)} {translations.currency}
-=======
-                    {order.totalAmount.toFixed(2)} {translations.currency}
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                   </Table.Td>
                 </Table.Tr>
               </Table.Tbody>

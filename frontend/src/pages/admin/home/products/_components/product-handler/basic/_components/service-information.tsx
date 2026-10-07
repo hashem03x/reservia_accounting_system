@@ -1,22 +1,15 @@
-<<<<<<< HEAD
 import { useEffect } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import { durationUnitsArray, DurationUnit } from "@/utils/constants/product-types";
 import { ChartOfAccountRef } from "@/types/orders";
 import { Alert, NumberInput, Select } from "@mantine/core";
-=======
-import { useLanguage } from "@/context/LanguageContext";
-import { durationUnitsArray, DurationUnit } from "@/utils/constants/product-types";
-import { NumberInput, Select } from "@mantine/core";
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 import { useProduct } from "../../context";
 
 /** Service-only fields - shown instead of Category/Cost when type === "service" (see
  * docs/entities/products.md). Deliberately does NOT ask for stock quantity/warehouse/inventory -
  * a service has none of those. */
 export default function ServiceInformation() {
-<<<<<<< HEAD
   const { translate, language } = useLanguage();
   const { durationValue, setDurationValue, durationUnit, setDurationUnit, pucAccount, setPucAccount, readOnly, currentProduct } = useProduct();
 
@@ -36,14 +29,6 @@ export default function ServiceInformation() {
   return (
     <div className="product-details-box">
       <h3>{translate("Service Details", "تفاصيل الخدمة")}</h3>
-=======
-  const { translate } = useLanguage();
-  const { durationValue, setDurationValue, durationUnit, setDurationUnit, readOnly } = useProduct();
-
-  return (
-    <div className="product-details-box">
-      <h3>{translate("Service Duration", "مدة الخدمة")}</h3>
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
       <div className="flex flex-col gap-3 sm:flex-row">
         <NumberInput
           label={translate("Duration", "المدة")}
@@ -68,7 +53,6 @@ export default function ServiceInformation() {
           disabled={readOnly}
         />
       </div>
-<<<<<<< HEAD
 
       <Select
         mt="sm"
@@ -98,8 +82,6 @@ export default function ServiceInformation() {
           )}
         </Alert>
       )}
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     </div>
   );
 }

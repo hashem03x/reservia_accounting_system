@@ -18,10 +18,7 @@ import VendorWarehouseSection from "./_components/vendor-warehouse-section";
 import OrderItemsSection from "./_components/order-items-section";
 import PaymentAccountSelect from "@/components/global/payment-account-select";
 import OrderTaxSection from "@/components/global/order-tax-section";
-<<<<<<< HEAD
 import { calculateOrderTotals } from "@/utils/helpers/order-totals";
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const emptyOrderItem: OrderItemInput = {
   productCode: "",
@@ -50,13 +47,9 @@ export default function NewPurchaseOrder() {
   const [vatPercentage, setVatPercentage] = useState<string | number>(0);
   const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
 
-<<<<<<< HEAD
   // Preview only (the backend recomputes and stores every amount) - same canonical formula.
   const subtotal = items.reduce((acc, item) => acc + (item.starterSubtotal || 0), 0);
   const orderTotals = calculateOrderTotals(subtotal, vatPercentage, withholdingTaxPercentage);
-=======
-  const totalAmount = items.reduce((acc, item) => acc + item.starterSubtotal, 0);
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
   // No vendor<->project relationship exists in the data model (unlike Sales Order's customer
   // scoping) - every project is offered regardless of the selected vendor (docs section "Purchase
@@ -108,13 +101,8 @@ export default function NewPurchaseOrder() {
           project: project || undefined,
           paymentMethod: paymentMethod || undefined,
           paymentAccount: paymentMethod === "account" ? paymentAccount : undefined,
-<<<<<<< HEAD
           vatPercentage: Number(vatPercentage) || 0,
           withholdingTaxPercentage: Number(withholdingTaxPercentage) || 0,
-=======
-          vatPercentage,
-          withholdingTaxPercentage,
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
           items: filteredItems.map((item) => ({
             productId: item.productData?._id,
             unitPrice: item.unitPrice,
@@ -156,7 +144,6 @@ export default function NewPurchaseOrder() {
       )}
 
       {/* Total Amount */}
-<<<<<<< HEAD
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs md:text-sm">
         <div className="flex items-center gap-1.5">
           <span className="text-gray-600">{translate("Order Total Amount", "اجمالى سعر الطلب")}:</span>
@@ -168,11 +155,6 @@ export default function NewPurchaseOrder() {
             <span className="text-gray-700">{`${subtotal.toFixed(2)} ${translations.currency}`}</span>
           </div>
         )}
-=======
-      <div className="flex items-center gap-1.5 text-xs md:text-sm">
-        <span className="text-gray-600">{translate("Order Total Amount", "اجمالى سعر الطلب")}:</span>
-        <span className="font-bold text-gray-800">{`${totalAmount.toFixed(2)} ${translations.currency}`}</span>
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
       </div>
 
       <hr />
@@ -224,11 +206,7 @@ export default function NewPurchaseOrder() {
       <hr />
 
       <OrderTaxSection
-<<<<<<< HEAD
         amount={subtotal}
-=======
-        amount={totalAmount}
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         vatPercentage={vatPercentage}
         setVatPercentage={setVatPercentage}
         withholdingTaxPercentage={withholdingTaxPercentage}

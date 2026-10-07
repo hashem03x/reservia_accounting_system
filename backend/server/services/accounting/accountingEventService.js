@@ -3,11 +3,7 @@ const mongoose = require('mongoose');
 const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { getNextJournalEntryNumber } = require('./journalEntryNumberService');
-<<<<<<< HEAD
 const { AutomaticJournalAccountCodes, CogsToWipAccountCodeMap, AccountingModuleByAction, isPucAccountEligible } = require('../../utils/accountingConstants');
-=======
-const { AutomaticJournalAccountCodes, CogsToWipAccountCodeMap, AccountingModuleByAction } = require('../../utils/accountingConstants');
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 const ApiError = require('../../utils/apiError');
 
 // The automatic accounting engine - see docs/entities/automatic-accounting.md and
@@ -102,7 +98,6 @@ async function resolveCustomerNumber(customerRef, { required = true } = {}, sess
  * of the business operation - see journalEntryModel.js's compound unique index, which is the real
  * backstop against a race duplicating this under concurrent requests).
  */
-<<<<<<< HEAD
 async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, project, lines, session, triggeredBySalesOrder, advancedPayment }) {
   const existing = await JournalEntry.findOne({ sourceType, sourceId, accountingAction }).session(session || null);
   if (existing) return existing;
@@ -115,12 +110,6 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
     throw new ApiError(`Automatic accounting (${accountingAction}): journal entry is not balanced (debit ${totalDebit} != credit ${totalCredit}). Posting aborted.`, 500);
   }
 
-=======
-async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, project, lines, session, triggeredBySalesOrder }) {
-  const existing = await JournalEntry.findOne({ sourceType, sourceId, accountingAction }).session(session || null);
-  if (existing) return existing;
-
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   const entryNumber = await getNextJournalEntryNumber(session);
   const [entry] = await JournalEntry.create(
     [
@@ -141,13 +130,10 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
         // Order (docs section "Sales Order Source Link") - every other automatic entry leaves this
         // null, since its own sourceType/sourceId already is the real link.
         triggeredBySalesOrder: triggeredBySalesOrder || null,
-<<<<<<< HEAD
         // Persisted link to the Advanced Payment this entry belongs to (its own creation entry, or
         // an entry that consumed it) - what the Advanced Payment details page lists, never a text
         // match. Null for every entry unrelated to an advance.
         advancedPayment: advancedPayment?._id || advancedPayment || null,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         status: 'posted',
         lines,
       },
@@ -184,10 +170,7 @@ async function postAdvancePaymentReceivedCustomerJE(advancedPayment, session) {
     date: advancedPayment.createdAt || new Date(),
     description: `Customer advance payment received${advancedPayment.reference ? ` - ${advancedPayment.reference}` : ''}`,
     project: projectId,
-<<<<<<< HEAD
     advancedPayment: advancedPayment._id,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     lines: [
       { account: paymentAccountId, debit: advancedPayment.amount, credit: 0, project: projectId },
       {
@@ -226,10 +209,7 @@ async function postAdvancePaymentPaidVendorJE(advancedPayment, session) {
     date: advancedPayment.createdAt || new Date(),
     description: `Vendor advance payment paid${advancedPayment.reference ? ` - ${advancedPayment.reference}` : ''}`,
     project: projectId,
-<<<<<<< HEAD
     advancedPayment: advancedPayment._id,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     lines: [
       {
         account: advanceToSuppliersId,
@@ -260,7 +240,6 @@ async function postAdvancedPaymentJournalEntry(advancedPayment, session) {
 // ---------------------------------------------------------------------------
 
 /**
-<<<<<<< HEAD
  * Resolves, for every SERVICE line of a Purchase Order, the PUC account its cost must be posted
  * to - read from the Service record itself (Product.pucAccount), never from the request, never a
  * hardcoded/fallback account. Throws a clear 400 (and so aborts the whole PO transaction) when a
@@ -291,15 +270,12 @@ async function resolveServicePucAccounts(serviceProducts, session) {
 }
 
 /**
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
  * PO_INVENTORY_RECEIPT + PO_INVENTORY_TO_WIP (JV003) for physical-product items, and
  * PO_SERVICE_TO_WIP (JV006/JV008) for service items. Called once, right after a Purchase Order is
  * saved (and, for product items, after applyPurchaseToProducts has run) - inside the same session.
  *
  * A single PO can mix product and service lines; each kind is posted as its own independent set of
  * JEs, grouped by accounting action, never merged.
-<<<<<<< HEAD
  *
  *   PRODUCT lines: Dr Materials Inventory (+ Dr Input VAT) / Cr Suppliers (+ Cr WHT Payable), then
  *                  (with a project) Dr WIP Raw Materials / Cr Materials Inventory - unchanged.
@@ -309,8 +285,6 @@ async function resolveServicePucAccounts(serviceProducts, session) {
  * VAT/Withholding are split between the product and service portions in proportion to their
  * subtotals, with the service side taking the exact remainder - so the Suppliers credits of the two
  * entries always add up to the order's Total Amount (grandTotal) to the cent.
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
  */
 async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
   const Product = require('../../models/inventory/productModel'); // eslint-disable-line global-require
@@ -319,7 +293,6 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
 
   // A Purchase Order always has a vendor (schema-required) - resolved ONCE here and stamped onto
   // every control-account (Suppliers) line below, never a second lookup per line (docs section
-<<<<<<< HEAD
   // "Vendor Sub Account"). The PO "Supplier" is this Vendor; its Vendor Number is its Sub Account.
   const vendorNumber = await resolveVendorNumber(purchaseOrder.vendorId, { required: true }, session);
 
@@ -361,29 +334,6 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
   // A zero-value portion (e.g. fully discounted lines) has nothing to post - a 0-amount journal line
   // is invalid by definition (journalLineSchema), so it is skipped rather than erroring.
   if (physicalItems.length > 0 && physicalSubtotal > 0) {
-=======
-  // "Vendor Sub Account").
-  const vendorNumber = await resolveVendorNumber(purchaseOrder.vendorId, { required: true }, session);
-
-  const productIds = [...new Set(purchaseOrder.items.map(i => (i.productId?._id || i.productId).toString()))];
-  const products = await Product.find({ _id: { $in: productIds } }).session(session || null).lean();
-  const typeById = new Map(products.map(p => [p._id.toString(), p.type]));
-
-  const physicalItems = purchaseOrder.items.filter(i => typeById.get((i.productId?._id || i.productId).toString()) !== 'service');
-  const serviceItems = purchaseOrder.items.filter(i => typeById.get((i.productId?._id || i.productId).toString()) === 'service');
-
-  const totalForTax = purchaseOrder.totalAmount || 0;
-  const physicalSubtotal = round2(physicalItems.reduce((s, i) => s + (i.subtotal || 0), 0));
-  const serviceSubtotal = round2(serviceItems.reduce((s, i) => s + (i.subtotal || 0), 0));
-  // VAT/Withholding are computed on the PO's full totalAmount - allocated proportionally between
-  // the physical and service portions for a mixed PO, so a mixed PO doesn't silently misattribute
-  // tax to only one side.
-  const physicalShare = totalForTax > 0 ? physicalSubtotal / totalForTax : 0;
-  const physicalVat = round2((purchaseOrder.vatAmount || 0) * physicalShare);
-  const physicalWht = round2((purchaseOrder.withholdingTaxAmount || 0) * physicalShare);
-
-  if (physicalItems.length > 0) {
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     const [inventoryId, inputVatId, suppliersId, whtPayableId] = await Promise.all([
       getAccountIdByCode(AutomaticJournalAccountCodes.materialsInventory, session),
       getAccountIdByCode(AutomaticJournalAccountCodes.inputVat, session),
@@ -430,37 +380,16 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
     }
   }
 
-<<<<<<< HEAD
   if (serviceItems.length > 0 && serviceSubtotal > 0) {
     // One debit line per distinct PUC account (two services sharing a PUC account are summed).
     const byPucAccount = new Map();
     for (const item of serviceItems) {
       const key = pucByProductId.get(productIdOf(item)).toString();
       byPucAccount.set(key, round2((byPucAccount.get(key) || 0) + (item.subtotal || 0)));
-=======
-  if (serviceItems.length > 0) {
-    // Project is mandatory for every Purchase Order (salesOrderModel.js's sibling `isNew` backstop
-    // on purchaseOrder.js) - a service item reaching this point with no project would mean that
-    // invariant was somehow bypassed. Fail loudly rather than silently skipping the WIP posting
-    // (docs section "Do not silently continue if the source document has no Project").
-    if (!projectId) {
-      throw new ApiError('Project is required for this automatic Journal Entry (Purchase Order service cost posting).', 400);
-    }
-
-    const byCostAccount = new Map();
-    for (const item of serviceItems) {
-      const costAccountId = item.costAccount?._id || item.costAccount;
-      if (!costAccountId) {
-        throw new ApiError('Each service item on a Purchase Order with a project must have a cost (WIP) account selected.', 400);
-      }
-      const key = costAccountId.toString();
-      byCostAccount.set(key, round2((byCostAccount.get(key) || 0) + (item.subtotal || 0)));
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     }
 
     const suppliersId = await getAccountIdByCode(AutomaticJournalAccountCodes.suppliers, session);
     const lines = [];
-<<<<<<< HEAD
     for (const [pucAccountId, amount] of byPucAccount) {
       if (amount > 0) lines.push({ account: pucAccountId, debit: amount, credit: 0, project: projectId });
     }
@@ -476,12 +405,6 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
       const whtPayableId = await getAccountIdByCode(AutomaticJournalAccountCodes.withholdingTaxPayable, session);
       lines.push({ account: whtPayableId, debit: 0, credit: serviceWht, project: projectId });
     }
-=======
-    for (const [costAccountId, amount] of byCostAccount) {
-      lines.push({ account: costAccountId, debit: amount, credit: 0, project: projectId });
-    }
-    lines.push({ account: suppliersId, debit: 0, credit: serviceSubtotal, project: projectId, partyNumber: vendorNumber, partyType: 'vendor' });
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
     entries.push(
       await postAutomaticJournalEntry({
@@ -519,10 +442,7 @@ async function postPurchaseOrderAdvanceAppliedJE(purchaseOrder, consumedAmount, 
     date: new Date(),
     description: `Vendor advance applied against supplier payable - PO ${purchaseOrder.code || purchaseOrder._id}`,
     project: projectId,
-<<<<<<< HEAD
     advancedPayment: purchaseOrder.advancedPayment || null,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     lines: [
       { account: suppliersId, debit: consumedAmount, credit: 0, project: projectId, partyNumber: vendorNumber, partyType: 'vendor' },
       { account: advanceToSuppliersId, debit: 0, credit: consumedAmount, project: projectId },
@@ -536,7 +456,6 @@ async function postPurchaseOrderAdvanceAppliedJE(purchaseOrder, consumedAmount, 
 // ---------------------------------------------------------------------------
 
 /**
-<<<<<<< HEAD
  * The Description of a journal entry created by an Add Payment: exactly what the user typed into
  * the payment's Notes field. Only when Notes is empty/blank does the entry fall back to the
  * system's default description for that kind of payment - never "undefined"/"null" text.
@@ -548,8 +467,6 @@ function paymentJournalDescription(payment, fallback) {
 }
 
 /**
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
  * PO_PAYMENT_RECORDED (JV005/007/009): Dr Suppliers, Cr Cash/Bank (payment.paymentAccount).
  * No-ops if the payment has no paymentAccount (a legacy string paymentMethod payment has no real
  * ChartOfAccount to post to - posting would require fabricating a mapping, which is not done).
@@ -570,11 +487,7 @@ async function postPurchasePaymentRecordedJE(payment, projectId, session) {
     sourceType: 'PAYMENT',
     sourceId: payment._id,
     date: payment.createdAt || new Date(),
-<<<<<<< HEAD
     description: paymentJournalDescription(payment, 'Supplier payment'),
-=======
-    description: `Supplier payment${payment.notes ? ` - ${payment.notes}` : ''}`,
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     project: projectId || null,
     lines: [
       { account: suppliersId, debit: payment.amountPaid, credit: 0, project: projectId || null, partyNumber: vendorNumber, partyType: 'vendor' },
@@ -603,11 +516,7 @@ async function postSalesPaymentRecordedJE(payment, projectId, session) {
     sourceType: 'PAYMENT',
     sourceId: payment._id,
     date: payment.createdAt || new Date(),
-<<<<<<< HEAD
     description: paymentJournalDescription(payment, 'Customer payment'),
-=======
-    description: `Customer payment${payment.notes ? ` - ${payment.notes}` : ''}`,
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     project: projectId || null,
     lines: [
       { account: paymentAccountId, debit: payment.amountPaid, credit: 0, project: projectId || null },
@@ -643,14 +552,9 @@ async function postPaymentCustomerAdvanceAppliedJE(payment, consumedAmount, proj
     sourceType: 'PAYMENT',
     sourceId: payment._id,
     date: payment.createdAt || new Date(),
-<<<<<<< HEAD
     description: paymentJournalDescription(payment, 'Customer advance applied via payment against accounts receivable'),
     project: projectId || null,
     advancedPayment: payment.advancedPayment || null,
-=======
-    description: `Customer advance applied via payment against accounts receivable${payment.notes ? ` - ${payment.notes}` : ''}`,
-    project: projectId || null,
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     lines: [
       {
         account: customerAdvancesPayableId,
@@ -686,14 +590,9 @@ async function postPaymentVendorAdvanceAppliedJE(payment, consumedAmount, projec
     sourceType: 'PAYMENT',
     sourceId: payment._id,
     date: payment.createdAt || new Date(),
-<<<<<<< HEAD
     description: paymentJournalDescription(payment, 'Vendor advance applied via payment against supplier payable'),
     project: projectId || null,
     advancedPayment: payment.advancedPayment || null,
-=======
-    description: `Vendor advance applied via payment against supplier payable${payment.notes ? ` - ${payment.notes}` : ''}`,
-    project: projectId || null,
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     lines: [
       { account: suppliersId, debit: consumedAmount, credit: 0, project: projectId || null, partyNumber: vendorNumber, partyType: 'vendor' },
       { account: advanceToSuppliersId, debit: 0, credit: consumedAmount, project: projectId || null },
@@ -725,10 +624,7 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
     date: new Date(),
     description: `Customer advance applied against accounts receivable - SO ${salesOrder.code || salesOrder._id}`,
     project: projectId,
-<<<<<<< HEAD
     advancedPayment: salesOrder.advancedPayment || null,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     lines: [
       {
         account: customerAdvancesPayableId,
@@ -776,7 +672,6 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
   // weighted-average VAT%/Withholding% across the SAME Sales Orders is what lets that exact amount
   // carry a proportionally correct tax effect, rather than silently posting none at all (the
   // engine's previous behavior).
-<<<<<<< HEAD
   //
   // When a specific Sales Order triggered this recognition (the normal case - see
   // projectAccountingService.js#recalculateExecutedPercentage), the recognized slice IS that
@@ -806,17 +701,6 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
     vatRatio = totalPreTax > 0 ? (taxTotals.totalVat || 0) / totalPreTax : 0;
     whtRatio = totalPreTax > 0 ? (taxTotals.totalWht || 0) / totalPreTax : 0;
   }
-=======
-  const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
-  const [taxTotals] = await SalesOrder.aggregate([
-    { $match: { project: project._id, orderStatus: { $ne: 'canceled' } } },
-    { $group: { _id: null, totalAmount: { $sum: '$totalAmount' }, totalVat: { $sum: '$vatAmount' }, totalWht: { $sum: '$withholdingTaxAmount' } } },
-  ]).session(session || null);
-
-  const totalPreTax = taxTotals?.totalAmount || 0;
-  const vatRatio = totalPreTax > 0 ? (taxTotals.totalVat || 0) / totalPreTax : 0;
-  const whtRatio = totalPreTax > 0 ? (taxTotals.totalWht || 0) / totalPreTax : 0;
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   const deltaVat = round2(deltaAmount * vatRatio);
   const deltaWht = round2(deltaAmount * whtRatio);
   // The receivable side nets exactly like SalesOrder.grandTotal does (totalAmount + vatAmount -
@@ -947,10 +831,7 @@ module.exports = {
   resolveVendorNumber,
   resolveCustomerNumber,
   postAutomaticJournalEntry,
-<<<<<<< HEAD
   paymentJournalDescription,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   postAdvancedPaymentJournalEntry,
   postPurchaseOrderJournalEntries,
   postPurchaseOrderAdvanceAppliedJE,

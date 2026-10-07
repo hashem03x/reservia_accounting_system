@@ -6,10 +6,7 @@ import { solidIcons } from "@/components/icons";
 import PrintDocument from "@/components/ui/print-document";
 import { useOrder } from "../../../../../../context";
 import useWarehouseHelpers from "@/hooks/useWarehouseHelpers";
-<<<<<<< HEAD
 import { getOrderTotal } from "@/utils/helpers/order-totals";
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const receiptPadding = 2.5;
 const separatorHeight = 7.5;
@@ -64,12 +61,8 @@ export default function PrintReceipt() {
   const discount = totalSales - order.totalAmountPlusShipping;
   const netSales = order.totalAmountPlusShipping;
   const totalPaidAmount = order.paidAmount + (order.shippingCostPaid ? order.shippingCost : 0);
-<<<<<<< HEAD
   // Remaining is measured against the Order Total Amount (incl. VAT) + shipping, not the pre-tax net.
   const totalRemainingAmount = getOrderTotal(order) + (order.shippingCost || 0) - totalPaidAmount;
-=======
-  const totalRemainingAmount = order.totalAmountPlusShipping - totalPaidAmount;
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
   return (
     <PrintDocument

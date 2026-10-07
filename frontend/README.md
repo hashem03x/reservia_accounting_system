@@ -16,11 +16,15 @@ breakdowns, inventory summaries, and more).
 
 ## Getting started
 
-```bash
+```powershell
 npm install
-cp .env.example .env   # fill in VITE_API_URL and VITE_ABOUT_ID at minimum
-npm run dev
+Copy-Item .env.example .env.local   # bash: cp .env.example .env.local
+npm run dev                         # http://localhost:5173
 ```
+
+The template's `VITE_API_URL` (`http://localhost:5000/api/v1`) already targets a locally running
+backend. See [../docs/LOCAL_DEVELOPMENT.md](../docs/LOCAL_DEVELOPMENT.md) for the full local setup
+(backend, MongoDB, first admin user).
 
 See [.env.example](.env.example) for every environment variable this app reads, and
 [../docs/environment-variables.md](../docs/environment-variables.md) for the full audit

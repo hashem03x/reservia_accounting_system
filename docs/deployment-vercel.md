@@ -114,7 +114,7 @@ pattern used for MongoDB-on-serverless generally. Cold starts still pay the conn
 the previous behavior) and not `'*'`:
 
 ```js
-const allowedOrigins = [FRONTEND_URL, 'http://localhost:5173', 'http://localhost:3000'];
+const allowedOrigins = [FRONTEND_URL, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'];
 ```
 
 This matters because auth uses cross-site cookies (`sameSite: 'none'`, `secure: true` in

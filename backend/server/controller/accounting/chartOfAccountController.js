@@ -1,23 +1,13 @@
 const asyncHandler = require('express-async-handler');
-<<<<<<< HEAD
-=======
-const factory = require('../handlersFactory');
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const Project = require('../../models/project/projectModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
-<<<<<<< HEAD
 const ApiFeatures = require('../../utils/apiFeatures');
 const { getAccountBalance, getTrialBalance } = require('../../services/accounting/generalLedgerService');
 const { getNextSortOrder } = require('../../services/accounting/chartOfAccountOrderingService');
 const { CashEquivalentParentGroupName, isPucAccountEligible } = require('../../utils/accountingConstants');
 const { ACCOUNT_CODE_COLLATION, ACCOUNT_CODE_SORT } = require('../../utils/accountCodeSort');
-=======
-const { getAccountBalance, getTrialBalance } = require('../../services/accounting/generalLedgerService');
-const { getNextSortOrder } = require('../../services/accounting/chartOfAccountOrderingService');
-const { CashEquivalentParentGroupName } = require('../../utils/accountingConstants');
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const createAccount = asyncHandler(async (req, res, next) => {
   try {
@@ -42,7 +32,6 @@ const createAccount = asyncHandler(async (req, res, next) => {
   }
 });
 
-<<<<<<< HEAD
 // Not factory.getAll(): the Chart of Accounts is ALWAYS ordered by account number (code)
 // ascending, compared numerically ("2" < "10" < "100"), regardless of any client `sort` param -
 // a plain string sort, sortOrder, name, type or createdAt must never decide the order. Filtering,
@@ -63,9 +52,6 @@ const getAccounts = asyncHandler(async (req, res) => {
 
   res.status(200).json({ results: accounts.length, paginationResult: features.paginationResult, data: accounts });
 });
-=======
-const getAccounts = factory.getAll(ChartOfAccount, 'ChartOfAccount');
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 // Not factory.getOne() - also reports whether this account is referenced by any Project's Average
 // Cost lines (see projectModel.js#averageCostLines), so the UI can warn before an admin deactivates
@@ -87,11 +73,7 @@ const getAccount = asyncHandler(async (req, res, next) => {
 // calls this instead of implementing its own eligibility logic, so frontend and backend can never
 // disagree about which accounts qualify.
 const getCogsEligibleAccounts = asyncHandler(async (req, res) => {
-<<<<<<< HEAD
   const accounts = await ChartOfAccount.find({ type: 'cogs', isActive: true }).sort(ACCOUNT_CODE_SORT).collation(ACCOUNT_CODE_COLLATION);
-=======
-  const accounts = await ChartOfAccount.find({ type: 'cogs', isActive: true }).sort({ sortOrder: 1, code: 1 });
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   res.status(200).json(apiResponse('Eligible average-cost accounts retrieved successfully', true, accounts));
 });
 
@@ -105,7 +87,6 @@ const getCashEquivalentAccounts = asyncHandler(async (req, res) => {
     type: 'asset',
     isActive: true,
     $or: [{ parentGroupNameEn: CashEquivalentParentGroupName }, { state: { $in: ['cash', 'cash-equivalent'] } }],
-<<<<<<< HEAD
   })
     .sort(ACCOUNT_CODE_SORT)
     .collation(ACCOUNT_CODE_COLLATION);
@@ -121,12 +102,6 @@ const getPucEligibleAccounts = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Eligible PUC accounts retrieved successfully', true, assets.filter(isPucAccountEligible)));
 });
 
-=======
-  }).sort({ sortOrder: 1, code: 1 });
-  res.status(200).json(apiResponse('Eligible payment-method accounts retrieved successfully', true, accounts));
-});
-
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 const updateAccount = asyncHandler(async (req, res, next) => {
   try {
     // sortOrder is never editable through this endpoint - see chartOfAccountOrderingService.js.
@@ -179,8 +154,5 @@ module.exports = {
   getTrialBalanceHandler,
   getCogsEligibleAccounts,
   getCashEquivalentAccounts,
-<<<<<<< HEAD
   getPucEligibleAccounts,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 };

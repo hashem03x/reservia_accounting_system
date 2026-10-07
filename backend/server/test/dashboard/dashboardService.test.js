@@ -110,11 +110,7 @@ test('projects.executedPercentage is 0 (never NaN/Infinity) when there are no ac
   assert.ok(Number.isFinite(summary.projects.executedPercentage));
 });
 
-<<<<<<< HEAD
 test('sales.total uses each order\'s final Total Amount (incl. VAT) and excludes canceled orders', async () => {
-=======
-test('sales.total uses the pre-tax totalAmount and excludes canceled orders', async () => {
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   const project = await Project.create({
     projectNumber: `DASH-SO-${Date.now()}`,
     projectManager: manager._id,
@@ -129,7 +125,6 @@ test('sales.total uses the pre-tax totalAmount and excludes canceled orders', as
   await canceledOrder.save();
 
   const summary = await getDashboardSummaryData();
-<<<<<<< HEAD
   // 200,000 subtotal + 28,000 VAT = 228,000 Total Amount; the canceled order's 999,999 is excluded.
   assert.equal(summary.sales.total, 228000);
   assert.equal(summary.sales.count, 1);
@@ -174,13 +169,6 @@ test('purchases.total uses each Purchase Order\'s final Total Amount (incl. VAT,
   assert.equal(summary.purchases.total, 113000);
 });
 
-=======
-  // 200,000 pre-tax - the order's own VAT (28,000) and the canceled order's 999,999 must both be excluded.
-  assert.equal(summary.sales.total, 200000);
-  assert.equal(summary.sales.count, 1);
-});
-
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 test('purchases.total sums every Purchase Order (no cancellation concept exists for POs today)', async () => {
   const project = await Project.create({
     projectNumber: `DASH-PO-${Date.now()}`,

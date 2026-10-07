@@ -1,20 +1,13 @@
 const { check } = require('express-validator');
-<<<<<<< HEAD
 const mongoose = require('mongoose');
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const Category = require('../../models/categoryModel');
 const Product = require('../../models/inventory/productModel')
 const SubCategory = require('../../models/subCategoryModel');
-<<<<<<< HEAD
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { validateProductTypeFields } = require('../productTypeValidation');
 const { isPucAccountEligible } = require('../accountingConstants');
-=======
-const { validateProductTypeFields } = require('../productTypeValidation');
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 // A product's `type` decides which fields below are actually required - validateProductTypeFields
 // (see utils/productTypeValidation.js) is the single source of truth for that branching, shared by
@@ -27,18 +20,14 @@ function validateTypeSpecificFields(value, { req }) {
     subcategory: req.body.subcategory,
     durationValue: req.body.durationValue,
     durationUnit: req.body.durationUnit,
-<<<<<<< HEAD
     pucAccount: req.body.pucAccount,
     // Every NEW service must have its PUC account (see productModel.js#pucAccount).
     requirePucAccount: true,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   });
   if (error) throw new Error(error);
   return true;
 }
 
-<<<<<<< HEAD
 // Fast pre-check of a submitted PUC account against the one shared eligibility rule
 // (accountingConstants.js#isPucAccountEligible) - productModel.js's pre('save') hook is the real
 // backstop for saves; this is the ONLY check on updates, since updateProduct uses
@@ -53,8 +42,6 @@ async function validatePucAccountReference(value) {
   return true;
 }
 
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 exports.createProductValidator = [
   check('title').custom((value, { req }) => {
     req.body.createdBy = req.user._id;
@@ -106,10 +93,7 @@ exports.createProductValidator = [
     }),
 
   check('brand').optional().isMongoId().withMessage('Invalid brand id formate'),
-<<<<<<< HEAD
   check('pucAccount').optional({ checkFalsy: true }).custom(validatePucAccountReference),
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   check('capacity.value').optional({ nullable: true }).isNumeric().withMessage('Capacity value must be a number'),
   check('capacity.unit').optional({ nullable: true }).isString().withMessage('Capacity unit must be a string'),
   check('ratingAverage')
@@ -154,7 +138,6 @@ exports.updateProductValidator = [
     }),
   check('durationValue').optional().isFloat({ gt: 0 }).withMessage('durationValue must be a positive number'),
   check('durationUnit').optional().isIn(['month']).withMessage('durationUnit must be "month"'),
-<<<<<<< HEAD
   // A service must always end up with a PUC account. An update that sends one validates it; an
   // update that sends none is only accepted if the stored service already has one (a legacy service
   // created before this field existed must get one the next time it is edited). A non-service can
@@ -170,8 +153,6 @@ exports.updateProductValidator = [
     if (!stored?.pucAccount) throw new Error('A service requires a PUC account');
     return true;
   }),
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     check('priceAfterDiscount')
     .optional()
     .custom(async (value, { req }) => {

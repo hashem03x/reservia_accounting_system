@@ -21,13 +21,10 @@ export type Product = {
   // Service-only fields - absent/meaningless when type === "product".
   durationValue?: number;
   durationUnit?: "month";
-<<<<<<< HEAD
   // Service-only: the PUC (Projects Under Construction) Chart of Accounts account a purchase of this
   // service posts to. Populated object from the API; null/absent for a service created before this
   // field existed (it must be set before the service can be purchased).
   pucAccount?: { _id: string; code: string; name: string; nameAr?: string | null } | string | null;
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   price: number; // Also doubles as the service's selling price when type === "service".
   priceAfterDiscount: number | null;
   isDeleted: boolean;

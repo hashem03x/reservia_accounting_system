@@ -2,10 +2,7 @@ const PurchaseOrder = require('../../models/vendor/purchaseOrder');
 const asyncHandler = require('express-async-handler');
 const exportToExcel = require('../../utils/exportToExcel');
 const ApiError = require('../../utils/apiError');
-<<<<<<< HEAD
 const { getOrderTotalAmount } = require('../../utils/orderTotals');
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 // Helper function to get sort configuration
 const getSortConfig = (sortBy, sortOrder) => {
@@ -13,13 +10,9 @@ const getSortConfig = (sortBy, sortOrder) => {
   const order = sortOrder === 'asc' ? 1 : -1;
 
   if (sortBy && validSortFields.includes(sortBy)) {
-<<<<<<< HEAD
     // 'totalAmount' (the report's "Total Amount" column) sorts by the order's final Total Amount -
     // grandTotal (subtotal + VAT - withholding), not the pre-tax subtotal field of the same name.
     return { [sortBy === 'totalAmount' ? 'grandTotal' : sortBy]: order };
-=======
-    return { [sortBy]: order };
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   }
   return { createdAt: -1 }; // default sort by creation date, newest first
 };
@@ -82,11 +75,7 @@ exports.getPurchaseOrderReport = asyncHandler(async (req, res) => {
 
 // =============================================================
 
-<<<<<<< HEAD
 exports.exportPurchaseOrderReportExcel = asyncHandler(async (req, res, next) => {
-=======
-exports.exportPurchaseOrderReportExcel = asyncHandler(async (req, res) => {
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   const { startDate, endDate, warehouseId, paymentStatus, sortBy, sortOrder } = req.query;
 
   const query = {};
@@ -135,17 +124,10 @@ exports.exportPurchaseOrderReportExcel = asyncHandler(async (req, res) => {
   // Transform data
   const data = purchaseOrders.map(order => [
     order._id.toString(),
-<<<<<<< HEAD
     order.warehouseId?.name || '',
     order.vendorId?.name || '',
     order.paymentStatus,
     getOrderTotalAmount(order),
-=======
-    order.warehouseId.name,
-    order.vendorId.name,
-    order.paymentStatus,
-    order.totalAmount,
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     order.paidAmount,
     order.remainingAmount,
     order.createdAt
@@ -153,11 +135,7 @@ exports.exportPurchaseOrderReportExcel = asyncHandler(async (req, res) => {
 
   // Calculate totals
   const totals = purchaseOrders.reduce((acc, order) => ({
-<<<<<<< HEAD
     totalAmount: (acc.totalAmount || 0) + getOrderTotalAmount(order),
-=======
-    totalAmount: (acc.totalAmount || 0) + (order.totalAmount || 0),
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     paidAmount: (acc.paidAmount || 0) + (order.paidAmount || 0),
     remainingAmount: (acc.remainingAmount || 0) + (order.remainingAmount || 0)
   }), {});

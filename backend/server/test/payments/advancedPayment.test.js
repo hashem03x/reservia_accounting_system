@@ -393,7 +393,17 @@ test('createSalesOrder with paymentMethod "advanced_payment": amount is derived 
   if (!transactionsSupported) return t.skip('local MongoDB is a standalone instance, not a replica set - transactions unavailable (verified separately against the real Atlas cluster)');
 
   const warehouse = await Warehouse.create({ name: 'Main Warehouse', location: 'Cairo' });
-  const service = await Product.create({ type: 'service', title: { en: 'Consulting', ar: 'استشارات' }, description: { en: 'd', ar: 'د' }, price: 999999, durationValue: 1, durationUnit: 'month' });
+  // createSalesOrder posts real automatic journal entries (SO_CUSTOMER_ADVANCE_APPLIED, then
+  // PROJECT_REVENUE_RECOGNITION as executed % rises) - the engine never invents accounts, so the
+  // control accounts it looks up by code must exist.
+  const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
+  await ChartOfAccount.create([
+    { code: AutomaticJournalAccountCodes.customerAdvancesPayable, name: 'Advance Payments from Customers', type: 'liability' },
+    { code: AutomaticJournalAccountCodes.accountsReceivableProjects, name: 'Accounts Receivable (Projects)', type: 'asset' },
+    { code: AutomaticJournalAccountCodes.revenue, name: 'Revenue', type: 'revenue' },
+  ]);
+  // Catalog price is capped at 250,000 (productModel.js) - the manipulated 999999 is sent on the ORDER LINE below.
+  const service = await Product.create({ type: 'service', title: { en: 'Consulting', ar: 'استشارات' }, description: { en: 'd', ar: 'د' }, price: 250000, durationValue: 1, durationUnit: 'month' });
 
   await AdvancedPayment.create({ type: 'customer', customer: customerA._id, project: projectA._id, amount: 50000, paymentAccount: cashAccount._id, createdBy: manager._id });
 
@@ -419,7 +429,8 @@ test('createSalesOrder with paymentMethod "advanced_payment": amount is derived 
   const advance = await AdvancedPayment.findOne({ customer: customerA._id, project: projectA._id });
   assert.equal(advance.remainingAmount, 0);
   assert.equal(advance.status, 'fully_used');
-  assert.equal(advance.usageHistory[0].salesOrder.toString(), salesOrder._id.toString());
+  // AdvancedPayment's find hook populates usageHistory.salesOrder - compare ids, not the document.
+  assert.equal(advance.usageHistory[0].salesOrder._id.toString(), salesOrder._id.toString());
 
   // A second attempt for the same customer+project must now fail - there is nothing left to spend.
   await assert.rejects(

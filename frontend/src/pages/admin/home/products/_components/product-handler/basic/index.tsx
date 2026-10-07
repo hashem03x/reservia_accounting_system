@@ -16,11 +16,7 @@ import CapacityInformation from "./_components/capacity-information";
 import InventoryInformation from "./_components/inventory-information";
 import DeleteProductModal from "./_components/delete-product-modal";
 import validation from "./_utils/validation";
-<<<<<<< HEAD
 import { getPucAccountId, useProduct } from "../context";
-=======
-import { useProduct } from "../context";
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 export default function ProductBasicInfo() {
   const { language, translate } = useLanguage();
@@ -29,11 +25,8 @@ export default function ProductBasicInfo() {
     type,
     durationValue,
     durationUnit,
-<<<<<<< HEAD
     pucAccount,
     setPucAccount,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     titleEn,
     titleAr,
     descriptionEn,
@@ -84,10 +77,7 @@ export default function ProductBasicInfo() {
           capacity,
           durationValue,
           durationUnit,
-<<<<<<< HEAD
           pucAccount,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         },
         language,
       );
@@ -111,11 +101,8 @@ export default function ProductBasicInfo() {
         // A service has no cost/category/subcategory/stock - see docs/entities/products.md.
         formData.append("durationValue", durationValue.toString());
         formData.append("durationUnit", durationUnit);
-<<<<<<< HEAD
         // The Service's PUC account - Purchase Orders post this service's cost to it.
         if (pucAccount) formData.append("pucAccount", pucAccount);
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
       } else {
         formData.append("cost", cost.toString());
         formData.append("category", category as string);
@@ -138,10 +125,7 @@ export default function ProductBasicInfo() {
       });
 
       setCurrentProduct(response.data);
-<<<<<<< HEAD
       setPucAccount(getPucAccountId(response.data));
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
       setSku(response.data.sku || "");
       setBarcode(response.data.barcode || ""); // Reflects the server-generated default when left empty
       setStock(response.data.stock ? JSON.parse(JSON.stringify(response.data.stock)) : []);
@@ -178,13 +162,9 @@ export default function ProductBasicInfo() {
       (capacity.value?.toString() || "") !== (currentProduct.capacity?.value?.toString() || "") ||
       capacity.unit !== (currentProduct.capacity?.unit || "") ||
       (productIsService
-<<<<<<< HEAD
         ? durationValue !== currentProduct.durationValue ||
           durationUnit !== currentProduct.durationUnit ||
           pucAccount !== getPucAccountId(currentProduct)
-=======
-        ? durationValue !== currentProduct.durationValue || durationUnit !== currentProduct.durationUnit
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         : cost !== currentProduct.cost ||
           category !== currentProduct.category ||
           subcategory !== currentProduct.subcategory ||

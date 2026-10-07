@@ -2,13 +2,10 @@ const asyncHandler = require('express-async-handler');
 const Vendor = require('../../models/vendor/vendor');
 const exportToExcel = require('../../utils/exportToExcel');
 const ApiError = require('../../utils/apiError');
-<<<<<<< HEAD
 const { orderTotalAmountExpr } = require('../../utils/orderTotals');
 
 // Each order's final Total Amount (subtotal + VAT - withholding) - see utils/orderTotals.js.
 const PURCHASE_ORDERS_TOTAL_AMOUNT = { $sum: { $map: { input: '$purchaseOrders', as: 'o', in: orderTotalAmountExpr('$$o.') } } };
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 // Helper function to get sort configuration
 const getSortConfig = (sortBy, sortOrder) => {
@@ -43,11 +40,7 @@ exports.getVendorReport = asyncHandler(async (req, res) => {
 		{
 			$addFields: {
 				totalOrders: { $size: '$purchaseOrders' },
-<<<<<<< HEAD
 				totalOrdersAmount: PURCHASE_ORDERS_TOTAL_AMOUNT,
-=======
-				totalOrdersAmount: { $sum: '$purchaseOrders.totalAmount' },
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 				totalPaidAmount: { $sum: '$purchaseOrders.paidAmount' }
 			}
 		},
@@ -92,11 +85,7 @@ exports.exportVendorReportExcel = asyncHandler(async (req, res) => {
 		{
 			$addFields: {
 				totalOrders: { $size: '$purchaseOrders' },
-<<<<<<< HEAD
 				totalOrdersAmount: PURCHASE_ORDERS_TOTAL_AMOUNT,
-=======
-				totalOrdersAmount: { $sum: '$purchaseOrders.totalAmount' },
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 				totalPaidAmount: { $sum: '$purchaseOrders.paidAmount' }
 			}
 		},

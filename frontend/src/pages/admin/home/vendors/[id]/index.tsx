@@ -146,23 +146,16 @@ export default function Vendor() {
               </div>
 
               <h2 className="text-3xl font-bold tracking-tight sm:text-5xl">{vendor.name}</h2>
-<<<<<<< HEAD
               <p className="text-sm font-medium text-gray-600">
                 {translate("Vendor No. (Sub Account)", "رقم البائع (الحساب الفرعي)")}:{" "}
                 <span className="tabular-nums text-gray-800">{vendor.vendorNumber ?? "-"}</span>
               </p>
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
               <AdminGaurd>
                 <div className="flex flex-wrap items-center gap-1 font-medium">
                   <p>{translate("Balance Due", "الرصيد المستحق")}:</p>
                   <p className="text-gray-800">
-<<<<<<< HEAD
                     {(vendor.balance || 0).toFixed(2)} {translations.currency}
-=======
-                    {vendor.balance.toFixed(2)} {translations.currency}
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                   </p>
 
                   {/* Temporary: Hide the update balance button */}
@@ -190,19 +183,11 @@ export default function Vendor() {
             <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
               <h4>{translate("Contact Information", "معلومات الاتصال")}</h4>
               <p>
-<<<<<<< HEAD
                 {translate("Phone", "الهاتف")}: {vendor.contact?.phone || "-"}
               </p>
               {vendor.contact?.email && (
                 <p>
                   {translate("Email", "البريد الإلكتروني")}: {vendor.contact?.email}
-=======
-                {translate("Phone", "الهاتف")}: {vendor.contact.phone}
-              </p>
-              {vendor.contact.email && (
-                <p>
-                  {translate("Email", "البريد الإلكتروني")}: {vendor.contact.email}
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                 </p>
               )}
             </section>

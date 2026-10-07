@@ -47,20 +47,12 @@ export default function KpiSection({
     {
       label: translate("Sales", "المبيعات"),
       value: formatCurrency(summary?.sales.total ?? 0, language),
-<<<<<<< HEAD
       subValue: `${summary?.sales.count ?? 0} ${translate("orders, total incl. VAT", "طلب، الإجمالي شامل الضريبة")}`,
-=======
-      subValue: `${summary?.sales.count ?? 0} ${translate("orders, excl. tax", "طلب، بدون ضريبة")}`,
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     },
     {
       label: translate("Purchases", "المشتريات"),
       value: formatCurrency(summary?.purchases.total ?? 0, language),
-<<<<<<< HEAD
       subValue: `${summary?.purchases.count ?? 0} ${translate("orders, total incl. VAT", "طلب، الإجمالي شامل الضريبة")}`,
-=======
-      subValue: `${summary?.purchases.count ?? 0} ${translate("orders, excl. tax", "طلب، بدون ضريبة")}`,
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     },
     {
       label: translate("Cash & Cash Equivalents", "النقدية وما يعادلها"),

@@ -20,10 +20,7 @@ import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
-<<<<<<< HEAD
 import { getOrderTotal } from "@/utils/helpers/order-totals";
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const URL = "reports/purchase-orders";
 const FILENAME = "purchase-orders-report.xlsx";
@@ -246,11 +243,7 @@ export default function PurchaseOrdersReport() {
                     <Table.Td>{po.vendor?.name || translate("Deleted Vendor", "بائع محذوف")}</Table.Td>
                     <Table.Td>{getPaymentStatusLabel(po.paymentStatus, language)}</Table.Td>
                     <Table.Td className="font-semibold text-gray-800">
-<<<<<<< HEAD
                       {getOrderTotal(po).toFixed(2)} {translations.currency}
-=======
-                      {po.totalAmount.toFixed(2)} {translations.currency}
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                     </Table.Td>
                     <Table.Td>
                       {po.paidAmount.toFixed(2)} {translations.currency}
@@ -269,11 +262,7 @@ export default function PurchaseOrdersReport() {
                   <Table.Td />
                   <Table.Td />
                   <Table.Td>
-<<<<<<< HEAD
                     {data.reduce((acc, po) => acc + getOrderTotal(po), 0).toFixed(2)} {translations.currency}
-=======
-                    {data.reduce((acc, po) => acc + po.totalAmount, 0).toFixed(2)} {translations.currency}
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                   </Table.Td>
                   <Table.Td>
                     {data.reduce((acc, po) => acc + po.paidAmount, 0).toFixed(2)} {translations.currency}

@@ -1,11 +1,8 @@
 const mongoose = require('mongoose');
 const mongooseI18n = require('mongoose-i18n-localize');
 const generateBarcode = require('../../utils/generateBarcode');
-<<<<<<< HEAD
 // Explicit require (not just the string `ref:` name) - `pucAccount` is populated/validated below.
 require('../accounting/chartOfAccountModel');
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const productSchema = mongoose.Schema(
   {
@@ -56,7 +53,6 @@ const productSchema = mongoose.Schema(
       enum: ['month'], // Only unit needed today; add more here (not a rewrite) if a future phase needs them.
       default: function () { return this.type === 'service' ? 'month' : undefined; },
     },
-<<<<<<< HEAD
     // Service-only: the PUC (Projects Under Construction / WIP) Chart of Accounts account a
     // purchase of this service is posted to - Purchase Orders debit THIS account for a service
     // line instead of Materials Inventory (see accountingEventService.js#
@@ -66,8 +62,6 @@ const productSchema = mongoose.Schema(
     // existed still load/save - the accounting engine refuses to post a purchase for such a
     // service until a PUC account is set on it (never a fallback account).
     pucAccount: { type: mongoose.Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     // Replaces the old Variant model (removed - see docs/entities/products.md) - a Product is now
     // itself the sellable/stock-tracked item instead of requiring a separate Variant. `sku` is
     // plain/optional (the old Variant.sku had no real uniqueness enforcement either - its compound
@@ -113,13 +107,10 @@ productSchema.pre(/^find/, function (next) {
     path: 'createdBy',
     select: 'name',
   });
-<<<<<<< HEAD
   this.populate({
     path: 'pucAccount',
     select: 'code name nameAr type',
   });
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   next();
 });
 
@@ -135,7 +126,6 @@ productSchema.pre('save', function (next) {
   next();
 });
 
-<<<<<<< HEAD
 // Backstop for Product.pucAccount (the request validator is only the fast pre-check): a PUC
 // account belongs to services only, and must be a real, eligible account (see
 // accountingConstants.js#isPucAccountEligible). Only runs when the field actually changed, so a
@@ -157,8 +147,6 @@ productSchema.pre('save', async function (next) {
   }
 });
 
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 productSchema.plugin(mongooseI18n, { locales: ['en', 'ar'], defaultLocale: process.env.DEFAULT_LANGUAGE });
 
 module.exports = mongoose.model('Product', productSchema);

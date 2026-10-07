@@ -11,10 +11,7 @@ const {
   getJournalEntriesForProject,
   getJournalEntriesForSalesOrder,
   getJournalEntriesForPurchaseOrder,
-<<<<<<< HEAD
   getJournalEntriesForAdvancedPayment,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   updateJournalEntry,
   postJournalEntry,
   reverseJournalEntry,
@@ -31,10 +28,7 @@ router.get('/general-ledger', checkUserPermissions({ resource: Resources.journal
 router.get('/project/:projectId', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalEntriesForProject);
 router.get('/sales-order/:salesOrderId', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalEntriesForSalesOrder);
 router.get('/purchase-order/:purchaseOrderId', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalEntriesForPurchaseOrder);
-<<<<<<< HEAD
 router.get('/advanced-payment/:advancedPaymentId', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalEntriesForAdvancedPayment);
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 router
   .route('/')

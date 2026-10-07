@@ -5,10 +5,7 @@ import { getPaymentStatusLabel } from "@/utils/constants/payment-statuses";
 import { formatDateAndTime } from "@/utils/helpers/date-formaters";
 import paths from "@/utils/constants/paths";
 import { Table } from "@mantine/core";
-<<<<<<< HEAD
 import { getOrderTotal } from "@/utils/helpers/order-totals";
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 export default function VendorOrdersHistory({ orders }: { orders: PurchaseOrder[] }) {
   const { language, translate, translations } = useLanguage();
@@ -38,11 +35,7 @@ export default function VendorOrdersHistory({ orders }: { orders: PurchaseOrder[
                 <Table.Td className="font-semibold text-gray-800">{purchaseOrder._id}</Table.Td>
                 <Table.Td>{getPaymentStatusLabel(purchaseOrder.paymentStatus, language)}</Table.Td>
                 <Table.Td className="font-semibold text-gray-800">
-<<<<<<< HEAD
                   {getOrderTotal(purchaseOrder).toFixed(2)} {translations.currency}
-=======
-                  {purchaseOrder.totalAmount.toFixed(2)} {translations.currency}
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                 </Table.Td>
                 <Table.Td>{formatDateAndTime(purchaseOrder.createdAt, language)}</Table.Td>
               </Table.Tr>

@@ -19,10 +19,7 @@ export default function validation(
     capacity,
     durationValue,
     durationUnit,
-<<<<<<< HEAD
     pucAccount,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   }: {
     type: ProductType;
     titleEn: string;
@@ -37,10 +34,7 @@ export default function validation(
     capacity: ProductCapacityInput;
     durationValue: string | number;
     durationUnit: DurationUnit;
-<<<<<<< HEAD
     pucAccount?: string | null;
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   },
   language: Language,
 ) {
@@ -72,11 +66,8 @@ export default function validation(
       return translate(language, "Please specify a valid service duration.", "يرجى تحديد مدة صالحة للخدمة.");
     if (durationUnit !== "month")
       return translate(language, "Duration unit must be months.", "يجب أن تكون وحدة المدة بالأشهر.");
-<<<<<<< HEAD
     if (!pucAccount)
       return translate(language, "Please select the service's PUC account.", "يرجى اختيار حساب مشروعات تحت التنفيذ للخدمة.");
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   } else {
     if (!cost) return translate(language, "Please specify a cost for the product.", "يرجى تحديد تكلفة للمنتج.");
     if (!category)

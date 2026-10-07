@@ -1,9 +1,6 @@
 const { body } = require('express-validator');
-<<<<<<< HEAD
 const mongoose = require('mongoose');
 const Product = require('../../models/inventory/productModel');
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const Vendor = require('../../models/vendor/vendor');
@@ -58,7 +55,6 @@ const createPurchaseOrderValidate = [
     body('items.*.productId').isMongoId().withMessage('Product ID must be a mongoID'),
     body('items.*.unitPrice').isFloat({ gt: 0 }).withMessage('Price must be a positive number'),
     body('items.*.starterQuantity').isInt({ gt: 0 }).withMessage('Quantity must be a positive integer'),
-<<<<<<< HEAD
     // Legacy field - no longer used for accounting (a service line always posts to the Service's own
     // PUC account). Still format-checked so a stray value can't be junk.
     body('items.*.costAccount').optional({ nullable: true }).isMongoId().withMessage('Cost account ID must be a mongoID'),
@@ -77,13 +73,6 @@ const createPurchaseOrderValidate = [
         }
         return true;
     }),
-=======
-    // Optional fast pre-check - the real backstop (every service item needs one when the PO has a
-    // project, and it must be a `cogs`-type account) lives in purchaseOrder.js's pre('save') hook
-    // and accountingEventService.js#postPurchaseOrderJournalEntries, since both require knowing each
-    // item's Product.type (service vs. physical), which isn't known at validation time here.
-    body('items.*.costAccount').optional({ nullable: true }).isMongoId().withMessage('Cost account ID must be a mongoID'),
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
     validatorMiddleware
 ];

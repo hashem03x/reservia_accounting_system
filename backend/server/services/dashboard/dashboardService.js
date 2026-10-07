@@ -4,11 +4,8 @@ const PurchaseOrder = require('../../models/vendor/purchaseOrder');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { getTrialBalance } = require('../accounting/generalLedgerService');
 const { CashEquivalentParentGroupName, AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
-<<<<<<< HEAD
 const { ORDER_TOTAL_AMOUNT_EXPR } = require('../../utils/orderTotals');
 const { ACCOUNT_CODE_COLLATION, ACCOUNT_CODE_SORT } = require('../../utils/accountCodeSort');
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -27,13 +24,8 @@ function monthKey(date) {
  * number of cheap queries/aggregations, regardless of how much historical data exists. Nothing
  * here writes to or alters any accounting data - purely derived read-only figures, reusing the
  * exact same eligibility/balance logic already used elsewhere (the same two-signal query
-<<<<<<< HEAD
  * isPaymentAccountEligible()/getCashEquivalentAccounts use, getTrialBalance, the orders' canonical
  * Total Amount from utils/orderTotals.js) rather than inventing a second definition of any of them.
-=======
- * isPaymentAccountEligible()/getCashEquivalentAccounts use, getTrialBalance, the Sales Order's own
- * pre-tax `totalAmount`) rather than inventing a second definition of any of them.
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
  */
 async function getDashboardSummaryData() {
   const sixMonthsAgo = new Date();
@@ -46,7 +38,6 @@ async function getDashboardSummaryData() {
     // aggregation needed just to sum a handful of documents' contractValue.
     Project.find({ isDeleted: { $ne: true }, status: 'active' }).select('_id contractValue').lean(),
 
-<<<<<<< HEAD
     // Order KPIs use each order's final Total Amount (grandTotal = subtotal + VAT - withholding),
     // read through the one shared expression in utils/orderTotals.js - never the pre-tax subtotal.
     SalesOrder.aggregate([
@@ -60,21 +51,6 @@ async function getDashboardSummaryData() {
     SalesOrder.aggregate([
       { $match: { orderStatus: { $ne: 'canceled' }, createdAt: { $gte: sixMonthsAgo } } },
       { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } }, total: { $sum: ORDER_TOTAL_AMOUNT_EXPR } } },
-=======
-    // totalAmount is the pre-tax amount (see salesOrderModel.js's pre('save') hook) - VAT/
-    // withholding tax are never part of this sum (docs section "Sales" KPI).
-    SalesOrder.aggregate([
-      { $match: { orderStatus: { $ne: 'canceled' } } },
-      { $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } },
-    ]),
-
-    // PurchaseOrder has no cancellation concept today (no orderStatus field) - every order counts.
-    PurchaseOrder.aggregate([{ $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } }]),
-
-    SalesOrder.aggregate([
-      { $match: { orderStatus: { $ne: 'canceled' }, createdAt: { $gte: sixMonthsAgo } } },
-      { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } }, total: { $sum: '$totalAmount' } } },
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
     ]),
 
     // Same two-signal eligibility query as isPaymentAccountEligible()/getCashEquivalentAccounts -
@@ -86,12 +62,8 @@ async function getDashboardSummaryData() {
       $or: [{ parentGroupNameEn: CashEquivalentParentGroupName }, { state: { $in: ['cash', 'cash-equivalent'] } }],
     })
       .select('code name nameAr')
-<<<<<<< HEAD
       .sort(ACCOUNT_CODE_SORT)
       .collation(ACCOUNT_CODE_COLLATION)
-=======
-      .sort({ sortOrder: 1, code: 1 })
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
       .lean(),
 
     // Single aggregation across every posted Journal Entry line, grouped by account - the exact
@@ -103,13 +75,10 @@ async function getDashboardSummaryData() {
   const activeProjectIds = activeProjects.map(p => p._id);
   const totalContractValue = round2(activeProjects.reduce((sum, p) => sum + (p.contractValue || 0), 0));
 
-<<<<<<< HEAD
   // Executed % deliberately stays on the PRE-TAX subtotal (`totalAmount`), matching
   // projectAccountingService.js#recalculateExecutedPercentage exactly: executed % drives
   // PROJECT_REVENUE_RECOGNITION, and revenue must never include VAT (VAT is a liability, not
   // revenue). Using the VAT-inclusive total here would overstate execution and recognized revenue.
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   const [activeProjectsSalesRaw] = await SalesOrder.aggregate([
     { $match: { project: { $in: activeProjectIds }, orderStatus: { $ne: 'canceled' } } },
     { $group: { _id: null, total: { $sum: '$totalAmount' } } },

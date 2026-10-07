@@ -18,19 +18,12 @@ import TruncatedText from "@/components/ui/truncated-text";
 import EmptySection from "@/components/ui/sections/empty";
 import ErrorSection from "@/components/ui/sections/error";
 import LoadingSection from "@/components/ui/sections/loading";
-<<<<<<< HEAD
 import { getOrderTotal } from "@/utils/helpers/order-totals";
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const paymentStatusColors: Record<string, string> = { unpaid: "red", partial: "yellow", paid: "green", unknown: "gray" };
 
 // Recent Purchase Orders (docs section "Recent Purchase Orders") - newest 5 orders, not the full
-<<<<<<< HEAD
 // Purchase Orders page. Amount is the order's Total Amount (incl. VAT). Purchase Orders ARE ResourceGuarded on
-=======
-// Purchase Orders page. Amount is `totalAmount` (pre-tax). Purchase Orders ARE ResourceGuarded on
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 // read (see App.tsx), so this section respects that permission like the rest of the app.
 export default function RecentPurchaseOrdersSection() {
   const { language, translate } = useLanguage();
@@ -118,11 +111,7 @@ export default function RecentPurchaseOrdersSection() {
                   </Table.Td>
                   <Table.Td className="whitespace-nowrap">{order.project?.projectNumber || "-"}</Table.Td>
                   <Table.Td className="whitespace-nowrap text-right tabular-nums">
-<<<<<<< HEAD
                     {formatCurrency(getOrderTotal(order), language)}
-=======
-                    {formatCurrency(order.totalAmount, language)}
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
                   </Table.Td>
                   <Table.Td className="whitespace-nowrap">
                     <Badge color={paymentStatusColors[order.paymentStatus] || "gray"} variant="light">

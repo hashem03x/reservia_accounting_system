@@ -196,11 +196,7 @@ advancedPaymentSchema.pre(/^find/, function (next) {
     .populate({ path: 'project', select: 'projectNumber name customer' })
     .populate({ path: 'paymentAccount', select: 'code name nameAr' })
     .populate({ path: 'createdBy', select: 'name' })
-<<<<<<< HEAD
     .populate({ path: 'usageHistory.salesOrder', select: 'code totalAmount grandTotal paidAmount' });
-=======
-    .populate({ path: 'usageHistory.salesOrder', select: 'code totalAmount paidAmount' });
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   next();
 });
 

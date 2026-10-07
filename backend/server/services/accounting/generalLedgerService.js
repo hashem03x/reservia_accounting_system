@@ -1,10 +1,7 @@
 const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
-<<<<<<< HEAD
 const { sortByAccountCode } = require('../../utils/accountCodeSort');
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 // Which control-account CODE a resolved Sub Account's party type corresponds to, for lines that
 // predate the per-line `partyNumber`/`partyType` fields (see journalLineSchema) and so must fall
@@ -82,7 +79,6 @@ async function getTrialBalance() {
     },
   ]);
 
-<<<<<<< HEAD
   // Re-sorted numerically by account number - the `$sort` above is a plain string sort, which
   // would put "10" before "2" (see utils/accountCodeSort.js).
   return sortByAccountCode(rows, row => row.account?.code).map(row => ({
@@ -91,9 +87,6 @@ async function getTrialBalance() {
     credit: round2(row.credit),
     balance: round2(row.debit - row.credit),
   }));
-=======
-  return rows.map(row => ({ ...row, debit: round2(row.debit), credit: round2(row.credit), balance: round2(row.debit - row.credit) }));
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 }
 
 // ---------------------------------------------------------------------------

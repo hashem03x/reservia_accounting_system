@@ -21,10 +21,7 @@ import InfoItem from "@/components/ui/info-item";
 import { useEffect } from "react";
 import PaymentAccountSelect from "@/components/global/payment-account-select";
 import OrderTaxSection from "@/components/global/order-tax-section";
-<<<<<<< HEAD
 import { calculateOrderTotals } from "@/utils/helpers/order-totals";
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 const emptyOrderItem: OrderItemInput = {
   productCode: "",
@@ -54,15 +51,11 @@ export default function NewSalesOrder() {
   const [vatPercentage, setVatPercentage] = useState<string | number>(0);
   const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
 
-<<<<<<< HEAD
   // Preview only - the backend recomputes every amount on save (utils/orderTotals.js) and never
   // trusts these. `subtotal` is the pre-tax sum of the lines; `orderTotals.total` is the order's
   // Total Amount (subtotal + VAT - withholding), the one figure shown as the order amount.
   const subtotal = items.reduce((acc, item) => acc + (item.starterSubtotal || 0), 0);
   const orderTotals = calculateOrderTotals(subtotal, vatPercentage, withholdingTaxPercentage);
-=======
-  const totalAmount = items.reduce((acc, item) => acc + item.starterSubtotal, 0);
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
   const addNewItem = () => setItems((prevItems) => [...prevItems, emptyOrderItem]);
 
@@ -160,14 +153,9 @@ export default function NewSalesOrder() {
             starterQuantity: item.starterQuantity,
           })),
           shippingCost: shippingCost ? Number(shippingCost) : undefined,
-<<<<<<< HEAD
           // Always explicit numbers - an empty VAT input means "no VAT" (0), never undefined.
           vatPercentage: Number(vatPercentage) || 0,
           withholdingTaxPercentage: Number(withholdingTaxPercentage) || 0,
-=======
-          vatPercentage,
-          withholdingTaxPercentage,
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         },
       });
 
@@ -206,7 +194,6 @@ export default function NewSalesOrder() {
         </>
       )}
 
-<<<<<<< HEAD
       {/* Order amount = the order's final Total Amount (incl. VAT, net of withholding). */}
       <div className="flex flex-col gap-2">
         <InfoItem
@@ -220,18 +207,6 @@ export default function NewSalesOrder() {
           <InfoItem
             label={translate("Total Amount incl. Shipping", "الإجمالي شامل الشحن")}
             value={`${(orderTotals.total + +shippingCost).toFixed(2)} ${translations.currency}`}
-=======
-      {/* Total Amount */}
-      <div className="flex flex-col gap-2">
-        <InfoItem
-          label={translate("Order Amount", "سعر الطلب")}
-          value={`${totalAmount.toFixed(2)} ${translations.currency}`}
-        />
-        {+shippingCost > 0 && (
-          <InfoItem
-            label={translate("Total Amount", "المبلغ الإجمالي")}
-            value={`${(totalAmount + +shippingCost).toFixed(2)} ${translations.currency}`}
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
           />
         )}
         {isAdvancedPayment && availableAdvance && availableAdvance.remainingAmount > 0 && (
@@ -345,11 +320,7 @@ export default function NewSalesOrder() {
       <hr />
 
       <OrderTaxSection
-<<<<<<< HEAD
         amount={subtotal}
-=======
-        amount={totalAmount}
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
         vatPercentage={vatPercentage}
         setVatPercentage={setVatPercentage}
         withholdingTaxPercentage={withholdingTaxPercentage}

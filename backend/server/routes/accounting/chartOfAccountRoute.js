@@ -14,10 +14,7 @@ const {
   getTrialBalanceHandler,
   getCogsEligibleAccounts,
   getCashEquivalentAccounts,
-<<<<<<< HEAD
   getPucEligibleAccounts,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 } = require('../../controller/accounting/chartOfAccountController');
 const { createChartOfAccountValidators, updateChartOfAccountValidators } = require('../../utils/validators/chartOfAccountValidators');
 
@@ -27,10 +24,7 @@ router.get('/trial-balance', checkUserPermissions({ resource: Resources.accounts
 // Registered before the generic '/:id' GET so these are never matched as an :id param.
 router.get('/cogs-eligible', checkUserPermissions({ resource: Resources.accounts, action: Actions.read }), getCogsEligibleAccounts);
 router.get('/cash-equivalent-eligible', checkUserPermissions({ resource: Resources.accounts, action: Actions.read }), getCashEquivalentAccounts);
-<<<<<<< HEAD
 router.get('/puc-eligible', checkUserPermissions({ resource: Resources.accounts, action: Actions.read }), getPucEligibleAccounts);
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 
 router
   .route('/')

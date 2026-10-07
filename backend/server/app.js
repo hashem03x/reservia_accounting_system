@@ -31,12 +31,8 @@ console.log('[STARTUP] Building Express application...');
 // would let ANY website make authenticated, cookie-bearing requests on a logged-in user's behalf.
 // FRONTEND_URL is the one production origin that must be allowed; local dev origins are added
 // unconditionally since they only ever originate from a developer's own machine.
-<<<<<<< HEAD
 // 5173 = the Vite dev server (frontend/vite.config.ts), reachable as localhost or 127.0.0.1.
 const DEV_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'];
-=======
-const DEV_ORIGINS = ['http://localhost:5173', 'http://localhost:3000'];
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 const productionOrigin = process.env.FRONTEND_URL?.replace(/\/$/, ''); // trailing slash would never match a real Origin header
 const allowedOrigins = [...(productionOrigin ? [productionOrigin] : []), ...DEV_ORIGINS];
 

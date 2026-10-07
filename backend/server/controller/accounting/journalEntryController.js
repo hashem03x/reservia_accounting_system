@@ -117,7 +117,6 @@ const getJournalEntriesForPurchaseOrder = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Purchase order journal entries retrieved successfully', true, entries));
 });
 
-<<<<<<< HEAD
 // GET /journal-entries/advanced-payment/:advancedPaymentId - every Journal Entry that belongs to
 // this Advanced Payment, via persisted references only (never a text/description/amount match):
 //   1. `advancedPayment` - stamped by the automatic accounting engine on the advance's own creation
@@ -160,8 +159,6 @@ const getJournalEntriesForAdvancedPayment = asyncHandler(async (req, res, next) 
   res.status(200).json(apiResponse('Advanced payment journal entries retrieved successfully', true, entries));
 });
 
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
 const updateJournalEntry = asyncHandler(async (req, res, next) => {
   const entry = await JournalEntry.findById(req.params.id);
   if (!entry) return next(new ApiError('No journal entry found with that id', 404));
@@ -287,11 +284,8 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
               unearnedRevenue: 0,
             })),
             reversalOfEntry: currentOriginal._id,
-<<<<<<< HEAD
             // A reversal belongs to the same Advanced Payment as the entry it reverses.
             advancedPayment: currentOriginal.advancedPayment || null,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
             createdBy: req.user._id,
             postedBy: req.user._id,
             postedAt: new Date(),
@@ -353,10 +347,7 @@ module.exports = {
   getJournalEntriesForProject,
   getJournalEntriesForSalesOrder,
   getJournalEntriesForPurchaseOrder,
-<<<<<<< HEAD
   getJournalEntriesForAdvancedPayment,
-=======
->>>>>>> 368811657e0eba1f2e8b46ee732d01745194d628
   updateJournalEntry,
   postJournalEntry,
   reverseJournalEntry,
