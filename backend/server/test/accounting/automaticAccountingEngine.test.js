@@ -330,7 +330,7 @@ test('postPurchaseOrderJournalEntries: a product PO with NO project is rejected 
   assert.equal(await JournalEntry.countDocuments({ sourceType: 'PO', sourceId: fakePO._id }), 0);
 });
 
-test('postPurchaseOrderJournalEntries: product item -> PO_INVENTORY_RECEIPT carries the Vendor Number on the Suppliers line only', async () => {
+test('postPurchaseOrderJournalEntries: product item -> every PO_INVENTORY_RECEIPT / PO_INVENTORY_TO_WIP line carries the Vendor Number and the entry description', async () => {
   const Product = require('../../models/inventory/productModel');
   const product = await Product.create({ type: 'product', title: { en: 'Steel', ar: 'صلب' }, description: { en: 'd', ar: 'د' }, price: 100, cost: 50, category: new mongoose.Types.ObjectId(), subcategory: new mongoose.Types.ObjectId() });
 
@@ -355,8 +355,17 @@ test('postPurchaseOrderJournalEntries: product item -> PO_INVENTORY_RECEIPT carr
   const suppliersLine = entries[0].lines.find(l => l.account.toString() === suppliersAccountId);
   assert.equal(suppliersLine.partyNumber, vendor.vendorNumber, 'the Vendor Number must be on the Suppliers control-account line');
   assert.equal(suppliersLine.partyType, 'vendor');
-  const inventoryLine = entries[0].lines.find(l => l.account.toString() === accounts[AutomaticJournalAccountCodes.materialsInventory]._id.toString());
-  assert.equal(inventoryLine.partyNumber, null, 'the Inventory line must never also carry the Vendor Number');
+  assert.deepEqual(entries.map(e => e.accountingAction), ['PO_INVENTORY_RECEIPT', 'PO_INVENTORY_TO_WIP']);
+  for (const entry of entries) {
+    for (const line of entry.lines) {
+      assert.equal(line.partyNumber, vendor.vendorNumber, `${entry.accountingAction}: Sub Account = Vendor Number on every line`);
+      assert.equal(line.partyType, 'vendor');
+      assert.equal(line.projectNumber, project.projectNumber, 'Project Number stays in its own field');
+      assert.ok(line.description, 'non-empty line description');
+      assert.equal(line.description, entry.description, 'line description = entry description');
+    }
+  }
+  assert.equal(entries[1].lines[0].account.toString(), accounts[AutomaticJournalAccountCodes.wipRawMaterials]._id.toString(), 'accounts unchanged');
 });
 
 test('postPurchaseOrderJournalEntries: product item WITH a project -> PO_INVENTORY_RECEIPT + PO_INVENTORY_TO_WIP (two separate JEs)', async () => {

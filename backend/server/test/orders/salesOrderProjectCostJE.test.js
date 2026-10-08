@@ -122,8 +122,12 @@ function assertProjectEntry(entry) {
   assert.equal(entry.totalDebit, entry.totalCredit, 'Debit total === Credit total');
   assert.equal(entry.module, 'Sales Order', 'source: SALES order');
   assert.equal(idStr(entry.project), idStr(project._id));
+  assert.ok(entry.description, 'the entry has a description');
   for (const line of entry.lines) {
     assert.equal(line.projectNumber, 'PRJ001', 'Project Number on every line');
+    assert.equal(line.description, entry.description, 'line description = entry description');
+    assert.equal(line.partyNumber, customer.customerNumber, 'Sub Account = Customer Number on every line');
+    assert.equal(line.partyType, 'customer');
     assert.ok(line.debit > 0 || line.credit > 0, 'no zero-value line');
     assert.ok(line.debit >= 0 && line.credit >= 0);
   }
@@ -173,6 +177,32 @@ test('exact example: Raw Materials 250,000 + Labour 150,000 at 20% -> JV0011 Dr 
   // Two separate entries of the same Sales Order event: own numbers (from the counter), same date.
   assert.equal(cost.entryNumber, revenue.entryNumber + 1);
   assert.equal(cost.date.getTime(), revenue.date.getTime());
+});
+
+test('a project with no linked customer: JV0010 and JV0011 lines carry the Sales Order customer number', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await Project.updateOne({ _id: project._id }, { $unset: { customer: '' } });
+  const order = await sell(100);
+  for (const action of ['PROJECT_REVENUE_RECOGNITION', 'PROJECT_COST_RECOGNITION']) {
+    const [entry] = await entriesOf(order, action);
+    assertProjectEntry(entry);
+  }
+});
+
+test('manual journal entries are unchanged: typed line descriptions are kept and no Sub Account is added', async () => {
+  const entry = await JournalEntry.create({
+    entryNumber: 9900001,
+    description: 'Manual adjustment',
+    source: 'manual',
+    project: project._id,
+    lines: [
+      { account: accounts['50000001']._id, debit: 10, credit: 0, project: project._id, projectNumber: 'PRJ001', description: 'Typed by the accountant' },
+      { account: accounts[C.wipRawMaterials]._id, debit: 0, credit: 10, project: project._id, projectNumber: 'PRJ001' },
+    ],
+  });
+  assert.equal(entry.lines[0].description, 'Typed by the accountant');
+  assert.equal(entry.lines[1].description, undefined);
+  entry.lines.forEach(line => assert.equal(line.partyNumber, null));
 });
 
 test('raw materials only: one Dr Raw Materials / Cr PUC - Raw Materials pair, no labour lines', async t => {

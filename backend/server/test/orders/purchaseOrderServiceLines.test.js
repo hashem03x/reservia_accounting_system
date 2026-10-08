@@ -145,7 +145,15 @@ test('mixed PO (Product A, Service A, Product B, Service B): lines persist, tota
   for (const e of entries) {
     assert.equal(e.totalDebit, e.totalCredit);
     e.lines.forEach(l => assert.equal(l.projectNumber, project.projectNumber));
+    // Every line: Sub Account = the PO's Vendor Number, description = the entry's description.
+    assert.ok(e.description);
+    e.lines.forEach(l => {
+      assert.equal(l.partyNumber, vendor.vendorNumber, `${e.accountingAction}: Vendor Number on every line`);
+      assert.equal(l.partyType, 'vendor');
+      assert.equal(l.description, e.description, `${e.accountingAction}: line description = entry description`);
+    });
   }
+  assert.deepEqual(entries.map(e => e.accountingAction).sort(), ['PO_INVENTORY_RECEIPT', 'PO_INVENTORY_TO_WIP', 'PO_SERVICE_TO_WIP']);
 });
 
 test('a no-tax PO with only a Service: VAT/WHT stay 0 and no tax lines are posted', async t => {

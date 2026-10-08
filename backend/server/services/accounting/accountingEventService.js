@@ -99,6 +99,25 @@ async function resolveCustomerNumber(customerRef, { required = true } = {}, sess
 }
 
 /**
+ * Every line of an automatic entry gets the entry's own description (the parent description is the
+ * single source of truth). Every line of a Sales Order / Purchase Order entry (`withParty`) also
+ * gets the entry's business party as its Sub Account (partyNumber/partyType - the Customer Number
+ * for a Sales Order, the Vendor Number for a Purchase Order): `party` when the caller passes one,
+ * otherwise the party already stamped on the entry's control-account line. A line that already
+ * carries its own party keeps it; an entry with no party has none.
+ */
+function applyEntryDescriptionAndPartyToLines(lines, description, party, withParty) {
+  const source = !withParty ? null : party?.number != null && party?.type ? party : (lines || []).find(l => l.partyNumber != null && l.partyType);
+  return (lines || []).map(line => ({
+    ...line,
+    description,
+    ...(source && !(line.partyNumber != null && line.partyType)
+      ? { partyNumber: source.number ?? source.partyNumber, partyType: source.type ?? source.partyType }
+      : {}),
+  }));
+}
+
+/**
  * Idempotently posts ONE automatic JournalEntry for a given accounting action. Safe to call
  * repeatedly for the same (sourceType, sourceId, accountingAction) triple - returns the already-
  * existing entry without creating a duplicate (the idempotency check and the create below both run
@@ -106,7 +125,7 @@ async function resolveCustomerNumber(customerRef, { required = true } = {}, sess
  * of the business operation - see journalEntryModel.js's compound unique index, which is the real
  * backstop against a race duplicating this under concurrent requests).
  */
-async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, project, lines, session, triggeredBySalesOrder, advancedPayment }) {
+async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, project, lines, session, triggeredBySalesOrder, advancedPayment, party }) {
   const existing = await JournalEntry.findOne({ sourceType, sourceId, accountingAction }).session(session || null);
   if (existing) return existing;
 
@@ -126,8 +145,14 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
   }
 
   // Every line carries the entry's Project and that Project's real Project Number (never only the
-  // parent entry) - see journalEntryProjectService.js.
-  const projectLines = await applyEntryProjectToLines({ project, lines, session });
+  // parent entry) - see journalEntryProjectService.js - plus the entry's description and Sub Account.
+  const entryModule = AccountingModuleByAction[accountingAction] || null;
+  const projectLines = applyEntryDescriptionAndPartyToLines(
+    await applyEntryProjectToLines({ project, lines, session }),
+    description,
+    party,
+    entryModule === 'Sales Order' || entryModule === 'Purchase Order'
+  );
 
   const entryNumber = await getNextJournalEntryNumber(session);
   const [entry] = await JournalEntry.create(
@@ -139,7 +164,7 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
         source: 'automatic',
         // Normalized through the one accountingAction -> Module map (docs section "Module field") -
         // never a free-text/inconsistently-cased variation (see accountingConstants.js).
-        module: AccountingModuleByAction[accountingAction] || null,
+        module: entryModule,
         sourceType,
         sourceId,
         accountingAction,
@@ -393,6 +418,7 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
             { account: wipRawMaterialsId, debit: physicalSubtotal, credit: 0, project: projectId },
             { account: inventoryId, debit: 0, credit: physicalSubtotal, project: projectId },
           ],
+          party: { number: vendorNumber, type: 'vendor' },
           session,
         })
       );
@@ -659,6 +685,20 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
   });
 }
 
+/**
+ * The Customer Number (Sub Account) of a project's Sales Order entries (JV0010 / JV0011): the
+ * project's customer, or - for a project with no linked customer - the triggering Sales Order's
+ * customer. Null when there is neither.
+ */
+async function resolveProjectCustomerNumber(project, triggeredBySalesOrder, session) {
+  if (project.customer) return resolveCustomerNumber(project.customer, { required: false }, session);
+  const orderId = triggeredBySalesOrder?._id || triggeredBySalesOrder;
+  if (!orderId) return null;
+  const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
+  const order = await SalesOrder.findById(orderId).select('customer').session(session || null).lean();
+  return resolveCustomerNumber(order?.customer, { required: false }, session);
+}
+
 // ---------------------------------------------------------------------------
 // 10. Project revenue recognition (JV0010)
 // ---------------------------------------------------------------------------
@@ -732,7 +772,7 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
   // error (no Sub Account for this entry), but a PRESENT customer reference that fails to resolve
   // to a real, numbered Customer still fails safely (docs section "If the Vendor/Customer is
   // missing or does not have a valid number... fail safely").
-  const customerNumber = await resolveCustomerNumber(project.customer, { required: false }, session);
+  const customerNumber = await resolveProjectCustomerNumber(project, triggeredBySalesOrder, session);
   const [arProjectsId, revenueId] = await Promise.all([
     getAccountIdByCode(AutomaticJournalAccountCodes.accountsReceivableProjects, session),
     getAccountIdByCode(AutomaticJournalAccountCodes.revenue, session),
@@ -841,8 +881,8 @@ async function postProjectCostRecognitionJE(project, session, triggeredBySalesOr
     if (costAccount && amount > 0) {
       const pucAccount = findCorrespondingPucAccount(costAccount, pucAccounts);
       if (pucAccount) {
-        debits.push({ account: costAccount._id, debit: amount, credit: 0, project: project._id, description });
-        credits.push({ account: pucAccount._id, debit: 0, credit: amount, project: project._id, description });
+        debits.push({ account: costAccount._id, debit: amount, credit: 0, project: project._id });
+        credits.push({ account: pucAccount._id, debit: 0, credit: amount, project: project._id });
       } else {
         logAccountingEvent('project_cost_recognition_no_puc_account', { projectNumber: project.projectNumber, account: costAccount.code, amount });
       }
@@ -850,6 +890,7 @@ async function postProjectCostRecognitionJE(project, session, triggeredBySalesOr
   }
   if (debits.length === 0) return null;
 
+  const customerNumber = await resolveProjectCustomerNumber(project, triggeredBySalesOrder, session);
   const entry = await postAutomaticJournalEntry({
     accountingAction: 'PROJECT_COST_RECOGNITION',
     sourceType: 'PROJECT',
@@ -859,6 +900,7 @@ async function postProjectCostRecognitionJE(project, session, triggeredBySalesOr
     description,
     project: project._id,
     lines: [...debits, ...credits],
+    party: { number: customerNumber, type: 'customer' },
     session,
     triggeredBySalesOrder,
   });
