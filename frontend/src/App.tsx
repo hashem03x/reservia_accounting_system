@@ -187,15 +187,15 @@ export default function App() {
                   <Route element={<ResourceGuard resource={resources.categories} action={actions.read} />}>
                     <Route path={paths.categories} element={<AP_Categories />} />
                   </Route>
-                  <Route element={<ResourceGuard resource={resources.coupons} action={actions.read} />}>
+                  {/* <Route element={<ResourceGuard resource={resources.coupons} action={actions.read} />}>
                     <Route path={paths.coupons} element={<AP_Coupons />} />
-                  </Route>
-                  <Route element={<ResourceGuard resource={resources.customization} action={actions.read} />}>
+                  </Route> */}
+                  {/* <Route element={<ResourceGuard resource={resources.customization} action={actions.read} />}>
                     <Route path={paths.customization} element={<AP_Customization />} />
                   </Route>
                   <Route element={<ResourceGuard resource={resources.governorates} action={actions.read} />}>
                     <Route path={paths.governorates} element={<AP_Governorates />} />
-                  </Route>
+                  </Route> */}
                   <Route element={<ResourceGuard resource={resources.transactions} action={actions.read} />}>
                     <Route path={paths.transactions} element={<AP_Transactions />} />
                     <Route path={paths.transactions + "/:id"} element={<AP_Transaction />} />
