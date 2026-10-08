@@ -29,6 +29,8 @@ function assertProjectOnEveryLine(entry, expectedProject) {
   entry.lines.forEach((line, i) => {
     assert.equal(idStr(line.project), idStr(expectedProject._id), `line ${i + 1} project`);
     assert.equal(line.projectNumber, expectedProject.projectNumber, `line ${i + 1} projectNumber`);
+    // Every line of a system-generated entry stores the entry's own description.
+    if (entry.source !== 'manual' && entry.description) assert.equal(line.description, entry.description, `line ${i + 1} description`);
   });
 }
 

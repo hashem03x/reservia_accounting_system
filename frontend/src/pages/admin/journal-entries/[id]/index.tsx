@@ -231,13 +231,13 @@ export default function JournalEntryDetail() {
                   <LineGroupHeader label={translate("Debit", "مدين")} color="text-blue-700" />
                 )}
                 {debitLines.map(({ line, originalIndex }) => (
-                  <JournalLineRow key={`d-${originalIndex}`} line={line} entryParty={entry.resolvedSubAccount} />
+                  <JournalLineRow key={`d-${originalIndex}`} line={line} entryParty={entry.resolvedSubAccount} entryDescription={entry.description} />
                 ))}
                 {creditLines.length > 0 && (
                   <LineGroupHeader label={translate("Credit", "دائن")} color="text-orange-700" />
                 )}
                 {creditLines.map(({ line, originalIndex }) => (
-                  <JournalLineRow key={`c-${originalIndex}`} line={line} entryParty={entry.resolvedSubAccount} />
+                  <JournalLineRow key={`c-${originalIndex}`} line={line} entryParty={entry.resolvedSubAccount} entryDescription={entry.description} />
                 ))}
               </>
             )}
@@ -275,7 +275,15 @@ function LineGroupHeader({ label, color }: { label: string; color: string }) {
   );
 }
 
-function JournalLineRow({ line, entryParty }: { line: JournalLine; entryParty?: JournalEntry["resolvedSubAccount"] }) {
+function JournalLineRow({
+  line,
+  entryParty,
+  entryDescription,
+}: {
+  line: JournalLine;
+  entryParty?: JournalEntry["resolvedSubAccount"];
+  entryDescription?: string;
+}) {
   // Balance = Debit - Credit for this line (credit lines are therefore negative) - NOT the same
   // thing as a Chart of Accounts running balance, which sums this across every posted line for the
   // account - see docs/entities/accounting.md.
@@ -298,7 +306,9 @@ function JournalLineRow({ line, entryParty }: { line: JournalLine; entryParty?: 
               : "-"}
       </Table.Td>
       <Table.Td>{line.projectNumber || line.project?.projectNumber || "-"}</Table.Td>
-      <Table.Td>{line.description || "-"}</Table.Td>
+      {/* New entries store the entry's description on every line; older lines without one show
+          the entry's description. */}
+      <Table.Td>{line.description?.trim() || entryDescription?.trim() || "-"}</Table.Td>
       <Table.Td className="text-right tabular-nums">{debit ? debit.toLocaleString() : "-"}</Table.Td>
       <Table.Td className="text-right tabular-nums">{credit ? credit.toLocaleString() : "-"}</Table.Td>
       <Table.Td className={`text-right tabular-nums ${lineBalance < 0 ? "text-red-600" : ""}`}>{lineBalance.toLocaleString()}</Table.Td>

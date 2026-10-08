@@ -258,6 +258,19 @@ journalEntrySchema.pre('save', async function (next) {
       });
     }
 
+    // Line descriptions follow the entry's own Description, stored on every line (not only shown):
+    // a system-generated entry (automatic engine, fixed asset purchase, reversals...) gives EVERY
+    // line exactly the entry's description; a manual entry keeps a description the user typed on a
+    // line and fills any blank one with the entry's. Only applied while the lines can still change
+    // (new entries, or draft edits) - posted history is never rewritten.
+    const entryDescription = typeof this.description === 'string' ? this.description.trim() : '';
+    if (entryDescription && (this.isNew || this.isModified('lines') || this.isModified('description'))) {
+      const systemGenerated = this.source !== 'manual';
+      this.lines.forEach(line => {
+        if (systemGenerated || !line.description || !line.description.trim()) line.description = entryDescription;
+      });
+    }
+
     this.totalDebit = round2(this.lines.reduce((sum, line) => sum + (line.debit || 0), 0));
     this.totalCredit = round2(this.lines.reduce((sum, line) => sum + (line.credit || 0), 0));
 
