@@ -167,7 +167,7 @@ export default function AllAdminOptions({ closeDrawer, collapsed = false }: { cl
         <hr />
         <AdminButton
           Icon={outlineIcons.ArrowUpCircle}
-          label={translations.back}
+          label={translations.exit}
           onClick={() => {
             closeDrawer && closeDrawer();
             navigate("/");
