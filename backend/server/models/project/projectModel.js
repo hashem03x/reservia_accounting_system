@@ -1,5 +1,6 @@
 const { Schema, model } = require('mongoose');
-const { ProjectStatuses, ProjectSectors } = require('../../utils/accountingConstants');
+const { ProjectStatuses } = require('../../utils/accountingConstants');
+const { resolveProjectSector } = require('../../services/project/sectorService');
 const { computeProjectExecution } = require('../../utils/projectExecution');
 // Explicit require (not just the string `ref:` name) so this model can be used standalone without
 // a hard dependency on load order - mirrors journalEntryModel.js's existing convention for the
@@ -135,19 +136,18 @@ const projectSchema = new Schema(
     // Historical: advanced by the removed PROJECT_COST_RECOGNITION (COGS -> WIP) posting. No longer
     // written; kept so existing project documents keep their stored value.
     costRecognizedPercentage: { type: Number, default: 0, min: 0, max: 100 },
-    // Renamed from `department` - see docs/entities/projects.md. Optional - `null` is explicitly
-    // included in the enum's own value list (Mongoose's built-in enum validator otherwise rejects
-    // an explicit `null`), so "no sector" is a real, settable value rather than something that
-    // only works by leaving the key out of the request body - that matters for updateProject,
-    // where a client must be able to clear a previously-set sector (assigning `undefined` to an
-    // existing document path does not reliably unset it on save, since Mongoose's change-tracking
-    // treats `undefined` as "no change"; `null` does). Projects created before this field existed
-    // simply have it absent, which reads the same as `null` everywhere it's used. New sectors are
-    // added in ONE place - utils/accountingConstants.js's `ProjectSectors` (mirrored in
-    // frontend/src/utils/constants/accounting.ts) - never hardcoded here or in a validator.
+    // Renamed from `department` - see docs/entities/projects.md. Holds the NAME of an admin-managed
+    // Sector (models/project/sectorModel.js, Admin -> Sectors) - the field's original string
+    // format, so existing projects need no migration. Which names are valid is decided by the
+    // Sector collection, never a hardcoded list: the pre('validate') hook below accepts only an
+    // existing, active sector whenever this field changes (and stores its canonical name). An
+    // unchanged value is never re-checked, so a project keeps a sector that was later deactivated.
+    // A sector rename updates this field on every project using it (sectorService.js). `null` (no
+    // sector) is a real, settable value; projects created before this field existed simply have it
+    // absent, which reads the same as `null`.
     sector: {
       type: String,
-      enum: { values: [...ProjectSectors, null], message: '{VALUE} is not a valid sector' },
+      trim: true,
       default: null,
     },
     status: {
@@ -190,6 +190,19 @@ const projectSchema = new Schema(
 // contractValue edited, or its executedPercentage recalculated from Sales Orders), it is
 // re-derived from contractValue and executedPercentage. Runs before validation so `min: 0` checks
 // the derived value. A project without a usable contractValue keeps its stored value untouched.
+// Backstop for `sector` (projectValidators.js is the fast pre-check): a new or changed sector must
+// be an existing, active Sector.
+projectSchema.pre('validate', async function (next) {
+  try {
+    if (this.isModified('sector') && this.sector) {
+      this.sector = await resolveProjectSector(this.sector, { session: this.$session() });
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 projectSchema.pre('validate', function (next) {
   const execution = computeProjectExecution(this);
   if (execution) this.remainingMoney = execution.remainingMoney;

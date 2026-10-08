@@ -1,5 +1,3 @@
-import type { ProjectSector } from "@/utils/constants/accounting";
-
 export type ProjectStatus = "active" | "completed" | "cancelled" | "on_hold";
 
 export interface ProjectContract {
@@ -35,7 +33,8 @@ export interface Project {
   projectManager?: { _id: string; name: string; email?: string; role?: string };
   startDate?: string;
   deliveryDate?: string;
-  sector?: ProjectSector | null;
+  // The NAME of an admin-managed Sector (Admin -> Sectors) - may be an inactive sector.
+  sector?: string | null;
   status: ProjectStatus;
   // A real reference into the existing customer (User, role: 'user') collection - never a
   // duplicated plain-text name. Null for projects with no linked customer (e.g. imported records).

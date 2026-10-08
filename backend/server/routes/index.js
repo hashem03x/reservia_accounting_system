@@ -8,6 +8,7 @@ const userRouter = require('./userRoute');
 const authRouter = require('./authRoute');
 const couponRoute = require('./couponRoute');
 const governorateRoute = require('./governorateRoute');
+const sectorRoute = require('./sectorRoute');
 // Site logo + barcode-sticker display settings live on the same document as the old storefront
 // "About Us" content (title/socialLinks/homeSubcategories) - those storefront-only fields are no
 // longer editable from the (removed) storefront-facing UI, but logo/barcodeSittings are still
@@ -43,7 +44,8 @@ const mountRoutes = app => {
   app.use('/api/v1/about-us', aboutUs);
   app.use('/api/v1/transactions', transactionRoute);
   app.use('/api/v1/analytics', analyticsRoute);
-
+  // Project Sectors (admin-managed lookup for Project.sector)
+  app.use('/api/v1/sectors', sectorRoute);
   // role route
   app.use('/api/v1/role', roleRouter);
 

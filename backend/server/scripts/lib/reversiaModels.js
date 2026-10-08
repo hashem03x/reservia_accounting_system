@@ -51,6 +51,7 @@ const REVERSIA_MODELS = [
   { name: 'ChartOfAccount', require: () => require('../../models/accounting/chartOfAccountModel'), purpose: 'Accounting classification hierarchy (General Accounts / Sub Accounts)' },
   { name: 'JournalEntry', require: () => require('../../models/accounting/journalEntryModel'), purpose: 'Double-entry accounting transactions - source of truth for the General Ledger' },
   { name: 'Project', require: () => require('../../models/project/projectModel'), purpose: 'Contracted projects, with an automatic journal entry on creation' },
+  { name: 'Sector', require: () => require('../../models/project/sectorModel'), purpose: 'Admin-managed Project Sectors (Project.sector holds the sector name)' },
 ];
 
 // Model names that only ever existed in the old Leopard storefront or its Shopify integration -

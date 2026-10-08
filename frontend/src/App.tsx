@@ -76,6 +76,7 @@ import AP_BalanceSheetReport from "@/pages/admin/reports/balance-sheet";
 import AP_Analytics from "@/pages/admin/analytics";
 import AP_Projects from "@/pages/admin/projects";
 import AP_Project from "@/pages/admin/projects/[id]";
+import AP_Sectors from "@/pages/admin/sectors";
 import AP_Accounts from "@/pages/admin/accounts";
 import AP_JournalEntries from "@/pages/admin/journal-entries";
 import AP_JournalEntry from "@/pages/admin/journal-entries/[id]";
@@ -212,6 +213,10 @@ export default function App() {
                   <Route element={<ResourceGuard resource={resources.projects} action={actions.read} />}>
                     <Route path={paths.projects} element={<AP_Projects />} />
                     <Route path={paths.projects + "/:id"} element={<AP_Project />} />
+                  </Route>
+                  {/* Sector management is admin-only (the API allows only admins to change sectors). */}
+                  <Route element={<RoleGuard allowedRoles={[roles.admin.value]} />}>
+                    <Route path={paths.sectors} element={<AP_Sectors />} />
                   </Route>
                   <Route element={<ResourceGuard resource={resources.accounts} action={actions.read} />}>
                     <Route path={paths.accounts} element={<AP_Accounts />} />

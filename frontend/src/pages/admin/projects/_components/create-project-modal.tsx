@@ -9,7 +9,7 @@ import usePrivateRequest from "@/hooks/usePrivateRequest";
 import handleRequest from "@/utils/helpers/handle-request";
 import { AverageCostLineInput, Project } from "@/types/project";
 import { Customer } from "@/types/customer";
-import { ProjectSectors } from "@/utils/constants/accounting";
+import SectorSelect from "@/components/global/sector-select";
 import CustomerSearch from "@/components/global/customer-search";
 import AverageCostEditor from "./average-cost-editor";
 
@@ -177,14 +177,7 @@ export default function CreateProjectModal({
           />
         </div>
 
-        <Select
-          label={translate("Sector", "القطاع")}
-          placeholder={translate("Select sector (optional)", "اختر القطاع (اختياري)")}
-          value={sector}
-          onChange={(value) => setSector(value || "")}
-          data={ProjectSectors.map((s) => ({ value: s, label: s }))}
-          clearable
-        />
+        <SectorSelect value={sector} onChange={setSector} />
 
         <CustomerSearch
           customer={customer}

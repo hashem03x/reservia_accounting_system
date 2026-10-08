@@ -4,6 +4,8 @@ import { useMantineColorScheme } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import { outlineIcons } from "@/components/icons";
 import paths from "@/utils/constants/paths";
+import { useUser } from "@/context/UserContext";
+import { isAdmin } from "@/utils/constants/roles";
 import AdminButton from "./components/admin-button";
 import AdminNavLink from "./components/admin-nav-link";
 
@@ -16,6 +18,7 @@ const COLOR_SCHEME_ICON = { light: outlineIcons.Sun, dark: outlineIcons.Moon, au
 export default function AllAdminOptions({ closeDrawer, collapsed = false }: { closeDrawer?: () => void; collapsed?: boolean }) {
   const { translate, translations, toggleLanguage } = useLanguage();
   const { colorScheme, setColorScheme } = useMantineColorScheme();
+  const { user } = useUser();
 
   const navigate = useNavigate();
 
@@ -124,6 +127,10 @@ export default function AllAdminOptions({ closeDrawer, collapsed = false }: { cl
       label: translations.pages.projects,
       Icon: outlineIcons.Projects,
     },
+    // Sector management is admin-only (see the RoleGuard around its route in App.tsx).
+    ...(user && isAdmin(user.role)
+      ? [{ to: `/${paths.admin}/${paths.sectors}`, label: translations.pages.sectors, Icon: outlineIcons.Building }]
+      : []),
     {
       to: `/${paths.admin}/${paths.accounts}`,
       label: translations.pages.accounts,

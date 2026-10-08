@@ -3,7 +3,8 @@ const Project = require('../../models/project/projectModel');
 const User = require('../../models/userModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
-const { ProjectStatuses, ProjectSectors } = require('../accountingConstants');
+const { ProjectStatuses } = require('../accountingConstants');
+const { resolveProjectSector } = require('../../services/project/sectorService');
 
 // Fast pre-check for Average Cost lines - the model's pre('validate') hook (projectModel.js) is
 // the real backstop that re-verifies this no matter which code path writes to the document, but
@@ -125,8 +126,10 @@ const createProjectValidators = [
 
   check('sector')
     .optional({ nullable: true })
-    .isIn(ProjectSectors)
-    .withMessage(`Sector must be one of: ${ProjectSectors.join(', ')}`),
+    .custom(async value => {
+      await resolveProjectSector(value);
+      return true;
+    }),
 
   validatorMiddleware,
 ];
@@ -154,10 +157,15 @@ const updateProjectValidators = [
 
   check('status').optional().isIn(ProjectStatuses),
 
+  // Keeping the project's current sector is always allowed (even if that sector was deactivated
+  // since); any other value must be an existing, active sector.
   check('sector')
     .optional({ nullable: true })
-    .isIn(ProjectSectors)
-    .withMessage(`Sector must be one of: ${ProjectSectors.join(', ')}`),
+    .custom(async (value, { req }) => {
+      const current = await Project.findById(req.params.id).select('sector').lean();
+      await resolveProjectSector(value, { currentValue: current?.sector || null });
+      return true;
+    }),
 
   validatorMiddleware,
 ];

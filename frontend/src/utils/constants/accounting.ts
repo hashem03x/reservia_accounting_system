@@ -1,11 +1,5 @@
-// Mirrors backend/server/utils/accountingConstants.js - kept as the single frontend source of
-// truth for these lists so a new sector (or other accounting enum added later) is a one-line
-// change here, not something scattered across every form/table that references it. Renamed from
-// `ProjectDepartments` (the underlying Project field was renamed `department` -> `sector`) - the
-// values themselves (Villa, Industrials) are unchanged.
-export const ProjectSectors = ["Villa", "Industrials"] as const;
-
-export type ProjectSector = (typeof ProjectSectors)[number];
+// Project Sectors are not listed here: they are admin-managed records loaded from the backend
+// (Admin -> Sectors, hooks/useSectors.ts, components/global/sector-select).
 
 // Mirrors backend/server/utils/accountingConstants.js's AccountStates - secondary classification
 // on top of a Chart of Accounts entry's `type` (e.g. Current/Non-Current for an asset,

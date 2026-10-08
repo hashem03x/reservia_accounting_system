@@ -9,6 +9,7 @@ let JournalEntry;
 let User;
 let ChartOfAccount;
 let SalesOrder;
+let Sector;
 let recalculateExecutedPercentage;
 let AutomaticJournalAccountCodes;
 let user;
@@ -51,10 +52,11 @@ before(async () => {
   User = require('../../models/userModel');
   ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
   SalesOrder = require('../../models/sales/salesOrderModel');
+  Sector = require('../../models/project/sectorModel');
   require('../../models/inventory/productModel');
   ({ recalculateExecutedPercentage } = require('../../services/project/projectAccountingService'));
   ({ AutomaticJournalAccountCodes } = require('../../utils/accountingConstants'));
-  await Promise.all([Project.init(), JournalEntry.init(), ChartOfAccount.init(), SalesOrder.init()]);
+  await Promise.all([Project.init(), JournalEntry.init(), ChartOfAccount.init(), SalesOrder.init(), Sector.init()]);
 });
 
 after(async () => {
@@ -86,6 +88,10 @@ beforeEach(async () => {
   await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.revenue, name: 'Revenue', type: 'revenue' });
   await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.vatPayable, name: 'VAT Payable', type: 'liability' });
   await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.withholdingTaxReceivable, name: 'Withholding Tax Receivable', type: 'asset' });
+
+  // Valid sectors come from the admin-managed Sector collection (models/project/sectorModel.js).
+  await Sector.deleteMany({});
+  await Sector.create([{ name: 'Villa' }, { name: 'Industrials' }]);
 });
 
 test('creating a project does NOT create any journal entry', async () => {

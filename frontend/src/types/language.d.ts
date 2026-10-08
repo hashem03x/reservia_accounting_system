@@ -44,6 +44,7 @@ export interface LanguageContextProps {
       accounts: string;
       journalEntries: string;
       advancedPayments: string;
+      sectors: string;
     };
   };
 }

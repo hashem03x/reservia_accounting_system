@@ -23,7 +23,7 @@ import { JournalEntry } from "@/types/journal-entry";
 import ProjectContractSection from "../_components/project-contract-section";
 import CustomerSearch from "@/components/global/customer-search";
 import AverageCostEditor from "../_components/average-cost-editor";
-import { ProjectSectors } from "@/utils/constants/accounting";
+import SectorSelect from "@/components/global/sector-select";
 import { AdvancedPayment } from "@/types/advanced-payment";
 
 const advanceStatusColors: Record<string, string> = {
@@ -245,13 +245,7 @@ export default function ProjectDetail() {
             onChange={(v) => setStatus(v || "active")}
             data={statusOptions.map((s) => ({ value: s, label: s }))}
           />
-          <Select
-            label={translate("Sector", "القطاع")}
-            value={sector}
-            onChange={(v) => setSector(v || "")}
-            data={ProjectSectors.map((s) => ({ value: s, label: s }))}
-            clearable
-          />
+          <SectorSelect value={sector} onChange={setSector} savedValue={project.sector ?? null} />
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <DateInput label={translate("Start Date", "تاريخ البدء")} value={startDate} onChange={setStartDate} />
             <DateInput

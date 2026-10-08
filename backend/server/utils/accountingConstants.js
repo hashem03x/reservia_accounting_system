@@ -133,13 +133,11 @@ exports.AccountingSourceTypes = ['ADVANCED_PAYMENT', 'PO', 'SO', 'PAYMENT', 'PRO
 
 exports.ProjectStatuses = ['active', 'completed', 'cancelled', 'on_hold'];
 
-// Centralized so a new sector is a one-line addition here (plus its mirror in
-// frontend/src/utils/constants/accounting.ts), not a hardcoded string scattered across the model,
-// validators, and every frontend form/table. `null` (no sector) stays valid for projects created
-// before this field existed - see docs/entities/projects.md. Renamed from `ProjectDepartments`
-// (the field itself was renamed `department` -> `sector`) - the values themselves (Villa,
-// Industrials) are unchanged.
-exports.ProjectSectors = ['Villa', 'Industrials'];
+// Project Sectors are admin-managed records now (models/project/sectorModel.js, Admin -> Sectors).
+// These are the two values that used to be the hardcoded list - used ONLY by
+// scripts/seedSectors.js to create matching Sector records, so existing options and projects keep
+// working. Never used to validate a project's sector.
+exports.DefaultProjectSectors = ['Villa', 'Industrials'];
 
 exports.FixedAssetStatuses = ['active', 'disposed', 'under_maintenance'];
 
