@@ -92,21 +92,21 @@ export default function AllAdminOptions({ closeDrawer, collapsed = false }: { cl
       label: translations.pages.categories,
       Icon: outlineIcons.Squares,
     },
-    {
-      to: `${paths.admin}/${paths.coupons}`,
-      label: translations.pages.coupons,
-      Icon: outlineIcons.Coupon,
-    },
-    {
-      to: `${paths.admin}/${paths.customization}`,
-      label: translations.pages.customization,
-      Icon: outlineIcons.Computer,
-    },
-    {
-      to: `${paths.admin}/${paths.governorates}`,
-      label: translations.pages.governorates,
-      Icon: outlineIcons.Shipping,
-    },
+    // {
+    //   to: `${paths.admin}/${paths.coupons}`,
+    //   label: translations.pages.coupons,
+    //   Icon: outlineIcons.Coupon,
+    // },
+    // {
+    //   to: `${paths.admin}/${paths.customization}`,
+    //   label: translations.pages.customization,
+    //   Icon: outlineIcons.Computer,
+    // },
+    // {
+    //   to: `${paths.admin}/${paths.governorates}`,
+    //   label: translations.pages.governorates,
+    //   Icon: outlineIcons.Shipping,
+    // },
     {
       to: `${paths.admin}/${paths.transactions}`,
       label: translations.pages.transactions,
