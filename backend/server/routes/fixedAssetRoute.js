@@ -1,51 +1,35 @@
 const express = require('express');
+
 const router = express.Router();
-const { createFixedAsset, updateFixedAsset, sellFixedAsset, getFixedAssets } = require('../controller/fixedAssetController');
+const {
+  createFixedAsset,
+  updateFixedAsset,
+  getFixedAssets,
+  getFixedAsset,
+  getFixedAssetAccountOptions,
+  runDepreciation,
+} = require('../controller/fixedAssetController');
 const authController = require('../controller/user/authController');
 
 const { checkUserPermissions } = require('../middleware/hasPermission');
 const { Resources, Actions } = require('../utils/appConstant');
-const { createFixedAssetValidators } = require('../utils/validators/fixedAssetValidators');
+const { createFixedAssetValidators, updateFixedAssetValidators, runDepreciationValidators } = require('../utils/validators/fixedAssetValidators');
 
 // All routes require authentication
 router.use(authController.protect);
 
-// Create new fixed asset
-router.post('/', checkUserPermissions({ resource: Resources.expenses, action: Actions.create }), createFixedAssetValidators, createFixedAsset);
+// Registered before '/:id' so these paths are never matched as an id.
+router.get('/account-options', checkUserPermissions({ resource: Resources.expenses, action: Actions.read }), getFixedAssetAccountOptions);
+router.post('/depreciation/run', checkUserPermissions({ resource: Resources.expenses, action: Actions.create }), runDepreciationValidators, runDepreciation);
 
-// Get all fixed assets
-router.get('/', checkUserPermissions({ resource: Resources.expenses, action: Actions.read }), getFixedAssets);
+router
+  .route('/')
+  .post(checkUserPermissions({ resource: Resources.expenses, action: Actions.create }), createFixedAssetValidators, createFixedAsset)
+  .get(checkUserPermissions({ resource: Resources.expenses, action: Actions.read }), getFixedAssets);
 
-// Update fixed asset
-router.patch('/:id', checkUserPermissions({ resource: Resources.expenses, action: Actions.create }), updateFixedAsset);
-
-// Sell fixed asset
-router.delete('/sell/:id', checkUserPermissions({ resource: Resources.expenses, action: Actions.create }), sellFixedAsset);
+router
+  .route('/:id')
+  .get(checkUserPermissions({ resource: Resources.expenses, action: Actions.read }), getFixedAsset)
+  .patch(checkUserPermissions({ resource: Resources.expenses, action: Actions.create }), updateFixedAssetValidators, updateFixedAsset);
 
 module.exports = router;
-
-/**
- * creata a new asset :
-   endpoint : /fixed-assets
-   body :
-   {
-    name : String,
-    bookValue : Number,
-    fairValue : Number,
-    warehouseId : String
-   }
-
-   update an asset :
-   endpoint : /fixed-assets/:id
-   body :
-   {
-    name : String,
-    fairValue : Number,
-   }
-   
-   sell an asset :
-   endpoint : /fixed-assets/sell/:id
-   body :
-   {
-   }
- */

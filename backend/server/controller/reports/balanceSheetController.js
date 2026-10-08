@@ -31,7 +31,7 @@ exports.getBalanceSheetReport = asyncHandler(async (req, res) => {
 
   // 1. Calculate Non-current assets (Fixed Assets)
   const fixedAssets = await FixedAsset.find(dateQuery);
-  const totalNonCurrentAssets = fixedAssets.reduce((sum, asset) => sum + asset.fairValue, 0);
+  const totalNonCurrentAssets = fixedAssets.reduce((sum, asset) => sum + (asset.bookValue || 0), 0);
 
   // 2. Calculate Current Assets
   // Get warehouse balances
@@ -172,7 +172,7 @@ exports.exportBalanceSheetReport = asyncHandler(async (req, res) => {
 
   // 1. Calculate Non-current assets (Fixed Assets)
   const fixedAssets = await FixedAsset.find(dateQuery);
-  const totalNonCurrentAssets = fixedAssets.reduce((sum, asset) => sum + asset.fairValue, 0);
+  const totalNonCurrentAssets = fixedAssets.reduce((sum, asset) => sum + (asset.bookValue || 0), 0);
 
   // 2. Calculate Current Assets
   // Get warehouse balances

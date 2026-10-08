@@ -235,15 +235,15 @@ exports.getNetProfit = async function (endDate, warehouseId = '', startDate) {
     }).lean(),
   ]);
 
-  // Calculate loss value for current period
+  // Fixed asset value decline for the current period (accumulated depreciation)
   const currentLossValue = currentFixedAssets.reduce((total, asset) => {
-    const loss = asset.fairValue < asset.bookValue ? asset.bookValue - asset.fairValue : 0;
+    const loss = asset.accumulatedDepreciation || 0;
     return total + loss;
   }, 0);
 
-  // Calculate loss value for previous period
+  // Fixed asset value decline for the previous period (accumulated depreciation)
   const previousLossValue = previousFixedAssets.reduce((total, asset) => {
-    const loss = asset.fairValue < asset.bookValue ? asset.bookValue - asset.fairValue : 0;
+    const loss = asset.accumulatedDepreciation || 0;
     return total + loss;
   }, 0);
 
@@ -511,15 +511,15 @@ exports.getIncomeStatementReport = asyncHandler(async (req, res) => {
     }).lean(),
   ]);
 
-  // Calculate loss value for current period
+  // Fixed asset value decline for the current period (accumulated depreciation)
   const currentLossValue = currentFixedAssets.reduce((total, asset) => {
-    const loss = asset.fairValue < asset.bookValue ? asset.bookValue - asset.fairValue : 0;
+    const loss = asset.accumulatedDepreciation || 0;
     return total + loss;
   }, 0);
 
-  // Calculate loss value for previous period
+  // Fixed asset value decline for the previous period (accumulated depreciation)
   const previousLossValue = previousFixedAssets.reduce((total, asset) => {
-    const loss = asset.fairValue < asset.bookValue ? asset.bookValue - asset.fairValue : 0;
+    const loss = asset.accumulatedDepreciation || 0;
     return total + loss;
   }, 0);
 
@@ -743,15 +743,15 @@ exports.exportIncomeStatementReport = asyncHandler(async (req, res) => {
     }).lean(),
   ]);
 
-  // Calculate loss value for current period
+  // Fixed asset value decline for the current period (accumulated depreciation)
   const currentLossValue = currentFixedAssets.reduce((total, asset) => {
-    const loss = asset.fairValue < asset.bookValue ? asset.bookValue - asset.fairValue : 0;
+    const loss = asset.accumulatedDepreciation || 0;
     return total + loss;
   }, 0);
 
-  // Calculate loss value for previous period
+  // Fixed asset value decline for the previous period (accumulated depreciation)
   const previousLossValue = previousFixedAssets.reduce((total, asset) => {
-    const loss = asset.fairValue < asset.bookValue ? asset.bookValue - asset.fairValue : 0;
+    const loss = asset.accumulatedDepreciation || 0;
     return total + loss;
   }, 0);
 

@@ -103,10 +103,20 @@ exports.AccountingActions = [
   'PAYMENT_CUSTOMER_ADVANCE_APPLIED',
   'PAYMENT_VENDOR_ADVANCE_APPLIED',
   'PROJECT_REVENUE_RECOGNITION',
-  // JV0011 - Dr WIP Raw Materials / Cr Raw Materials, posted with PROJECT_REVENUE_RECOGNITION by
-  // every Sales Order (accountingEventService.js#postProjectCostRecognitionJE). Entries stored by
-  // the earlier, removed COGS -> WIP version carry the same action.
+  // JV0011 - Dr each project Average Cost account / Cr its PUC account, posted with
+  // PROJECT_REVENUE_RECOGNITION by every Sales Order (accountingEventService.js#
+  // postProjectCostRecognitionJE). Entries stored by earlier versions carry the same action.
   'PROJECT_COST_RECOGNITION',
+  // Fixed Assets (services/fixedAssets/fixedAssetService.js): acquisition Dr asset (+ input VAT) /
+  // Cr Suppliers (vendor); monthly depreciation Dr Depreciation & Amortization / Cr Accumulated.
+  'FIXED_ASSET_ACQUISITION',
+  'FIXED_ASSET_DEPRECIATION',
+  // Expenses (services/expenses/expenseService.js): Dr expense (+ input VAT) / Cr Suppliers
+  // (vendor); a payment Dr Suppliers / Cr the payment account.
+  'EXPENSE_RECORDED',
+  'EXPENSE_PAYMENT_RECORDED',
+  // Equity (services/equity/shareholderService.js): Dr the payment account / Cr the equity account.
+  'SHAREHOLDER_CONTRIBUTION',
 ];
 
 // Automatic actions that are inherently project-related: they are only ever posted for a document
@@ -130,7 +140,7 @@ exports.ProjectRequiredAccountingActions = [
 // which is the older (pre-existing) idempotency-key vocabulary for the two legacy automatic flows
 // (project creation, fixed asset purchase) - kept separate rather than merged, since those two
 // still only ever produce exactly one JE each and don't need an `accountingAction` to disambiguate.
-exports.AccountingSourceTypes = ['ADVANCED_PAYMENT', 'PO', 'SO', 'PAYMENT', 'PROJECT'];
+exports.AccountingSourceTypes = ['ADVANCED_PAYMENT', 'PO', 'SO', 'PAYMENT', 'PROJECT', 'FIXED_ASSET', 'EXPENSE', 'SHAREHOLDER'];
 
 exports.ProjectStatuses = ['active', 'completed', 'cancelled', 'on_hold'];
 
@@ -140,7 +150,20 @@ exports.ProjectStatuses = ['active', 'completed', 'cancelled', 'on_hold'];
 // working. Never used to validate a project's sector.
 exports.DefaultProjectSectors = ['Villa', 'Industrials'];
 
-exports.FixedAssetStatuses = ['active', 'disposed', 'under_maintenance'];
+// 'fully_depreciated' is set by the depreciation run once an asset's Book Value reaches 0 - such an
+// asset never receives further depreciation (services/fixedAssets/fixedAssetService.js).
+exports.FixedAssetStatuses = ['active', 'fully_depreciated', 'disposed', 'under_maintenance'];
+
+// Chart of Accounts groups the Fixed Assets module resolves its accounts from - matched by NAME
+// (an account's own name or its parent group's name, parentGroupNameEn / parentAccount), the same
+// way Cash & Cash Equivalents is identified above, never by account code.
+exports.FixedAssetAccountGroups = {
+  tangibleAssets: 'Property, Plant & Equipment',
+  intangibleAssets: 'Intangible Assets',
+  accumulatedDepreciation: 'Accumulated Depreciation – Fixed Assets',
+  accumulatedAmortization: 'Accumulated Amortization – Intangible Assets',
+  depreciationExpense: 'Depreciation & Amortization',
+};
 
 // Well-known account codes the automatic accounting entries (project creation, fixed asset
 // purchase) look up by code rather than by a hardcoded ObjectId. Overridable via env so a
@@ -202,7 +225,7 @@ exports.ProjectCostRecognitionDescription = 'تحميل المشروع بالت�
 // so an automatic entry's module can never drift into inconsistent casing/spelling. 'Manual' is
 // the default for every hand-entered journal entry (source: 'manual'); the two legacy automatic
 // flows (project_creation, fixed_asset_purchase) keep their own plain labels for the same reason.
-exports.AccountingModules = ['Advanced Payment', 'Purchase Order', 'Sales Order', 'Payment', 'Manual', 'Fixed Asset', 'Project'];
+exports.AccountingModules = ['Advanced Payment', 'Purchase Order', 'Sales Order', 'Payment', 'Manual', 'Fixed Asset', 'Project', 'Expense', 'Equity'];
 
 // accountingAction -> Module label. Deliberately keyed by accountingAction (not sourceType) -
 // PO_PAYMENT_RECORDED/SO_PAYMENT_RECORDED both carry `sourceType: 'PAYMENT'` but their real business
@@ -224,4 +247,9 @@ exports.AccountingModuleByAction = {
   PAYMENT_VENDOR_ADVANCE_APPLIED: 'Payment',
   PROJECT_REVENUE_RECOGNITION: 'Sales Order',
   PROJECT_COST_RECOGNITION: 'Sales Order',
+  FIXED_ASSET_ACQUISITION: 'Fixed Asset',
+  FIXED_ASSET_DEPRECIATION: 'Fixed Asset',
+  EXPENSE_RECORDED: 'Expense',
+  EXPENSE_PAYMENT_RECORDED: 'Expense',
+  SHAREHOLDER_CONTRIBUTION: 'Equity',
 };

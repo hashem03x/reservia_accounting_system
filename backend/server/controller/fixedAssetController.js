@@ -1,164 +1,69 @@
 const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const FixedAsset = require('../models/fixedAssets');
-const Payment = require('../models/vendor/paymentModel');
-const JournalEntry = require('../models/accounting/journalEntryModel');
 const factory = require('./handlersFactory');
-const { getNextJournalEntryNumber } = require('../services/accounting/journalEntryNumberService');
+const ApiError = require('../utils/apiError');
 const { logAccountingEvent, logAccountingError } = require('../utils/accountingLogger');
+const { createFixedAsset, updateFixedAsset, runDepreciation } = require('../services/fixedAssets/fixedAssetService');
+const { getFixedAssetAccountOptions } = require('../services/fixedAssets/fixedAssetAccounts');
 
-// Get all fixed assets
-exports.getFixedAssets = factory.getAll(FixedAsset);
-
-// Create new fixed asset
-exports.createFixedAsset = asyncHandler(async (req, res) => {
-  const { name, bookValue, fairValue, warehouseId, price, assetAccountId, sourceAccountId, acquisitionDate, status, notes } = req.body;
-  // bookValue/fairValue keep their historical meaning for the existing sell/loseValue flow - when
-  // the caller only sends the new `price` field, both default to it so a newly created asset
-  // still behaves correctly in that pre-existing code path without requiring every frontend
-  // caller to send three near-duplicate numbers.
-  const resolvedBookValue = bookValue ?? price;
-  const resolvedFairValue = fairValue ?? price;
-  const startedAt = Date.now();
-
+// Runs `work(session)` in one MongoDB transaction - the asset/depreciation records and their
+// journal entries commit together or not at all.
+async function inTransaction(work) {
   const session = await mongoose.startSession();
   try {
-    let fixedAsset;
-    let journalEntry = null;
-
+    let result;
     await session.withTransaction(async () => {
-      [fixedAsset] = await FixedAsset.create(
-        [
-          {
-            name,
-            bookValue: resolvedBookValue,
-            fairValue: resolvedFairValue,
-            warehouseId,
-            price,
-            assetAccountId: assetAccountId || undefined,
-            acquisitionDate,
-            status,
-            notes,
-            createdBy: req.user._id,
-          },
-        ],
-        { session }
-      );
-
-      // Create an outgoing payment for the purchase
-      await Payment.create(
-        [
-          {
-            warehouseId,
-            type: 'out',
-            amountPaid: resolvedBookValue,
-            paymentMethod: 'cash', // You might want to make this configurable
-            paymentCategory: 'purchase',
-            notes: `Fixed asset purchase: ${name}`,
-            createdBy: req.user._id,
-          },
-        ],
-        { session }
-      );
-
-      // Per master spec's "FIXED ASSET ACCOUNTING" section: never invent the credit
-      // (source-of-funds) account - only post a journal entry when the caller explicitly supplies
-      // both sides (Dr assetAccountId / Cr sourceAccountId). Omitting either leaves the asset
-      // exactly as it behaved before this phase (Payment only, no journal entry).
-      if (assetAccountId && sourceAccountId) {
-        const entryNumber = await getNextJournalEntryNumber(session);
-        [journalEntry] = await JournalEntry.create(
-          [
-            {
-              entryNumber,
-              date: acquisitionDate || new Date(),
-              description: `Fixed asset purchase: ${name}`,
-              source: 'fixed_asset_purchase',
-              status: 'posted',
-              lines: [
-                { account: assetAccountId, debit: price, credit: 0, description: `Fixed asset - ${name}` },
-                { account: sourceAccountId, debit: 0, credit: price, description: `Source of funds - ${name}` },
-              ],
-              createdBy: req.user._id,
-              postedBy: req.user._id,
-              postedAt: new Date(),
-            },
-          ],
-          { session }
-        );
-      }
+      result = await work(session);
     });
-
-    logAccountingEvent('FIXED_ASSET_CREATED', {
-      fixedAssetId: fixedAsset._id,
-      journalEntryId: journalEntry?._id,
-      durationMs: Date.now() - startedAt,
-      requestId: req.id,
-    });
-
-    res.status(201).json({
-      status: 'success',
-      data: fixedAsset,
-      journalEntry,
-    });
-  } catch (err) {
-    logAccountingError('FIXED_ASSET_CREATION_FAILED', err, {
-      durationMs: Date.now() - startedAt,
-      mongoErrorCode: err.code,
-      mongoErrorLabels: typeof err.errorLabels === 'function' ? err.errorLabels() : err.errorLabels,
-      requestId: req.id,
-    });
-    throw err;
+    return result;
   } finally {
     session.endSession();
   }
+}
+
+exports.getFixedAssets = factory.getAll(FixedAsset);
+
+exports.getFixedAsset = asyncHandler(async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(new ApiError('Invalid fixed asset id', 400));
+  const asset = await FixedAsset.findById(req.params.id)
+    .populate({ path: 'createdBy', select: 'name' })
+    .populate({ path: 'acquisitionJournalEntry depreciations.journalEntry', select: 'entryNumber' });
+  if (!asset) return next(new ApiError('Fixed asset not found', 404));
+  res.status(200).json({ status: 'success', data: asset });
 });
 
-// Update fixed asset
+// The accounts the Fixed Asset form may offer, from the Chart of Accounts groups.
+exports.getFixedAssetAccountOptions = asyncHandler(async (req, res) => {
+  res.status(200).json({ status: 'success', data: await getFixedAssetAccountOptions() });
+});
+
+exports.createFixedAsset = asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const asset = await inTransaction(session => createFixedAsset(req.body, req.user._id, session));
+    logAccountingEvent('FIXED_ASSET_CREATED', { fixedAssetId: asset._id, journalEntryId: asset.acquisitionJournalEntry, durationMs: Date.now() - startedAt, requestId: req.id });
+    res.status(201).json({ status: 'success', data: await FixedAsset.findById(asset._id) });
+  } catch (err) {
+    logAccountingError('FIXED_ASSET_CREATION_FAILED', err, { durationMs: Date.now() - startedAt, requestId: req.id });
+    throw err;
+  }
+});
+
 exports.updateFixedAsset = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  // const { name, bookValue, fairValue, warehouseId } = req.body;
-
-  const fixedAsset = await FixedAsset.findByIdAndUpdate(id, req.body, { new: true, runValidators: true });
-
-  if (!fixedAsset) {
-    res.status(404);
-    throw new Error('Fixed asset not found');
-  }
-
-  res.status(200).json({
-    status: 'success',
-    data: fixedAsset,
-  });
+  const asset = await inTransaction(session => updateFixedAsset(req.params.id, req.body, session));
+  res.status(200).json({ status: 'success', data: await FixedAsset.findById(asset._id) });
 });
 
-// Sell fixed asset
-exports.sellFixedAsset = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  const fixedAsset = await FixedAsset.findById(id);
-
-  if (!fixedAsset) {
-    res.status(404);
-    throw new Error('Fixed asset not found');
+// POST /fixed-assets/depreciation/run { period: 'YYYY-MM' }
+exports.runDepreciation = asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const result = await inTransaction(session => runDepreciation({ period: req.body.period, userId: req.user._id }, session));
+    logAccountingEvent('FIXED_ASSET_DEPRECIATION_RUN', { period: result.period, assets: result.processed.length, totalAmount: result.totalAmount, durationMs: Date.now() - startedAt, requestId: req.id });
+    res.status(200).json({ status: 'success', data: result });
+  } catch (err) {
+    logAccountingError('FIXED_ASSET_DEPRECIATION_RUN_FAILED', err, { period: req.body.period, durationMs: Date.now() - startedAt, requestId: req.id });
+    throw err;
   }
-
-  // Create an incoming payment for the sale
-  await Payment.create({
-    warehouseId: fixedAsset.warehouseId,
-    type: 'in',
-    amountPaid: fixedAsset.fairValue,
-    paymentMethod: 'cash',
-    paymentCategory: 'sales',
-    notes: `Fixed asset sale: ${fixedAsset.name}`,
-    createdBy: req.user._id,
-  });
-
-  // Delete the fixed asset
-  await FixedAsset.findByIdAndDelete(id);
-
-  res.status(200).json({
-    status: 'success',
-    message: 'Fixed asset sold and deleted successfully',
-  });
 });

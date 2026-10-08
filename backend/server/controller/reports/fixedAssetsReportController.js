@@ -5,7 +5,7 @@ const ApiError = require('../../utils/apiError');
 
 // Helper function to get sort configuration
 const getSortConfig = (sortBy, sortOrder) => {
-  const validSortFields = ['name', 'bookValue', 'fairValue', 'createdAt'];
+  const validSortFields = ['name', 'bookValue', 'accumulatedDepreciation', 'createdAt'];
   const order = sortOrder === 'asc' ? 1 : -1;
 
   if (sortBy && validSortFields.includes(sortBy)) {
@@ -32,8 +32,8 @@ exports.getFixedAssetsReport = asyncHandler(async (req, res) => {
   const reportData = fixedAssets.map(asset => ({
     name: asset.name,
     bookValue: asset.bookValue,
-    fairValue: asset.fairValue,
-    warehouse: asset.warehouseId.name,
+    accumulatedDepreciation: asset.accumulatedDepreciation || 0,
+    warehouse: asset.warehouseId?.name || null,
     // createdBy: asset.createdBy?.name || 'N/A',
     createdAt: asset.createdAt,
   }));
@@ -41,7 +41,7 @@ exports.getFixedAssetsReport = asyncHandler(async (req, res) => {
   const summary = {
     totalAssets: fixedAssets.length,
     totalBookValue: fixedAssets.reduce((sum, asset) => sum + asset.bookValue, 0),
-    totalFairValue: fixedAssets.reduce((sum, asset) => sum + asset.fairValue, 0),
+    totalAccumulatedDepreciation: fixedAssets.reduce((sum, asset) => sum + (asset.accumulatedDepreciation || 0), 0),
   };
 
   if (warehouseId && fixedAssets.length > 0) {
@@ -71,12 +71,12 @@ exports.exportFixedAssetsReport = asyncHandler(async (req, res) => {
 
   const fixedAssets = await FixedAsset.find(query).populate('warehouseId', 'name location').populate('createdBy', 'name');
 
-  const headers = ['Asset Name', 'Book Value', 'Fair Value', 'Warehouse', 'Created By', 'Created At'];
+  const headers = ['Asset Name', 'Book Value', 'Accumulated Depreciation', 'Warehouse', 'Created By', 'Created At'];
 
   const data = fixedAssets.map(asset => [
     asset.name,
     asset.bookValue,
-    asset.fairValue,
+    asset.accumulatedDepreciation || 0,
     asset.warehouseId ? `${asset.warehouseId.name} (${asset.warehouseId.location})` : 'N/A',
     asset.createdBy?.name || 'N/A',
     asset.createdAt.toLocaleDateString(),
@@ -87,7 +87,7 @@ exports.exportFixedAssetsReport = asyncHandler(async (req, res) => {
     data.push([
       'Total',
       fixedAssets.reduce((sum, asset) => sum + asset.bookValue, 0),
-      fixedAssets.reduce((sum, asset) => sum + asset.fairValue, 0),
+      fixedAssets.reduce((sum, asset) => sum + (asset.accumulatedDepreciation || 0), 0),
       warehouseId && fixedAssets[0]?.warehouseId ? `${fixedAssets[0].warehouseId.name} (${fixedAssets[0].warehouseId.location})` : '',
       '',
       '',

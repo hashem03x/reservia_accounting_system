@@ -1,52 +1,65 @@
-import { useLanguage } from "@/context/LanguageContext";
-import { useWarehouses } from "@/context/WarehousesContext";
-import Modal from "@/components/ui/modal";
-import ErrorAlert from "@/components/ui/error-alert";
-import { Button, NumberInput, Select, Textarea, TextInput } from "@mantine/core";
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
+import usePrivateRequest from "@/hooks/usePrivateRequest";
 import handleRequest from "@/utils/helpers/handle-request";
-import { FixedAsset } from "@/types/fixed-asset";
-import { PaginatedData } from "@/types/global";
-import { ChartOfAccount } from "@/types/chart-of-account";
+import { toDateOnly } from "@/utils/helpers/format-date";
+import { Button, NumberInput, Select, Textarea, TextInput } from "@mantine/core";
+import { DateInput } from "@mantine/dates";
+import ErrorAlert from "@/components/ui/error-alert";
+import Modal from "@/components/ui/modal";
+import VendorSearch from "@/components/global/vendor-search";
+import { Vendor } from "@/types/vendor";
+import { FixedAsset, FixedAssetAccountOption, FixedAssetAccountOptions } from "@/types/fixed-asset";
+
+const accountLabel = (a: FixedAssetAccountOption) => `${a.code} - ${a.name}`;
 
 export default function CreateFixedAssetModal({
   opened,
   close,
-  setPaginatedAssets,
+  onCreated,
 }: {
   opened: boolean;
   close: () => void;
-  setPaginatedAssets: React.Dispatch<React.SetStateAction<PaginatedData<FixedAsset>>>;
+  onCreated: (asset: FixedAsset) => void;
 }) {
-  const { translate, language } = useLanguage();
-  const { data: warehouses } = useWarehouses();
+  const { language, translate, translations } = useLanguage();
+  const privateRequest = usePrivateRequest();
 
   const [name, setName] = useState("");
-  const [bookValue, setBookValue] = useState<string | number>("");
-  const [fairValue, setFairValue] = useState<string | number>("");
-  const [warehouseId, setWarehouseId] = useState("");
-  // Accounting-foundation fields - all optional, so the pre-existing create flow keeps working
-  // exactly as before when they're left blank (see backend/server/models/fixedAssets.js).
-  const [price, setPrice] = useState<string | number>("");
+  const [vendor, setVendor] = useState<Vendor | null>(null);
   const [assetAccountId, setAssetAccountId] = useState("");
-  const [acquisitionDate, setAcquisitionDate] = useState("");
+  const [accumulatedAccountId, setAccumulatedAccountId] = useState("");
+  const [depreciationAccountId, setDepreciationAccountId] = useState("");
+  const [acquisitionDate, setAcquisitionDate] = useState<Date | null>(new Date());
+  const [price, setPrice] = useState<string | number>("");
+  const [usefulLifeMonths, setUsefulLifeMonths] = useState<string | number>("");
+  const [vatPercentage, setVatPercentage] = useState<string | number>(0);
   const [notes, setNotes] = useState("");
-  const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
 
-  const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
-  const { privateRequest: fetchAccounts } = useDataHandler({ initialData: null });
+  const { loading, setLoading, error, setError } = useDataHandler({ initialData: null });
+  const { privateRequest: loadOptions, data: options, setData: setOptions } = useDataHandler<FixedAssetAccountOptions | null>({ initialData: null });
 
+  // The selectable accounts come from the Chart of Accounts groups on the server.
   useEffect(() => {
-    if (!opened) return;
-    fetchAccounts({ url: "accounts", params: { limit: 500 }, language })
-      .then((res) => setAccounts(res.data.filter((a: ChartOfAccount) => a.type === "asset")))
-      .catch(() => {});
+    if (!opened || options) return;
+    loadOptions({ url: "fixed-assets/account-options", language })
+      .then((res) => setOptions(res.data))
+      .catch(() => setOptions(null));
   }, [opened]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const assetAccount = options?.assetAccounts.find((a) => a._id === assetAccountId);
+  const assetClass = assetAccount?.assetClass;
+  const accumulatedOptions = assetClass === "intangible" ? options?.accumulatedAmortizationAccounts || [] : options?.accumulatedDepreciationAccounts || [];
 
+  const cost = typeof price === "number" ? price : 0;
+  const months = typeof usefulLifeMonths === "number" ? usefulLifeMonths : 0;
+  const vat = typeof vatPercentage === "number" ? vatPercentage : 0;
+  const vatAmount = Math.round(cost * vat) / 100;
+  const monthly = cost > 0 && months > 0 ? Math.round((cost / months) * 100) / 100 : 0;
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     handleRequest(language, setLoading, setError, async () => {
       const res = await privateRequest({
         language,
@@ -54,26 +67,19 @@ export default function CreateFixedAssetModal({
         url: "fixed-assets",
         data: {
           name,
-          bookValue,
-          fairValue,
-          warehouseId,
-          price: price || undefined,
-          assetAccountId: assetAccountId || undefined,
-          acquisitionDate: acquisitionDate || undefined,
+          vendor: vendor?._id,
+          assetAccountId,
+          accumulatedAccountId,
+          depreciationAccountId,
+          acquisitionDate: acquisitionDate ? toDateOnly(acquisitionDate) : undefined,
+          price,
+          usefulLifeMonths,
+          vatPercentage: vat,
           notes: notes || undefined,
         },
       });
-
-      // Update the data
-      setPaginatedAssets((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          data: [res.data, ...prev.data],
-        };
-      });
-
-      close();
+      onCreated(res.data);
+      handleClose();
     });
   }
 
@@ -81,100 +87,100 @@ export default function CreateFixedAssetModal({
     close();
     setTimeout(() => {
       setName("");
-      setBookValue("");
-      setFairValue("");
-      setWarehouseId("");
-      setPrice("");
+      setVendor(null);
       setAssetAccountId("");
-      setAcquisitionDate("");
+      setAccumulatedAccountId("");
+      setDepreciationAccountId("");
+      setAcquisitionDate(new Date());
+      setPrice("");
+      setUsefulLifeMonths("");
+      setVatPercentage(0);
       setNotes("");
       setError("");
     }, 250);
   }
 
-  const title = translate("Create Fixed Asset", "إنشاء أصل ثابت");
+  const canSubmit = !!name && !!vendor && !!assetAccountId && !!accumulatedAccountId && !!depreciationAccountId && !!acquisitionDate && cost > 0 && months > 0;
 
   return (
-    <Modal opened={opened} onClose={handleClose} title={title} size="lg">
+    <Modal opened={opened} onClose={handleClose} title={translate("Create Fixed Asset", "إنشاء أصل ثابت")} size="lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        {/* Error Alert */}
         {error && <ErrorAlert error={error} />}
 
-        {/* Name */}
-        <TextInput
-          label={translate("Asset Name", "اسم الأصل")}
-          placeholder={translate("Enter asset name", "أدخل اسم الأصل")}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-        />
+        <TextInput label={translate("Asset Name", "اسم الأصل")} value={name} onChange={(e) => setName(e.target.value)} required />
 
-        {/* Book Value */}
-        <NumberInput
-          label={translate("Book Value", "القيمة الدفترية")}
-          placeholder={translate("Enter book value", "أدخل القيمة الدفترية")}
-          value={bookValue}
-          onChange={(value) => setBookValue(value)}
-          min={0}
-          required
-        />
+        <VendorSearch vendor={vendor} setVendor={setVendor} label={translate("Vendor", "البائع")} placeholder={translate("Search for a vendor", "ابحث عن بائع")} required />
 
-        {/* Fair Value */}
-        <NumberInput
-          label={translate("Fair Value", "القيمة العادلة")}
-          placeholder={translate("Enter fair value", "أدخل القيمة العادلة")}
-          value={fairValue}
-          onChange={(value) => setFairValue(value)}
-          min={0}
-          required
-        />
-
-        {/* Warehouse */}
         <Select
-          label={translate("Warehouse", "المخزن")}
-          placeholder={translate("Select Warehouse", "اختر المخزن")}
-          value={warehouseId}
-          onChange={(value) => setWarehouseId(value || "")}
-          data={warehouses.map((warehouse) => ({ value: warehouse._id, label: warehouse.name }))}
-          required
-        />
-
-        <hr />
-        <p className="text-xs text-gray-500">{translate("Accounting (optional)", "المحاسبة (اختياري)")}</p>
-
-        {/* Price */}
-        <NumberInput
-          label={translate("Price", "السعر")}
-          placeholder={translate("Enter acquisition price", "أدخل سعر الشراء")}
-          value={price}
-          onChange={setPrice}
-          min={0}
-        />
-
-        {/* Asset Account */}
-        <Select
-          label={translate("Asset Account (Chart of Accounts)", "حساب الأصل (دليل الحسابات)")}
+          label={translate("Asset Account", "حساب الأصل")}
+          description={translate("Property, Plant & Equipment or Intangible Assets", "الأصول الثابتة أو الأصول غير الملموسة")}
           placeholder={translate("Select account", "اختر الحساب")}
-          value={assetAccountId}
-          onChange={(value) => setAssetAccountId(value || "")}
-          data={accounts.map((a) => ({ value: a._id, label: `${a.code} - ${a.name}` }))}
+          value={assetAccountId || null}
+          onChange={(v) => {
+            setAssetAccountId(v || "");
+            setAccumulatedAccountId("");
+          }}
+          data={(options?.assetAccounts || []).map((a) => ({
+            value: a._id,
+            label: `${accountLabel(a)} (${a.assetClass === "intangible" ? translate("Intangible", "غير ملموس") : translate("Tangible", "ملموس")})`,
+          }))}
+          nothingFoundMessage={translate("No eligible accounts in the Chart of Accounts", "لا توجد حسابات مؤهلة في دليل الحسابات")}
           searchable
-          clearable
+          required
         />
 
-        {/* Acquisition Date */}
-        <TextInput
-          type="date"
-          label={translate("Acquisition Date", "تاريخ الشراء")}
+        <Select
+          label={assetClass === "intangible" ? translate("Accumulated Amortization Account", "حساب مجمع الاستهلاك") : translate("Accumulated Depreciation Account", "حساب مجمع الإهلاك")}
+          placeholder={assetAccountId ? translate("Select account", "اختر الحساب") : translate("Select the asset account first", "اختر حساب الأصل أولاً")}
+          value={accumulatedAccountId || null}
+          onChange={(v) => setAccumulatedAccountId(v || "")}
+          data={accumulatedOptions.map((a) => ({ value: a._id, label: accountLabel(a) }))}
+          disabled={!assetAccountId}
+          nothingFoundMessage={translate("No eligible accounts in the Chart of Accounts", "لا توجد حسابات مؤهلة في دليل الحسابات")}
+          searchable
+          required
+        />
+
+        <Select
+          label={translate("Depreciation & Amortization Account", "حساب الإهلاك والاستهلاك")}
+          placeholder={translate("Select account", "اختر الحساب")}
+          value={depreciationAccountId || null}
+          onChange={(v) => setDepreciationAccountId(v || "")}
+          data={(options?.depreciationExpenseAccounts || []).map((a) => ({ value: a._id, label: accountLabel(a) }))}
+          nothingFoundMessage={translate("No eligible accounts in the Chart of Accounts", "لا توجد حسابات مؤهلة في دليل الحسابات")}
+          searchable
+          required
+        />
+
+        <DateInput
+          label={translate("Asset Date", "تاريخ الأصل")}
+          description={translate("Depreciation starts with this month", "يبدأ الإهلاك من هذا الشهر")}
           value={acquisitionDate}
-          onChange={(e) => setAcquisitionDate(e.target.value)}
+          onChange={setAcquisitionDate}
+          required
         />
 
-        {/* Notes */}
-        <Textarea label={translate("Notes", "ملاحظات")} value={notes} onChange={(e) => setNotes(e.target.value)} autosize minRows={2} />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <NumberInput label={translate("Cost", "التكلفة")} value={price} onChange={setPrice} min={0.01} decimalScale={2} thousandSeparator required />
+          <NumberInput label={translate("Useful Life (months)", "العمر الإنتاجي بالشهور")} value={usefulLifeMonths} onChange={setUsefulLifeMonths} min={1} allowDecimal={false} required />
+          <NumberInput label={translate("VAT %", "ضريبة القيمة المضافة %")} value={vatPercentage} onChange={setVatPercentage} min={0} max={100} decimalScale={2} />
+        </div>
 
-        {/* Submit Button */}
-        <Button type="submit" loading={loading} mt="md">
+        <div className="flex flex-col gap-1 rounded-md bg-gray-50 p-3 text-sm text-gray-700">
+          <span>
+            {translate("VAT amount", "قيمة الضريبة")}: <b>{vatAmount.toLocaleString()} {translations.currency}</b>
+          </span>
+          <span>
+            {translate("Owed to the vendor", "المستحق للبائع")}: <b>{(cost + vatAmount).toLocaleString()} {translations.currency}</b>
+          </span>
+          <span>
+            {translate("Monthly depreciation", "الإهلاك الشهري")}: <b>{monthly.toLocaleString()} {translations.currency}</b>
+          </span>
+        </div>
+
+        <Textarea label={translate("Notes (optional)", "ملاحظات (اختياري)")} value={notes} onChange={(e) => setNotes(e.target.value)} autosize minRows={2} />
+
+        <Button type="submit" loading={loading} disabled={!canSubmit} mt="md">
           {translate("Create", "إنشاء")}
         </Button>
       </form>

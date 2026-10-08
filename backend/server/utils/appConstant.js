@@ -59,6 +59,7 @@ exports.Resources = {
   accounts: 'accounts',
   journalEntries: 'journalEntries',
   advancedPayments: 'advancedPayments',
+  shareholders: 'shareholders',
 };
 
 exports.Actions = {

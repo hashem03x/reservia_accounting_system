@@ -34,7 +34,7 @@ const journalLineSchema = new Schema(
     // the same "Sub Account" UI column. Never set on manual entries - those keep using the existing
     // `subAccount` ChartOfAccount-reference field above.
     partyNumber: { type: Number, default: null },
-    partyType: { type: String, enum: { values: ['customer', 'vendor', null], message: '{VALUE} is not a valid party type' }, default: null },
+    partyType: { type: String, enum: { values: ['customer', 'vendor', 'shareholder', null], message: '{VALUE} is not a valid party type' }, default: null },
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
     // Denormalized so the Journal Entries UI table can render "Project Number" per line without a
     // populate - the project reference above remains the source of truth/relational key.

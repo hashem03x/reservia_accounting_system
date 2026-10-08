@@ -40,6 +40,7 @@ import AP_NewSalesOrder from "@/pages/admin/home/sales-orders/new";
 import AP_Customers from "@/pages/admin/home/customers";
 import AP_Customer from "@/pages/admin/home/customers/[id]";
 import AP_Expenses from "@/pages/admin/home/expenses";
+import AP_Expense from "@/pages/admin/home/expenses/[id]";
 import AP_Warehouses from "@/pages/admin/home/warehouses";
 import AP_Transfers from "@/pages/admin/home/transfers";
 import AP_Transfer from "@/pages/admin/home/transfers/[id]";
@@ -72,6 +73,7 @@ import AP_User from "@/pages/admin/users/[id]";
 import ReturnsReport from "@/pages/admin/reports/returns";
 import IncomeStatementReport from "@/pages/admin/reports/income-statement";
 import AP_FixedAssets from "@/pages/admin/fixed-assets";
+import AP_FixedAsset from "@/pages/admin/fixed-assets/[id]";
 import AP_FixedAssetsReport from "@/pages/admin/reports/fixed-assets";
 import AP_BalanceSheetReport from "@/pages/admin/reports/balance-sheet";
 import AP_Analytics from "@/pages/admin/analytics";
@@ -83,6 +85,8 @@ import AP_JournalEntries from "@/pages/admin/journal-entries";
 import AP_JournalEntry from "@/pages/admin/journal-entries/[id]";
 import AP_AdvancedPayments from "@/pages/admin/advanced-payments";
 import AP_AdvancedPayment from "@/pages/admin/advanced-payments/[id]";
+import AP_Shareholders from "@/pages/admin/shareholders";
+import AP_Shareholder from "@/pages/admin/shareholders/[id]";
 
 export default function App() {
   useColorScheme();
@@ -148,6 +152,7 @@ export default function App() {
 
                     {/* Expenses (read) route is not protected by the ResourceGuard component */}
                     <Route path={paths.expenses} element={<AP_Expenses />} />
+                    <Route path={paths.expenses + "/:id"} element={<AP_Expense />} />
 
                     <Route element={<ResourceGuard resource={resources.warehouses} action={actions.read} />}>
                       <Route path={paths.warehouses} element={<AP_Warehouses />} />
@@ -207,6 +212,7 @@ export default function App() {
                   </Route>
                   <Route element={<ResourceGuard resource={resources.fixedAssets} action={actions.read} />}>
                     <Route path={paths.fixedAssets} element={<AP_FixedAssets />} />
+                    <Route path={paths.fixedAssets + "/:id"} element={<AP_FixedAsset />} />
                   </Route>
                   <Route element={<ResourceGuard resource={resources.analytics} action={actions.read} />}>
                     <Route path={paths.analytics} element={<AP_Analytics />} />
@@ -229,6 +235,10 @@ export default function App() {
                   <Route element={<ResourceGuard resource={resources.advancedPayments} action={actions.read} />}>
                     <Route path={paths.advancedPayments} element={<AP_AdvancedPayments />} />
                     <Route path={paths.advancedPayments + "/:id"} element={<AP_AdvancedPayment />} />
+                  </Route>
+                  <Route element={<ResourceGuard resource={resources.shareholders} action={actions.read} />}>
+                    <Route path={paths.shareholders} element={<AP_Shareholders />} />
+                    <Route path={paths.shareholders + "/:id"} element={<AP_Shareholder />} />
                   </Route>
                 </Route>
 

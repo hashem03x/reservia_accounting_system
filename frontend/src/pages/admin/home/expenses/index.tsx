@@ -1,8 +1,8 @@
-import { Expense } from "@/types/expense";
+import { Expense, ExpensePaymentStatus } from "@/types/expense";
 import { PaginatedData } from "@/types/global";
 import { useEffect, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useLanguage } from "@/context/LanguageContext";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
@@ -11,40 +11,36 @@ import handleRequest from "@/utils/helpers/handle-request";
 import paths from "@/utils/constants/paths";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
-import trancateString from "@/utils/helpers/trancate-string";
 import { formatDate } from "@/utils/helpers/date-formaters";
-import { getPaymentMethodLabel } from "@/utils/constants/payment-methods";
+import { formatAmount } from "@/utils/helpers/format-amount";
 import { getExpenseCategoryLabel } from "@/utils/constants/expense-categories";
 import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
-import { Button, Table } from "@mantine/core";
+import { Badge, Button, Table } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
-import ExpenseModal from "./_components/expense-modal";
-import useWarehouseHelpers from "@/hooks/useWarehouseHelpers";
 import UnauthorizedSection from "@/components/ui/sections/unauthorized";
+import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import TruncatedText from "@/components/ui/truncated-text";
+import ExpenseModal from "./_components/expense-modal";
+import { expenseStatusColors, useExpenseStatusLabel } from "./_components/status";
 
 const EXPENSES_PER_PAGE = import.meta.env.VITE_EXPENSES_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
 
 export default function Expenses() {
   const { language, translate, translations } = useLanguage();
+  const navigate = useNavigate();
+  const statusLabel = useExpenseStatusLabel();
 
   useDocumentTitle(`${translations.pages.expenses} | ${translations.adminPanel}`);
 
-  const { getWarehouseNameById } = useWarehouseHelpers();
-
-  // URL search params for filters
   const [searchParams, setSearchParams] = useSearchParams();
-
-  // State management for filters
   const [activePage, setActivePage] = useState(parseInt(searchParams.get("page") || "1"));
 
-  const params = {
-    page: activePage.toString(),
-  };
+  const params = { page: activePage.toString() };
 
   const {
     privateRequest,
@@ -63,7 +59,7 @@ export default function Expenses() {
     const executeFetch = async () => {
       const response = await privateRequest({
         url: "expenses",
-        params: { limit: EXPENSES_PER_PAGE, ...params },
+        params: { limit: EXPENSES_PER_PAGE, sort: "-createdAt", ...params },
         signal: controller.signal,
         language,
       });
@@ -72,7 +68,6 @@ export default function Expenses() {
 
     handleRequest(language, setLoading, setError, executeFetch, canceled);
 
-    // Return a function to cancel this request
     return () => {
       controller.abort();
       canceled.current = true;
@@ -83,20 +78,16 @@ export default function Expenses() {
   const canICreateExpenses = useHasPermission(resources.expenses, actions.create);
 
   useEffect(() => {
-    // Sync URL search params with filters
     setSearchParams(params, { replace: true });
-
     window.scrollTo({ top: 0, behavior: "instant" });
-
-    if (!canIReadExpenses) return; // If the user doesn't have permission to read expenses, don't fetch them.
-
-    const cancelRequest = handleLoadExpenses(); // This will send the request and return the function to cancel it.
-    return cancelRequest; // This will be called when the component unmounts.
+    if (!canIReadExpenses) return;
+    const cancelRequest = handleLoadExpenses();
+    return cancelRequest;
   }, [canIReadExpenses, activePage]);
 
-  // ========== Handle Modals ==========
-
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
+
+  const money = (value: unknown) => formatAmount(value, translations.currency);
 
   return (
     <AdminLayoutBox
@@ -110,11 +101,8 @@ export default function Expenses() {
         ),
       }}
     >
-      {/* Content */}
       {!canIReadExpenses ? (
-        <UnauthorizedSection
-          message={translate("You don't have permission to read expenses", "ليس لديك إذن لقراءة النفقات")}
-        />
+        <UnauthorizedSection message={translate("You don't have permission to read expenses", "ليس لديك إذن لقراءة النفقات")} />
       ) : loading ? (
         <LoadingSection message={translate("Loading expenses...", "جاري تحميل النفقات...")} />
       ) : error ? (
@@ -129,61 +117,74 @@ export default function Expenses() {
           <EmptySection useDefaultImg message={translate("No expenses found", "لا يوجد نفقات")} />
         ) : (
           <>
-            {/* Table */}
-            <div className="overflow-x-auto">
-              <Table className="text-nowrap" verticalSpacing="xs" highlightOnHover>
-                <Table.Thead>
+            <DataTableContainer>
+              <DataTable className="min-w-[1050px]">
+                <Table.Thead className={dataTableHeadClassName}>
                   <Table.Tr>
-                    <Table.Th>{translate("Expense Category", "نوع النفقة")}</Table.Th>
-                    <Table.Th>{translate("Description", "الوصف")}</Table.Th>
-                    <Table.Th>{translate("Warehouse", "الفرع")}</Table.Th>
-                    <Table.Th>{translate("Amount", "المبلغ")}</Table.Th>
-                    <Table.Th>{translate("Payment Method", "طريقة الدفع")}</Table.Th>
-                    <Table.Th>{translate("Date", "التاريخ")}</Table.Th>
-                    <Table.Th>{translate("By", "بواسطة")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Date", "التاريخ")}</Table.Th>
+                    <Table.Th>{translate("Vendor", "البائع")}</Table.Th>
+                    <Table.Th>{translate("Expense Account", "حساب المصروف")}</Table.Th>
+                    <Table.Th>{translate("Reference", "المرجع")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">{translate("Total", "الإجمالي")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">{translate("Paid", "المدفوع")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">{translate("Remaining", "المتبقي")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Status", "الحالة")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("By", "بواسطة")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {paginatedExpenses.data.map((expense) => (
-                    <Table.Tr key={expense._id} className="text-gray-600">
-                      <Table.Td className="font-bold text-gray-800">
-                        {getExpenseCategoryLabel(expense.expenseCategory, language)}
-                      </Table.Td>
-                      <Table.Td title={expense.description}>{trancateString(expense.description || "", 30)}</Table.Td>
-                      <Table.Td>{getWarehouseNameById(expense.payment.warehouseId)}</Table.Td>
-                      <Table.Td className="font-bold text-gray-800">
-                        {expense.payment.amountPaid.toFixed(2)} {translations.currency}
-                      </Table.Td>
-                      <Table.Td>{getPaymentMethodLabel(expense.payment.paymentMethod, language)}</Table.Td>
-                      <Table.Td>{formatDate(expense.createdAt, language)}</Table.Td>
-                      <Table.Td>{expense.createdBy?.name || ""}</Table.Td>
-                    </Table.Tr>
-                  ))}
+                  {paginatedExpenses.data.map((expense) =>
+                    expense.vendor ? (
+                      <Table.Tr key={expense._id} className="cursor-pointer" onClick={() => navigate(expense._id)}>
+                        <Table.Td className="whitespace-nowrap">{formatDate(expense.date || expense.createdAt, language)}</Table.Td>
+                        <Table.Td className="font-medium">
+                          <TruncatedText text={expense.vendor.name} maxWidthClassName="max-w-[160px]" />
+                        </Table.Td>
+                        <Table.Td className="whitespace-nowrap">{expense.expenseAccount ? `${expense.expenseAccount.code} - ${expense.expenseAccount.name}` : "-"}</Table.Td>
+                        <Table.Td>
+                          <TruncatedText text={expense.reference || "-"} maxWidthClassName="max-w-[140px]" />
+                        </Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums font-semibold">{money(expense.totalAmount)}</Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{money(expense.paidAmount ?? 0)}</Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{money(expense.remainingAmount)}</Table.Td>
+                        <Table.Td className="whitespace-nowrap">
+                          <Badge color={expenseStatusColors[(expense.paymentStatus || "unpaid") as ExpensePaymentStatus]} variant="light">
+                            {statusLabel(expense.paymentStatus || "unpaid")}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td className="whitespace-nowrap">{expense.createdBy?.name || ""}</Table.Td>
+                      </Table.Tr>
+                    ) : (
+                      // Expense recorded before the Expenses module (a category paid in cash at once).
+                      <Table.Tr key={expense._id} className="text-gray-500">
+                        <Table.Td className="whitespace-nowrap">{formatDate(expense.createdAt, language)}</Table.Td>
+                        <Table.Td>-</Table.Td>
+                        <Table.Td className="whitespace-nowrap">{expense.expenseCategory ? getExpenseCategoryLabel(expense.expenseCategory, language) : "-"}</Table.Td>
+                        <Table.Td>
+                          <TruncatedText text={expense.description || "-"} maxWidthClassName="max-w-[140px]" />
+                        </Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{money(expense.payment?.amountPaid)}</Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{money(expense.payment?.amountPaid)}</Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{money(0)}</Table.Td>
+                        <Table.Td className="whitespace-nowrap">
+                          <Badge color="gray" variant="light">
+                            {statusLabel("paid")}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td className="whitespace-nowrap">{expense.createdBy?.name || ""}</Table.Td>
+                      </Table.Tr>
+                    ),
+                  )}
                 </Table.Tbody>
-              </Table>
-            </div>
+              </DataTable>
+            </DataTableContainer>
 
-            {/* Pagination */}
-            <PaginationHandler<Expense>
-              paginatedData={paginatedExpenses}
-              activePage={activePage}
-              setActivePage={setActivePage}
-            />
+            <PaginationHandler<Expense> paginatedData={paginatedExpenses} activePage={activePage} setActivePage={setActivePage} />
           </>
         ))
       )}
 
-      {/* Modals */}
-      <ExpenseModal
-        opened={modalOpened}
-        close={closeModal}
-        callback={(response) => {
-          setPaginatedExpenses((prev) => {
-            if (!prev) return null;
-            return { ...prev, data: [response, ...prev.data] };
-          });
-        }}
-      />
+      <ExpenseModal opened={modalOpened} close={closeModal} callback={(expense) => navigate(expense._id)} />
     </AdminLayoutBox>
   );
 }

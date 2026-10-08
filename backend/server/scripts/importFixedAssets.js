@@ -67,7 +67,6 @@ const cleanAssetData = record => {
   return {
     name,
     bookValue: cleanNumericValue(record['book value']),
-    fairValue: cleanNumericValue(record['fare value']),
     warehouseName,
   };
 };
@@ -205,7 +204,6 @@ async function importAssets() {
         const assetData = {
           name: cleanedData.name,
           bookValue: cleanedData.bookValue,
-          fairValue: cleanedData.fairValue,
           warehouseId: warehouseId,
         };
 

@@ -1,54 +1,93 @@
 const { Schema, model } = require('mongoose');
 const { FixedAssetStatuses } = require('../utils/accountingConstants');
 
+// One processed depreciation/amortization month of an asset - the record that prevents the same
+// month from being depreciated twice (services/fixedAssets/fixedAssetService.js).
+const depreciationSchema = new Schema(
+  {
+    period: { type: String, required: true, match: /^\d{4}-\d{2}$/ }, // 'YYYY-MM'
+    amount: { type: Number, required: true, min: 0.01 },
+    date: { type: Date, required: true },
+    journalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', required: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
+  },
+  { _id: false, timestamps: { createdAt: true, updatedAt: false } }
+);
+
 const fixedAssetSchema = Schema(
   {
     name: {
       type: String,
       required: true,
+      trim: true,
     },
+    // The supplier the asset was acquired from - its Vendor Number is the Sub Account of the
+    // acquisition entry. Optional at the schema level only so assets created before the Fixed
+    // Assets module remain valid; every new asset requires one (fixedAssetValidators.js).
+    vendor: {
+      type: Schema.Types.ObjectId,
+      ref: 'Vendor',
+    },
+    // Acquisition cost (excluding VAT) - the amount depreciated/amortized.
+    price: {
+      type: Number,
+      min: 0,
+    },
+    // Cost - accumulated depreciation/amortization; never negative.
     bookValue: {
       type: Number,
       required: true,
       min: 0,
     },
-    fairValue: {
+    accumulatedDepreciation: {
       type: Number,
-      required: true,
+      default: 0,
       min: 0,
     },
-    warehouseId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Warehouse',
-      required: true,
-    },
-    // --- Accounting-foundation fields (additive - see reversia master spec's "FIXED ASSETS"
-    // section). Kept optional at the schema level (not `required: true`) so pre-existing
-    // production documents that predate this phase remain valid; new-create requests are required
-    // to supply them via fixedAssetValidators.js instead. `bookValue`/`fairValue` above are left
-    // untouched - `sellFixedAsset` and the `loseValue` virtual still depend on them exactly as
-    // before.
-    price: {
-      // Acquisition/purchase value, distinct from bookValue (which the pre-existing sell flow
-      // uses as the amount of the outgoing Payment - kept separate rather than repurposed so nothing
-      // about that flow changes).
+    // العمر الإنتاجي بالشهور
+    usefulLifeMonths: {
       type: Number,
-      min: 0,
+      min: [1, 'Useful life must be at least 1 month'],
     },
+    vatPercentage: { type: Number, default: 0, min: 0 },
+    vatAmount: { type: Number, default: 0, min: 0 },
+    // cost + VAT - what is owed to the vendor.
+    totalAmount: { type: Number, min: 0 },
+    // Chart of Accounts accounts - see services/fixedAssets/fixedAssetAccounts.js for which groups
+    // each one must belong to.
     assetAccountId: {
-      // Prefer a real relationship over storing the code as a string (see master spec) - the
-      // account's `code` is reachable through this reference (`assetAccountId.code`) without
-      // duplicating it here.
       type: Schema.Types.ObjectId,
       ref: 'ChartOfAccount',
     },
+    accumulatedAccountId: {
+      type: Schema.Types.ObjectId,
+      ref: 'ChartOfAccount',
+    },
+    depreciationAccountId: {
+      type: Schema.Types.ObjectId,
+      ref: 'ChartOfAccount',
+    },
+    // Derived from the asset account's group: depreciation (tangible) or amortization (intangible).
+    assetClass: {
+      type: String,
+      enum: ['tangible', 'intangible', null],
+      default: null,
+    },
+    // Asset Date - depreciation starts with this date's month.
     acquisitionDate: {
       type: Date,
     },
+    acquisitionJournalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', default: null },
+    depreciations: { type: [depreciationSchema], default: [] },
     status: {
       type: String,
       enum: { values: FixedAssetStatuses, message: '{VALUE} is not a valid fixed asset status' },
       default: 'active',
+    },
+    // Only on assets created before the Fixed Assets module (they were tied to a warehouse).
+    warehouseId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Warehouse',
     },
     notes: {
       type: String,
@@ -66,20 +105,22 @@ const fixedAssetSchema = Schema(
   }
 );
 
-// Add middleware to populate warehouse
+fixedAssetSchema.index({ status: 1 });
+fixedAssetSchema.index({ vendor: 1 });
+
 fixedAssetSchema.pre(/^find/, function (next) {
-  this.populate({
-    path: 'warehouseId',
-    select: 'name',
-  }).populate({
-    path: 'assetAccountId',
-    select: 'code name type',
-  });
+  this.populate({ path: 'warehouseId', select: 'name' })
+    .populate({ path: 'vendor', select: 'name vendorNumber' })
+    .populate({ path: 'assetAccountId', select: 'code name nameAr type' })
+    .populate({ path: 'accumulatedAccountId', select: 'code name nameAr type' })
+    .populate({ path: 'depreciationAccountId', select: 'code name nameAr type' });
   next();
 });
 
-fixedAssetSchema.virtual('loseValue').get(function () {
-  return this.bookValue - this.fairValue;
+// Monthly depreciation/amortization: cost / useful life in months.
+fixedAssetSchema.virtual('monthlyDepreciation').get(function () {
+  if (!this.price || !this.usefulLifeMonths) return 0;
+  return Math.round((this.price / this.usefulLifeMonths + Number.EPSILON) * 100) / 100;
 });
 
 const FixedAsset = model('FixedAsset', fixedAssetSchema);

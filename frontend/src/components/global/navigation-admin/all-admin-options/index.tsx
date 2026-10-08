@@ -146,6 +146,11 @@ export default function AllAdminOptions({ closeDrawer, collapsed = false }: { cl
       label: translations.pages.advancedPayments,
       Icon: outlineIcons.DollarSign,
     },
+    {
+      to: `/${paths.admin}/${paths.shareholders}`,
+      label: translations.pages.shareholders,
+      Icon: outlineIcons.Users,
+    },
   ];
 
   return (

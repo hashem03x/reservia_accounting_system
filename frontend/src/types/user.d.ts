@@ -54,7 +54,8 @@ export type Resource =
   | "projects"
   | "accounts"
   | "journalEntries"
-  | "advancedPayments";
+  | "advancedPayments"
+  | "shareholders";
 
 export type Action = "create" | "read" | "update" | "delete";
 

@@ -177,6 +177,13 @@ const resources: LocalizedEntity<Resource> = {
       ar: "الدفعات المقدمة",
     },
   },
+  shareholders: {
+    value: "shareholders",
+    label: {
+      en: "Equity / Shareholders",
+      ar: "حقوق الملكية / المساهمون",
+    },
+  },
 };
 
 export default resources;

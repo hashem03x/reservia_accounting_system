@@ -65,6 +65,7 @@ const mountRoutes = app => {
 
   // advanced payments (customer/vendor advances against a project)
   app.use('/api/v1/advanced-payments', require('./payments/advancedPaymentRoute'));
+  app.use('/api/v1/shareholders', require('./equity/shareholderRoute'));
 
   // admin home dashboard (read-only aggregated summary)
   app.use('/api/v1/dashboard', require('./dashboardRoute'));

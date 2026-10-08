@@ -100,12 +100,15 @@ async function resolveCustomerNumber(customerRef, { required = true } = {}, sess
 
 /**
  * Every line of an automatic entry gets the entry's own description (the parent description is the
- * single source of truth). Every line of a Sales Order / Purchase Order entry (`withParty`) also
- * gets the entry's business party as its Sub Account (partyNumber/partyType - the Customer Number
- * for a Sales Order, the Vendor Number for a Purchase Order): `party` when the caller passes one,
+ * single source of truth). Every line of a Sales Order / Purchase Order / Expense / Fixed Asset /
+ * Equity entry (`withParty`) also gets the entry's business party as its Sub Account
+ * (partyNumber/partyType - the Customer Number for a Sales Order, the Vendor Number for a Purchase
+ * Order, Expense or Fixed Asset acquisition, the Shareholder Number for Equity): `party` when the caller passes one,
  * otherwise the party already stamped on the entry's control-account line. A line that already
  * carries its own party keeps it; an entry with no party has none.
  */
+const PartyOnEveryLineModules = ['Sales Order', 'Purchase Order', 'Expense', 'Fixed Asset', 'Equity'];
+
 function applyEntryDescriptionAndPartyToLines(lines, description, party, withParty) {
   const source = !withParty ? null : party?.number != null && party?.type ? party : (lines || []).find(l => l.partyNumber != null && l.partyType);
   return (lines || []).map(line => ({
@@ -151,7 +154,7 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
     await applyEntryProjectToLines({ project, lines, session }),
     description,
     party,
-    entryModule === 'Sales Order' || entryModule === 'Purchase Order'
+    PartyOnEveryLineModules.includes(entryModule)
   );
 
   const entryNumber = await getNextJournalEntryNumber(session);
@@ -927,6 +930,7 @@ async function postProjectExecutionRecognitionJEs(project, session, triggeredByS
 }
 
 module.exports = {
+  deterministicSourceId,
   getAccountIdByCode,
   resolveVendorNumber,
   resolveCustomerNumber,

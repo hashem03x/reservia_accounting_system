@@ -56,7 +56,7 @@ type DailySalesType = {
     totalOrders: number;
     expenses: number;
     totalValue: number;
-    totalFairValue: number;
+    totalBookValue: number;
   };
 };
 
@@ -296,9 +296,9 @@ export default function DailySales({ height }: { height: string }) {
               </div>
               <div className="rounded-lg bg-orange-50 p-3">
                 <p className="text-sm font-medium text-orange-600">
-                  {translate(language, "Total Fair Value", "إجمالي القيمة الصحيحة")}
+                  {translate(language, "Fixed Assets Book Value", "القيمة الدفترية للأصول الثابتة")}
                 </p>
-                <p className="text-lg font-bold text-orange-800">{formatCurrency(data?.summary?.totalFairValue || 0)}</p>
+                <p className="text-lg font-bold text-orange-800">{formatCurrency(data?.summary?.totalBookValue || 0)}</p>
               </div>
             </div>
             {!data?.salesByPeriod?.length ? (

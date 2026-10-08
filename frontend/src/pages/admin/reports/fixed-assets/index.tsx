@@ -22,8 +22,8 @@ const FILENAME = "fixed-assets-report.xlsx";
 type FixedAsset = {
   name: string;
   bookValue: number;
-  fairValue: number;
-  warehouse: string;
+  accumulatedDepreciation: number;
+  warehouse: string | null;
   createdBy: string;
   createdAt: string;
 };
@@ -31,7 +31,7 @@ type FixedAsset = {
 type ReportSummary = {
   totalAssets: number;
   totalBookValue: number;
-  totalFairValue: number;
+  totalAccumulatedDepreciation: number;
 };
 
 type ReportData = {
@@ -39,7 +39,7 @@ type ReportData = {
   summary: ReportSummary;
 };
 
-type SortByOption = "bookValue" | "fairValue" | "createdAt";
+type SortByOption = "bookValue" | "accumulatedDepreciation" | "createdAt";
 type SortOrderOption = SortOrder;
 
 export default function FixedAssetsReport() {
@@ -74,7 +74,7 @@ export default function FixedAssetsReport() {
   const setSortOrder = (sortOrder: SortOrderOption) => updateFilter("sortOrder", sortOrder);
 
   const { privateRequest, loading, setLoading, error, setError, data, setData } = useDataHandler<ReportData>({
-    initialData: { assets: [], summary: { totalAssets: 0, totalBookValue: 0, totalFairValue: 0 } },
+    initialData: { assets: [], summary: { totalAssets: 0, totalBookValue: 0, totalAccumulatedDepreciation: 0 } },
     initialLoading: true,
   });
 
@@ -178,7 +178,7 @@ export default function FixedAssetsReport() {
           label={translate("Sort By", "ترتيب حسب")}
           data={[
             { value: "bookValue", label: translate("Book Value", "القيمة الدفترية") },
-            { value: "fairValue", label: translate("Fair Value", "القيمة العادلة") },
+            { value: "accumulatedDepreciation", label: translate("Accumulated Depreciation", "مجمع الإهلاك") },
             { value: "createdAt", label: translate("Created At", "تاريخ الإنشاء") },
           ]}
           className="w-full max-w-[250px]"
@@ -213,7 +213,7 @@ export default function FixedAssetsReport() {
               <Table.Tr>
                 <Table.Th>{translate("Asset Name", "اسم الأصل")}</Table.Th>
                 <Table.Th>{translate("Book Value", "القيمة الدفترية")}</Table.Th>
-                <Table.Th>{translate("Fair Value", "القيمة العادلة")}</Table.Th>
+                <Table.Th>{translate("Accumulated Depreciation", "مجمع الإهلاك")}</Table.Th>
                 <Table.Th>{translate("Warehouse", "المخزن")}</Table.Th>
                 <Table.Th>{translate("Created At", "تاريخ الإنشاء")}</Table.Th>
               </Table.Tr>
@@ -226,9 +226,9 @@ export default function FixedAssetsReport() {
                     {asset.bookValue.toFixed(2)} {translations.currency}
                   </Table.Td>
                   <Table.Td>
-                    {asset.fairValue.toFixed(2)} {translations.currency}
+                    {(asset.accumulatedDepreciation || 0).toFixed(2)} {translations.currency}
                   </Table.Td>
-                  <Table.Td>{asset.warehouse}</Table.Td>
+                  <Table.Td>{asset.warehouse || "-"}</Table.Td>
                   <Table.Td>{formatDate(asset.createdAt, language)}</Table.Td>
                 </Table.Tr>
               ))}
@@ -242,7 +242,7 @@ export default function FixedAssetsReport() {
                   {data.summary.totalBookValue.toFixed(2)} {translations.currency}
                 </Table.Td>
                 <Table.Td>
-                  {data.summary.totalFairValue.toFixed(2)} {translations.currency}
+                  {(data.summary.totalAccumulatedDepreciation || 0).toFixed(2)} {translations.currency}
                 </Table.Td>
                 <Table.Td />
                 <Table.Td />

@@ -5,7 +5,7 @@ export type JournalEntrySource = "manual" | "project_creation" | "fixed_asset_pu
 // The originating business module (docs section "Module field") - normalized through
 // AccountingModules/AccountingModuleByAction on the backend, never a free-text variation. `null`
 // only for an entry that predates this field.
-export type AccountingModule = "Advanced Payment" | "Purchase Order" | "Sales Order" | "Payment" | "Manual" | "Fixed Asset" | "Project";
+export type AccountingModule = "Advanced Payment" | "Purchase Order" | "Sales Order" | "Payment" | "Manual" | "Fixed Asset" | "Project" | "Expense" | "Equity";
 
 export interface JournalLine {
   // Nullable: populate resolves a reference to a since-removed account to null - never assume it.
@@ -15,7 +15,7 @@ export interface JournalLine {
   // behavior") - set only on the one control-account line of an automatic entry that actually
   // represents a business party. `null` on every other line and on manual entries.
   partyNumber?: number | null;
-  partyType?: "customer" | "vendor" | null;
+  partyType?: "customer" | "vendor" | "shareholder" | null;
   project?: { _id: string; projectNumber: string } | null;
   projectNumber?: string | null;
   debit: number;

@@ -159,7 +159,7 @@ export interface SalesPeriodSummary {
   totalPaid: number;
   totalPending: number;
   totalValue: number;
-  totalFairValue: number;
+  totalBookValue: number;
 }
 
 export interface SalesPeriod {

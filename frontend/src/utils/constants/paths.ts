@@ -41,6 +41,7 @@ const paths = {
   accounts: "accounts",
   journalEntries: "journal-entries",
   advancedPayments: "advanced-payments",
+  shareholders: "shareholders",
   incomeStatement: "income-statement",
   balanceSheet: "balance-sheet",
 };

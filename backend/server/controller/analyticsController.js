@@ -912,7 +912,7 @@ exports.getSalesByTimePeriod = asyncHandler(async (req, res) => {
   );
 
   // console.log('summary__>>> 😶‍🌫️😶‍🌫️😶‍🌫️', summary);
-  // Get total fair value from fixed assets
+  // Get total book value from fixed assets
   const fixedAssetsQuery = {};
   if (warehouseId) {
     fixedAssetsQuery.warehouseId = new mongoose.Types.ObjectId(warehouseId);
@@ -922,7 +922,7 @@ exports.getSalesByTimePeriod = asyncHandler(async (req, res) => {
   }
 
   const fixedAssets = await FixedAsset.find(fixedAssetsQuery).lean();
-  const totalFairValue = fixedAssets.reduce((sum, asset) => sum + (asset.fairValue || 0), 0);
+  const totalBookValue = fixedAssets.reduce((sum, asset) => sum + (asset.bookValue || 0), 0);
 
   // Get total inventory value
   const totalValue = await getInventoryTotalValue(startDate, endDate, warehouseId);
@@ -942,11 +942,11 @@ exports.getSalesByTimePeriod = asyncHandler(async (req, res) => {
         grossProfit: period.totalAmount - period.totalCOGS,
         netProfit: period.totalAmount - period.totalShipping - period.totalCOGS - (expensesByDate.get(period.date) || 0),
       })),
-      totalFairValue,
+      totalBookValue,
       totalValue,
       summary: {
         ...summary,
-        totalFairValue,
+        totalBookValue,
         totalValue,
       },
     },
