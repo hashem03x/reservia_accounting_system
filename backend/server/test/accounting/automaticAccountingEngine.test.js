@@ -759,7 +759,10 @@ test('postProjectExecutionRecognitionJEs: revenue recognition posts BOTH VAT and
   assert.equal(revenueJE.totalDebit, 228000); // AR(218,000) + WHT(10,000) = Revenue(200,000) + VAT(28,000)
 });
 
-test('postProjectExecutionRecognitionJEs: Average Cost lines on ANY COGS account (incl. 50000004 Fuel & Logistics) need no WIP mapping - JV0011 loads only the Raw Materials line', async () => {
+test('postProjectExecutionRecognitionJEs: Average Cost lines on ANY COGS account (incl. 50000004 Fuel & Logistics) need no WIP mapping - JV0011 posts Dr cost / Cr PUC for the lines that have a PUC account', async () => {
+  // Real names: the PUC account's name is "<PUC> - <cost account name>".
+  await ChartOfAccount.updateOne({ _id: accounts['50000001']._id }, { $set: { name: 'Raw Materials' } });
+  await ChartOfAccount.updateOne({ _id: accounts[AutomaticJournalAccountCodes.wipRawMaterials]._id }, { $set: { name: 'PUC - Raw Materials' } });
   project.averageCostLines = COGS_CODES.map(code => ({ account: accounts[code]._id, amount: 100000 }));
   await project.save();
 
@@ -769,10 +772,10 @@ test('postProjectExecutionRecognitionJEs: Average Cost lines on ANY COGS account
   assert.deepEqual(
     entries[1].lines.map(l => [l.account.toString(), l.debit, l.credit]),
     [
-      [accounts[AutomaticJournalAccountCodes.wipRawMaterials]._id.toString(), 10000, 0],
-      [accounts['50000001']._id.toString(), 0, 10000],
+      [accounts['50000001']._id.toString(), 10000, 0],
+      [accounts[AutomaticJournalAccountCodes.wipRawMaterials]._id.toString(), 0, 10000],
     ],
-    '10% of the 100,000 Raw Materials Average Cost; the other COGS lines are not part of JV0011'
+    '10% of the 100,000 Raw Materials Average Cost; the COGS lines with no PUC account are left out'
   );
 });
 

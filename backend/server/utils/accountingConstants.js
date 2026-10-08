@@ -189,7 +189,7 @@ exports.AutomaticJournalAccountCodes = {
   withholdingTaxReceivable: '11000019', // Egyptian Tax Authority - Withholding & Addition (asset)
   vatPayable: '31000010', // VAT Payable (liability)
   revenue: '60000001', // Revenue (revenue) - generic, until a dedicated project-execution-revenue account exists
-  costRawMaterials: '50000001', // Raw Materials (cogs) - credited by PROJECT_COST_RECOGNITION (JV0011)
+  costRawMaterials: '50000001', // Raw Materials (cogs)
 };
 
 // Main description of the Sales Order project cost entry (JV0011), verbatim from

@@ -12,6 +12,7 @@ const {
 } = require('../../utils/accountingConstants');
 const ApiError = require('../../utils/apiError');
 const { applyEntryProjectToLines } = require('./journalEntryProjectService');
+const { logAccountingEvent } = require('../../utils/accountingLogger');
 
 // The automatic accounting engine - see docs/entities/automatic-accounting.md and
 // scratchpad/automatic-entries-mapping.md for the full Business Event -> Accounting Action -> JE
@@ -778,48 +779,86 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
 // ---------------------------------------------------------------------------
 
 /**
+ * Normalized account name for pairing an Average Cost account with its PUC account: lower case,
+ * single spaces, one dash style.
+ */
+const normalizeAccountName = name => (name || '').replace(/[–—]/g, '-').replace(/s+/g, ' ').trim().toLowerCase();
+
+/**
+ * The PUC account corresponding to a project Average Cost account, from the Chart of Accounts: the
+ * one PUC-eligible account (isPucAccountEligible - the same rule a Service's PUC account follows)
+ * whose name, after its "<PUC prefix> - " part, is exactly the cost account's name, in English or
+ * Arabic (e.g. "مواد خام" -> "مشروعات تحت التنفيذ - مواد خام"). Null when there is no single match -
+ * never a guess.
+ */
+function findCorrespondingPucAccount(costAccount, pucAccounts) {
+  const costNames = [costAccount.name, costAccount.nameAr].map(normalizeAccountName).filter(Boolean);
+  const matches = pucAccounts.filter(puc =>
+    [puc.name, puc.nameAr].some(name => {
+      const normalized = normalizeAccountName(name);
+      const separator = normalized.lastIndexOf(' - ');
+      return separator > 0 && costNames.includes(normalized.slice(separator + 3).trim());
+    })
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/**
  * PROJECT_COST_RECOGNITION - JV0011 of "AUTOMATIC ENTERIES.xlsx" ("charge the project with its
- * costs at the executed share of the contract"): Dr WIP - Raw Materials (11000009) / Cr Raw
- * Materials (50000001), for the INCREMENTAL executed-percentage share of the project's Raw
- * Materials Average Cost (its averageCostLines entry on 50000001) since the last recognition:
+ * costs at the executed share of the contract"). For EVERY line of the project's Average Cost
+ * (averageCostLines: a cost account + its real cost):
  *
- *   amount = Raw Materials Average Cost × currentPct / 100 - Raw Materials Average Cost × previousPct / 100
+ *   amount = real cost × Executed % - the part already recognized (real cost × costRecognizedPercentage)
+ *   Dr  the Average Cost line's own account          amount
+ *   Cr  its corresponding PUC account                amount   (findCorrespondingPucAccount)
  *
- * e.g. an Average Cost of 250,000 on 50000001 at 20% executed loads 50,000. The same rules as
- * revenue recognition above: the tracker (costRecognizedPercentage) only moves up, and the posting
- * runs in the caller's session. No-ops (tracker untouched) when the project has no Raw Materials
- * Average Cost - its cost is then loaded the first time one exists.
+ * all in ONE balanced entry, e.g. Raw Materials 250,000 and Labour 150,000 at 20% executed:
+ * Dr Raw Materials 50,000 / Cr PUC - Raw Materials 50,000, Dr Labour 30,000 / Cr PUC - Labour 30,000.
+ * The total recognized for a line is therefore always real cost × the project's Executed %.
+ * Same rules as revenue recognition above: the tracker only moves up, and the posting runs in the
+ * caller's session. Lines with no cost to post are left out; a line whose account has no
+ * corresponding PUC account is left out and logged. No lines -> no entry (tracker untouched).
  */
 async function postProjectCostRecognitionJE(project, session, triggeredBySalesOrder = null, date = new Date()) {
   const previousPct = project.costRecognizedPercentage || 0;
   const currentPct = project.executedPercentage || 0;
   if (currentPct <= previousPct) return null;
 
-  const accountIds = (project.averageCostLines || []).map(line => line.account?._id || line.account).filter(Boolean);
-  if (accountIds.length === 0) return null;
-  const rawMaterialsAccount = await ChartOfAccount.findOne({ _id: { $in: accountIds }, code: AutomaticJournalAccountCodes.costRawMaterials })
+  const costLines = (project.averageCostLines || []).filter(line => (line.account?._id || line.account) && line.amount > 0);
+  if (costLines.length === 0) return null;
+  const costAccounts = await ChartOfAccount.find({ _id: { $in: costLines.map(line => line.account?._id || line.account) } })
     .session(session || null)
     .lean();
-  if (!rawMaterialsAccount) return null;
-  const costLine = project.averageCostLines.find(line => String(line.account?._id || line.account) === String(rawMaterialsAccount._id));
+  const costAccountsById = new Map(costAccounts.map(account => [String(account._id), account]));
+  const pucAccounts = (await ChartOfAccount.find({ type: 'asset' }).session(session || null).lean()).filter(isPucAccountEligible);
 
-  const amount = round2(round2((costLine.amount * currentPct) / 100) - round2((costLine.amount * previousPct) / 100));
-  if (amount <= 0) return null;
-
-  const wipRawMaterialsId = await getAccountIdByCode(AutomaticJournalAccountCodes.wipRawMaterials, session);
   const description = ProjectCostRecognitionDescription;
+  const debits = [];
+  const credits = [];
+  for (const line of costLines) {
+    const costAccount = costAccountsById.get(String(line.account?._id || line.account));
+    const amount = round2(round2((line.amount * currentPct) / 100) - round2((line.amount * previousPct) / 100));
+    if (costAccount && amount > 0) {
+      const pucAccount = findCorrespondingPucAccount(costAccount, pucAccounts);
+      if (pucAccount) {
+        debits.push({ account: costAccount._id, debit: amount, credit: 0, project: project._id, description });
+        credits.push({ account: pucAccount._id, debit: 0, credit: amount, project: project._id, description });
+      } else {
+        logAccountingEvent('project_cost_recognition_no_puc_account', { projectNumber: project.projectNumber, account: costAccount.code, amount });
+      }
+    }
+  }
+  if (debits.length === 0) return null;
+
   const entry = await postAutomaticJournalEntry({
     accountingAction: 'PROJECT_COST_RECOGNITION',
     sourceType: 'PROJECT',
-    // Distinct from the earlier, removed version's `${project}:PROJECT_COST_RECOGNITION:${pct}` keys.
-    sourceId: deterministicSourceId(`${project._id}:PROJECT_COST_RECOGNITION:JV0011:${currentPct}`),
+    // Distinct from the keys of earlier versions of this entry.
+    sourceId: deterministicSourceId(`${project._id}:PROJECT_COST_RECOGNITION:COST-TO-PUC:${currentPct}`),
     date,
     description,
     project: project._id,
-    lines: [
-      { account: wipRawMaterialsId, debit: amount, credit: 0, project: project._id, description },
-      { account: rawMaterialsAccount._id, debit: 0, credit: amount, project: project._id, description },
-    ],
+    lines: [...debits, ...credits],
     session,
     triggeredBySalesOrder,
   });

@@ -282,6 +282,7 @@ test('Case 6 - Sales Order JEs (advance applied, revenue recognition) carry the 
 
 test('a real Sales Order on a project whose Average Cost uses 50000004 Fuel & Logistics is created without any WIP mapping', async () => {
   const projectAccounting = require('../../services/project/projectAccountingService');
+  await ChartOfAccount.updateOne({ _id: accounts[AutomaticJournalAccountCodes.wipRawMaterials]._id }, { $set: { name: 'PUC - Raw Materials' } });
   project.averageCostLines = [
     { account: accounts['50000001']._id, amount: 100000 },
     { account: accounts.fuel._id, amount: 20000 },
@@ -306,7 +307,14 @@ test('a real Sales Order on a project whose Average Cost uses 50000004 Fuel & Lo
   assert.deepEqual(entries.map(e => e.accountingAction).sort(), ['PROJECT_COST_RECOGNITION', 'PROJECT_REVENUE_RECOGNITION']);
   entries.forEach(e => assertProjectOnEveryLine(e, project));
   const cost = entries.find(e => e.accountingAction === 'PROJECT_COST_RECOGNITION');
-  assert.equal(cost.totalDebit, 10000, '10% of the 100,000 Raw Materials Average Cost (Fuel & Logistics is not part of JV0011)');
+  assert.deepEqual(
+    cost.lines.map(l => [(l.account._id || l.account).toString(), l.debit, l.credit]),
+    [
+      [accounts['50000001']._id.toString(), 10000, 0],
+      [accounts[AutomaticJournalAccountCodes.wipRawMaterials]._id.toString(), 0, 10000],
+    ],
+    '10% of the 100,000 Raw Materials Average Cost; Fuel & Logistics has no PUC account and is left out'
+  );
   assert.equal(await JournalEntry.countDocuments({ 'lines.account': accounts[AutomaticJournalAccountCodes.materialsInventory]._id }), 0, 'a Sales Order never touches Materials Inventory');
 });
 
