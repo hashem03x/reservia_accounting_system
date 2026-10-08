@@ -8,6 +8,7 @@ const {
   AccountingModuleByAction,
   ProjectRequiredAccountingActions,
   isPucAccountEligible,
+  ProjectCostRecognitionDescription,
 } = require('../../utils/accountingConstants');
 const ApiError = require('../../utils/apiError');
 const { applyEntryProjectToLines } = require('./journalEntryProjectService');
@@ -672,7 +673,7 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
  * recognition here is the plain Dr AR / Cr Revenue amount. Extend Project with its own
  * vatPercentage/withholdingTaxPercentage if that treatment is required later.
  */
-async function postProjectRevenueRecognitionJE(project, session, triggeredBySalesOrder = null) {
+async function postProjectRevenueRecognitionJE(project, session, triggeredBySalesOrder = null, date = new Date()) {
   if (!project.contractValue) return null;
   const previousPct = project.revenueRecognizedPercentage || 0;
   const currentPct = project.executedPercentage || 0;
@@ -760,7 +761,7 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
     accountingAction: 'PROJECT_REVENUE_RECOGNITION',
     sourceType: 'PROJECT',
     sourceId: deterministicSourceId(`${project._id}:PROJECT_REVENUE_RECOGNITION:${currentPct}`),
-    date: new Date(),
+    date,
     description: `Revenue recognition - project ${project.projectNumber} (${previousPct}% -> ${currentPct}%)`,
     project: project._id,
     lines,
@@ -772,16 +773,75 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
   return entry;
 }
 
+// ---------------------------------------------------------------------------
+// 11. Project cost recognition (JV0011)
+// ---------------------------------------------------------------------------
+
 /**
- * Posts revenue recognition for a project whose executedPercentage just increased. Called from
+ * PROJECT_COST_RECOGNITION - JV0011 of "AUTOMATIC ENTERIES.xlsx" ("charge the project with its
+ * costs at the executed share of the contract"): Dr WIP - Raw Materials (11000009) / Cr Raw
+ * Materials (50000001), for the INCREMENTAL executed-percentage share of the project's Raw
+ * Materials Average Cost (its averageCostLines entry on 50000001) since the last recognition:
+ *
+ *   amount = Raw Materials Average Cost × currentPct / 100 - Raw Materials Average Cost × previousPct / 100
+ *
+ * e.g. an Average Cost of 250,000 on 50000001 at 20% executed loads 50,000. The same rules as
+ * revenue recognition above: the tracker (costRecognizedPercentage) only moves up, and the posting
+ * runs in the caller's session. No-ops (tracker untouched) when the project has no Raw Materials
+ * Average Cost - its cost is then loaded the first time one exists.
+ */
+async function postProjectCostRecognitionJE(project, session, triggeredBySalesOrder = null, date = new Date()) {
+  const previousPct = project.costRecognizedPercentage || 0;
+  const currentPct = project.executedPercentage || 0;
+  if (currentPct <= previousPct) return null;
+
+  const accountIds = (project.averageCostLines || []).map(line => line.account?._id || line.account).filter(Boolean);
+  if (accountIds.length === 0) return null;
+  const rawMaterialsAccount = await ChartOfAccount.findOne({ _id: { $in: accountIds }, code: AutomaticJournalAccountCodes.costRawMaterials })
+    .session(session || null)
+    .lean();
+  if (!rawMaterialsAccount) return null;
+  const costLine = project.averageCostLines.find(line => String(line.account?._id || line.account) === String(rawMaterialsAccount._id));
+
+  const amount = round2(round2((costLine.amount * currentPct) / 100) - round2((costLine.amount * previousPct) / 100));
+  if (amount <= 0) return null;
+
+  const wipRawMaterialsId = await getAccountIdByCode(AutomaticJournalAccountCodes.wipRawMaterials, session);
+  const description = ProjectCostRecognitionDescription;
+  const entry = await postAutomaticJournalEntry({
+    accountingAction: 'PROJECT_COST_RECOGNITION',
+    sourceType: 'PROJECT',
+    // Distinct from the earlier, removed version's `${project}:PROJECT_COST_RECOGNITION:${pct}` keys.
+    sourceId: deterministicSourceId(`${project._id}:PROJECT_COST_RECOGNITION:JV0011:${currentPct}`),
+    date,
+    description,
+    project: project._id,
+    lines: [
+      { account: wipRawMaterialsId, debit: amount, credit: 0, project: project._id, description },
+      { account: rawMaterialsAccount._id, debit: 0, credit: amount, project: project._id, description },
+    ],
+    session,
+    triggeredBySalesOrder,
+  });
+
+  project.costRecognizedPercentage = currentPct;
+  return entry;
+}
+
+/**
+ * Posts revenue recognition (JV0010) and then cost recognition (JV0011) for a project whose
+ * executedPercentage just increased - both with the same document date. Called from
  * projectAccountingService.js#recalculateExecutedPercentage (Sales Order create/cancel/return) and
  * projectController.js#updateProject, inside the same session as the project's own save (so the
- * percentage tracker and the JE commit together or not at all). Returns the posted entries (0 or 1).
+ * percentage trackers and the JEs commit together or not at all). Returns the posted entries (0-2).
  */
 async function postProjectExecutionRecognitionJEs(project, session, triggeredBySalesOrder = null) {
   const entries = [];
-  const revenueJE = await postProjectRevenueRecognitionJE(project, session, triggeredBySalesOrder);
+  const date = new Date();
+  const revenueJE = await postProjectRevenueRecognitionJE(project, session, triggeredBySalesOrder, date);
   if (revenueJE) entries.push(revenueJE);
+  const costJE = await postProjectCostRecognitionJE(project, session, triggeredBySalesOrder, date);
+  if (costJE) entries.push(costJE);
   return entries;
 }
 

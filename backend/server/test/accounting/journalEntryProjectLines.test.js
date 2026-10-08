@@ -111,7 +111,9 @@ test('Case 1 - a project-related automatic JE: every line gets the entry Project
   });
   assertProjectOnEveryLine(entry, project);
   assert.equal(entry.lines[1].partyNumber, customer.customerNumber, 'the Sub Account is unchanged');
-  assert.equal(entry.lines[0].partyNumber, customer.customerNumber, 'every line carries the entry\'s Sub Account');
+  // Only the control-account line stores the Sub Account; other lines get it at display time
+  // (journalEntryController.js#getJournalEntry - resolvedSubAccount).
+  assert.equal(entry.lines[0].partyNumber, null);
 });
 
 test('Case 1b - a client-supplied wrong projectNumber is replaced by the Project\'s real number', async () => {
@@ -301,9 +303,10 @@ test('a real Sales Order on a project whose Average Cost uses 50000004 Fuel & Lo
   const updated = await Project.findById(project._id);
   assert.equal(updated.executedPercentage, 10, '100,000 / 1,000,000 contract value');
   const entries = await JournalEntry.find({ triggeredBySalesOrder: salesOrder._id });
-  assert.deepEqual(entries.map(e => e.accountingAction), ['PROJECT_REVENUE_RECOGNITION']);
+  assert.deepEqual(entries.map(e => e.accountingAction).sort(), ['PROJECT_COST_RECOGNITION', 'PROJECT_REVENUE_RECOGNITION']);
   entries.forEach(e => assertProjectOnEveryLine(e, project));
-  assert.equal(await JournalEntry.countDocuments({ accountingAction: 'PROJECT_COST_RECOGNITION' }), 0);
+  const cost = entries.find(e => e.accountingAction === 'PROJECT_COST_RECOGNITION');
+  assert.equal(cost.totalDebit, 10000, '10% of the 100,000 Raw Materials Average Cost (Fuel & Logistics is not part of JV0011)');
   assert.equal(await JournalEntry.countDocuments({ 'lines.account': accounts[AutomaticJournalAccountCodes.materialsInventory]._id }), 0, 'a Sales Order never touches Materials Inventory');
 });
 

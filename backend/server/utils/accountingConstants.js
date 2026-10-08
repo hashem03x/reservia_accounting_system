@@ -103,9 +103,9 @@ exports.AccountingActions = [
   'PAYMENT_CUSTOMER_ADVANCE_APPLIED',
   'PAYMENT_VENDOR_ADVANCE_APPLIED',
   'PROJECT_REVENUE_RECOGNITION',
-  // No longer posted (the COGS -> WIP cost recognition was removed). Kept so journal entries
-  // already stored with this action stay valid - Mongoose re-validates enums on every save, e.g.
-  // when such an entry is reversed.
+  // JV0011 - Dr WIP Raw Materials / Cr Raw Materials, posted with PROJECT_REVENUE_RECOGNITION by
+  // every Sales Order (accountingEventService.js#postProjectCostRecognitionJE). Entries stored by
+  // the earlier, removed COGS -> WIP version carry the same action.
   'PROJECT_COST_RECOGNITION',
 ];
 
@@ -121,6 +121,7 @@ exports.ProjectRequiredAccountingActions = [
   'PO_SUPPLIER_ADVANCE_APPLIED',
   'SO_CUSTOMER_ADVANCE_APPLIED',
   'PROJECT_REVENUE_RECOGNITION',
+  'PROJECT_COST_RECOGNITION',
 ];
 
 // The business-document type that triggered an automatic entry - paired with sourceId (that
@@ -188,7 +189,12 @@ exports.AutomaticJournalAccountCodes = {
   withholdingTaxReceivable: '11000019', // Egyptian Tax Authority - Withholding & Addition (asset)
   vatPayable: '31000010', // VAT Payable (liability)
   revenue: '60000001', // Revenue (revenue) - generic, until a dedicated project-execution-revenue account exists
+  costRawMaterials: '50000001', // Raw Materials (cogs) - credited by PROJECT_COST_RECOGNITION (JV0011)
 };
+
+// Main description of the Sales Order project cost entry (JV0011), verbatim from
+// "AUTOMATIC ENTERIES.xlsx".
+exports.ProjectCostRecognitionDescription = 'تحميل المشروع بالتكاليف بنسبة المنفذ من العقد';
 
 // The originating business module of a journal entry - a NEW, dedicated "Module" column/field
 // (docs section "Module field") distinct from `sourceType` (SO/PO/PAYMENT/ADVANCED_PAYMENT/PROJECT

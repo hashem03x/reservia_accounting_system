@@ -133,8 +133,9 @@ const projectSchema = new Schema(
     // services/accounting/accountingEventService.js) - never accepted from a request body, only
     // ever advanced by that posting itself, once it actually commits.
     revenueRecognizedPercentage: { type: Number, default: 0, min: 0, max: 100 },
-    // Historical: advanced by the removed PROJECT_COST_RECOGNITION (COGS -> WIP) posting. No longer
-    // written; kept so existing project documents keep their stored value.
+    // How much of `executedPercentage` has already had its cost loaded onto the project via the
+    // PROJECT_COST_RECOGNITION entry (JV0011, accountingEventService.js) - same rules as
+    // revenueRecognizedPercentage above. (Also advanced by the earlier, removed COGS -> WIP version.)
     costRecognizedPercentage: { type: Number, default: 0, min: 0, max: 100 },
     // Renamed from `department` - see docs/entities/projects.md. Holds the NAME of an admin-managed
     // Sector (models/project/sectorModel.js, Admin -> Sectors) - the field's original string

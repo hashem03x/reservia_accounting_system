@@ -50,11 +50,9 @@ async function recalculateRemainingMoney(projectId, session) {
  * transaction, so it can safely run both inside an existing one (passed via `session`) and as a
  * plain standalone call.
  *
- * Whenever the recomputed percentage increases, this also posts PROJECT_REVENUE_RECOGNITION the
- * exact same way the old manual-entry path used to (see
- * accountingEventService.js#postProjectExecutionRecognitionJEs) - only the trigger moved (from an
- * admin manually typing a percentage, to Sales Orders actually being created against the project),
- * the recognition accounting itself is completely untouched.
+ * Whenever the recomputed percentage increases, this also posts PROJECT_REVENUE_RECOGNITION (JV0010)
+ * and PROJECT_COST_RECOGNITION (JV0011) in the same session (see
+ * accountingEventService.js#postProjectExecutionRecognitionJEs).
  */
 async function recalculateExecutedPercentage(projectId, session, triggeringSalesOrderId = null) {
   const Project = require('../../models/project/projectModel'); // eslint-disable-line global-require

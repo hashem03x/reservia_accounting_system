@@ -384,4 +384,4 @@ async function getGeneralLedgerLines({ page = 1, limit = 50 } = {}) {
   };
 }
 
-module.exports = { getAccountBalance, getTrialBalance, getGeneralLedgerLines };
+module.exports = { getAccountBalance, getTrialBalance, getGeneralLedgerLines, resolveSubAccountsForEntries };
