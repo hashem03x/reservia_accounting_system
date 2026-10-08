@@ -192,12 +192,27 @@ exports.AutomaticJournalAccountCodes = {
   withholdingTaxReceivable: '11000019', // Egyptian Tax Authority - Withholding & Addition (asset)
   vatPayable: '31000010', // VAT Payable (liability)
   revenue: '60000001', // Revenue (revenue) - generic, until a dedicated project-execution-revenue account exists
-  // Sales Order Cost Recognition (SO_COST_RECOGNITION): Dr costOfGoodsSold / Cr costRecognitionInventory.
-  // AWAITING ACCOUNTING CONFIRMATION - not taken from the source accounting sheet. Defaults:
-  // 50000001 Raw Materials (cogs; the same COGS account the sheet's JV0011 cost entry uses) and
-  // 11000007 Materials Inventory. Overridable per deployment without a code change.
-  costOfGoodsSold: process.env.COST_RECOGNITION_COGS_ACCOUNT_CODE || '50000001',
-  costRecognitionInventory: process.env.COST_RECOGNITION_CREDIT_ACCOUNT_CODE || '11000007',
+  costRawMaterials: '50000001', // Raw Materials (cost)
+  costLabourWages: '50000002', // Labour Wages (cost)
+  costEngineeringDesign: '50000003', // Engineering & Design (cost)
+};
+
+// Sales Order Cost Recognition (SO_COST_RECOGNITION = JV0011 of "AUTOMATIC ENTERIES.xlsx"): the
+// project is charged with its costs at the executed share of the contract - Dr each WIP (PUC)
+// account / Cr its matching cost account, one pair per cost category, exactly as the sheet lists
+// them. Products are raw materials (11000009); a service is charged to its own PUC account
+// (Product.pucAccount) and so must be one of these WIP accounts.
+exports.CostRecognitionAccountPairs = {
+  [exports.AutomaticJournalAccountCodes.wipRawMaterials]: exports.AutomaticJournalAccountCodes.costRawMaterials,
+  [exports.AutomaticJournalAccountCodes.wipEngineeringDesign]: exports.AutomaticJournalAccountCodes.costEngineeringDesign,
+  [exports.AutomaticJournalAccountCodes.wipLabourWages]: exports.AutomaticJournalAccountCodes.costLabourWages,
+};
+
+// Main descriptions of the Sales Order automatic entries, taken verbatim from the sheet (every line
+// stores the same description - see journalEntryModel.js).
+exports.SalesOrderJournalDescriptions = {
+  revenue: 'تنفيذ جزء من العقد للعميل', // JV0010
+  costRecognition: 'تحميل المشروع بالتكاليف بنسبة المنفذ من العقد', // JV0011
 };
 
 // The originating business module of a journal entry - a NEW, dedicated "Module" column/field

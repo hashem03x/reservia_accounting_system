@@ -141,6 +141,13 @@ export type SalesOrderCostRecognition = {
   totalRecognizedCost?: number;
   previouslyRecognizedCost?: number;
   currentRecognition?: number;
+  // Per cost category: the JV0011 pair (Dr WIP account / Cr cost account) and what is recognized on it.
+  byAccount?: {
+    wipAccountCode: string;
+    costAccountCode: string;
+    costOfItems: number;
+    recognizedCost: number;
+  }[];
   journalEntries?: string[];
   revision?: number;
   recognizedAt?: string | null;

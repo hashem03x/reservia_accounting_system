@@ -5,7 +5,7 @@ import apiRequest from "@/utils/helpers/api-request";
 import extractUserInfo from "@/utils/helpers/extract-user-info";
 import handleRequest from "@/utils/helpers/handle-request";
 import { rememberUser } from "@/utils/helpers/local-storage";
-import { GoogleLogin } from "@react-oauth/google";
+import { CredentialResponse, GoogleLogin } from "@react-oauth/google";
 import { notifyError } from "@/utils/helpers/notifiers";
 
 export default function OAuth() {
@@ -25,7 +25,7 @@ function GoogleLoginButton() {
 
   const { setLoading, setError, error } = useFetchingStatus();
 
-  function handleSuccess(response: any) {
+  function handleSuccess(response: CredentialResponse) {
     handleRequest(language, setLoading, setError, async () => {
       const res = await apiRequest({
         method: "POST",

@@ -127,7 +127,8 @@ export default function Products() {
   }, [activePage, debouncedKeyword, mainCategoryFilter, subcategoryFilter]);
 
   const canICreateProducts = useRef(useHasPermission(resources.products, actions.create)).current; // Ref to avoid re-renders
-  const AmIAdmin = loggedInUser && useRef(isAdmin(loggedInUser.role)).current; // Ref to avoid re-renders
+  const isAdminRef = useRef(loggedInUser ? isAdmin(loggedInUser.role) : false); // Ref to avoid re-renders
+  const AmIAdmin = loggedInUser && isAdminRef.current;
 
   const renderIfAdmin = (children: React.ReactNode) => {
     if (AmIAdmin) return children;

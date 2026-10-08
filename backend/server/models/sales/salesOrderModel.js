@@ -135,6 +135,7 @@ const salesOrderSchema = mongoose.Schema(
     //   totalRecognizedCost      recognized so far = costOfItems × executedPercentage / 100
     //   previouslyRecognizedCost the total before the last change
     //   currentRecognition       the last change (total - previous); negative = reversed
+    //   byAccount                the same per cost category (JV0011 Dr WIP / Cr cost account pair)
     //   journalEntries           every SO_COST_RECOGNITION entry posted for this order
     //   revision                 optimistic-concurrency counter (also part of each posting's key)
     // Seeded when the order is created; `null` for orders created before Cost Recognition existed
@@ -148,6 +149,20 @@ const salesOrderSchema = mongoose.Schema(
           totalRecognizedCost: { type: Number, default: 0, min: 0 },
           previouslyRecognizedCost: { type: Number, default: 0, min: 0 },
           currentRecognition: { type: Number, default: 0 },
+          byAccount: {
+            type: [
+              new Schema(
+                {
+                  wipAccountCode: { type: String },
+                  costAccountCode: { type: String },
+                  costOfItems: { type: Number, default: 0 },
+                  recognizedCost: { type: Number, default: 0 },
+                },
+                { _id: false }
+              ),
+            ],
+            default: undefined,
+          },
           journalEntries: { type: [{ type: Schema.Types.ObjectId, ref: 'JournalEntry' }], default: [] },
           revision: { type: Number, default: 0 },
           recognizedAt: { type: Date, default: null },

@@ -13,6 +13,8 @@ export default async function apiRequest({
   signal,
   download,
   filename,
+  // The parsed JSON body of any endpoint - each caller knows its own response shape.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }: ApiRequestOptions): Promise<any> {
   try {
     // Serialize and append params to URL if any

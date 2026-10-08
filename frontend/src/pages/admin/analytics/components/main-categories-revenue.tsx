@@ -89,8 +89,8 @@ export default function MainCategoriesRevenue({ height }: { height: string }) {
           font: {
             size: 14,
           },
-          generateLabels: (chart: any) => {
-            const data = chart.data;
+          generateLabels: (chart: ChartJS) => {
+            const data = chart.data as unknown as { labels: string[]; datasets: { data: number[]; backgroundColor: string[] }[] };
             if (data.labels.length && data.datasets.length) {
               return data.labels.map((label: string, i: number) => {
                 const value = data.datasets[0].data[i];

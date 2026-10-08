@@ -74,7 +74,6 @@ export default function ImportButton({ url, callback }: { url: string; callback:
           autoClose: 10000,
           withBorder: true,
         });
-        // eslint-disable-next-line no-console
         console.warn("CSV import partial failures", response?.data?.errors);
       } else {
         notifications.show({

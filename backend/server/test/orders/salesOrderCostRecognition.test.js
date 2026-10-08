@@ -10,7 +10,9 @@ const mongoose = require('mongoose');
 
 const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_test_so_cost_recognition';
 
-const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
+const { AutomaticJournalAccountCodes, SalesOrderJournalDescriptions } = require('../../utils/accountingConstants');
+
+const C = AutomaticJournalAccountCodes;
 
 let Warehouse, SalesOrder, PurchaseOrder, Product, Project, User, Vendor, ChartOfAccount, JournalEntry;
 let createSalesOrder, recognizeProjectSalesOrderCosts, recalculateExecutedPercentage, createOrderDocumentHandlers;
@@ -18,6 +20,7 @@ let transactionsSupported = true;
 let warehouse, customer, manager, project, product, service, accounts;
 
 const idStr = ref => String(ref?._id || ref);
+const codeOf = accountId => Object.keys(accounts).find(code => idStr(accounts[code]) === idStr(accountId));
 
 before(async () => {
   await mongoose.connect(DB_URI);
@@ -67,7 +70,12 @@ beforeEach(async () => {
     [AutomaticJournalAccountCodes.vatPayable]: 'liability',
     [AutomaticJournalAccountCodes.withholdingTaxReceivable]: 'asset',
     [AutomaticJournalAccountCodes.materialsInventory]: 'asset',
-    [AutomaticJournalAccountCodes.costOfGoodsSold]: 'cogs',
+    [C.wipRawMaterials]: 'asset',
+    [C.wipEngineeringDesign]: 'asset',
+    [C.wipLabourWages]: 'asset',
+    [C.costRawMaterials]: 'cogs',
+    [C.costEngineeringDesign]: 'cogs',
+    [C.costLabourWages]: 'cogs',
   };
   for (const [code, type] of Object.entries(codeToType)) {
     accounts[code] = await ChartOfAccount.create({ code, name: `Account ${code}`, type });
@@ -96,8 +104,9 @@ beforeEach(async () => {
   service = await Product.create({ type: 'service', title: { en: 'Install', ar: 'تركيب' }, description: { en: 'd', ar: 'د' }, price: 5000, durationValue: 1, durationUnit: 'month', pucAccount: puc._id });
 });
 
-const sell = items =>
+const sell = (items, taxes = {}) =>
   createSalesOrder({
+    ...taxes,
     customer: customer._id,
     warehouse: warehouse._id.toString(),
     project: project._id,
@@ -165,10 +174,15 @@ test('accumulation: 20% -> 30% -> 40% recognizes only the difference for every o
   // Every entry balances and carries the Project Number, Sub Account and description on each line.
   for (const entry of await JournalEntry.find({ accountingAction: 'SO_COST_RECOGNITION' }).lean()) {
     assertEntryIntegrity(entry);
-    const cogs = entry.lines.find(l => idStr(l.account) === idStr(accounts[AutomaticJournalAccountCodes.costOfGoodsSold]));
-    const inventory = entry.lines.find(l => idStr(l.account) === idStr(accounts[AutomaticJournalAccountCodes.costRecognitionInventory]));
-    assert.equal(cogs.debit, entry.totalDebit, 'Dr Cost of Goods Sold');
-    assert.equal(inventory.credit, entry.totalDebit, 'Cr Materials Inventory');
+    assert.equal(entry.description, SalesOrderJournalDescriptions.costRecognition, 'JV0011 description from the sheet');
+    assert.deepEqual(
+      entry.lines.map(l => [codeOf(l.account), l.debit, l.credit]),
+      [
+        [C.wipRawMaterials, entry.totalDebit, 0],
+        [C.costRawMaterials, 0, entry.totalDebit],
+      ],
+      'JV0011: Dr 11000009 WIP - Raw Materials / Cr 50000001 Raw Materials'
+    );
   }
   assert.equal((await Project.findById(project._id)).executedPercentage, 40);
 });
@@ -319,12 +333,143 @@ test('manual entries: a line description typed by the user is kept, blank ones g
     source: 'manual',
     project: project._id,
     lines: [
-      { account: accounts[AutomaticJournalAccountCodes.costOfGoodsSold]._id, debit: 10, credit: 0, project: project._id, projectNumber: project.projectNumber, description: 'Typed by the accountant' },
+      { account: accounts[C.costRawMaterials]._id, debit: 10, credit: 0, project: project._id, projectNumber: project.projectNumber, description: 'Typed by the accountant' },
       { account: accounts[AutomaticJournalAccountCodes.materialsInventory]._id, debit: 0, credit: 10, project: project._id, projectNumber: project.projectNumber },
     ],
   });
   assert.equal(entry.lines[0].description, 'Typed by the accountant');
   assert.equal(entry.lines[1].description, 'Manual adjustment');
+});
+
+// ---------------------------------------------------------------- JV0010 / JV0011 per "AUTOMATIC ENTERIES.xlsx"
+
+test('JV0010: Dr Receivable + Dr Withholding / Cr VAT + Cr Revenue, balanced, with the sheet description, Project Number and customer Sub Account', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  // 100 x 2,000 = 200,000 executed (20%); VAT 10.5% = 21,000 (the sheet's VAT); withholding 1% = 2,000
+  // (the sheet's 1,000 would be 0.5%, not an allowed withholding rate).
+  const order = await sell([PANEL(100)], { vatPercentage: 10.5, withholdingTaxPercentage: 1 });
+  const [entry] = await JournalEntry.find({ accountingAction: 'PROJECT_REVENUE_RECOGNITION', triggeredBySalesOrder: order._id }).lean();
+  assert.ok(entry, 'one JV0010 entry');
+  assert.deepEqual(
+    entry.lines.map(l => [codeOf(l.account), l.debit, l.credit]),
+    [
+      [C.accountsReceivableProjects, 219000, 0],
+      [C.withholdingTaxReceivable, 2000, 0],
+      [C.vatPayable, 0, 21000],
+      [C.revenue, 0, 200000],
+    ]
+  );
+  assert.equal(entry.totalDebit, 221000);
+  assert.equal(entry.totalCredit, 221000);
+  assert.equal(entry.description, SalesOrderJournalDescriptions.revenue);
+  assert.equal(entry.description, 'تنفيذ جزء من العقد للعميل');
+  assert.equal(entry.reference, `SO ${order.code}`);
+  assertEntryIntegrity(entry);
+
+  // JV0011 is a separate entry of the same order.
+  const [cost] = await costEntriesOf(order);
+  assert.notEqual(String(cost._id), String(entry._id));
+  assert.notEqual(cost.entryNumber, entry.entryNumber);
+  assert.equal(cost.description, 'تحميل المشروع بالتكاليف بنسبة المنفذ من العقد');
+  assert.deepEqual(
+    cost.lines.map(l => [codeOf(l.account), l.debit, l.credit]),
+    [
+      [C.wipRawMaterials, 80000, 0],
+      [C.costRawMaterials, 0, 80000],
+    ]
+  );
+  assertEntryIntegrity(cost);
+});
+
+test('JV0011 per cost category: products on 11000009/50000001, services on their PUC account and its cost account', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const design = await Product.create({ type: 'service', title: { en: 'Design', ar: 'تصميم' }, description: { en: 'd', ar: 'د' }, price: 50000, cost: 20000, durationValue: 1, durationUnit: 'month', pucAccount: accounts[C.wipEngineeringDesign]._id });
+  const labour = await Product.create({ type: 'service', title: { en: 'Labour', ar: 'عمالة' }, description: { en: 'd', ar: 'د' }, price: 50000, cost: 10000, durationValue: 1, durationUnit: 'month', pucAccount: accounts[C.wipLabourWages]._id });
+  // 100 x 2,000 + 50,000 + 50,000 = 300,000 -> 30%. Costs: 400,000 / 20,000 / 10,000.
+  const order = await sell([PANEL(100), { product: design._id, unitPrice: 50000, starterQuantity: 1 }, { product: labour._id, unitPrice: 50000, starterQuantity: 1 }]);
+  const [entry] = await costEntriesOf(order);
+  assert.deepEqual(
+    entry.lines.map(l => [codeOf(l.account), l.debit, l.credit]),
+    [
+      [C.wipRawMaterials, 120000, 0],
+      [C.wipLabourWages, 3000, 0],
+      [C.wipEngineeringDesign, 6000, 0],
+      [C.costRawMaterials, 0, 120000],
+      [C.costLabourWages, 0, 3000],
+      [C.costEngineeringDesign, 0, 6000],
+    ]
+  );
+  assertEntryIntegrity(entry);
+  const recognition = await recognitionOf(order);
+  assert.equal(recognition.totalRecognizedCost, 129000);
+  assert.deepEqual(
+    recognition.byAccount.map(r => [r.wipAccountCode, r.costAccountCode, r.costOfItems, r.recognizedCost]),
+    [
+      [C.wipRawMaterials, C.costRawMaterials, 400000, 120000],
+      [C.wipLabourWages, C.costLabourWages, 10000, 3000],
+      [C.wipEngineeringDesign, C.costEngineeringDesign, 20000, 6000],
+    ]
+  );
+
+  // Next order -> 40%: only each category's difference is posted.
+  await sell([PANEL(50)]);
+  const entries = await costEntriesOf(order);
+  assert.equal(entries.length, 2);
+  assert.deepEqual(
+    entries[1].lines.filter(l => l.debit > 0).map(l => [codeOf(l.account), l.debit]),
+    [
+      [C.wipRawMaterials, 40000],
+      [C.wipLabourWages, 1000],
+      [C.wipEngineeringDesign, 2000],
+    ]
+  );
+});
+
+test('a service with a cost whose PUC account is not one of the JV0011 accounts fails instead of using another account', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const costly = await Product.create({ type: 'service', title: { en: 'Survey', ar: 'مساحة' }, description: { en: 'd', ar: 'د' }, price: 50000, cost: 1000, durationValue: 1, durationUnit: 'month', pucAccount: service.pucAccount });
+  await assert.rejects(() => sell([{ product: costly._id, unitPrice: 50000, starterQuantity: 1 }]), /PUC account \(PUC-COST\) is not one of the cost recognition accounts/);
+  assert.equal(await SalesOrder.countDocuments({}), 0, 'the order is not created');
+  assert.equal(await JournalEntry.countDocuments({}), 0, 'nothing is posted');
+});
+
+test('entries posted by the earlier mapping (Dr 50000001 / Cr 11000007) are kept and counted, and reversed if execution drops', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const order = await sell([PANEL(100)]); // 20% -> 80,000
+  // Make it look like b880378 posted it: old accounts, a snapshot without byAccount.
+  const [old] = await costEntriesOf(order);
+  await JournalEntry.collection.updateOne(
+    { _id: old._id },
+    { $set: { 'lines.0.account': accounts[C.costRawMaterials]._id, 'lines.1.account': accounts[C.materialsInventory]._id } }
+  );
+  await SalesOrder.collection.updateOne({ _id: order._id }, { $unset: { 'costRecognition.byAccount': '' } });
+
+  await sell([PANEL(50)]); // 30% -> +40,000 on the XLSX accounts only
+  let entries = await costEntriesOf(order);
+  assert.deepEqual(entries.map(e => e.totalDebit), [80000, 40000]);
+  assert.equal(codeOf(entries[0].lines[0].account), C.costRawMaterials, 'the old entry is untouched');
+  assert.deepEqual(entries[1].lines.map(l => codeOf(l.account)), [C.wipRawMaterials, C.costRawMaterials]);
+  assert.equal((await recognitionOf(order)).totalRecognizedCost, 120000);
+
+  // Execution drops to 10% (40,000): the new 40,000 entry and then the old 80,000 entry are reversed,
+  // and 40,000 is posted again on the XLSX accounts.
+  await Project.collection.updateOne({ _id: project._id }, { $set: { executedPercentage: 10 } });
+  const session = await mongoose.startSession();
+  await session.withTransaction(() => recognizeProjectSalesOrderCosts(project._id, session));
+  session.endSession();
+  entries = await costEntriesOf(order);
+  assert.deepEqual(entries.map(e => [e.totalDebit, e.status]), [
+    [80000, 'reversed'],
+    [40000, 'reversed'],
+    [40000, 'posted'],
+  ]);
+  const oldReversal = await JournalEntry.findOne({ reversalOfEntry: old._id }).lean();
+  assert.deepEqual(oldReversal.lines.map(l => [codeOf(l.account), l.debit, l.credit]), [
+    [C.costRawMaterials, 0, 80000],
+    [C.materialsInventory, 80000, 0],
+  ]);
+  assert.equal((await recognitionOf(order)).totalRecognizedCost, 40000);
+  assert.equal(activeTotal(entries), 40000);
 });
 
 // ---------------------------------------------------------------- documents

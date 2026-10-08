@@ -59,6 +59,13 @@ export default function CostRecognitionSection() {
                 : money(current)
             }
           />
+          {recognition.byAccount?.map((row) => (
+            <InfoItem
+              key={row.wipAccountCode}
+              label={`${translate("Dr", "مدين")} ${row.wipAccountCode} / ${translate("Cr", "دائن")} ${row.costAccountCode}`}
+              value={`${money(row.recognizedCost)} ${translate("of", "من")} ${money(row.costOfItems)}`}
+            />
+          ))}
           {entryIds.length > 0 ? (
             <InfoItem
               label={translate("Journal Entries", "القيود اليومية")}

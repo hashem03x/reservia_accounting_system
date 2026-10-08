@@ -16,7 +16,7 @@ export default async function handleRequest(
   } catch (err) {
     let error;
     if ((err as Error)?.message) error = (err as Error)?.message;
-    else if ((err as any)?.errors) error = (err as any)?.errors[0].msg;
+    else if ((err as { errors?: { msg: string }[] })?.errors) error = (err as { errors: { msg: string }[] }).errors[0].msg;
     else
       error = translate(
         language,

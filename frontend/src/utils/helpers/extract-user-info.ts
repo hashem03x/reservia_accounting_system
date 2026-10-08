@@ -1,6 +1,9 @@
 import { UserState } from "@/types/user";
 
-export default function extractUserInfo(user: any): UserState {
+// The login / refresh / OAuth / change-password response body.
+type AuthResponse = { data: Omit<UserState, "accessToken">; token?: string; accessToken?: string };
+
+export default function extractUserInfo(user: AuthResponse): UserState {
   return {
     _id: user.data._id,
     name: user.data.name,
@@ -12,6 +15,6 @@ export default function extractUserInfo(user: any): UserState {
     wishlist: user.data.wishlist,
     createdAt: user.data.createdAt,
     updatedAt: user.data.updatedAt,
-    accessToken: user.token || user.accessToken,
+    accessToken: user.token || user.accessToken || "",
   };
 }

@@ -4,6 +4,7 @@ import { isAdmin } from "@/utils/constants/roles";
 
 export default function AdminGaurd({ children }: { children: React.ReactNode }) {
   const { user: loggedInUser } = useUser();
-  const isOK = loggedInUser && useRef(isAdmin(loggedInUser.role)).current; // Ref to avoid re-renders
+  const isAdminRef = useRef(loggedInUser ? isAdmin(loggedInUser.role) : false); // Ref to avoid re-renders
+  const isOK = loggedInUser && isAdminRef.current;
   return isOK ? children : null;
 }

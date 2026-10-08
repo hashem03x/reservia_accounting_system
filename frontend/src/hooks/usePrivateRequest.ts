@@ -29,7 +29,7 @@ export default function usePrivateRequest() {
       if (!user) throw new Error("No user logged in.");
       // Add the access token to the request headers if it doesn't exist
       let newHeaders = headers;
-      if (!(headers as any).authorization) newHeaders = { authorization: `Bearer ${user.accessToken}`, ...headers };
+      if (!new Headers(headers).has("authorization")) newHeaders = { authorization: `Bearer ${user.accessToken}`, ...headers };
       // Send the request with the access token
       return await apiRequest({
         url,
