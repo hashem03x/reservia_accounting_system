@@ -127,20 +127,32 @@ const salesOrderSchema = mongoose.Schema(
     needsCancellation: { type: Boolean, default: false },
     // PDF documents attached after creation (POST /sale-orders/:id/documents).
     documents: { type: [orderDocumentSchema], default: [] },
-    // Cost Recognition snapshot, fixed when the order is created
-    // (services/accounting/accountingEventService.js#postSalesOrderCostRecognitionJE):
-    //   costOfItems    = Σ item.costWhenSold × quantity (the cost basis every profit report uses)
-    //   executedPercentage = the project's ACCUMULATED Executed % right after this order counted
-    //   recognizedCost = costOfItems × executedPercentage / 100, posted as SO_COST_RECOGNITION
-    // Later orders never change it. `null` for orders created before this existed.
+    // Cumulative Cost Recognition of this order - maintained ONLY by
+    // services/accounting/accountingEventService.js#recognizeProjectSalesOrderCosts whenever the
+    // project's Executed % is recalculated (never by a client):
+    //   costOfItems              Σ item.costWhenSold × (sold - returned); 0 once canceled
+    //   executedPercentage       the project's accumulated Executed % last applied
+    //   totalRecognizedCost      recognized so far = costOfItems × executedPercentage / 100
+    //   previouslyRecognizedCost the total before the last change
+    //   currentRecognition       the last change (total - previous); negative = reversed
+    //   journalEntries           every SO_COST_RECOGNITION entry posted for this order
+    //   revision                 optimistic-concurrency counter (also part of each posting's key)
+    // Seeded when the order is created; `null` for orders created before Cost Recognition existed
+    // (never recognized retroactively). `recognizedCost`/`journalEntry` are the first version's
+    // one-time fields, still read for orders created by it.
     costRecognition: {
       type: new Schema(
         {
-          executedPercentage: { type: Number, required: true, min: 0, max: 100 },
-          costOfItems: { type: Number, required: true, min: 0 },
-          recognizedCost: { type: Number, required: true, min: 0 },
-          journalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', default: null },
-          recognizedAt: { type: Date, default: Date.now },
+          costOfItems: { type: Number, default: 0, min: 0 },
+          executedPercentage: { type: Number, default: 0, min: 0, max: 100 },
+          totalRecognizedCost: { type: Number, default: 0, min: 0 },
+          previouslyRecognizedCost: { type: Number, default: 0, min: 0 },
+          currentRecognition: { type: Number, default: 0 },
+          journalEntries: { type: [{ type: Schema.Types.ObjectId, ref: 'JournalEntry' }], default: [] },
+          revision: { type: Number, default: 0 },
+          recognizedAt: { type: Date, default: null },
+          recognizedCost: { type: Number },
+          journalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry' },
         },
         { _id: false }
       ),

@@ -5,7 +5,7 @@ const Project = require('../../models/project/projectModel');
 const ApiError = require('../../utils/apiError');
 const { consumeCustomerAdvancedPayment } = require('../payments/advancedPaymentService');
 const { recalculateExecutedPercentage } = require('../project/projectAccountingService');
-const { postSalesOrderAdvanceAppliedJE, postSalesOrderCostRecognitionJE } = require('../accounting/accountingEventService');
+const { postSalesOrderAdvanceAppliedJE, initialCostRecognition } = require('../accounting/accountingEventService');
 
 // Decrements this product's stock in the sale's warehouse AND increments its totalSold in one
 // atomic update - previously two separate writes (decrement Variant.stock, then a second
@@ -102,6 +102,8 @@ async function createSalesOrder(
       ...(project !== undefined ? { project } : {}),
       ...(vatPercentage !== undefined ? { vatPercentage } : {}),
       ...(withholdingTaxPercentage !== undefined ? { withholdingTaxPercentage } : {}),
+      // Takes part in cumulative Cost Recognition from now on (nothing recognized yet).
+      costRecognition: initialCostRecognition(validItems),
       ...extraFields,
     });
 
@@ -154,11 +156,11 @@ async function createSalesOrder(
     // so this always runs - recomputes Executed % for the project this order's amount now counts
     // toward (docs section "Project Executed % Calculation").
     if (salesOrder.project) {
+      // Also re-evaluates Cost Recognition for every order of the project (this one included) at
+      // the new accumulated Executed % - see accountingEventService.js#recognizeProjectSalesOrderCosts.
       await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, session, salesOrder._id);
-      // Cost Recognition uses the project's accumulated Executed % just updated above (including
-      // this order) - see accountingEventService.js#postSalesOrderCostRecognitionJE.
-      const { costRecognition } = await postSalesOrderCostRecognitionJE(salesOrder, session);
-      salesOrder.costRecognition = costRecognition;
+      const refreshed = await SalesOrder.findById(salesOrder._id).select('costRecognition').session(session).lean();
+      salesOrder.costRecognition = refreshed?.costRecognition || salesOrder.costRecognition;
     }
   };
 

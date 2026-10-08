@@ -59,7 +59,7 @@ async function recalculateRemainingMoney(projectId, session) {
 async function recalculateExecutedPercentage(projectId, session, triggeringSalesOrderId = null) {
   const Project = require('../../models/project/projectModel'); // eslint-disable-line global-require
   const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
-  const { postProjectExecutionRecognitionJEs } = require('../accounting/accountingEventService'); // eslint-disable-line global-require
+  const { postProjectExecutionRecognitionJEs, recognizeProjectSalesOrderCosts } = require('../accounting/accountingEventService'); // eslint-disable-line global-require
 
   const project = await Project.findById(projectId).session(session);
   if (!project) return;
@@ -74,12 +74,18 @@ async function recalculateExecutedPercentage(projectId, session, triggeringSales
     newPct = Math.min(100, Math.max(0, round2((salesAmount / project.contractValue) * 100)));
   }
 
-  if (newPct === project.executedPercentage) return;
+  if (newPct !== project.executedPercentage) {
+    project.executedPercentage = newPct;
+    await project.save({ session });
+    await postProjectExecutionRecognitionJEs(project, session, triggeringSalesOrderId);
+    await project.save({ session });
+  }
 
-  project.executedPercentage = newPct;
-  await project.save({ session });
-  await postProjectExecutionRecognitionJEs(project, session, triggeringSalesOrderId);
-  await project.save({ session });
+  // Sales Order Cost Recognition follows this same accumulated Executed % (the one calculation
+  // above): every order of the project is brought to costOfItems × Executed %, posting only the
+  // difference. Runs even when the % is unchanged - a return or cancellation changes an order's
+  // own cost without necessarily moving the %. Idempotent, so re-running it changes nothing.
+  await recognizeProjectSalesOrderCosts(project._id, session);
 }
 
 module.exports = { recalculateRemainingMoney, recalculateExecutedPercentage };

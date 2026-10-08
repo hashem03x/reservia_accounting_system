@@ -125,12 +125,23 @@ exports.cancelOrder = asyncHandler(async (req, res, next) => {
     return res.status(200).json({ status: 'success', data: updated });
   }
 
-  salesOrder.orderStatus = 'canceled';
-  await salesOrder.save();
-  if (salesOrder.project) {
-    await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, undefined, salesOrder._id);
+  // One transaction: canceling also lowers the project's Executed % and reverses this order's Cost
+  // Recognition (accounting entries) - all of it commits together or not at all.
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const freshOrder = await SalesOrder.findById(id).session(session);
+      freshOrder.orderStatus = 'canceled';
+      await freshOrder.save({ session });
+      if (freshOrder.project) {
+        await recalculateExecutedPercentage(freshOrder.project._id || freshOrder.project, session, freshOrder._id);
+      }
+    });
+  } finally {
+    session.endSession();
   }
-  res.status(200).json({ status: 'success', data: salesOrder });
+  const updated = await SalesOrder.findById(id);
+  res.status(200).json({ status: 'success', data: updated });
 });
 
 /**

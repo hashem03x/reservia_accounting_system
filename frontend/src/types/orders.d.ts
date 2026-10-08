@@ -131,15 +131,22 @@ export type OrderDocument = {
   uploadedBy?: string | null;
 };
 
-// Snapshot of a Sales Order's Cost Recognition (backend: SalesOrder.costRecognition):
-// recognizedCost = costOfItems × executedPercentage / 100, where executedPercentage is the
-// project's accumulated Executed % right after this order counted.
+// A Sales Order's cumulative Cost Recognition (backend: SalesOrder.costRecognition, maintained by
+// accountingEventService.js#recognizeProjectSalesOrderCosts): totalRecognizedCost = costOfItems ×
+// the project's accumulated executedPercentage / 100; each Executed % change posts only the
+// difference (currentRecognition = total - previouslyRecognizedCost; negative = reversed).
 export type SalesOrderCostRecognition = {
-  executedPercentage: number;
   costOfItems: number;
-  recognizedCost: number;
+  executedPercentage: number;
+  totalRecognizedCost?: number;
+  previouslyRecognizedCost?: number;
+  currentRecognition?: number;
+  journalEntries?: string[];
+  revision?: number;
+  recognizedAt?: string | null;
+  // First (one-time) version's fields - still present on orders created by it.
+  recognizedCost?: number;
   journalEntry?: string | null;
-  recognizedAt?: string;
 };
 
 export type SalesOrderItem = {

@@ -2,9 +2,9 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 
-// Sales Order Cost Recognition (accountingEventService.js#postSalesOrderCostRecognitionJE), run
-// through the real creation path (salesOrderCreation.service.js#createSalesOrder): Cost of Items x
-// the project's ACCUMULATED Executed % right after the order, fixed per order. Also: orders are
+// Cumulative Sales Order Cost Recognition (accountingEventService.js#recognizeProjectSalesOrderCosts),
+// run through the real creation/cancel paths: every order is kept at Cost of Items x the project's
+// ACCUMULATED Executed %, posting only the difference (decreases through reversals). Also: orders are
 // created without a payment method or shipping cost, every JE line carries the Sub Account, and
 // documents can be attached to existing Sales/Purchase Orders.
 
@@ -13,7 +13,7 @@ const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_te
 const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
 
 let Warehouse, SalesOrder, PurchaseOrder, Product, Project, User, Vendor, ChartOfAccount, JournalEntry;
-let createSalesOrder, postSalesOrderCostRecognitionJE, createOrderDocumentHandlers;
+let createSalesOrder, recognizeProjectSalesOrderCosts, recalculateExecutedPercentage, createOrderDocumentHandlers;
 let transactionsSupported = true;
 let warehouse, customer, manager, project, product, service, accounts;
 
@@ -34,7 +34,8 @@ before(async () => {
   ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
   JournalEntry = require('../../models/accounting/journalEntryModel');
   ({ createSalesOrder } = require('../../services/sales/salesOrderCreation.service'));
-  ({ postSalesOrderCostRecognitionJE } = require('../../services/accounting/accountingEventService'));
+  ({ recognizeProjectSalesOrderCosts } = require('../../services/accounting/accountingEventService'));
+  ({ recalculateExecutedPercentage } = require('../../services/project/projectAccountingService'));
   ({ createOrderDocumentHandlers } = require('../../controller/orderDocumentController'));
   await Promise.all([SalesOrder.init(), PurchaseOrder.init(), Product.init(), Project.init(), ChartOfAccount.init(), JournalEntry.init()]);
 
@@ -105,96 +106,225 @@ const sell = items =>
     employee: manager._id,
   });
 
-test('Scenario A + D: a Sales Order with no payment method and no shipping cost is created; 20% accumulated x cost 400,000 = 80,000 recognized', async t => {
-  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+const PANEL = (quantity, unitPrice = 2000) => ({ product: product._id, unitPrice, starterQuantity: quantity }); // cost 4,000 each
+const recognitionOf = async order => (await SalesOrder.findById(order._id).lean()).costRecognition;
+const costEntriesOf = order => JournalEntry.find({ accountingAction: 'SO_COST_RECOGNITION', triggeredBySalesOrder: order._id }).sort({ entryNumber: 1 }).lean();
+const activeTotal = entries => entries.filter(e => e.status === 'posted' && !e.reversedByEntry).reduce((sum, e) => sum + e.totalDebit, 0);
 
-  // 100 x 2,000 = 200,000 sales on a 1,000,000 contract -> 20%; cost 100 x 4,000 = 400,000.
-  const order = await sell([{ product: product._id, unitPrice: 2000, starterQuantity: 100 }]);
-  const stored = await SalesOrder.findById(order._id).lean();
-
-  assert.equal(stored.paymentMethod, null, 'no payment method');
-  assert.equal(stored.shippingCost, 0, 'no shipping cost');
-  assert.equal(stored.grandTotal, 200000, 'order total does not include shipping');
-  assert.deepEqual(
-    { pct: stored.costRecognition.executedPercentage, cost: stored.costRecognition.costOfItems, recognized: stored.costRecognition.recognizedCost },
-    { pct: 20, cost: 400000, recognized: 80000 }
-  );
-
-  const entry = await JournalEntry.findById(stored.costRecognition.journalEntry).lean();
-  assert.equal(entry.accountingAction, 'SO_COST_RECOGNITION');
-  assert.equal(entry.module, 'Sales Order');
-  assert.equal(entry.totalDebit, 80000);
-  assert.equal(entry.totalCredit, 80000);
-  const cogsLine = entry.lines.find(l => idStr(l.account) === idStr(accounts[AutomaticJournalAccountCodes.costOfGoodsSold]));
-  const inventoryLine = entry.lines.find(l => idStr(l.account) === idStr(accounts[AutomaticJournalAccountCodes.materialsInventory]));
-  assert.equal(cogsLine.debit, 80000, 'Dr Cost of Goods Sold');
-  assert.equal(inventoryLine.credit, 80000, 'Cr Materials Inventory');
+function assertEntryIntegrity(entry) {
+  assert.equal(entry.totalDebit, entry.totalCredit, `JE #${entry.entryNumber} balances`);
   for (const line of entry.lines) {
     assert.equal(line.partyNumber, customer.customerNumber, 'Sub Account on every line');
     assert.equal(line.partyType, 'customer');
     assert.equal(line.projectNumber, project.projectNumber, 'Project Number on every line');
+    assert.equal(line.description, entry.description, 'every line inherits the entry description');
+    assert.ok(line.debit >= 0 && line.credit >= 0, 'never a negative amount');
   }
+}
+
+test('Scenario A: a Sales Order with no payment method and no shipping cost is created', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const order = await sell([PANEL(100)]);
+  const stored = await SalesOrder.findById(order._id).lean();
+  assert.equal(stored.paymentMethod, null);
+  assert.equal(stored.shippingCost, 0);
+  assert.equal(stored.grandTotal, 200000, 'order total does not include shipping');
 });
 
-test('Scenario E: the next order uses the ACCUMULATED 30%, not its own 10%, and the earlier order is not revisited', async t => {
+test('accumulation: 20% -> 30% -> 40% recognizes only the difference for every order, never twice', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
 
-  const first = await sell([{ product: product._id, unitPrice: 2000, starterQuantity: 100 }]); // -> 20%
-  // 50 x 2,000 = 100,000 more sales -> 30% accumulated; this order's cost = 50 x 4,000 = 200,000.
-  const second = await sell([{ product: product._id, unitPrice: 2000, starterQuantity: 50 }]);
+  // Step 1 - Order A: 100 x 2,000 = 200,000 sales on a 1,000,000 contract -> 20%; cost 400,000.
+  const orderA = await sell([PANEL(100)]);
+  let a = await recognitionOf(orderA);
+  assert.deepEqual(
+    { pct: a.executedPercentage, cost: a.costOfItems, total: a.totalRecognizedCost, previous: a.previouslyRecognizedCost, current: a.currentRecognition },
+    { pct: 20, cost: 400000, total: 80000, previous: 0, current: 80000 }
+  );
+  assert.deepEqual((await costEntriesOf(orderA)).map(e => e.totalDebit), [80000]);
 
-  const secondStored = await SalesOrder.findById(second._id).lean();
-  assert.equal(secondStored.costRecognition.executedPercentage, 30, 'accumulated project %');
-  assert.equal(secondStored.costRecognition.costOfItems, 200000);
-  assert.equal(secondStored.costRecognition.recognizedCost, 60000, '30% x 200,000 (not 10% x 200,000 = 20,000)');
+  // Step 2 - Order B: 50 x 2,000 = 100,000 more -> 30%. A: 120,000 required, 80,000 already -> +40,000.
+  const orderB = await sell([PANEL(50)]);
+  a = await recognitionOf(orderA);
+  assert.deepEqual({ pct: a.executedPercentage, total: a.totalRecognizedCost, previous: a.previouslyRecognizedCost, current: a.currentRecognition }, { pct: 30, total: 120000, previous: 80000, current: 40000 });
+  assert.deepEqual((await costEntriesOf(orderA)).map(e => e.totalDebit), [80000, 40000], 'A got 40,000 - not another 80,000 or 120,000');
+  const b = await recognitionOf(orderB);
+  assert.deepEqual({ pct: b.executedPercentage, cost: b.costOfItems, total: b.totalRecognizedCost }, { pct: 30, cost: 200000, total: 60000 }, 'B: 30% x 200,000');
 
-  const firstStored = await SalesOrder.findById(first._id).lean();
-  assert.equal(firstStored.costRecognition.executedPercentage, 20, 'the first order keeps its own snapshot');
-  assert.equal(firstStored.costRecognition.recognizedCost, 80000);
-  assert.equal(await JournalEntry.countDocuments({ accountingAction: 'SO_COST_RECOGNITION' }), 2);
-  assert.equal((await Project.findById(project._id)).executedPercentage, 30);
+  // Step 3 - Order C: 50 x 2,000 = 100,000 more -> 40%. A: 160,000 total (+40,000); B: 80,000 (+20,000).
+  const orderC = await sell([PANEL(50)]);
+  a = await recognitionOf(orderA);
+  assert.deepEqual({ pct: a.executedPercentage, total: a.totalRecognizedCost, previous: a.previouslyRecognizedCost, current: a.currentRecognition }, { pct: 40, total: 160000, previous: 120000, current: 40000 });
+  const aEntries = await costEntriesOf(orderA);
+  assert.deepEqual(aEntries.map(e => e.totalDebit), [80000, 40000, 40000]);
+  assert.equal(activeTotal(aEntries), 160000, 'A cumulative 160,000 - not 80,000 + 120,000 + 160,000');
+  assert.equal((await recognitionOf(orderB)).totalRecognizedCost, 80000);
+  assert.equal(activeTotal(await costEntriesOf(orderB)), 80000);
+  assert.equal((await recognitionOf(orderC)).totalRecognizedCost, 80000, 'C: 40% x 200,000');
+
+  // Every entry balances and carries the Project Number, Sub Account and description on each line.
+  for (const entry of await JournalEntry.find({ accountingAction: 'SO_COST_RECOGNITION' }).lean()) {
+    assertEntryIntegrity(entry);
+    const cogs = entry.lines.find(l => idStr(l.account) === idStr(accounts[AutomaticJournalAccountCodes.costOfGoodsSold]));
+    const inventory = entry.lines.find(l => idStr(l.account) === idStr(accounts[AutomaticJournalAccountCodes.costRecognitionInventory]));
+    assert.equal(cogs.debit, entry.totalDebit, 'Dr Cost of Goods Sold');
+    assert.equal(inventory.credit, entry.totalDebit, 'Cr Materials Inventory');
+  }
+  assert.equal((await Project.findById(project._id)).executedPercentage, 40);
 });
 
-test('idempotent: re-running cost recognition for an order changes nothing and posts no second entry', async t => {
+test('retries are idempotent: re-running recognition at the same state posts nothing', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
-  const order = await sell([{ product: product._id, unitPrice: 2000, starterQuantity: 100 }]);
-  const before = (await SalesOrder.findById(order._id).lean()).costRecognition;
+  const order = await sell([PANEL(100)]);
+  const before = await JournalEntry.countDocuments({ accountingAction: 'SO_COST_RECOGNITION' });
 
-  const again = await postSalesOrderCostRecognitionJE(await SalesOrder.findById(order._id), null);
-  assert.equal(again.entry, null);
-  assert.equal(again.costRecognition.recognizedCost, before.recognizedCost);
-  assert.equal(await JournalEntry.countDocuments({ accountingAction: 'SO_COST_RECOGNITION', sourceId: order._id }), 1);
+  for (let i = 0; i < 3; i++) await recognizeProjectSalesOrderCosts(project._id, null);
+  const session = await mongoose.startSession();
+  await session.withTransaction(() => recognizeProjectSalesOrderCosts(project._id, session));
+  session.endSession();
+
+  assert.equal(await JournalEntry.countDocuments({ accountingAction: 'SO_COST_RECOGNITION' }), before);
+  assert.equal((await recognitionOf(order)).totalRecognizedCost, 80000);
 });
 
-test('a service-only order has no item cost: the snapshot records 0 and no journal entry is posted', async t => {
+test('concurrent requests cannot both post the same increment', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const order = await sell([PANEL(100)]); // 20% -> 80,000
+  // The project moves to 50% (e.g. a contract value change) and two requests process it at once.
+  await Project.collection.updateOne({ _id: project._id }, { $set: { executedPercentage: 50 } });
+
+  const run = async () => {
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(() => recognizeProjectSalesOrderCosts(project._id, session));
+      return 'ok';
+    } catch (err) {
+      return `failed: ${err.message}`;
+    } finally {
+      session.endSession();
+    }
+  };
+  const outcomes = await Promise.all([run(), run(), run()]);
+  assert.ok(outcomes.includes('ok'), outcomes.join(' | '));
+
+  const entries = await costEntriesOf(order);
+  assert.deepEqual(entries.map(e => e.totalDebit), [80000, 120000], 'exactly one +120,000 increment (50% x 400,000 = 200,000)');
+  assert.equal((await recognitionOf(order)).totalRecognizedCost, 200000);
+});
+
+test('cancelling an order reverses its recognition and re-adjusts the others through reversals, never a negative entry', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const orderA = await sell([PANEL(100)]); // 20%
+  const orderB = await sell([PANEL(50)]); // 30%
+  const orderC = await sell([PANEL(50)]); // 40%: A 160,000 / B 80,000 / C 80,000
+
+  // Cancel B (the controller's flow: status + recalculation in one transaction) -> 300,000 / 1,000,000 = 30%.
+  const session = await mongoose.startSession();
+  await session.withTransaction(async () => {
+    const fresh = await SalesOrder.findById(orderB._id).session(session);
+    fresh.orderStatus = 'canceled';
+    await fresh.save({ session });
+    await recalculateExecutedPercentage(project._id, session, orderB._id);
+  });
+  session.endSession();
+
+  const b = await recognitionOf(orderB);
+  assert.deepEqual({ cost: b.costOfItems, total: b.totalRecognizedCost, current: b.currentRecognition }, { cost: 0, total: 0, current: -80000 });
+  const bEntries = await costEntriesOf(orderB);
+  assert.ok(bEntries.every(e => e.status === 'reversed'), 'all of B\'s recognition is reversed');
+
+  const a = await recognitionOf(orderA);
+  assert.equal(a.totalRecognizedCost, 120000, 'A back to 30% x 400,000');
+  assert.equal(activeTotal(await costEntriesOf(orderA)), 120000);
+  const c = await recognitionOf(orderC);
+  assert.equal(c.totalRecognizedCost, 60000, 'C: its 80,000 entry reversed, then 60,000 posted');
+  assert.equal(activeTotal(await costEntriesOf(orderC)), 60000);
+
+  const reversals = await JournalEntry.find({ reversalOfEntry: { $ne: null } }).lean();
+  assert.ok(reversals.length >= 3);
+  for (const reversal of reversals) {
+    assert.equal(reversal.totalDebit, reversal.totalCredit);
+    reversal.lines.forEach(line => {
+      assert.equal(line.description, reversal.description, 'reversal lines inherit the reversal description');
+      assert.equal(line.projectNumber, project.projectNumber);
+      assert.equal(line.partyNumber, customer.customerNumber);
+    });
+  }
+  assert.equal(await JournalEntry.countDocuments({ 'lines.debit': { $lt: 0 } }), 0);
+  assert.equal(await JournalEntry.countDocuments({ 'lines.credit': { $lt: 0 } }), 0);
+});
+
+test('a service-only order has no item cost: nothing is recognized and no entry is posted', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
   const order = await sell([{ product: service._id, unitPrice: 5000, starterQuantity: 2 }]);
-  const stored = await SalesOrder.findById(order._id).lean();
-  assert.equal(stored.costRecognition.costOfItems, 0);
-  assert.equal(stored.costRecognition.recognizedCost, 0);
-  assert.equal(stored.costRecognition.journalEntry, null);
+  const recognition = await recognitionOf(order);
+  assert.equal(recognition.costOfItems, 0);
+  assert.equal(recognition.totalRecognizedCost, 0);
+  assert.deepEqual(recognition.journalEntries, []);
   assert.equal(await JournalEntry.countDocuments({ accountingAction: 'SO_COST_RECOGNITION' }), 0);
 });
 
 test('mixed product + service order: only the product carries cost', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
   // 100 x 2,000 + 1 x 5,000 = 205,000 -> 20.5%; cost = 100 x 4,000 = 400,000 -> 82,000.
-  const order = await sell([
-    { product: product._id, unitPrice: 2000, starterQuantity: 100 },
-    { product: service._id, unitPrice: 5000, starterQuantity: 1 },
-  ]);
-  const { costRecognition } = await SalesOrder.findById(order._id).lean();
-  assert.equal(costRecognition.executedPercentage, 20.5);
-  assert.equal(costRecognition.costOfItems, 400000);
-  assert.equal(costRecognition.recognizedCost, 82000);
+  const order = await sell([PANEL(100), { product: service._id, unitPrice: 5000, starterQuantity: 1 }]);
+  const recognition = await recognitionOf(order);
+  assert.equal(recognition.executedPercentage, 20.5);
+  assert.equal(recognition.costOfItems, 400000);
+  assert.equal(recognition.totalRecognizedCost, 82000);
 });
 
-test('the order\'s revenue recognition entry also carries the Sub Account on every line', async t => {
+test('existing orders: pre-feature orders are never recognized; first-version snapshots continue cumulatively', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
-  const order = await sell([{ product: product._id, unitPrice: 2000, starterQuantity: 100 }]);
-  const revenue = await JournalEntry.findOne({ accountingAction: 'PROJECT_REVENUE_RECOGNITION', triggeredBySalesOrder: order._id }).lean();
-  assert.ok(revenue);
-  revenue.lines.forEach(line => assert.equal(line.partyNumber, customer.customerNumber));
+  // An order created before Cost Recognition existed (no snapshot) on the same project.
+  const legacyId = new mongoose.Types.ObjectId();
+  await SalesOrder.collection.insertOne({
+    _id: legacyId, customer: customer._id, project: project._id, orderSource: 'cashier', orderStatus: 'delivered',
+    items: [{ product: product._id, unitPrice: 2000, starterQuantity: 10, returnedQuantity: 0, costWhenSold: 4000 }],
+    totalAmount: 0, createdAt: new Date(),
+  });
+  // An order created by the first (one-time) version: recognized 80,000 once.
+  const order = await sell([PANEL(100)]); // seeds a new-style snapshot at 20% = 80,000
+  await SalesOrder.collection.updateOne(
+    { _id: order._id },
+    { $set: { costRecognition: { executedPercentage: 20, costOfItems: 400000, recognizedCost: 80000, journalEntry: (await costEntriesOf(order))[0]._id } } }
+  );
+
+  await sell([PANEL(50)]); // -> 30%
+  const updated = await recognitionOf(order);
+  assert.equal(updated.previouslyRecognizedCost, 80000, 'first-version recognizedCost is the starting point');
+  assert.equal(updated.totalRecognizedCost, 120000);
+  assert.equal((await SalesOrder.findById(legacyId).lean()).costRecognition, undefined, 'the pre-feature order is untouched');
+  assert.equal(await JournalEntry.countDocuments({ triggeredBySalesOrder: legacyId, accountingAction: 'SO_COST_RECOGNITION' }), 0);
+});
+
+test('every automatic entry of an order stores the entry description on all of its lines', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const order = await sell([PANEL(100)]);
+  const entries = await JournalEntry.find({ $or: [{ triggeredBySalesOrder: order._id }] }).lean();
+  const actions = entries.map(e => e.accountingAction).sort();
+  assert.deepEqual(actions, ['PROJECT_REVENUE_RECOGNITION', 'SO_COST_RECOGNITION']);
+  for (const entry of entries) {
+    assert.ok(entry.description, 'the entry has a description');
+    assert.ok(entry.lines.length >= 2);
+    entry.lines.forEach(line => assert.equal(line.description, entry.description));
+    assert.equal(entry.totalDebit, entry.totalCredit);
+  }
+});
+
+test('manual entries: a line description typed by the user is kept, blank ones get the entry description', async () => {
+  const entry = await JournalEntry.create({
+    entryNumber: 9900001,
+    description: 'Manual adjustment',
+    source: 'manual',
+    project: project._id,
+    lines: [
+      { account: accounts[AutomaticJournalAccountCodes.costOfGoodsSold]._id, debit: 10, credit: 0, project: project._id, projectNumber: project.projectNumber, description: 'Typed by the accountant' },
+      { account: accounts[AutomaticJournalAccountCodes.materialsInventory]._id, debit: 0, credit: 10, project: project._id, projectNumber: project.projectNumber },
+    ],
+  });
+  assert.equal(entry.lines[0].description, 'Typed by the accountant');
+  assert.equal(entry.lines[1].description, 'Manual adjustment');
 });
 
 // ---------------------------------------------------------------- documents

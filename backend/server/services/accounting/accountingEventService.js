@@ -675,70 +675,141 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
 }
 
 /**
- * SO_COST_RECOGNITION - Cost Recognition of a Sales Order, posted once when the order is created
- * (salesOrderCreation.service.js), right after the order has been counted into its project's
- * Executed %:
+ * Sales Order Cost Recognition - CUMULATIVE per order, re-evaluated whenever the project's Executed
+ * % is recalculated (every Sales Order create/cancel/return and Contract Value change - see
+ * projectAccountingService.js#recalculateExecutedPercentage, the one Executed % calculation):
  *
- *   Cost of Items      = Σ item.costWhenSold × item.starterQuantity - the same cost basis every
- *                        profit report already uses (costWhenSold is the product's cost captured
- *                        at the sale; a service has none, so it contributes 0)
- *   Executed %         = the project's ACCUMULATED Executed % (all of its non-canceled Sales
- *                        Orders / Contract Value, see projectAccountingService.js) including this
- *                        order - not this order's own share
- *   Recognized Cost    = Cost of Items × Executed % / 100
- *   Journal Entry      = Dr Cost of Goods Sold (AutomaticJournalAccountCodes.costOfGoodsSold)
- *                        / Cr Materials Inventory, for the Recognized Cost, with the project and
- *                        the customer's Sub Account on every line
+ *   Cost of Items      = Σ item.costWhenSold × (sold - returned quantity) - the cost basis every
+ *                        profit report uses (a service has no cost: 0); 0 for a canceled order
+ *   Required           = Cost of Items × the project's accumulated Executed % / 100
+ *   Increase           = post ONE SO_COST_RECOGNITION entry for (Required - already recognized):
+ *                        Dr Cost of Goods Sold / Cr Materials Inventory (AutomaticJournalAccountCodes
+ *                        .costOfGoodsSold / .costRecognitionInventory), Project Number and the
+ *                        customer's Sub Account on every line
+ *   Decrease           = never a negative entry: the order's most recent recognition entries are
+ *                        reversed through the standard reversal (journalEntryReversalService.js)
+ *                        until the recognized total is at or below Required, then any remaining
+ *                        shortfall is posted as a new positive entry
  *
- * The result is stored on the order (`costRecognition`) and never revisited by later orders.
- * Idempotent: an order that already has a snapshot is returned as-is, and the entry itself is
- * keyed by (SO, order id, SO_COST_RECOGNITION). A zero recognized cost posts no entry (a 0-amount
- * line is invalid) but still records the snapshot.
+ * Only orders that carry a `costRecognition` snapshot take part (every order created since Cost
+ * Recognition exists - salesOrderCreation.service.js seeds it); orders created before it are never
+ * recognized retroactively.
+ *
+ * Idempotent and race-safe:
+ *   - each posting's key is (SO, hash(order id + snapshot revision), SO_COST_RECOGNITION) under the
+ *     existing unique index - a retry or a concurrent request at the same revision cannot post twice;
+ *   - the snapshot is written only if its `revision` is unchanged since it was read, inside the
+ *     caller's transaction - otherwise the whole transaction aborts with a conflict.
+ * Processing the same state again computes a zero difference and changes nothing.
  */
-async function postSalesOrderCostRecognitionJE(salesOrder, session) {
+async function recognizeProjectSalesOrderCosts(projectRef, session) {
   const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
   const Project = require('../../models/project/projectModel'); // eslint-disable-line global-require
+  const { createReversalEntry } = require('./journalEntryReversalService'); // eslint-disable-line global-require
 
-  const existing = await SalesOrder.findById(salesOrder._id).select('costRecognition').session(session || null).lean();
-  if (existing?.costRecognition) return { costRecognition: existing.costRecognition, entry: null };
-
-  const projectId = salesOrder.project?._id || salesOrder.project || null;
-  if (!projectId) throw new ApiError('Project is required for this automatic Journal Entry (SO_COST_RECOGNITION).', 400);
+  const projectId = projectRef?._id || projectRef;
   const project = await Project.findById(projectId).select('executedPercentage').session(session || null).lean();
-  if (!project) throw new ApiError('The project of this Sales Order does not exist.', 400);
-
+  if (!project) return [];
   const executedPercentage = Math.min(100, Math.max(0, Number(project.executedPercentage) || 0));
-  const costOfItems = round2((salesOrder.items || []).reduce((sum, item) => sum + (Number(item.costWhenSold) || 0) * (Number(item.starterQuantity) || 0), 0));
-  const recognizedCost = round2((costOfItems * executedPercentage) / 100);
 
-  let entry = null;
-  if (recognizedCost > 0) {
-    const customerNumber = await resolveCustomerNumber(salesOrder.customer, { required: true }, session);
-    const [cogsId, inventoryId] = await Promise.all([
-      getAccountIdByCode(AutomaticJournalAccountCodes.costOfGoodsSold, session),
-      getAccountIdByCode(AutomaticJournalAccountCodes.materialsInventory, session),
-    ]);
-    entry = await postAutomaticJournalEntry({
-      accountingAction: 'SO_COST_RECOGNITION',
-      sourceType: 'SO',
-      sourceId: salesOrder._id,
-      date: salesOrder.createdAt || new Date(),
-      description: `Cost recognition - SO ${salesOrder.code || salesOrder._id} (${executedPercentage}% of cost of items ${costOfItems})`,
-      project: projectId,
-      party: { number: customerNumber, type: 'customer' },
-      lines: [
-        { account: cogsId, debit: recognizedCost, credit: 0 },
-        { account: inventoryId, debit: 0, credit: recognizedCost },
-      ],
-      session,
-    });
+  // Raw collection: no populate/save hooks, and canceled orders are included (their recognition
+  // must be taken back).
+  const orders = await SalesOrder.collection
+    .find({ project: new mongoose.Types.ObjectId(String(projectId)), costRecognition: { $type: 'object' } }, { session: session || undefined })
+    .toArray();
+
+  const results = [];
+  for (const order of orders) {
+    const state = order.costRecognition;
+    // Orders created by the first (one-time) version stored `recognizedCost` / `journalEntry`.
+    const previousTotal = round2(state.totalRecognizedCost ?? state.recognizedCost ?? 0);
+    const journalEntries = (state.journalEntries || (state.journalEntry ? [state.journalEntry] : [])).map(id => String(id));
+    const revision = state.revision ?? null;
+
+    const costOfItems =
+      order.orderStatus === 'canceled'
+        ? 0
+        : round2((order.items || []).reduce((sum, item) => sum + (Number(item.costWhenSold) || 0) * Math.max(0, (Number(item.starterQuantity) || 0) - (Number(item.returnedQuantity) || 0)), 0));
+    const required = round2((costOfItems * executedPercentage) / 100);
+
+    if (required === previousTotal && costOfItems === state.costOfItems && executedPercentage === state.executedPercentage) continue;
+
+    let total = previousTotal;
+    const reversed = [];
+    // Decrease: reverse the most recent still-posted recognition entries (never a negative entry).
+    if (total > required) {
+      const active = await JournalEntry.find({ _id: { $in: journalEntries }, status: 'posted', reversedByEntry: null }).sort({ entryNumber: -1 }).session(session || null);
+      for (const entry of active) {
+        if (total <= required) break;
+        // eslint-disable-next-line no-await-in-loop
+        await createReversalEntry(
+          entry._id,
+          {
+            reversalDate: new Date(),
+            reference: `SO ${order.code || order._id}`,
+            description: `Reversal of cost recognition - SO ${order.code || order._id} (cost recognition adjusted to ${required})`,
+          },
+          session
+        );
+        total = round2(total - (entry.totalDebit || 0));
+        reversed.push(String(entry._id));
+      }
+    }
+
+    const increment = round2(required - total);
+    let entry = null;
+    if (increment > 0) {
+      const customerNumber = await resolveCustomerNumber(order.customer, { required: true }, session);
+      const [cogsId, inventoryId] = await Promise.all([
+        getAccountIdByCode(AutomaticJournalAccountCodes.costOfGoodsSold, session),
+        getAccountIdByCode(AutomaticJournalAccountCodes.costRecognitionInventory, session),
+      ]);
+      entry = await postAutomaticJournalEntry({
+        accountingAction: 'SO_COST_RECOGNITION',
+        sourceType: 'SO',
+        sourceId: deterministicSourceId(`${order._id}:SO_COST_RECOGNITION:${(revision || 0) + 1}`),
+        date: new Date(),
+        description: `Cost recognition - SO ${order.code || order._id} (${executedPercentage}% of cost of items ${costOfItems})`,
+        project: projectId,
+        triggeredBySalesOrder: order._id,
+        party: { number: customerNumber, type: 'customer' },
+        lines: [
+          { account: cogsId, debit: increment, credit: 0 },
+          { account: inventoryId, debit: 0, credit: increment },
+        ],
+        session,
+      });
+      total = round2(total + increment);
+    }
+
+    const costRecognition = {
+      costOfItems,
+      executedPercentage,
+      totalRecognizedCost: total,
+      previouslyRecognizedCost: previousTotal,
+      currentRecognition: round2(total - previousTotal),
+      journalEntries: [...journalEntries, ...(entry ? [String(entry._id)] : [])].map(id => new mongoose.Types.ObjectId(id)),
+      revision: (revision || 0) + 1,
+      recognizedAt: new Date(),
+    };
+    // eslint-disable-next-line no-await-in-loop
+    const { matchedCount } = await SalesOrder.collection.updateOne(
+      { _id: order._id, 'costRecognition.revision': revision },
+      { $set: { costRecognition } },
+      { session: session || undefined }
+    );
+    if (matchedCount !== 1) {
+      throw new ApiError(`Cost recognition for SO ${order.code || order._id} was changed by another request at the same time. Please retry.`, 409);
+    }
+    results.push({ salesOrderId: order._id, costRecognition, entry, reversed });
   }
+  return results;
+}
 
-  const costRecognition = { executedPercentage, costOfItems, recognizedCost, journalEntry: entry?._id || null, recognizedAt: new Date() };
-  // Direct update (not a document save): records the snapshot without re-running the order's own
-  // save logic, and only if no snapshot exists yet.
-  await SalesOrder.updateOne({ _id: salesOrder._id, costRecognition: null }, { $set: { costRecognition } }, { session: session || undefined });
-  return { costRecognition, entry };
+/** The starting Cost Recognition snapshot of a new Sales Order (nothing recognized yet). */
+function initialCostRecognition(items) {
+  const costOfItems = round2((items || []).reduce((sum, item) => sum + (Number(item.costWhenSold) || 0) * (Number(item.starterQuantity) || 0), 0));
+  return { costOfItems, executedPercentage: 0, totalRecognizedCost: 0, previouslyRecognizedCost: 0, currentRecognition: 0, journalEntries: [], revision: 0, recognizedAt: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -883,6 +954,7 @@ module.exports = {
   postPaymentCustomerAdvanceAppliedJE,
   postPaymentVendorAdvanceAppliedJE,
   postSalesOrderAdvanceAppliedJE,
-  postSalesOrderCostRecognitionJE,
+  recognizeProjectSalesOrderCosts,
+  initialCostRecognition,
   postProjectExecutionRecognitionJEs,
 };

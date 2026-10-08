@@ -192,7 +192,12 @@ exports.AutomaticJournalAccountCodes = {
   withholdingTaxReceivable: '11000019', // Egyptian Tax Authority - Withholding & Addition (asset)
   vatPayable: '31000010', // VAT Payable (liability)
   revenue: '60000001', // Revenue (revenue) - generic, until a dedicated project-execution-revenue account exists
-  costOfGoodsSold: '50000001', // Raw Materials (cogs) - the debit side of Sales Order Cost Recognition (SO_COST_RECOGNITION)
+  // Sales Order Cost Recognition (SO_COST_RECOGNITION): Dr costOfGoodsSold / Cr costRecognitionInventory.
+  // AWAITING ACCOUNTING CONFIRMATION - not taken from the source accounting sheet. Defaults:
+  // 50000001 Raw Materials (cogs; the same COGS account the sheet's JV0011 cost entry uses) and
+  // 11000007 Materials Inventory. Overridable per deployment without a code change.
+  costOfGoodsSold: process.env.COST_RECOGNITION_COGS_ACCOUNT_CODE || '50000001',
+  costRecognitionInventory: process.env.COST_RECOGNITION_CREDIT_ACCOUNT_CODE || '11000007',
 };
 
 // The originating business module of a journal entry - a NEW, dedicated "Module" column/field
