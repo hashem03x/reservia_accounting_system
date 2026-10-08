@@ -13,6 +13,7 @@ import { getOrderTotal } from "@/utils/helpers/order-totals";
 export default function PrintInvoice() {
   const { translate } = useLanguage();
   const { order, returnedItems } = useOrder();
+  const shippingAddressText = useStringifyOnlineAddress(order.shippingAddress);
   const { getWarehouseById } = useWarehouseHelpers();
 
   const warehouse = getWarehouseById(order.warehouse);
@@ -93,7 +94,7 @@ export default function PrintInvoice() {
             )}
             {order.shippingAddress && (
               <span>
-                <strong>Shipping Address:</strong> {useStringifyOnlineAddress(order.shippingAddress)}
+                <strong>Shipping Address:</strong> {shippingAddressText}
               </span>
             )}
             {order.shippingCost > 0 && (

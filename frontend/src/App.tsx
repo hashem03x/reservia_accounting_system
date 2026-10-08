@@ -61,9 +61,10 @@ import AP_ProfitByProductReport from "@/pages/admin/reports/profit-by-product";
 import AP_Cash from "@/pages/admin/cash";
 import AP_Currencies from "@/pages/admin/currencies";
 import AP_Categories from "@/pages/admin/categories";
-import AP_Coupons from "@/pages/admin/coupons";
-import AP_Customization from "@/pages/admin/customization";
-import AP_Governorates from "@/pages/admin/governorates";
+// Hidden pages (their routes are commented out below) - imports kept here, commented, to restore together.
+// import AP_Coupons from "@/pages/admin/coupons";
+// import AP_Customization from "@/pages/admin/customization";
+// import AP_Governorates from "@/pages/admin/governorates";
 import AP_Transactions from "@/pages/admin/transactions";
 import AP_Transaction from "@/pages/admin/transactions/[id]";
 import AP_Users from "@/pages/admin/users";
