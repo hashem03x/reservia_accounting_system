@@ -5,7 +5,7 @@ const Project = require('../../models/project/projectModel');
 const ApiError = require('../../utils/apiError');
 const { consumeCustomerAdvancedPayment } = require('../payments/advancedPaymentService');
 const { recalculateExecutedPercentage } = require('../project/projectAccountingService');
-const { postSalesOrderAdvanceAppliedJE } = require('../accounting/accountingEventService');
+const { postSalesOrderAdvanceAppliedJE, postSalesOrderCostRecognitionJE } = require('../accounting/accountingEventService');
 
 // Decrements this product's stock in the sale's warehouse AND increments its totalSold in one
 // atomic update - previously two separate writes (decrement Variant.stock, then a second
@@ -56,7 +56,6 @@ async function createSalesOrder(
     warehouse,
     items,
     isPrepaid,
-    shippingCost,
     isCodOrder,
     paidAmount,
     paymentMethod,
@@ -95,7 +94,7 @@ async function createSalesOrder(
       items: validItems,
       createdBy,
       employee,
-      shippingCost,
+      // Shipping cost is no longer part of Sales Orders (the schema default of 0 applies).
       ...(isCodOrder !== undefined ? { isCodOrder } : {}),
       ...(paidAmount !== undefined ? { paidAmount } : {}),
       ...(paymentMethod !== undefined ? { paymentMethod } : {}),
@@ -156,6 +155,10 @@ async function createSalesOrder(
     // toward (docs section "Project Executed % Calculation").
     if (salesOrder.project) {
       await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, session, salesOrder._id);
+      // Cost Recognition uses the project's accumulated Executed % just updated above (including
+      // this order) - see accountingEventService.js#postSalesOrderCostRecognitionJE.
+      const { costRecognition } = await postSalesOrderCostRecognitionJE(salesOrder, session);
+      salesOrder.costRecognition = costRecognition;
     }
   };
 

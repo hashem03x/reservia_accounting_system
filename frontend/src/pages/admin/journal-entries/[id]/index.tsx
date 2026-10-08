@@ -231,13 +231,13 @@ export default function JournalEntryDetail() {
                   <LineGroupHeader label={translate("Debit", "مدين")} color="text-blue-700" />
                 )}
                 {debitLines.map(({ line, originalIndex }) => (
-                  <JournalLineRow key={`d-${originalIndex}`} line={line} />
+                  <JournalLineRow key={`d-${originalIndex}`} line={line} entryParty={entry.resolvedSubAccount} />
                 ))}
                 {creditLines.length > 0 && (
                   <LineGroupHeader label={translate("Credit", "دائن")} color="text-orange-700" />
                 )}
                 {creditLines.map(({ line, originalIndex }) => (
-                  <JournalLineRow key={`c-${originalIndex}`} line={line} />
+                  <JournalLineRow key={`c-${originalIndex}`} line={line} entryParty={entry.resolvedSubAccount} />
                 ))}
               </>
             )}
@@ -275,7 +275,7 @@ function LineGroupHeader({ label, color }: { label: string; color: string }) {
   );
 }
 
-function JournalLineRow({ line }: { line: JournalLine }) {
+function JournalLineRow({ line, entryParty }: { line: JournalLine; entryParty?: JournalEntry["resolvedSubAccount"] }) {
   // Balance = Debit - Credit for this line (credit lines are therefore negative) - NOT the same
   // thing as a Chart of Accounts running balance, which sums this across every posted line for the
   // account - see docs/entities/accounting.md.
@@ -286,14 +286,16 @@ function JournalLineRow({ line }: { line: JournalLine }) {
     <Table.Tr>
       <Table.Td>{line.account ? `${line.account.code} - ${line.account.name}` : "-"}</Table.Td>
       <Table.Td>
-        {/* The automatic accounting engine stamps partyNumber/partyType (the resolved Customer/
-            Vendor Number) directly on the one control-account line - a manual entry instead uses the
-            ChartOfAccount-reference `subAccount` field. Prefer the resolved party number. */}
+        {/* Sub Account: the line's own Customer/Vendor Number; else the entry's customer/vendor
+            resolved by the backend (older entries only stamped it on the control-account line);
+            else a manual entry's ChartOfAccount sub-account. "-" only when none exists. */}
         {line.partyType && line.partyNumber != null
           ? line.partyNumber
-          : line.subAccount
-            ? `${line.subAccount.code} - ${line.subAccount.name}`
-            : "-"}
+          : entryParty
+            ? entryParty.number
+            : line.subAccount
+              ? `${line.subAccount.code} - ${line.subAccount.name}`
+              : "-"}
       </Table.Td>
       <Table.Td>{line.projectNumber || line.project?.projectNumber || "-"}</Table.Td>
       <Table.Td>{line.description || "-"}</Table.Td>

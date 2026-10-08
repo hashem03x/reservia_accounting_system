@@ -97,6 +97,22 @@ async function resolveCustomerNumber(customerRef, { required = true } = {}, sess
 }
 
 /**
+ * Sub Account on EVERY line: an automatic entry belongs to one business party (the order's or
+ * payment's customer/vendor), and every one of its lines shows that party's Customer/Vendor Number
+ * as its Sub Account - not only the control-account line. The party is `party` when the caller
+ * passes one (an entry whose lines carry none of their own, e.g. a WIP transfer or Cost
+ * Recognition), otherwise the party already stamped on one of the entry's lines. A line that
+ * already has its own party keeps it. An entry with no party at all is left as-is.
+ */
+function applyEntryPartyToLines(lines, party) {
+  const source = party?.number != null && party?.type ? party : (lines || []).find(l => l.partyNumber != null && l.partyType);
+  if (!source) return lines;
+  const number = source.number ?? source.partyNumber;
+  const type = source.type ?? source.partyType;
+  return lines.map(line => (line.partyNumber != null && line.partyType ? line : { ...line, partyNumber: number, partyType: type }));
+}
+
+/**
  * Idempotently posts ONE automatic JournalEntry for a given accounting action. Safe to call
  * repeatedly for the same (sourceType, sourceId, accountingAction) triple - returns the already-
  * existing entry without creating a duplicate (the idempotency check and the create below both run
@@ -104,7 +120,7 @@ async function resolveCustomerNumber(customerRef, { required = true } = {}, sess
  * of the business operation - see journalEntryModel.js's compound unique index, which is the real
  * backstop against a race duplicating this under concurrent requests).
  */
-async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, project, lines, session, triggeredBySalesOrder, advancedPayment }) {
+async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, project, lines, session, triggeredBySalesOrder, advancedPayment, party }) {
   const existing = await JournalEntry.findOne({ sourceType, sourceId, accountingAction }).session(session || null);
   if (existing) return existing;
 
@@ -125,7 +141,7 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
 
   // Every line carries the entry's Project and that Project's real Project Number (never only the
   // parent entry) - see journalEntryProjectService.js.
-  const projectLines = await applyEntryProjectToLines({ project, lines, session });
+  const projectLines = applyEntryPartyToLines(await applyEntryProjectToLines({ project, lines, session }), party);
 
   const entryNumber = await getNextJournalEntryNumber(session);
   const [entry] = await JournalEntry.create(
@@ -387,6 +403,7 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
           date: purchaseOrder.createdAt || new Date(),
           description: `Transfer received inventory to project WIP - PO ${purchaseOrder.code || purchaseOrder._id}`,
           project: projectId,
+          party: { number: vendorNumber, type: 'vendor' },
           lines: [
             { account: wipRawMaterialsId, debit: physicalSubtotal, credit: 0, project: projectId },
             { account: inventoryId, debit: 0, credit: physicalSubtotal, project: projectId },
@@ -657,6 +674,73 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
   });
 }
 
+/**
+ * SO_COST_RECOGNITION - Cost Recognition of a Sales Order, posted once when the order is created
+ * (salesOrderCreation.service.js), right after the order has been counted into its project's
+ * Executed %:
+ *
+ *   Cost of Items      = Σ item.costWhenSold × item.starterQuantity - the same cost basis every
+ *                        profit report already uses (costWhenSold is the product's cost captured
+ *                        at the sale; a service has none, so it contributes 0)
+ *   Executed %         = the project's ACCUMULATED Executed % (all of its non-canceled Sales
+ *                        Orders / Contract Value, see projectAccountingService.js) including this
+ *                        order - not this order's own share
+ *   Recognized Cost    = Cost of Items × Executed % / 100
+ *   Journal Entry      = Dr Cost of Goods Sold (AutomaticJournalAccountCodes.costOfGoodsSold)
+ *                        / Cr Materials Inventory, for the Recognized Cost, with the project and
+ *                        the customer's Sub Account on every line
+ *
+ * The result is stored on the order (`costRecognition`) and never revisited by later orders.
+ * Idempotent: an order that already has a snapshot is returned as-is, and the entry itself is
+ * keyed by (SO, order id, SO_COST_RECOGNITION). A zero recognized cost posts no entry (a 0-amount
+ * line is invalid) but still records the snapshot.
+ */
+async function postSalesOrderCostRecognitionJE(salesOrder, session) {
+  const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
+  const Project = require('../../models/project/projectModel'); // eslint-disable-line global-require
+
+  const existing = await SalesOrder.findById(salesOrder._id).select('costRecognition').session(session || null).lean();
+  if (existing?.costRecognition) return { costRecognition: existing.costRecognition, entry: null };
+
+  const projectId = salesOrder.project?._id || salesOrder.project || null;
+  if (!projectId) throw new ApiError('Project is required for this automatic Journal Entry (SO_COST_RECOGNITION).', 400);
+  const project = await Project.findById(projectId).select('executedPercentage').session(session || null).lean();
+  if (!project) throw new ApiError('The project of this Sales Order does not exist.', 400);
+
+  const executedPercentage = Math.min(100, Math.max(0, Number(project.executedPercentage) || 0));
+  const costOfItems = round2((salesOrder.items || []).reduce((sum, item) => sum + (Number(item.costWhenSold) || 0) * (Number(item.starterQuantity) || 0), 0));
+  const recognizedCost = round2((costOfItems * executedPercentage) / 100);
+
+  let entry = null;
+  if (recognizedCost > 0) {
+    const customerNumber = await resolveCustomerNumber(salesOrder.customer, { required: true }, session);
+    const [cogsId, inventoryId] = await Promise.all([
+      getAccountIdByCode(AutomaticJournalAccountCodes.costOfGoodsSold, session),
+      getAccountIdByCode(AutomaticJournalAccountCodes.materialsInventory, session),
+    ]);
+    entry = await postAutomaticJournalEntry({
+      accountingAction: 'SO_COST_RECOGNITION',
+      sourceType: 'SO',
+      sourceId: salesOrder._id,
+      date: salesOrder.createdAt || new Date(),
+      description: `Cost recognition - SO ${salesOrder.code || salesOrder._id} (${executedPercentage}% of cost of items ${costOfItems})`,
+      project: projectId,
+      party: { number: customerNumber, type: 'customer' },
+      lines: [
+        { account: cogsId, debit: recognizedCost, credit: 0 },
+        { account: inventoryId, debit: 0, credit: recognizedCost },
+      ],
+      session,
+    });
+  }
+
+  const costRecognition = { executedPercentage, costOfItems, recognizedCost, journalEntry: entry?._id || null, recognizedAt: new Date() };
+  // Direct update (not a document save): records the snapshot without re-running the order's own
+  // save logic, and only if no snapshot exists yet.
+  await SalesOrder.updateOne({ _id: salesOrder._id, costRecognition: null }, { $set: { costRecognition } }, { session: session || undefined });
+  return { costRecognition, entry };
+}
+
 // ---------------------------------------------------------------------------
 // 10. Project revenue recognition (JV0010)
 // ---------------------------------------------------------------------------
@@ -799,5 +883,6 @@ module.exports = {
   postPaymentCustomerAdvanceAppliedJE,
   postPaymentVendorAdvanceAppliedJE,
   postSalesOrderAdvanceAppliedJE,
+  postSalesOrderCostRecognitionJE,
   postProjectExecutionRecognitionJEs,
 };

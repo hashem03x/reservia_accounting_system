@@ -111,7 +111,7 @@ test('Case 1 - a project-related automatic JE: every line gets the entry Project
   });
   assertProjectOnEveryLine(entry, project);
   assert.equal(entry.lines[1].partyNumber, customer.customerNumber, 'the Sub Account is unchanged');
-  assert.equal(entry.lines[0].partyNumber, null);
+  assert.equal(entry.lines[0].partyNumber, customer.customerNumber, 'every line carries the entry\'s Sub Account');
 });
 
 test('Case 1b - a client-supplied wrong projectNumber is replaced by the Project\'s real number', async () => {

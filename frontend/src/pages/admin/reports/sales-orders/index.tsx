@@ -302,30 +302,6 @@ export default function SalesOrdersReport() {
                 {data.length} ({data.reduce((acc, order) => acc + getOrderTotal(order), 0).toFixed(2)} {translations.currency})
               </span>
             </p>
-            {/* Total Shipped Orders */}
-            <p className="text-sm text-gray-600">
-              {translate("Total Shipped Orders", "إجمالي الطلبات المشحونة")}:{" "}
-              <span className="font-bold text-gray-800">
-                {data.filter((order) => order.shippingCost > 0).length} (
-                {data
-                  .filter((order) => order.shippingCost > 0)
-                  .reduce((acc, order) => acc + getOrderTotal(order), 0)
-                  .toFixed(2)}{" "}
-                {translations.currency})
-              </span>
-            </p>
-            {/* Total Unshipped Orders */}
-            <p className="text-sm text-gray-600">
-              {translate("Total Unshipped Orders", "إجمالي الطلبات غير المشحونة")}:{" "}
-              <span className="font-bold text-gray-800">
-                {data.filter((order) => order.shippingCost === 0).length} (
-                {data
-                  .filter((order) => order.shippingCost === 0)
-                  .reduce((acc, order) => acc + getOrderTotal(order), 0)
-                  .toFixed(2)}{" "}
-                {translations.currency})
-              </span>
-            </p>
           </div>
         </>
       )}

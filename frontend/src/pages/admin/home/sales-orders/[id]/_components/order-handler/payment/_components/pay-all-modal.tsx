@@ -11,7 +11,7 @@ import PaymentAccountSelect from "@/components/global/payment-account-select";
 import { useOrder } from "../../../../context";
 import InfoItem from "@/components/ui/info-item";
 
-// A component to pay all the remaining amount of an order + shipping cost
+// A component to pay all the remaining amount of an order
 
 export default function PayAllModal({ opened, close }: { opened: boolean; close: () => void }) {
   const { language, translate, translations } = useLanguage();
@@ -21,7 +21,6 @@ export default function PayAllModal({ opened, close }: { opened: boolean; close:
   const { updateWarehouseBalanceById } = useWarehouseHelpers();
 
   const amountToPay = order.remainingAmount;
-  const shippingCostNeededToBePaid = order.shippingCost > 0 && !order.shippingCostPaid;
 
   const [paymentAccount, setPaymentAccount] = useState("");
 
@@ -44,16 +43,7 @@ export default function PayAllModal({ opened, close }: { opened: boolean; close:
       });
       updateWarehouseBalanceById(order.warehouse, amountToPay, "in");
       setPayments((prev) => [paymentResponse.data.payment, ...prev]);
-      if (shippingCostNeededToBePaid) {
-        const orderResponse = await privateRequest({
-          language,
-          method: "PATCH",
-          url: `sale-orders/${order._id}/pay-shipping-cost`,
-        });
-        setOrder(orderResponse.data);
-      } else {
-        setOrder(paymentResponse.data.salesOrder);
-      }
+      setOrder(paymentResponse.data.salesOrder);
       handleClose();
     });
   }
@@ -76,17 +66,11 @@ export default function PayAllModal({ opened, close }: { opened: boolean; close:
             label={translate("Amount to pay", "المبلغ المطلوب دفعه")}
             value={`${amountToPay.toFixed(2)} ${translations.currency}`}
           />
-          {shippingCostNeededToBePaid && (
-            <InfoItem
-              label={translate("Shipping Cost", "تكلفة الشحن")}
-              value={`${order.shippingCost.toFixed(2)} ${translations.currency}`}
-            />
-          )}
         </div>
         <Alert radius="md" icon={<solidIcons.ExclamationCircle />} color="blue">
           {translate(
-            `You are about to pay all the remaining amount of this order${shippingCostNeededToBePaid ? " including the shipping cost." : "."}`,
-            `انت على وشك دفع المبلغ المتبقي من هذا الطلب كاملا${shippingCostNeededToBePaid ? " بما في ذلك تكلفة الشحن." : "."}`,
+            "You are about to pay all the remaining amount of this order.",
+            "انت على وشك دفع المبلغ المتبقي من هذا الطلب كاملا.",
           )}
         </Alert>
 

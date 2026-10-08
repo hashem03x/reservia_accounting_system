@@ -16,12 +16,13 @@ export default function PrintInvoice() {
   const { getWarehouseById } = useWarehouseHelpers();
 
   const warehouse = getWarehouseById(order.warehouse);
+  const shippingAddressText = useStringifyOnlineAddress(order.shippingAddress);
 
-  // Calculate order summary including shipping cost
-  const totalPaidAmount = order.paidAmount + (order.shippingCostPaid ? order.shippingCost : 0);
-  // Order Total Amount (incl. VAT, net of withholding) + shipping, which is tracked separately.
-  const totalAmountWithShipping = getOrderTotal(order) + (order.shippingCost || 0);
-  const totalRemainingAmount = totalAmountWithShipping - totalPaidAmount;
+  // Order summary: the Order Total Amount (incl. VAT, net of withholding). Shipping cost is not
+  // part of Sales Orders any more.
+  const totalPaidAmount = order.paidAmount;
+  const orderTotalAmount = getOrderTotal(order);
+  const totalRemainingAmount = orderTotalAmount - totalPaidAmount;
 
   return (
     <PrintDocument
@@ -93,12 +94,7 @@ export default function PrintInvoice() {
             )}
             {order.shippingAddress && (
               <span>
-                <strong>Shipping Address:</strong> {useStringifyOnlineAddress(order.shippingAddress)}
-              </span>
-            )}
-            {order.shippingCost > 0 && (
-              <span>
-                <strong>Shipping Cost:</strong> {order.shippingCost.toFixed(2)} EGP
+                <strong>Shipping Address:</strong> {shippingAddressText}
               </span>
             )}
             {order.shippingAddress && (
@@ -190,7 +186,7 @@ export default function PrintInvoice() {
             </thead>
             <tbody>
               <tr>
-                <td style={{ fontWeight: 600 }}>{totalAmountWithShipping.toFixed(2)} EGP</td>
+                <td style={{ fontWeight: 600 }}>{orderTotalAmount.toFixed(2)} EGP</td>
                 <td>{totalPaidAmount.toFixed(2)} EGP</td>
                 <td>{totalRemainingAmount.toFixed(2)} EGP</td>
               </tr>

@@ -96,6 +96,9 @@ exports.AccountingActions = [
   'PO_PAYMENT_RECORDED',
   'SO_CUSTOMER_ADVANCE_APPLIED',
   'SO_PAYMENT_RECORDED',
+  // Cost Recognition of a Sales Order: Dr COGS / Cr Materials Inventory for the project's
+  // accumulated Executed % x the order's Cost of Items, fixed at the order's creation.
+  'SO_COST_RECOGNITION',
   // A later Add Payment (not the order's own creation) funded from an Advanced Payment instead of
   // a Cash/Cash-Equivalent account (docs section "Add Payment - Advanced Payment") - kept distinct
   // from SO_CUSTOMER_ADVANCE_APPLIED/PO_SUPPLIER_ADVANCE_APPLIED so the idempotency key (sourceType
@@ -120,6 +123,7 @@ exports.ProjectRequiredAccountingActions = [
   'PO_SERVICE_TO_WIP',
   'PO_SUPPLIER_ADVANCE_APPLIED',
   'SO_CUSTOMER_ADVANCE_APPLIED',
+  'SO_COST_RECOGNITION',
   'PROJECT_REVENUE_RECOGNITION',
 ];
 
@@ -188,6 +192,7 @@ exports.AutomaticJournalAccountCodes = {
   withholdingTaxReceivable: '11000019', // Egyptian Tax Authority - Withholding & Addition (asset)
   vatPayable: '31000010', // VAT Payable (liability)
   revenue: '60000001', // Revenue (revenue) - generic, until a dedicated project-execution-revenue account exists
+  costOfGoodsSold: '50000001', // Raw Materials (cogs) - the debit side of Sales Order Cost Recognition (SO_COST_RECOGNITION)
 };
 
 // The originating business module of a journal entry - a NEW, dedicated "Module" column/field
@@ -214,6 +219,7 @@ exports.AccountingModuleByAction = {
   PO_PAYMENT_RECORDED: 'Purchase Order',
   SO_CUSTOMER_ADVANCE_APPLIED: 'Sales Order',
   SO_PAYMENT_RECORDED: 'Sales Order',
+  SO_COST_RECOGNITION: 'Sales Order',
   PAYMENT_CUSTOMER_ADVANCE_APPLIED: 'Payment',
   PAYMENT_VENDOR_ADVANCE_APPLIED: 'Payment',
   PROJECT_REVENUE_RECOGNITION: 'Sales Order',

@@ -51,6 +51,8 @@ export type PurchaseOrder = OrderFinancials & {
   createdBy?: { _id: string; name: string };
   createdAt: string;
   updatedAt: string;
+  // PDF documents attached after creation (absent on orders read before this field existed).
+  documents?: OrderDocument[];
 };
 
 export type PurchaseOrderItem = {
@@ -111,6 +113,33 @@ export type SalesOrder = OrderFinancials & {
   // For Website Orders
   shippingAddress?: Address;
   couponDiscount: number; // Persentage
+
+  // PDF documents attached after creation (absent on orders read before this field existed).
+  documents?: OrderDocument[];
+  // Cost Recognition, fixed when the order was created; null/absent for older orders.
+  costRecognition?: SalesOrderCostRecognition | null;
+};
+
+// A PDF attached to a Sales/Purchase Order after creation.
+export type OrderDocument = {
+  _id: string;
+  url: string;
+  publicId: string;
+  filename?: string;
+  mimeType?: string;
+  uploadedAt: string;
+  uploadedBy?: string | null;
+};
+
+// Snapshot of a Sales Order's Cost Recognition (backend: SalesOrder.costRecognition):
+// recognizedCost = costOfItems × executedPercentage / 100, where executedPercentage is the
+// project's accumulated Executed % right after this order counted.
+export type SalesOrderCostRecognition = {
+  executedPercentage: number;
+  costOfItems: number;
+  recognizedCost: number;
+  journalEntry?: string | null;
+  recognizedAt?: string;
 };
 
 export type SalesOrderItem = {
@@ -132,6 +161,9 @@ export type SalesOrderItem = {
   starterSubtotal: number;
   returnedQuantity: number;
   subtotal: number;
+  // The product's unit cost captured when sold (a service has none) - the cost basis of the
+  // order's Cost Recognition and of every profit report.
+  costWhenSold?: number | null;
 
   // For Website Orders
   quantityToBeReturned: number;

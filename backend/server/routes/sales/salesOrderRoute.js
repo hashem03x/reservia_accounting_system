@@ -18,6 +18,9 @@ const {
 } = require('../../controller/sales/salesOrderController');
 
 const { createCashierSalesOrderValidator } = require('../../utils/validators/salesValidator');
+const { uploadSingleDocument } = require('../../middleware/documentUploadMiddleware');
+const SalesOrder = require('../../models/sales/salesOrderModel');
+const { uploadOrderDocument, deleteOrderDocument } = require('../../controller/orderDocumentController').createOrderDocumentHandlers(SalesOrder, 'Sales order');
 
 router.use(authController.protect);
 
@@ -49,5 +52,11 @@ router.put('/:id/cancel', cancelOrder);
 
 // Confirm a COD (cash on delivery) order
 router.put('/:id/confirm-cod', confirmCodOrder);
+
+// PDF documents attached after the order was created (same upload pipeline/rules as Customer and
+// Vendor documents). Managing them needs the same permission as editing the order.
+const canUpdateSalesOrders = checkUserPermissions({ resource: Resources.salesOrders, action: Actions.update });
+router.post('/:id/documents', canUpdateSalesOrders, uploadSingleDocument('sales-orders', 'document'), uploadOrderDocument);
+router.delete('/:id/documents/:documentId', canUpdateSalesOrders, deleteOrderDocument);
 
 module.exports = router;

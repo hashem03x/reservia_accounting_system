@@ -197,7 +197,7 @@ test('postAdvancedPaymentJournalEntry (customer): posts Dr Cash / Cr Customer Ad
   assert.equal(payableLine.credit, 5000);
   assert.equal(payableLine.partyNumber, customer.customerNumber, 'the Customer Number must be on the Customer Advances Payable line');
   assert.equal(payableLine.partyType, 'customer');
-  assert.equal(cashLine.partyNumber, null, 'the Cash line must never also carry the Sub Account');
+  assert.equal(cashLine.partyNumber, customer.customerNumber, 'every line of the entry carries the Sub Account');
   assert.equal(entry.module, 'Advanced Payment');
 });
 
@@ -225,7 +225,7 @@ test('postAdvancedPaymentJournalEntry (vendor): posts Dr Advance to Suppliers / 
   assert.equal(cashLine.credit, 8000);
   assert.equal(advanceLine.partyNumber, vendor.vendorNumber);
   assert.equal(advanceLine.partyType, 'vendor');
-  assert.equal(cashLine.partyNumber, null);
+  assert.equal(cashLine.partyNumber, vendor.vendorNumber, 'every line of the entry carries the Sub Account');
 });
 
 test('postPaymentCustomerAdvanceAppliedJE: posts Dr Customer Advances Payable / Cr Accounts Receivable - Projects, sourced from PAYMENT not SO', async () => {
@@ -247,7 +247,7 @@ test('postPaymentCustomerAdvanceAppliedJE: posts Dr Customer Advances Payable / 
   assert.equal(arLine.credit, 7500);
   assert.equal(payableLine.partyNumber, customer.customerNumber, 'the Customer Number must be stamped on the control-account line itself, not just resolvable at read time');
   assert.equal(payableLine.partyType, 'customer');
-  assert.equal(arLine.partyNumber, null, 'the OTHER line of the same entry must never also carry the Sub Account');
+  assert.equal(arLine.partyNumber, customer.customerNumber, 'every line of the entry carries the Sub Account');
 });
 
 test('postPaymentCustomerAdvanceAppliedJE: rejects when the payment has no resolvable customer', async () => {
@@ -277,7 +277,7 @@ test('postPaymentVendorAdvanceAppliedJE: posts Dr Suppliers / Cr Advance to Supp
   assert.equal(advanceLine.credit, 4000);
   assert.equal(suppliersLine.partyNumber, vendor.vendorNumber);
   assert.equal(suppliersLine.partyType, 'vendor');
-  assert.equal(advanceLine.partyNumber, null);
+  assert.equal(advanceLine.partyNumber, vendor.vendorNumber, 'every line of the entry carries the Sub Account');
 });
 
 test('postPaymentVendorAdvanceAppliedJE: rejects when the payment has no resolvable vendor', async () => {
@@ -356,7 +356,7 @@ test('postPurchaseOrderJournalEntries: product item -> PO_INVENTORY_RECEIPT carr
   assert.equal(suppliersLine.partyNumber, vendor.vendorNumber, 'the Vendor Number must be on the Suppliers control-account line');
   assert.equal(suppliersLine.partyType, 'vendor');
   const inventoryLine = entries[0].lines.find(l => l.account.toString() === accounts[AutomaticJournalAccountCodes.materialsInventory]._id.toString());
-  assert.equal(inventoryLine.partyNumber, null, 'the Inventory line must never also carry the Vendor Number');
+  assert.equal(inventoryLine.partyNumber, vendor.vendorNumber, 'every line of the entry carries the Vendor Number as its Sub Account');
 });
 
 test('postPurchaseOrderJournalEntries: product item WITH a project -> PO_INVENTORY_RECEIPT + PO_INVENTORY_TO_WIP (two separate JEs)', async () => {

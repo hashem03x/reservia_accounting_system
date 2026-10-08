@@ -192,7 +192,7 @@ advancedPaymentSchema.pre('save', function (next) {
 
 advancedPaymentSchema.pre(/^find/, function (next) {
   this.populate({ path: 'customer', select: 'name email phone type customerNumber' })
-    .populate({ path: 'vendor', select: 'name contact' })
+    .populate({ path: 'vendor', select: 'name contact vendorNumber' })
     .populate({ path: 'project', select: 'projectNumber name customer' })
     .populate({ path: 'paymentAccount', select: 'code name nameAr' })
     .populate({ path: 'createdBy', select: 'name' })

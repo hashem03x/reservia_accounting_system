@@ -5,7 +5,7 @@ const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { getNextJournalEntryNumber } = require('../../services/accounting/journalEntryNumberService');
-const { getGeneralLedgerLines } = require('../../services/accounting/generalLedgerService');
+const { getGeneralLedgerLines, resolveSubAccountsForEntries } = require('../../services/accounting/generalLedgerService');
 const { applyEntryProjectToLines } = require('../../services/accounting/journalEntryProjectService');
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
 
@@ -60,7 +60,19 @@ function withEntryListFields(entries) {
 
 const getJournalEntries = factory.getAll(JournalEntry, 'JournalEntry', ' ', false, withEntryListFields);
 
-const getJournalEntry = factory.getOne(JournalEntry);
+// Same `{ data }` shape as factory.getOne, plus `resolvedSubAccount`: the customer/vendor the entry
+// belongs to, resolved from its source document - the Sub Account shown on any line that does not
+// carry its own (entries created before every line was stamped with it). Null when the entry has
+// no party (e.g. a manual entry).
+const getJournalEntry = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) return next(new ApiError('Invalid journal entry id', 400));
+  const entry = await JournalEntry.findById(id);
+  if (!entry) return next(new ApiError(`No document for this id ${id}`, 404));
+
+  const resolved = await resolveSubAccountsForEntries([entry]);
+  res.status(200).json({ data: { ...entry.toJSON(), resolvedSubAccount: resolved.get(entry._id.toString()) || null } });
+});
 
 const getJournalEntriesForProject = asyncHandler(async (req, res) => {
   const entries = await JournalEntry.find({ project: req.params.projectId }).sort({ date: 1, entryNumber: 1 });

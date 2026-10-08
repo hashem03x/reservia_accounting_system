@@ -80,6 +80,11 @@ export default function AdvancedPaymentDetail() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <InfoCard label={translate("Type", "النوع")} value={payment.type === "customer" ? translate("Customer", "عميل") : translate("Vendor", "بائع")} />
         <InfoCard label={payment.type === "customer" ? translate("Customer", "العميل") : translate("Vendor", "البائع")} value={partyName || "-"} />
+        {/* The customer/vendor number is the Sub Account on this advance's journal entry lines. */}
+        <InfoCard
+          label={translate("Sub Account", "الحساب الفرعي")}
+          value={(payment.type === "customer" ? payment.customer?.customerNumber : payment.vendor?.vendorNumber) ?? translate("Not assigned", "غير محدد")}
+        />
         <InfoCard label={translate("Project", "المشروع")} value={payment.project?.projectNumber || "-"} />
         <InfoCard
           label={translate("Payment Method", "طريقة الدفع")}

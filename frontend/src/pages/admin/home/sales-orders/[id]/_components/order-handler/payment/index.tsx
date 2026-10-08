@@ -9,34 +9,13 @@ import { solidIcons } from "@/components/icons";
 import { Button, Table } from "@mantine/core";
 import { useOrder } from "../../../context";
 import AddPaymentModal from "./_components/add-payment-modal";
-import useDataHandler from "@/hooks/useDataHandler";
-import handleRequest from "@/utils/helpers/handle-request";
-import { notifyError } from "@/utils/helpers/notifiers";
 import PayAllModal from "./_components/pay-all-modal";
 import { getOrderTotal } from "@/utils/helpers/order-totals";
 
 export default function Payment() {
   const { translate, language, translations } = useLanguage();
-  const { order, payments, orderPaymentStatusElement, setOrder } = useOrder();
+  const { order, payments, orderPaymentStatusElement } = useOrder();
   const [opened, { open, close }] = useDisclosure(false);
-
-  const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
-
-  if (error) {
-    notifyError({ language, message: error });
-    setError("");
-  }
-
-  async function setShippingCostAsPaid() {
-    handleRequest(language, setLoading, setError, async () => {
-      const { data } = await privateRequest({
-        method: "PATCH",
-        url: `sale-orders/${order._id}/pay-shipping-cost`,
-        language,
-      });
-      setOrder(data);
-    });
-  }
 
   const [payAllModalOpened, { open: openPayAllModal, close: closePayAllModal }] = useDisclosure(false);
 
@@ -46,7 +25,7 @@ export default function Payment() {
         title: translate("Payments", "الدفعات"),
         sideElements: (
           <>
-            {order.remainingAmount !== 0 || (order.shippingCost > 0 && !order.shippingCostPaid) ? (
+            {order.remainingAmount !== 0 ? (
               <Button radius="md" onClick={openPayAllModal}>
                 {translate("Pay All", "دفع الكل")}
               </Button>
@@ -136,39 +115,6 @@ export default function Payment() {
             <AddPaymentModal opened={opened} close={close} />
           </div>
         </section>
-
-        {/* Shipping Cost */}
-        {order.shippingCost > 0 && (
-          <>
-            <hr />
-            <section className="flex flex-col gap-1.5">
-              <h4>{translate("Shipping Cost", "تكلفة الشحن")}</h4>
-              <div className="flex items-center gap-1.5 text-xs md:text-sm">
-                <span className="text-gray-600">{translate("Shipping Cost", "تكلفة الشحن")}:</span>
-                <span className="font-bold text-gray-800">{`${order.shippingCost.toFixed(2)} ${translations.currency}`}</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs md:text-sm">
-                <span className="text-gray-600">{translate("Shipping Cost Paid?", "تم دفع تكلفة الشحن؟")}</span>
-                <span
-                  className={`font-bold ${order.shippingCostPaid ? "text-green-600" : "text-red-600"}`}
-                >{`${order.shippingCostPaid ? translate("Yes", "نعم") : translate("No", "لا")}`}</span>
-
-                {!order.shippingCostPaid && (
-                  <>
-                    <span className="text-gray-800">-</span>
-                    <button
-                      className={`text-sm font-medium ${loading ? "cursor-not-allowed text-gray-600" : "text-blue-500 hover:underline"}`}
-                      onClick={setShippingCostAsPaid}
-                      disabled={loading}
-                    >
-                      {translate("Set as Paid", "تأكيد الدفع")}
-                    </button>
-                  </>
-                )}
-              </div>
-            </section>
-          </>
-        )}
       </div>
     </AdminLayoutBox>
   );

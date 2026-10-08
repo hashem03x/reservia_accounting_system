@@ -11,9 +11,10 @@ export interface JournalLine {
   // Nullable: populate resolves a reference to a since-removed account to null - never assume it.
   account: ChartOfAccount | null;
   subAccount?: ChartOfAccount | null;
-  // The resolved Customer/Vendor Number for THIS specific line (docs section "Sub Account
-  // behavior") - set only on the one control-account line of an automatic entry that actually
-  // represents a business party. `null` on every other line and on manual entries.
+  // The Customer/Vendor Number shown as this line's Sub Account. New automatic entries stamp it on
+  // every line of an entry that belongs to a customer/vendor; older entries may have it only on
+  // the control-account line (the entry's `resolvedSubAccount` covers the rest). Null on manual
+  // entries, which use `subAccount` instead.
   partyNumber?: number | null;
   partyType?: "customer" | "vendor" | null;
   project?: { _id: string; projectNumber: string } | null;
@@ -52,6 +53,10 @@ export interface JournalEntry {
   advancedPayment?: string | null;
   status: JournalEntryStatus;
   lines: JournalLine[];
+  // Single-entry endpoint only (GET journal-entries/:id): the customer/vendor this entry belongs to,
+  // resolved by the backend from its source document - the Sub Account of any line that does not
+  // carry its own. Null when the entry has no party.
+  resolvedSubAccount?: { type: "customer" | "vendor"; number: number } | null;
   totalDebit: number;
   totalCredit: number;
   // Derived server-side (docs section "Which balance should the main page show?") - only present

@@ -234,7 +234,7 @@ test('getGeneralLedgerLines: Sub Account resolves to the Customer Number for a S
   const creditRow = result.data.find(r => r.credit === 777);
   const debitRow = result.data.find(r => r.debit === 777);
   assert.deepEqual(creditRow.subAccount, { type: 'customer', number: customer.customerNumber });
-  assert.equal(debitRow.subAccount, null, 'the Cash line must never also carry the resolved Sub Account');
+  assert.deepEqual(debitRow.subAccount, { type: 'customer', number: customer.customerNumber }, 'every line of the entry shows the resolved Sub Account');
 });
 
 test('getGeneralLedgerLines: Sub Account resolves to the Vendor Number for a Purchase-Order-sourced entry (fallback path, pre-dating partyNumber)', async () => {
@@ -263,7 +263,7 @@ test('getGeneralLedgerLines: Sub Account resolves to the Vendor Number for a Pur
   const debitRow = result.data.find(r => r.debit === 888);
   const creditRow = result.data.find(r => r.credit === 888);
   assert.deepEqual(debitRow.subAccount, { type: 'vendor', number: vendor.vendorNumber });
-  assert.equal(creditRow.subAccount, null, 'the Cash line must never also carry the resolved Sub Account');
+  assert.deepEqual(creditRow.subAccount, { type: 'vendor', number: vendor.vendorNumber }, 'every line of the entry shows the resolved Sub Account');
 });
 
 test('getGeneralLedgerLines: a NEW-style entry with partyNumber/partyType stamped on a line never falls back to entry-wide resolution', async () => {

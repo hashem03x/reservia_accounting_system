@@ -13,6 +13,7 @@ const { generateSalesOrderCode } = require('../../utils/helper');
 const { SalesOrderPaymentMethods } = require('../../utils/appConstant');
 const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 const { computeOrderTotals } = require('../../utils/orderTotals');
+const { orderDocumentSchema } = require('../shared/orderDocumentSchema');
 // Explicit require (not just the string `ref:` name) - mirrors journalEntryModel.js's convention
 // for every model this schema's hooks look up via `this.model(...)`.
 require('../accounting/chartOfAccountModel');
@@ -124,6 +125,27 @@ const salesOrderSchema = mongoose.Schema(
     },
     couponDiscount: { type: Number, default: null },
     needsCancellation: { type: Boolean, default: false },
+    // PDF documents attached after creation (POST /sale-orders/:id/documents).
+    documents: { type: [orderDocumentSchema], default: [] },
+    // Cost Recognition snapshot, fixed when the order is created
+    // (services/accounting/accountingEventService.js#postSalesOrderCostRecognitionJE):
+    //   costOfItems    = Σ item.costWhenSold × quantity (the cost basis every profit report uses)
+    //   executedPercentage = the project's ACCUMULATED Executed % right after this order counted
+    //   recognizedCost = costOfItems × executedPercentage / 100, posted as SO_COST_RECOGNITION
+    // Later orders never change it. `null` for orders created before this existed.
+    costRecognition: {
+      type: new Schema(
+        {
+          executedPercentage: { type: Number, required: true, min: 0, max: 100 },
+          costOfItems: { type: Number, required: true, min: 0 },
+          recognizedCost: { type: Number, required: true, min: 0 },
+          journalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', default: null },
+          recognizedAt: { type: Date, default: Date.now },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
   },
   {
     timestamps: true,

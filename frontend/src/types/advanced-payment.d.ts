@@ -14,7 +14,7 @@ export interface AdvancedPayment {
   _id: string;
   type: AdvancedPaymentType;
   customer?: { _id: string; name: string; email?: string; phone?: string; customerNumber?: number } | null;
-  vendor?: { _id: string; name: string; contact?: { phone?: string; email?: string } } | null;
+  vendor?: { _id: string; name: string; vendorNumber?: number | null; contact?: { phone?: string; email?: string } } | null;
   project?: { _id: string; projectNumber: string; name?: string } | null;
   amount: number;
   // Always server-derived - never settable from a create/edit form.

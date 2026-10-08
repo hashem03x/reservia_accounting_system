@@ -12,6 +12,7 @@ import CancelOrderModal from "./_components/cancel-order-modal";
 export default function WebsiteDetailsSection() {
   const { translate } = useLanguage();
   const { order } = useOrder();
+  const shippingAddressText = useStringifyOnlineAddress(order.shippingAddress);
 
   const [confirmCodModalOpened, { open: openConfirmCodModal, close: closeConfirmCodModal }] = useDisclosure();
   const [cancelOrderModalOpened, { open: openCancelOrderModal, close: closeCancelOrderModal }] = useDisclosure();
@@ -26,7 +27,7 @@ export default function WebsiteDetailsSection() {
       <div className="flex flex-col gap-2 p-4">
         {order.shippingAddress && (
           <>
-            <InfoItem label={translate("Address", "العنوان")} value={useStringifyOnlineAddress(order.shippingAddress)} />
+            <InfoItem label={translate("Address", "العنوان")} value={shippingAddressText} />
             <InfoItem label={translate("Delivery Number", "رقم التوصيل")} value={order.shippingAddress?.phone} />
             {order.isCodOrder && (
               <div className="flex flex-wrap items-center gap-2">

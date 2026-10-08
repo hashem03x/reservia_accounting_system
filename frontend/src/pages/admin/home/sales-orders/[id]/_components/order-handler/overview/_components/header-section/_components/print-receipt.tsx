@@ -27,8 +27,7 @@ export default function PrintReceipt() {
 
   const warehouse = getWarehouseById(order.warehouse);
 
-  if (order.shippingCost > 0) detailsHeight = 25;
-  else detailsHeight = 20;
+  detailsHeight = 20;
 
   // This is the map of the receipt (without the returned items)
   let paperHeight =
@@ -54,15 +53,13 @@ export default function PrintReceipt() {
     paperHeight += separatorHeight + miniHeaderHeight + borderHeight + tableItemHeight * (returnedItems.length + 2);
   }
 
-  // Calculate order summary including shipping cost
-  const totalSales =
-    order.items.reduce((acc, item) => acc + (item.starterQuantity - item.returnedQuantity) * item.unitPrice, 0) +
-    order.shippingCost; // totalSales is the total amount before discount
-  const discount = totalSales - order.totalAmountPlusShipping;
-  const netSales = order.totalAmountPlusShipping;
-  const totalPaidAmount = order.paidAmount + (order.shippingCostPaid ? order.shippingCost : 0);
-  // Remaining is measured against the Order Total Amount (incl. VAT) + shipping, not the pre-tax net.
-  const totalRemainingAmount = getOrderTotal(order) + (order.shippingCost || 0) - totalPaidAmount;
+  // Order summary (shipping cost is not part of Sales Orders any more).
+  const totalSales = order.items.reduce((acc, item) => acc + (item.starterQuantity - item.returnedQuantity) * item.unitPrice, 0); // before discount
+  const netSales = order.totalAmount; // pre-tax, after discounts and returns
+  const discount = totalSales - netSales;
+  const totalPaidAmount = order.paidAmount;
+  // Remaining is measured against the Order Total Amount (incl. VAT), not the pre-tax net.
+  const totalRemainingAmount = getOrderTotal(order) - totalPaidAmount;
 
   return (
     <PrintDocument
@@ -142,11 +139,6 @@ export default function PrintReceipt() {
                 <strong>Customer Phone:</strong> {order.customer.phone}
               </span>
             )}
-            {order.shippingCost ? (
-              <span>
-                <strong>Shipping Cost:</strong> {order.shippingCost.toFixed(2)} LE
-              </span>
-            ) : null}
           </main>
 
           <div className="separtor" />

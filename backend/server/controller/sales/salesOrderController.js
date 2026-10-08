@@ -14,8 +14,10 @@ const { recalculateExecutedPercentage } = require('../../services/project/projec
 exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
   // `vatAmount`/`withholdingTaxAmount`/`grandTotal`/`totalAmount` are deliberately never
   // destructured here - only the percentages are ever accepted from a client (docs section "Do not
-  // allow clients to manipulate the final total").
-  const { customer, warehouse, items, isPrepaid, shippingCost, isCodOrder, paidAmount, paymentMethod, paymentAccount, project, vatPercentage, withholdingTaxPercentage } = req.body;
+  // allow clients to manipulate the final total"). Shipping cost is not part of Sales Orders any
+  // more - a `shippingCost` in the body is ignored, so new orders always have 0 (old orders keep
+  // their stored value). Payment method is optional; the app records payments after creation.
+  const { customer, warehouse, items, isPrepaid, isCodOrder, paidAmount, paymentMethod, paymentAccount, project, vatPercentage, withholdingTaxPercentage } = req.body;
 
   try {
     const salesOrder = await createSalesOrder({
@@ -23,7 +25,6 @@ exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
       warehouse,
       items,
       isPrepaid,
-      shippingCost,
       orderSource: 'cashier',
       isCodOrder,
       paidAmount,
