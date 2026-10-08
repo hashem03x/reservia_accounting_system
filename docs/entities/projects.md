@@ -21,7 +21,7 @@ screenshots that mention the old names or an auto-created journal entry, they pr
 | `deliveryDate` | User input, required | Plain `Date`. Must not be before `startDate` - enforced in the model's `pre('validate')` hook (covers every write path, including a partial `PATCH` that only changes one of the two dates against the other's already-saved value) and, as a faster/friendlier pre-check, in `projectValidators.js` for the common case where both are present in the same request body. |
 | `contract` | Single optional subdocument (not an array) | `{ url, publicId, filename, mimeType, uploadedAt, uploadedBy }`. Reuses the existing PDF upload pipeline (`middleware/documentUploadMiddleware.js`, Cloudinary `resource_type: 'raw'`) built for Customer/Vendor documents in Phase 1, but as a single "current contract" slot with replace semantics rather than the `documents[]` typed-array shape (`businessPartnerSchemas.js`) - a project has one current contract, not several typed document categories. |
 | `status` | User input | `active \| completed \| cancelled \| on_hold`. |
-| `sector` | User input, optional | `'Villa' \| 'Industrials' \| null`. See "Sector" below. |
+| `sector` | User input, optional | The name of an admin-managed Sector (Admin -> Sectors), or `null`. See "Sector" below. |
 | `isDeleted` | Soft delete | Same convention as Customer/Vendor/Product - never a real `deleteOne`. |
 
 ## No automatic accounting
@@ -57,7 +57,7 @@ this removal happened. A project can still have journal entries linked to it
 |---|---|---|
 | `projectAmount` | `contractValue` | Names the field for what it actually represents - the value of the signed contract. |
 | `executor` (المنفذ) | `projectManager` | Clearer English label; same `ref: User` relationship, unchanged. |
-| `department` | `sector` | Same optional enum concept; the constant list was renamed too - `ProjectDepartments` -> `ProjectSectors` (`utils/accountingConstants.js`, mirrored in `frontend/src/utils/constants/accounting.ts`). Values (`Villa`, `Industrials`) are unchanged. |
+| `department` | `sector` | Same optional enum concept; the constant list was renamed too - `ProjectDepartments` -> `ProjectSectors` (`utils/accountingConstants.js`, mirrored in `frontend/src/utils/constants/accounting.ts`). Values (`Villa`, `Industrials`) are unchanged. That constant list has since been replaced by admin-managed Sectors (see "Sector" below). |
 
 **Migration for existing data**: `scripts/migrateProjectFieldRenames.js` (`npm run
 db:migrate-project-fields`, `--dry-run` supported) renames the three fields on any existing
@@ -71,20 +71,27 @@ the script's own header comment for full detail. **Does not** backfill `startDat
 
 ## Sector
 
-Centralized in **one place per side** - `backend/server/utils/accountingConstants.js`'s
-`ProjectSectors` array (currently `['Villa', 'Industrials']`), mirrored in
-`frontend/src/utils/constants/accounting.ts`'s `ProjectSectors`. Adding a third sector is a
-one-line change in each of those two files - never hardcode a sector string anywhere else (model,
-validator, or a frontend form/table).
+Admin-managed (**Admin -> Sectors**, admin-only): `models/project/sectorModel.js`
+(`name` - required, unique case-insensitively; `isActive`; timestamps), API `/api/v1/sectors`, all
+rules in `services/project/sectorService.js`. There is no hardcoded sector list any more.
 
-`sector` is optional and **explicitly nullable in the schema's own enum** (`enum: {values:
-[...ProjectSectors, null]}`) rather than left to default via an absent key - this matters
-specifically for clearing a previously-set sector through `PATCH /projects/:id`: assigning
-`undefined` to an existing Mongoose document path does not reliably unset it on `.save()` (Mongoose
-treats `undefined` as "no change" when computing what to persist), but assigning `null` does. Both
-`createProject` and `updateProject` normalize an empty/falsy incoming value to `null` before
-touching the document for this reason. Projects created before this field existed (or before the
-department->sector rename ran) simply have the key absent, wh## Remaining money - how it's computed
+- **Storage:** `Project.sector` still holds the sector's **name** (its original string format), so
+  existing projects need no migration and keep loading and saving unchanged.
+- **Validation:** a new or changed `sector` must be an existing, **active** Sector (request validator
+  plus the model's own `pre('validate')` hook), and is stored by the Sector's canonical name. An
+  unchanged value is never re-checked, so a project keeps a sector that was later deactivated.
+  `null` (no sector) stays valid - clearing it through `PATCH /projects/:id` assigns `null`, not
+  `undefined`, because Mongoose treats `undefined` as "no change".
+- **Rename:** renaming a Sector renames it on every project using it (including soft-deleted ones),
+  in the same transaction.
+- **Deactivate:** an inactive Sector stays visible to admins and on its projects, but is not offered
+  in the Project form and cannot be newly selected.
+- **Delete:** only a Sector no project uses (including soft-deleted projects) can be deleted; a
+  Sector in use is refused with a message to deactivate it instead.
+- **Existing values:** `npm run db:seed-sectors` creates Sector records for the two former
+  hardcoded values (`Villa`, `Industrials`) and every sector value already stored on a project
+  (additive and idempotent; `-- --dry-run` reports only).
+## Remaining money - how it's computed
 
 One calculation, in `server/utils/projectExecution.js`:
 

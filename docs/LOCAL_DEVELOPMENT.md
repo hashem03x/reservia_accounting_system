@@ -80,6 +80,7 @@ needed for document/contract uploads and password-reset or backup emails.
 ```powershell
 npm run db:init                 # creates every collection and index, inserts no documents; refuses a non-empty DB
 npm run db:seed-accounts        # optional: a small default Chart of Accounts (only adds missing codes)
+npm run db:seed-sectors         # Project Sector options (Villa, Industrials) - only adds missing ones
 npm run db:create-admin -- --email you@example.com --name "Your Name"
 ```
 
@@ -169,6 +170,7 @@ refresh would fail.
 | `npm run db:init` | create collections and indexes on an **empty** DB | `DB_URI` |
 | `npm run db:seed-accounts` | add a minimal default Chart of Accounts (non-destructive) | `DB_URI` |
 | `npm run db:seed-industrial-categories` | seed product categories | `DB_URI` |
+| `npm run db:seed-sectors` (`-- --dry-run` to report only) | create Project Sector records for Villa/Industrials and every sector already used by a project (additive, idempotent) | `DB_URI` |
 | `npm run db:create-admin -- --email ... --name ...` | create the first admin user | `DB_URI` |
 | `npm run db:import-accounting-data -- --dry-run` / `--yes` | **replaces** the ChartOfAccount, JournalEntry, and Project collections from `csv_files/` | `DB_URI`, `csv_files/` |
 | `npm run db:migrate-project-fields` / `db:migrate-variants-to-products` | one-off data migrations | `DB_URI` |
