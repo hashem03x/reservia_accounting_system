@@ -7,7 +7,6 @@ const apiResponse = require('../../utils/apiResponse');
 const { getNextJournalEntryNumber } = require('../../services/accounting/journalEntryNumberService');
 const { getGeneralLedgerLines, resolveSubAccountsForEntries } = require('../../services/accounting/generalLedgerService');
 const { applyEntryProjectToLines } = require('../../services/accounting/journalEntryProjectService');
-const { createReversalEntry } = require('../../services/accounting/journalEntryReversalService');
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
 
 const createJournalEntry = asyncHandler(async (req, res) => {
@@ -263,10 +262,73 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
   try {
     let reversal;
     await session.withTransaction(async () => {
-      // The shared reversal (journalEntryReversalService.js) re-reads and re-checks the original
-      // INSIDE this transaction - the pre-check above has a window between two concurrent requests
-      // for the same entry; whichever transaction commits first wins and the other fails cleanly.
-      reversal = await createReversalEntry(original._id, { reversalDate, reference, userId: req.user._id }, session);
+      // Re-fetch INSIDE the transaction's own snapshot and re-check - the pre-check above has a
+      // window between two concurrent requests for the same entry (both could read "not reversed
+      // yet" before either writes). Whichever request's transaction commits first wins; the loser
+      // sees `reversedByEntry` already set here and fails cleanly with a normal business error
+      // instead of racing to create two reversal entries for the same original.
+      const currentOriginal = await JournalEntry.findById(original._id).session(session);
+      if (!currentOriginal || currentOriginal.status !== 'posted' || currentOriginal.reversedByEntry) {
+        throw new ApiError('This journal entry has already been reversed.', 400);
+      }
+      if (currentOriginal.reversalOfEntry) {
+        throw new ApiError('A reversal entry cannot itself be reversed.', 400);
+      }
+
+      const entryNumber = await getNextJournalEntryNumber(session);
+
+      const [created] = await JournalEntry.create(
+        [
+          {
+            entryNumber,
+            date: reversalDate,
+            description: `Reversal of entry #${currentOriginal.entryNumber}${currentOriginal.description ? ` - ${currentOriginal.description}` : ''}`,
+            reference,
+            project: currentOriginal.project,
+            source: currentOriginal.source,
+            module: currentOriginal.module,
+            sourceType: null,
+            sourceId: null,
+            status: 'posted',
+            // Lines mirror the original with debit/credit swapped. A project-related original's
+            // lines all get the entry's Project and its real Project Number - this also completes
+            // a historical original whose lines were posted without them, so reversing it never
+            // fails. A historical line that named a different project keeps it (a reversal must
+            // mirror the original exactly).
+            lines: await applyEntryProjectToLines({
+              project: currentOriginal.project,
+              session,
+              allowLineProjectOverride: true,
+              lines: currentOriginal.lines.map(line => ({
+                account: line.account._id || line.account,
+                subAccount: line.subAccount?._id || line.subAccount || null,
+                partyNumber: line.partyNumber ?? null,
+                partyType: line.partyType ?? null,
+                project: line.project?._id || line.project || null,
+                projectNumber: line.projectNumber,
+                debit: line.credit,
+                credit: line.debit,
+                description: line.description,
+                unearnedRevenue: 0,
+              })),
+            }),
+            reversalOfEntry: currentOriginal._id,
+            // A reversal belongs to the same Advanced Payment as the entry it reverses.
+            advancedPayment: currentOriginal.advancedPayment || null,
+            createdBy: req.user._id,
+            postedBy: req.user._id,
+            postedAt: new Date(),
+          },
+        ],
+        { session }
+      );
+      reversal = created;
+
+      currentOriginal.reversedByEntry = reversal._id;
+      currentOriginal.reversedBy = req.user._id;
+      currentOriginal.reversedAt = new Date();
+      currentOriginal.status = 'reversed';
+      await currentOriginal.save({ session });
     });
 
     logAccountingEvent('JOURNAL_ENTRY_REVERSED', {

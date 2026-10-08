@@ -14,10 +14,8 @@ const { recalculateExecutedPercentage } = require('../../services/project/projec
 exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
   // `vatAmount`/`withholdingTaxAmount`/`grandTotal`/`totalAmount` are deliberately never
   // destructured here - only the percentages are ever accepted from a client (docs section "Do not
-  // allow clients to manipulate the final total"). Shipping cost is not part of Sales Orders any
-  // more - a `shippingCost` in the body is ignored, so new orders always have 0 (old orders keep
-  // their stored value). Payment method is optional; the app records payments after creation.
-  const { customer, warehouse, items, isPrepaid, isCodOrder, paidAmount, paymentMethod, paymentAccount, project, vatPercentage, withholdingTaxPercentage } = req.body;
+  // allow clients to manipulate the final total").
+  const { customer, warehouse, items, isPrepaid, shippingCost, isCodOrder, paidAmount, paymentMethod, paymentAccount, project, vatPercentage, withholdingTaxPercentage } = req.body;
 
   try {
     const salesOrder = await createSalesOrder({
@@ -25,6 +23,7 @@ exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
       warehouse,
       items,
       isPrepaid,
+      shippingCost,
       orderSource: 'cashier',
       isCodOrder,
       paidAmount,
@@ -125,23 +124,12 @@ exports.cancelOrder = asyncHandler(async (req, res, next) => {
     return res.status(200).json({ status: 'success', data: updated });
   }
 
-  // One transaction: canceling also lowers the project's Executed % and reverses this order's Cost
-  // Recognition (accounting entries) - all of it commits together or not at all.
-  const session = await mongoose.startSession();
-  try {
-    await session.withTransaction(async () => {
-      const freshOrder = await SalesOrder.findById(id).session(session);
-      freshOrder.orderStatus = 'canceled';
-      await freshOrder.save({ session });
-      if (freshOrder.project) {
-        await recalculateExecutedPercentage(freshOrder.project._id || freshOrder.project, session, freshOrder._id);
-      }
-    });
-  } finally {
-    session.endSession();
+  salesOrder.orderStatus = 'canceled';
+  await salesOrder.save();
+  if (salesOrder.project) {
+    await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, undefined, salesOrder._id);
   }
-  const updated = await SalesOrder.findById(id);
-  res.status(200).json({ status: 'success', data: updated });
+  res.status(200).json({ status: 'success', data: salesOrder });
 });
 
 /**

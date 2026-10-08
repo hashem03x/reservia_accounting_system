@@ -13,7 +13,6 @@ const { generateSalesOrderCode } = require('../../utils/helper');
 const { SalesOrderPaymentMethods } = require('../../utils/appConstant');
 const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 const { computeOrderTotals } = require('../../utils/orderTotals');
-const { orderDocumentSchema } = require('../shared/orderDocumentSchema');
 // Explicit require (not just the string `ref:` name) - mirrors journalEntryModel.js's convention
 // for every model this schema's hooks look up via `this.model(...)`.
 require('../accounting/chartOfAccountModel');
@@ -125,54 +124,6 @@ const salesOrderSchema = mongoose.Schema(
     },
     couponDiscount: { type: Number, default: null },
     needsCancellation: { type: Boolean, default: false },
-    // PDF documents attached after creation (POST /sale-orders/:id/documents).
-    documents: { type: [orderDocumentSchema], default: [] },
-    // Cumulative Cost Recognition of this order - maintained ONLY by
-    // services/accounting/accountingEventService.js#recognizeProjectSalesOrderCosts whenever the
-    // project's Executed % is recalculated (never by a client):
-    //   costOfItems              Σ item.costWhenSold × (sold - returned); 0 once canceled
-    //   executedPercentage       the project's accumulated Executed % last applied
-    //   totalRecognizedCost      recognized so far = costOfItems × executedPercentage / 100
-    //   previouslyRecognizedCost the total before the last change
-    //   currentRecognition       the last change (total - previous); negative = reversed
-    //   byAccount                the same per cost category (JV0011 Dr WIP / Cr cost account pair)
-    //   journalEntries           every SO_COST_RECOGNITION entry posted for this order
-    //   revision                 optimistic-concurrency counter (also part of each posting's key)
-    // Seeded when the order is created; `null` for orders created before Cost Recognition existed
-    // (never recognized retroactively). `recognizedCost`/`journalEntry` are the first version's
-    // one-time fields, still read for orders created by it.
-    costRecognition: {
-      type: new Schema(
-        {
-          costOfItems: { type: Number, default: 0, min: 0 },
-          executedPercentage: { type: Number, default: 0, min: 0, max: 100 },
-          totalRecognizedCost: { type: Number, default: 0, min: 0 },
-          previouslyRecognizedCost: { type: Number, default: 0, min: 0 },
-          currentRecognition: { type: Number, default: 0 },
-          byAccount: {
-            type: [
-              new Schema(
-                {
-                  wipAccountCode: { type: String },
-                  costAccountCode: { type: String },
-                  costOfItems: { type: Number, default: 0 },
-                  recognizedCost: { type: Number, default: 0 },
-                },
-                { _id: false }
-              ),
-            ],
-            default: undefined,
-          },
-          journalEntries: { type: [{ type: Schema.Types.ObjectId, ref: 'JournalEntry' }], default: [] },
-          revision: { type: Number, default: 0 },
-          recognizedAt: { type: Date, default: null },
-          recognizedCost: { type: Number },
-          journalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry' },
-        },
-        { _id: false }
-      ),
-      default: null,
-    },
   },
   {
     timestamps: true,

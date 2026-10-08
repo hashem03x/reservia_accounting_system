@@ -13,7 +13,6 @@ export interface LanguageContextProps {
     underConstruction: string;
     currency: string;
     continue: string;
-    back: string;
     exit: string;
     confirm: string;
     cancel: string;

@@ -51,8 +51,6 @@ export type PurchaseOrder = OrderFinancials & {
   createdBy?: { _id: string; name: string };
   createdAt: string;
   updatedAt: string;
-  // PDF documents attached after creation (absent on orders read before this field existed).
-  documents?: OrderDocument[];
 };
 
 export type PurchaseOrderItem = {
@@ -113,47 +111,6 @@ export type SalesOrder = OrderFinancials & {
   // For Website Orders
   shippingAddress?: Address;
   couponDiscount: number; // Persentage
-
-  // PDF documents attached after creation (absent on orders read before this field existed).
-  documents?: OrderDocument[];
-  // Cost Recognition, fixed when the order was created; null/absent for older orders.
-  costRecognition?: SalesOrderCostRecognition | null;
-};
-
-// A PDF attached to a Sales/Purchase Order after creation.
-export type OrderDocument = {
-  _id: string;
-  url: string;
-  publicId: string;
-  filename?: string;
-  mimeType?: string;
-  uploadedAt: string;
-  uploadedBy?: string | null;
-};
-
-// A Sales Order's cumulative Cost Recognition (backend: SalesOrder.costRecognition, maintained by
-// accountingEventService.js#recognizeProjectSalesOrderCosts): totalRecognizedCost = costOfItems ×
-// the project's accumulated executedPercentage / 100; each Executed % change posts only the
-// difference (currentRecognition = total - previouslyRecognizedCost; negative = reversed).
-export type SalesOrderCostRecognition = {
-  costOfItems: number;
-  executedPercentage: number;
-  totalRecognizedCost?: number;
-  previouslyRecognizedCost?: number;
-  currentRecognition?: number;
-  // Per cost category: the JV0011 pair (Dr WIP account / Cr cost account) and what is recognized on it.
-  byAccount?: {
-    wipAccountCode: string;
-    costAccountCode: string;
-    costOfItems: number;
-    recognizedCost: number;
-  }[];
-  journalEntries?: string[];
-  revision?: number;
-  recognizedAt?: string | null;
-  // First (one-time) version's fields - still present on orders created by it.
-  recognizedCost?: number;
-  journalEntry?: string | null;
 };
 
 export type SalesOrderItem = {
@@ -175,9 +132,6 @@ export type SalesOrderItem = {
   starterSubtotal: number;
   returnedQuantity: number;
   subtotal: number;
-  // The product's unit cost captured when sold (a service has none) - the cost basis of the
-  // order's Cost Recognition and of every profit report.
-  costWhenSold?: number | null;
 
   // For Website Orders
   quantityToBeReturned: number;

@@ -8,8 +8,6 @@ const {
   AccountingModuleByAction,
   ProjectRequiredAccountingActions,
   isPucAccountEligible,
-  CostRecognitionAccountPairs,
-  SalesOrderJournalDescriptions,
 } = require('../../utils/accountingConstants');
 const ApiError = require('../../utils/apiError');
 const { applyEntryProjectToLines } = require('./journalEntryProjectService');
@@ -99,22 +97,6 @@ async function resolveCustomerNumber(customerRef, { required = true } = {}, sess
 }
 
 /**
- * Sub Account on EVERY line: an automatic entry belongs to one business party (the order's or
- * payment's customer/vendor), and every one of its lines shows that party's Customer/Vendor Number
- * as its Sub Account - not only the control-account line. The party is `party` when the caller
- * passes one (an entry whose lines carry none of their own, e.g. a WIP transfer or Cost
- * Recognition), otherwise the party already stamped on one of the entry's lines. A line that
- * already has its own party keeps it. An entry with no party at all is left as-is.
- */
-function applyEntryPartyToLines(lines, party) {
-  const source = party?.number != null && party?.type ? party : (lines || []).find(l => l.partyNumber != null && l.partyType);
-  if (!source) return lines;
-  const number = source.number ?? source.partyNumber;
-  const type = source.type ?? source.partyType;
-  return lines.map(line => (line.partyNumber != null && line.partyType ? line : { ...line, partyNumber: number, partyType: type }));
-}
-
-/**
  * Idempotently posts ONE automatic JournalEntry for a given accounting action. Safe to call
  * repeatedly for the same (sourceType, sourceId, accountingAction) triple - returns the already-
  * existing entry without creating a duplicate (the idempotency check and the create below both run
@@ -122,7 +104,7 @@ function applyEntryPartyToLines(lines, party) {
  * of the business operation - see journalEntryModel.js's compound unique index, which is the real
  * backstop against a race duplicating this under concurrent requests).
  */
-async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, reference, project, lines, session, triggeredBySalesOrder, advancedPayment, party }) {
+async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, project, lines, session, triggeredBySalesOrder, advancedPayment }) {
   const existing = await JournalEntry.findOne({ sourceType, sourceId, accountingAction }).session(session || null);
   if (existing) return existing;
 
@@ -143,7 +125,7 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
 
   // Every line carries the entry's Project and that Project's real Project Number (never only the
   // parent entry) - see journalEntryProjectService.js.
-  const projectLines = applyEntryPartyToLines(await applyEntryProjectToLines({ project, lines, session }), party);
+  const projectLines = await applyEntryProjectToLines({ project, lines, session });
 
   const entryNumber = await getNextJournalEntryNumber(session);
   const [entry] = await JournalEntry.create(
@@ -152,7 +134,6 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
         entryNumber,
         date: date || new Date(),
         description,
-        reference: reference || undefined,
         source: 'automatic',
         // Normalized through the one accountingAction -> Module map (docs section "Module field") -
         // never a free-text/inconsistently-cased variation (see accountingConstants.js).
@@ -406,7 +387,6 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
           date: purchaseOrder.createdAt || new Date(),
           description: `Transfer received inventory to project WIP - PO ${purchaseOrder.code || purchaseOrder._id}`,
           project: projectId,
-          party: { number: vendorNumber, type: 'vendor' },
           lines: [
             { account: wipRawMaterialsId, debit: physicalSubtotal, credit: 0, project: projectId },
             { account: inventoryId, debit: 0, credit: physicalSubtotal, project: projectId },
@@ -677,247 +657,20 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
   });
 }
 
-/**
- * Sales Order Cost Recognition - JV0011 of "AUTOMATIC ENTERIES.xlsx" ("charge the project with its
- * costs at the executed share of the contract"). CUMULATIVE per order, re-evaluated whenever the
- * project's Executed % is recalculated (every Sales Order create/cancel/return and Contract Value
- * change - see projectAccountingService.js#recalculateExecutedPercentage, the one Executed %
- * calculation):
- *
- *   Cost of Items      = Σ item.costWhenSold × (sold - returned quantity) - the cost basis every
- *                        profit report uses - split by cost category: a product is raw materials
- *                        (WIP 11000009), a service its own PUC account; 0 for a canceled order
- *   Required           = each category's cost × the project's accumulated Executed % / 100
- *   Increase           = post ONE SO_COST_RECOGNITION entry for (Required - already recognized) of
- *                        every category: Dr the WIP account / Cr its cost account
- *                        (CostRecognitionAccountPairs - Dr 11000009 / Cr 50000001 for raw
- *                        materials), with the sheet's description, the Project Number and the
- *                        customer's Sub Account on every line
- *   Decrease           = never a negative entry: the order's most recent recognition entries are
- *                        reversed through the standard reversal (journalEntryReversalService.js)
- *                        until no category is above Required, then any remaining shortfall is
- *                        posted as a new positive entry
- *
- * Only orders that carry a `costRecognition` snapshot take part (every order created since Cost
- * Recognition exists - salesOrderCreation.service.js seeds it); orders created before it are never
- * recognized retroactively. Entries posted by the earlier mapping (Dr 50000001 / Cr 11000007) are
- * left as they are and count as raw-materials recognition already made.
- *
- * Idempotent and race-safe:
- *   - each posting's key is (SO, hash(order id + snapshot revision), SO_COST_RECOGNITION) under the
- *     existing unique index - a retry or a concurrent request at the same revision cannot post twice;
- *   - the snapshot is written only if its `revision` is unchanged since it was read, inside the
- *     caller's transaction - otherwise the whole transaction aborts with a conflict.
- * Processing the same state again computes a zero difference and changes nothing.
- */
-async function recognizeProjectSalesOrderCosts(projectRef, session) {
-  const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
-  const Project = require('../../models/project/projectModel'); // eslint-disable-line global-require
-  const { createReversalEntry } = require('./journalEntryReversalService'); // eslint-disable-line global-require
-
-  const projectId = projectRef?._id || projectRef;
-  const project = await Project.findById(projectId).select('executedPercentage').session(session || null).lean();
-  if (!project) return [];
-  const executedPercentage = Math.min(100, Math.max(0, Number(project.executedPercentage) || 0));
-
-  // Raw collection: no populate/save hooks, and canceled orders are included (their recognition
-  // must be taken back).
-  const orders = await SalesOrder.collection
-    .find({ project: new mongoose.Types.ObjectId(String(projectId)), costRecognition: { $type: 'object' } }, { session: session || undefined })
-    .toArray();
-  if (!orders.length) return [];
-  const productInfo = await loadCostCategoryInfo(orders, session);
-
-  const results = [];
-  for (const order of orders) {
-    const state = order.costRecognition;
-    // Orders created by the first (one-time) version stored `recognizedCost` / `journalEntry`.
-    const previousTotal = round2(state.totalRecognizedCost ?? state.recognizedCost ?? 0);
-    const journalEntries = (state.journalEntries || (state.journalEntry ? [state.journalEntry] : [])).map(id => String(id));
-    const revision = state.revision ?? null;
-
-    const costs = costByCategory(order, productInfo);
-    const costOfItems = round2(Object.values(costs).reduce((sum, cost) => sum + cost, 0));
-    const recognized = recognizedByCategory(state, previousTotal);
-    const required = {};
-    for (const code of new Set([...Object.keys(costs), ...Object.keys(recognized)])) required[code] = round2(((costs[code] || 0) * executedPercentage) / 100);
-    const requiredOf = code => required[code] ?? 0;
-
-    const unchanged = Object.keys(required).every(code => round2(recognized[code] || 0) === requiredOf(code));
-    if (unchanged && costOfItems === state.costOfItems && executedPercentage === state.executedPercentage) continue;
-
-    const reversed = [];
-    // Decrease: reverse the most recent still-posted recognition entries (never a negative entry).
-    const overRecognized = () => Object.keys(recognized).some(code => recognized[code] > requiredOf(code));
-    if (overRecognized()) {
-      const active = await JournalEntry.find({ _id: { $in: journalEntries }, status: 'posted', reversedByEntry: null })
-        .sort({ entryNumber: -1 })
-        .populate({ path: 'lines.account', select: 'code' })
-        .session(session || null)
-        .lean();
-      for (const entry of active) {
-        if (!overRecognized()) break;
-        // eslint-disable-next-line no-await-in-loop
-        await createReversalEntry(
-          entry._id,
-          {
-            reversalDate: new Date(),
-            reference: `SO ${order.code || order._id}`,
-            description: `Reversal of cost recognition - SO ${order.code || order._id} (cost recognition adjusted to ${round2(Object.values(required).reduce((sum, amount) => sum + amount, 0))})`,
-          },
-          session
-        );
-        for (const [code, amount] of Object.entries(entryRecognitionByCategory(entry))) {
-          recognized[code] = Math.max(0, round2((recognized[code] || 0) - amount));
-        }
-        reversed.push(String(entry._id));
-      }
-    }
-
-    const increments = Object.keys(required)
-      .sort()
-      .map(code => [code, round2(requiredOf(code) - (recognized[code] || 0))])
-      .filter(([, amount]) => amount > 0);
-    let entry = null;
-    if (increments.length) {
-      const customerNumber = await resolveCustomerNumber(order.customer, { required: true }, session);
-      const wipIds = await Promise.all(increments.map(([code]) => getAccountIdByCode(code, session)));
-      const costIds = await Promise.all(increments.map(([code]) => getAccountIdByCode(CostRecognitionAccountPairs[code], session)));
-      entry = await postAutomaticJournalEntry({
-        accountingAction: 'SO_COST_RECOGNITION',
-        sourceType: 'SO',
-        sourceId: deterministicSourceId(`${order._id}:SO_COST_RECOGNITION:${(revision || 0) + 1}`),
-        date: new Date(),
-        description: SalesOrderJournalDescriptions.costRecognition,
-        reference: `SO ${order.code || order._id}`,
-        project: projectId,
-        triggeredBySalesOrder: order._id,
-        party: { number: customerNumber, type: 'customer' },
-        lines: [
-          ...increments.map(([, amount], i) => ({ account: wipIds[i], debit: amount, credit: 0 })),
-          ...increments.map(([, amount], i) => ({ account: costIds[i], debit: 0, credit: amount })),
-        ],
-        session,
-      });
-      for (const [code, amount] of increments) recognized[code] = round2((recognized[code] || 0) + amount);
-    }
-
-    const total = round2(Object.values(recognized).reduce((sum, amount) => sum + amount, 0));
-    const costRecognition = {
-      costOfItems,
-      executedPercentage,
-      totalRecognizedCost: total,
-      previouslyRecognizedCost: previousTotal,
-      currentRecognition: round2(total - previousTotal),
-      byAccount: Object.keys({ ...costs, ...recognized })
-        .sort()
-        .filter(code => (costs[code] || 0) > 0 || (recognized[code] || 0) > 0)
-        .map(code => ({ wipAccountCode: code, costAccountCode: CostRecognitionAccountPairs[code], costOfItems: costs[code] || 0, recognizedCost: recognized[code] || 0 })),
-      journalEntries: [...journalEntries, ...(entry ? [String(entry._id)] : [])].map(id => new mongoose.Types.ObjectId(id)),
-      revision: (revision || 0) + 1,
-      recognizedAt: new Date(),
-    };
-    // eslint-disable-next-line no-await-in-loop
-    const { matchedCount } = await SalesOrder.collection.updateOne(
-      { _id: order._id, 'costRecognition.revision': revision },
-      { $set: { costRecognition } },
-      { session: session || undefined }
-    );
-    if (matchedCount !== 1) {
-      throw new ApiError(`Cost recognition for SO ${order.code || order._id} was changed by another request at the same time. Please retry.`, 409);
-    }
-    results.push({ salesOrderId: order._id, costRecognition, entry, reversed });
-  }
-  return results;
-}
-
-/** Each sold product's type and (for a service) its PUC account code, read once per recalculation. */
-async function loadCostCategoryInfo(orders, session) {
-  const Product = require('../../models/inventory/productModel'); // eslint-disable-line global-require
-  const productIds = [...new Set(orders.flatMap(order => (order.items || []).map(item => String(item.product?._id || item.product))))]
-    .filter(id => mongoose.Types.ObjectId.isValid(id))
-    .map(id => new mongoose.Types.ObjectId(id));
-  const products = productIds.length
-    ? await Product.collection.find({ _id: { $in: productIds } }, { projection: { type: 1, pucAccount: 1, title: 1 }, session: session || undefined }).toArray()
-    : [];
-  const pucIds = [...new Set(products.map(p => p.pucAccount && String(p.pucAccount)).filter(Boolean))];
-  const pucAccounts = pucIds.length ? await ChartOfAccount.find({ _id: { $in: pucIds } }).select('code').session(session || null).lean() : [];
-  const pucCodeById = new Map(pucAccounts.map(account => [String(account._id), account.code]));
-  return new Map(
-    products.map(p => [
-      String(p._id),
-      { type: p.type || 'product', pucCode: p.pucAccount ? pucCodeById.get(String(p.pucAccount)) || null : null, title: p.title?.en || p.title?.ar || String(p._id) },
-    ])
-  );
-}
-
-/** WIP account code -> cost of the order's items charged to it (sold - returned; nothing once canceled). */
-function costByCategory(order, productInfo) {
-  const costs = {};
-  if (order.orderStatus === 'canceled') return costs;
-  for (const item of order.items || []) {
-    const cost = (Number(item.costWhenSold) || 0) * Math.max(0, (Number(item.starterQuantity) || 0) - (Number(item.returnedQuantity) || 0));
-    if (cost > 0) {
-      const info = productInfo.get(String(item.product?._id || item.product)) || { type: 'product' };
-      const wipCode = info.type === 'service' ? info.pucCode : AutomaticJournalAccountCodes.wipRawMaterials;
-      if (!CostRecognitionAccountPairs[wipCode]) {
-        const pairs = Object.entries(CostRecognitionAccountPairs)
-          .map(([wip, cost]) => `${wip}/${cost}`)
-          .join(', ');
-        throw new ApiError(
-          `The service "${info.title}" on SO ${order.code || order._id} has a cost, but its PUC account (${info.pucCode || 'none'}) is not one of the cost recognition accounts (${pairs}). Correct the service's PUC account.`,
-          400
-        );
-      }
-      costs[wipCode] = round2((costs[wipCode] || 0) + cost);
-    }
-  }
-  return costs;
-}
-
-/** WIP account code -> recognized so far; earlier snapshots (one total) were all raw materials. */
-function recognizedByCategory(state, previousTotal) {
-  if (Array.isArray(state.byAccount)) return Object.fromEntries(state.byAccount.map(row => [row.wipAccountCode, round2(row.recognizedCost || 0)]));
-  return previousTotal > 0 ? { [AutomaticJournalAccountCodes.wipRawMaterials]: previousTotal } : {};
-}
-
-/** What one recognition entry (lines populated with account codes) recognized, by WIP account. */
-function entryRecognitionByCategory(entry) {
-  const amounts = {};
-  for (const line of entry.lines || []) {
-    if (line.debit > 0) {
-      // A debit on one of the pairs' WIP accounts; the earlier mapping debited 50000001 (raw materials).
-      const code = CostRecognitionAccountPairs[line.account?.code] ? line.account.code : AutomaticJournalAccountCodes.wipRawMaterials;
-      amounts[code] = round2((amounts[code] || 0) + line.debit);
-    }
-  }
-  return amounts;
-}
-
-/** The starting Cost Recognition snapshot of a new Sales Order (nothing recognized yet). */
-function initialCostRecognition(items) {
-  const costOfItems = round2((items || []).reduce((sum, item) => sum + (Number(item.costWhenSold) || 0) * (Number(item.starterQuantity) || 0), 0));
-  return { costOfItems, executedPercentage: 0, totalRecognizedCost: 0, previouslyRecognizedCost: 0, currentRecognition: 0, byAccount: [], journalEntries: [], revision: 0, recognizedAt: null };
-}
-
 // ---------------------------------------------------------------------------
 // 10. Project revenue recognition (JV0010)
 // ---------------------------------------------------------------------------
 
 /**
- * PROJECT_REVENUE_RECOGNITION - JV0010 of "AUTOMATIC ENTERIES.xlsx" ("executing part of the
- * contract for the customer"), for the INCREMENTAL executed-percentage share of the project's
- * contractValue since the last recognition:
- *
- *   Dr Accounts Receivable - Projects   revenue + VAT - withholding
- *   Dr Withholding & Addition (11000019) withholding
- *       Cr VAT Payable (31000010)                     VAT
- *       Cr Revenue                                    revenue
- *
- * The receivable and revenue accounts are the Chart of Accounts' own (11000004 / 60000001): the
- * sheet's 11000011 / 40000001 are WIP - Engineering & Design and Operating Expenses there.
- * Every line carries the sheet's description, the Project Number and the customer's Sub Account.
+ * PROJECT_REVENUE_RECOGNITION (JV0010): Dr Accounts Receivable - Projects, Cr Revenue, for the
+ * INCREMENTAL executed-percentage share of the project's contractValue since the last recognition.
  * No-ops if there is no contractValue to compute from, or no incremental percentage to recognize.
+ *
+ * Simplification (reported, not invented): the source sheet's VAT/Withholding lines on this entry
+ * are not posted here - there is no project-level VAT/withholding rate field to derive them from,
+ * and fabricating one would violate "do not invent a mapping without a real source". Revenue
+ * recognition here is the plain Dr AR / Cr Revenue amount. Extend Project with its own
+ * vatPercentage/withholdingTaxPercentage if that treatment is required later.
  */
 async function postProjectRevenueRecognitionJE(project, session, triggeredBySalesOrder = null) {
   if (!project.contractValue) return null;
@@ -950,7 +703,7 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
   let vatRatio = 0;
   let whtRatio = 0;
   const triggeringOrder = triggeringOrderId
-    ? await SalesOrder.findById(triggeringOrderId).select('totalAmount vatAmount withholdingTaxAmount customer code').session(session || null).lean()
+    ? await SalesOrder.findById(triggeringOrderId).select('totalAmount vatAmount withholdingTaxAmount').session(session || null).lean()
     : null;
   if (triggeringOrder) {
     const base = triggeringOrder.totalAmount || 0;
@@ -972,19 +725,17 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
   // what the customer is actually deemed to owe for this recognized slice.
   const arAmount = round2(deltaAmount + deltaVat - deltaWht);
 
-  // The Sub Account is the triggering Sales Order's customer (the project's customer when no order
-  // triggered it). A Project's customer is optional at the schema level (e.g. an imported/legacy
-  // project with no linked customer) - `required: false` here means a genuinely absent
-  // relationship is not an error (no Sub Account for this entry), but a PRESENT customer reference
-  // that fails to resolve to a real, numbered Customer still fails safely (docs section "If the
-  // Vendor/Customer is missing or does not have a valid number... fail safely").
-  const customerNumber = await resolveCustomerNumber(triggeringOrder?.customer || project.customer, { required: false }, session);
+  // A Project's customer is optional at the schema level (e.g. an imported/legacy project with no
+  // linked customer) - `required: false` here means a genuinely absent relationship is not an
+  // error (no Sub Account for this entry), but a PRESENT customer reference that fails to resolve
+  // to a real, numbered Customer still fails safely (docs section "If the Vendor/Customer is
+  // missing or does not have a valid number... fail safely").
+  const customerNumber = await resolveCustomerNumber(project.customer, { required: false }, session);
   const [arProjectsId, revenueId] = await Promise.all([
     getAccountIdByCode(AutomaticJournalAccountCodes.accountsReceivableProjects, session),
     getAccountIdByCode(AutomaticJournalAccountCodes.revenue, session),
   ]);
 
-  // Lines in the sheet's order: Dr receivable, Dr withholding, Cr VAT, Cr revenue.
   const lines = [
     {
       account: arProjectsId,
@@ -994,24 +745,23 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
       partyNumber: customerNumber,
       partyType: customerNumber != null ? 'customer' : null,
     },
+    { account: revenueId, debit: 0, credit: deltaAmount, project: project._id },
   ];
-  if (deltaWht > 0) {
-    const withholdingTaxReceivableId = await getAccountIdByCode(AutomaticJournalAccountCodes.withholdingTaxReceivable, session);
-    lines.push({ account: withholdingTaxReceivableId, debit: deltaWht, credit: 0, project: project._id });
-  }
   if (deltaVat > 0) {
     const vatPayableId = await getAccountIdByCode(AutomaticJournalAccountCodes.vatPayable, session);
     lines.push({ account: vatPayableId, debit: 0, credit: deltaVat, project: project._id });
   }
-  lines.push({ account: revenueId, debit: 0, credit: deltaAmount, project: project._id });
+  if (deltaWht > 0) {
+    const withholdingTaxReceivableId = await getAccountIdByCode(AutomaticJournalAccountCodes.withholdingTaxReceivable, session);
+    lines.push({ account: withholdingTaxReceivableId, debit: deltaWht, credit: 0, project: project._id });
+  }
 
   const entry = await postAutomaticJournalEntry({
     accountingAction: 'PROJECT_REVENUE_RECOGNITION',
     sourceType: 'PROJECT',
     sourceId: deterministicSourceId(`${project._id}:PROJECT_REVENUE_RECOGNITION:${currentPct}`),
     date: new Date(),
-    description: SalesOrderJournalDescriptions.revenue,
-    reference: triggeringOrder ? `SO ${triggeringOrder.code || triggeringOrder._id}` : `Project ${project.projectNumber} (${previousPct}% -> ${currentPct}%)`,
+    description: `Revenue recognition - project ${project.projectNumber} (${previousPct}% -> ${currentPct}%)`,
     project: project._id,
     lines,
     session,
@@ -1049,7 +799,5 @@ module.exports = {
   postPaymentCustomerAdvanceAppliedJE,
   postPaymentVendorAdvanceAppliedJE,
   postSalesOrderAdvanceAppliedJE,
-  recognizeProjectSalesOrderCosts,
-  initialCostRecognition,
   postProjectExecutionRecognitionJEs,
 };

@@ -1,7 +1,6 @@
 const { Schema, model } = require('mongoose');
 const { generatePurchaseOrderCode } = require('../../utils/helper');
 const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
-const { orderDocumentSchema } = require('../shared/orderDocumentSchema');
 // Explicit requires (not just the string `ref:` names) - mirrors salesOrderModel.js's convention
 // for every model this schema's hooks look up via `this.model(...)` or populate.
 require('../accounting/chartOfAccountModel');
@@ -80,8 +79,6 @@ const purchaseOrderSchema = new Schema(
     paymentStatus: { type: String, enum: ['unpaid', 'partial', 'paid', 'unknown'], default: 'unpaid' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     notes: { type: String },
-    // PDF documents attached after creation (POST /purchaseOrder/:id/documents).
-    documents: { type: [orderDocumentSchema], default: [] },
   },
   {
     timestamps: true,

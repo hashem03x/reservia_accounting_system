@@ -1,10 +1,8 @@
 import { Address } from "@/types/user";
 import useGovernoratesHelpers from "./useGovernoratesHelpers";
 
-// Accepts a missing address (returns "") so components can call it unconditionally, as hooks must be.
-export default function useStringifyOnlineAddress(address: Address | null | undefined, { excludeGovernorate = false } = {}) {
+export default function useStringifyOnlineAddress(address: Address, { excludeGovernorate = false } = {}) {
   const { getGovernorateNameById } = useGovernoratesHelpers();
-  if (!address) return "";
 
   const governorateName = getGovernorateNameById(address.governorate);
 
