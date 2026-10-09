@@ -31,6 +31,7 @@ export interface LanguageContextProps {
       warehouses: string;
       transfers: string;
       reports: string;
+      financialReports: string;
       cash: string;
       currencies: string;
       categories: string;

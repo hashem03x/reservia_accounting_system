@@ -86,6 +86,8 @@ import AP_JournalEntry from "@/pages/admin/journal-entries/[id]";
 import AP_AdvancedPayments from "@/pages/admin/advanced-payments";
 import AP_AdvancedPayment from "@/pages/admin/advanced-payments/[id]";
 import AP_Shareholders from "@/pages/admin/shareholders";
+import AP_FinancialReports from "@/pages/admin/financial-reports";
+import AP_FinancialReport from "@/pages/admin/financial-reports/[key]";
 import AP_Shareholder from "@/pages/admin/shareholders/[id]";
 
 export default function App() {
@@ -165,6 +167,8 @@ export default function App() {
 
                   <Route element={<ResourceGuard resource={resources.reports} action={actions.read} />}>
                     <Route path={paths.reports} element={<AP_Reports />} />
+                    <Route path={paths.financialReports} element={<AP_FinancialReports />} />
+                    <Route path={paths.financialReports + "/:key"} element={<AP_FinancialReport />} />
                     <Route path={`${paths.reports}/${paths.vendors}`} element={<AP_VendorsReport />} />
                     <Route path={`${paths.reports}/${paths.customers}`} element={<AP_CustomersReport />} />
                     <Route path={`${paths.reports}/${paths.purchaseOrders}`} element={<AP_PurchaseOrdersReport />} />

@@ -78,6 +78,11 @@ export default function AllAdminOptions({ closeDrawer, collapsed = false }: { cl
       Icon: outlineIcons.ChartBar,
     },
     {
+      to: `${paths.admin}/${paths.financialReports}`,
+      label: translations.pages.financialReports,
+      Icon: outlineIcons.ChartBar,
+    },
+    {
       to: `${paths.admin}/${paths.cash}`,
       label: translations.pages.cash,
       Icon: outlineIcons.DollarSign,

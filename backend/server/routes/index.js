@@ -97,6 +97,7 @@ const mountRoutes = app => {
 
   // Reports route
   app.use('/api/v1/reports', require('./reportsRoute'));
+  app.use('/api/v1/accounting-reports', require('./accountingReportsRoute'));
 
   // Database health route
   app.use('/api/v1/bahrain-db-health', bahrianDatabaseHealthRoute);
