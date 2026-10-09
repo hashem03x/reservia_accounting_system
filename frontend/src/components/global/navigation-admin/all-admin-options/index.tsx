@@ -83,46 +83,6 @@ export default function AllAdminOptions({ closeDrawer, collapsed = false }: { cl
       Icon: outlineIcons.ChartBar,
     },
     {
-      to: `${paths.admin}/${paths.cash}`,
-      label: translations.pages.cash,
-      Icon: outlineIcons.DollarSign,
-    },
-    {
-      to: `${paths.admin}/${paths.currencies}`,
-      label: translations.pages.currencies,
-      Icon: outlineIcons.DollarSign,
-    },
-    {
-      to: `${paths.admin}/${paths.categories}`,
-      label: translations.pages.categories,
-      Icon: outlineIcons.Squares,
-    },
-    // {
-    //   to: `${paths.admin}/${paths.coupons}`,
-    //   label: translations.pages.coupons,
-    //   Icon: outlineIcons.Coupon,
-    // },
-    // {
-    //   to: `${paths.admin}/${paths.customization}`,
-    //   label: translations.pages.customization,
-    //   Icon: outlineIcons.Computer,
-    // },
-    // {
-    //   to: `${paths.admin}/${paths.governorates}`,
-    //   label: translations.pages.governorates,
-    //   Icon: outlineIcons.Shipping,
-    // },
-    {
-      to: `${paths.admin}/${paths.transactions}`,
-      label: translations.pages.transactions,
-      Icon: outlineIcons.Transaction,
-    },
-    {
-      to: `${paths.admin}/${paths.users}`,
-      label: translations.pages.users,
-      Icon: outlineIcons.Users,
-    },
-    {
       to: `/${paths.admin}/${paths.fixedAssets}`,
       label: translations.pages.fixedAssets,
       Icon: outlineIcons.FixedAssets,
@@ -156,6 +116,46 @@ export default function AllAdminOptions({ closeDrawer, collapsed = false }: { cl
       label: translations.pages.shareholders,
       Icon: outlineIcons.Users,
     },
+    // {
+    //   to: `${paths.admin}/${paths.cash}`,
+    //   label: translations.pages.cash,
+    //   Icon: outlineIcons.DollarSign,
+    // },
+    // {
+    //   to: `${paths.admin}/${paths.currencies}`,
+    //   label: translations.pages.currencies,
+    //   Icon: outlineIcons.DollarSign,
+    // },
+    {
+      to: `${paths.admin}/${paths.categories}`,
+      label: translations.pages.categories,
+      Icon: outlineIcons.Squares,
+    },
+    // {
+    //   to: `${paths.admin}/${paths.coupons}`,
+    //   label: translations.pages.coupons,
+    //   Icon: outlineIcons.Coupon,
+    // },
+    // {
+    //   to: `${paths.admin}/${paths.customization}`,
+    //   label: translations.pages.customization,
+    //   Icon: outlineIcons.Computer,
+    // },
+    // {
+    //   to: `${paths.admin}/${paths.governorates}`,
+    //   label: translations.pages.governorates,
+    //   Icon: outlineIcons.Shipping,
+    // },
+    // {
+    //   to: `${paths.admin}/${paths.transactions}`,
+    //   label: translations.pages.transactions,
+    //   Icon: outlineIcons.Transaction,
+    // },
+    // {
+    //   to: `${paths.admin}/${paths.users}`,
+    //   label: translations.pages.users,
+    //   Icon: outlineIcons.Users,
+    // },
   ];
 
   return (
