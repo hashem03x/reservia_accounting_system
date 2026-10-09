@@ -13,7 +13,7 @@ export function KpiPanel({ title, icon, children }: { title: string; icon: React
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-white/10 text-[15px]" aria-hidden>
           {icon}
         </span>
-        <h3 className="truncate text-sm font-semibold tracking-wide">{title}</h3>
+        <h3 className="truncate text-sm font-semibold tracking-wide text-white">{title}</h3>
       </header>
       <div className="divide-y divide-gray-100 dark:divide-gray-700">{children}</div>
     </section>

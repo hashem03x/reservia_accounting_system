@@ -14,6 +14,25 @@ const depreciationSchema = new Schema(
   { _id: false, timestamps: { createdAt: true, updatedAt: false } }
 );
 
+// One payment to the asset's vendor against the acquisition payable
+// (services/fixedAssets/fixedAssetPaymentService.js). Kept for audit even when its entry is later
+// reversed - only payments whose journal entry is still posted count as paid.
+const assetPaymentSchema = new Schema(
+  {
+    payment: { type: Schema.Types.ObjectId, ref: 'Payment', required: true },
+    amount: { type: Number, required: true, min: 0.01 },
+    paymentAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', required: true },
+    date: { type: Date, required: true },
+    reference: { type: String, trim: true },
+    notes: { type: String, trim: true },
+    journalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', required: true },
+    // The client's submission key - a repeated request with the same key records nothing new.
+    requestKey: { type: String, trim: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
+  },
+  { timestamps: { createdAt: true, updatedAt: false } }
+);
+
 const fixedAssetSchema = Schema(
   {
     name: {
@@ -79,6 +98,10 @@ const fixedAssetSchema = Schema(
     },
     acquisitionJournalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', default: null },
     depreciations: { type: [depreciationSchema], default: [] },
+    payments: { type: [assetPaymentSchema], default: [] },
+    // Incremented by every payment - a payment is only saved if no other one was saved since the
+    // outstanding amount was read, so concurrent payments can never exceed what is owed.
+    paymentRevision: { type: Number, default: 0 },
     status: {
       type: String,
       enum: { values: FixedAssetStatuses, message: '{VALUE} is not a valid fixed asset status' },

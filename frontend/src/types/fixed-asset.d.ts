@@ -68,3 +68,47 @@ export interface DepreciationRunResult {
     entryNumber: number;
   }[];
 }
+
+// GET fixed-assets/:id/payments - the summary is read from the ledger on the server: payable = the
+// acquisition entry's credit to the vendor; only payments whose entry is still posted count.
+export type FixedAssetPaymentStatus = "unpaid" | "partially_paid" | "paid" | "not_applicable";
+export type FixedAssetPaymentRowStatus = "posted" | "reversed" | "missing_entry";
+
+export interface FixedAssetPaymentRow {
+  _id: string;
+  payment: string;
+  date: string;
+  amount: number;
+  currency: string;
+  paymentAccount?: ChartOfAccountRef | null;
+  vendor?: { _id: string; name: string; vendorNumber?: number | null } | null;
+  reference?: string | null;
+  notes?: string | null;
+  status: FixedAssetPaymentRowStatus;
+  journalEntry: JournalEntryRef | string;
+  reversalEntry?: (JournalEntryRef & { date: string }) | null;
+  createdBy?: { _id: string; name: string } | null;
+  createdAt?: string;
+}
+
+export interface FixedAssetPayments {
+  asset: {
+    _id: string;
+    name: string;
+    assetClass?: FixedAssetClass | null;
+    acquisitionDate?: string;
+    vendor?: { _id: string; name: string; vendorNumber?: number | null } | null;
+    acquisitionJournalEntry?: string | null;
+  };
+  summary: {
+    acquisitionCost: number | null;
+    vatAmount: number;
+    payable: number | null;
+    totalPaid: number;
+    outstanding: number | null;
+    status: FixedAssetPaymentStatus;
+    review: string | null;
+    currency: string;
+  };
+  payments: FixedAssetPaymentRow[];
+}

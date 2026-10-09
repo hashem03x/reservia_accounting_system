@@ -111,6 +111,9 @@ exports.AccountingActions = [
   // Cr Suppliers (vendor); monthly depreciation Dr Depreciation & Amortization / Cr Accumulated.
   'FIXED_ASSET_ACQUISITION',
   'FIXED_ASSET_DEPRECIATION',
+  // A payment to the asset's vendor (services/fixedAssets/fixedAssetPaymentService.js): Dr Suppliers
+  // (vendor) / Cr the payment account - settles the acquisition payable, never re-capitalizes.
+  'FIXED_ASSET_PAYMENT_RECORDED',
   // Expenses (services/expenses/expenseService.js): Dr expense (+ input VAT) / Cr Suppliers
   // (vendor); a payment Dr Suppliers / Cr the payment account.
   'EXPENSE_RECORDED',
@@ -249,6 +252,7 @@ exports.AccountingModuleByAction = {
   PROJECT_COST_RECOGNITION: 'Sales Order',
   FIXED_ASSET_ACQUISITION: 'Fixed Asset',
   FIXED_ASSET_DEPRECIATION: 'Fixed Asset',
+  FIXED_ASSET_PAYMENT_RECORDED: 'Fixed Asset',
   EXPENSE_RECORDED: 'Expense',
   EXPENSE_PAYMENT_RECORDED: 'Expense',
   SHAREHOLDER_CONTRIBUTION: 'Equity',

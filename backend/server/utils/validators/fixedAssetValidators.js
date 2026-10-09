@@ -1,5 +1,8 @@
 const { check } = require('express-validator');
 const Vendor = require('../../models/vendor/vendor');
+const Warehouse = require('../../models/inventory/warehouseModel');
+const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
+const { isPaymentAccountEligible } = require('../accountingConstants');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 
 // Fast pre-checks - the Chart of Accounts group rules for the three accounts are enforced by
@@ -43,4 +46,37 @@ const runDepreciationValidators = [
   validatorMiddleware,
 ];
 
-module.exports = { createFixedAssetValidators, updateFixedAssetValidators, runDepreciationValidators };
+// Fast pre-checks - fixedAssetPaymentService.js re-checks the account and the amount still owed
+// inside the transaction.
+const recordFixedAssetPaymentValidators = [
+  check('id').isMongoId().withMessage('Invalid fixed asset id'),
+  check('amount').notEmpty().withMessage('Payment amount is required').isFloat({ gt: 0 }).withMessage('Payment amount must be greater than 0'),
+  check('date').notEmpty().withMessage('Payment date is required').isISO8601().withMessage('Invalid payment date'),
+  check('paymentAccount')
+    .notEmpty()
+    .withMessage('Payment method is required')
+    .isMongoId()
+    .withMessage('Invalid payment account id')
+    .custom(async value => {
+      const account = await ChartOfAccount.findById(value);
+      if (!account) throw new Error('The selected payment account does not exist');
+      if (!isPaymentAccountEligible(account)) throw new Error('The selected payment account must be a Cash or Cash Equivalent account');
+      return true;
+    }),
+  check('warehouseId')
+    .notEmpty()
+    .withMessage('A warehouse is required to record the payment')
+    .isMongoId()
+    .withMessage('Invalid warehouse id')
+    .custom(async value => {
+      if (!(await Warehouse.findById(value))) throw new Error('Warehouse does not exist.');
+      return true;
+    }),
+  check('vendor').optional({ nullable: true }).isMongoId().withMessage('Invalid vendor id'),
+  check('reference').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
+  check('notes').optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),
+  check('requestKey').optional({ nullable: true }).isString().trim().isLength({ min: 8, max: 100 }).withMessage('Invalid request key'),
+  validatorMiddleware,
+];
+
+module.exports = { createFixedAssetValidators, updateFixedAssetValidators, runDepreciationValidators, recordFixedAssetPaymentValidators };

@@ -44,7 +44,7 @@ const paymentSchema = Schema(
     advancedPayment: { type: Schema.Types.ObjectId, ref: 'AdvancedPayment', default: null },
     paymentCategory: {
       type: String,
-      enum: ['purchase', 'purchase-return', 'sales', 'sales-return', 'expense', 'transfer', 'finance-charges', 'currency-transfer'],
+      enum: ['purchase', 'purchase-return', 'sales', 'sales-return', 'expense', 'transfer', 'finance-charges', 'currency-transfer', 'fixed-asset'],
       required: true,
     },
     paidWithPaymob: { type: Boolean, default: false },

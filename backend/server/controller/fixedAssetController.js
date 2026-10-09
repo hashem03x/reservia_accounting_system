@@ -6,6 +6,7 @@ const ApiError = require('../utils/apiError');
 const { logAccountingEvent, logAccountingError } = require('../utils/accountingLogger');
 const { createFixedAsset, updateFixedAsset, runDepreciation } = require('../services/fixedAssets/fixedAssetService');
 const { getFixedAssetAccountOptions } = require('../services/fixedAssets/fixedAssetAccounts');
+const { getFixedAssetPayments, recordFixedAssetPayment } = require('../services/fixedAssets/fixedAssetPaymentService');
 
 // Runs `work(session)` in one MongoDB transaction - the asset/depreciation records and their
 // journal entries commit together or not at all.
@@ -64,6 +65,26 @@ exports.runDepreciation = asyncHandler(async (req, res) => {
     res.status(200).json({ status: 'success', data: result });
   } catch (err) {
     logAccountingError('FIXED_ASSET_DEPRECIATION_RUN_FAILED', err, { period: req.body.period, durationMs: Date.now() - startedAt, requestId: req.id });
+    throw err;
+  }
+});
+
+// GET /fixed-assets/:id/payments - payment summary (from the ledger) and history, newest first.
+exports.getFixedAssetPayments = asyncHandler(async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(new ApiError('Invalid fixed asset id', 400));
+  res.status(200).json({ status: 'success', data: await getFixedAssetPayments(req.params.id) });
+});
+
+// POST /fixed-assets/:id/payments - the Payment, its journal entry and the asset's payment record
+// commit together or not at all.
+exports.recordFixedAssetPayment = asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const result = await inTransaction(session => recordFixedAssetPayment(req.params.id, req.body, req.user._id, session));
+    if (!result.duplicate) logAccountingEvent('FIXED_ASSET_PAYMENT_RECORDED', { fixedAssetId: req.params.id, paymentId: result.payment.payment, journalEntryId: result.payment.journalEntry, amount: result.payment.amount, durationMs: Date.now() - startedAt, requestId: req.id });
+    res.status(result.duplicate ? 200 : 201).json({ status: 'success', data: await getFixedAssetPayments(req.params.id) });
+  } catch (err) {
+    logAccountingError('FIXED_ASSET_PAYMENT_FAILED', err, { fixedAssetId: req.params.id, durationMs: Date.now() - startedAt, requestId: req.id });
     throw err;
   }
 });
