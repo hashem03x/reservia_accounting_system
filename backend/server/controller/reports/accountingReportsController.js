@@ -5,6 +5,7 @@ const DisclosureNote = require('../../models/reports/disclosureNoteModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { REPORTS_BY_KEY, CATEGORIES, catalog } = require('../../services/reports/reportRegistry');
+const { taxAccountOptions } = require('../../services/reports/taxReports');
 
 // Accounting reports (services/reports/*): read-only - running, exporting or printing a report
 // never creates, updates or deletes an accounting record.
@@ -32,6 +33,12 @@ async function runReport(key, query) {
 
 const getCatalog = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Reports retrieved successfully', true, catalog()));
+});
+
+// GET /accounting-reports/tax-accounts - the tax accounts found in the Chart of Accounts and the
+// tax reports each belongs to (the tax reports' account filter).
+const getTaxAccounts = asyncHandler(async (req, res) => {
+  res.status(200).json(apiResponse('Tax accounts retrieved successfully', true, await taxAccountOptions()));
 });
 
 // GET /accounting-reports/:key - sections flagged `paginate` return one page of rows (totals are
@@ -180,4 +187,4 @@ const deleteDisclosureNote = asyncHandler(async (req, res, next) => {
   res.status(204).send();
 });
 
-module.exports = { getCatalog, getReport, exportReport, runReport, buildWorkbook, getDisclosureNotes, createDisclosureNote, updateDisclosureNote, deleteDisclosureNote };
+module.exports = { getCatalog, getTaxAccounts, getReport, exportReport, runReport, buildWorkbook, getDisclosureNotes, createDisclosureNote, updateDisclosureNote, deleteDisclosureNote };

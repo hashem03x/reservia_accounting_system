@@ -22,7 +22,11 @@ export type ReportFilterName =
   | "byProject"
   | "includeZero"
   | "assetStatus"
-  | "assetClass";
+  | "assetClass"
+  | "taxAccount"
+  | "taxMovement"
+  | "taxSource"
+  | "taxReference";
 
 export type ReportCatalogEntry = { key: string; kind: ReportKind; title: LocalizedText; filters: ReportFilterName[] };
 export type ReportCatalog = { categories: { key: string; title: LocalizedText; reports: ReportCatalogEntry[] }[] };

@@ -180,7 +180,7 @@ export default function AccountingReport() {
           setApplied({ ...values });
         }}
       >
-        <ReportFilters filters={entry.filters} values={values} onChange={setValues} />
+        <ReportFilters reportKey={entry.key} filters={entry.filters} values={values} onChange={setValues} />
         <div className="flex justify-end">
           <Button type="submit" loading={loading}>
             {translate("Run Report", "عرض التقرير")}

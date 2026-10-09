@@ -2,6 +2,7 @@ const FS = require('./financialStatements');
 const PR = require('./projectReports');
 const PA = require('./partyReports');
 const LR = require('./ledgerReports');
+const TX = require('./taxReports');
 const { L } = require('./reportCommon');
 
 // The accounting reports catalog (from the reports list "تقارير.csv"): category, bilingual title,
@@ -15,9 +16,11 @@ const CATEGORIES = [
   { key: 'banks', title: L('Banks and Cash Equivalents', 'البنوك وما في حكمها') },
   { key: 'fixed-assets', title: L('Fixed Assets', 'الأصول الثابتة') },
   { key: 'expenses', title: L('Expenses', 'المصروفات') },
+  { key: 'taxes', title: L('Taxes Reports', 'تقارير الضرائب') },
 ];
 
 const PROJECT_FILTERS = ['customer', 'project', 'sector', 'projectStatus'];
+const TAX_FILTERS = ['period', 'taxAccount', 'taxMovement', 'taxSource', 'customer', 'vendor', 'project', 'taxReference'];
 
 const REPORTS = [
   { key: 'trial-balance', category: 'financial-statements', kind: 'period', title: L('Trial Balance', 'ميزان المراجعة'), filters: ['period', 'includeZero'], run: FS.trialBalance },
@@ -51,6 +54,12 @@ const REPORTS = [
   { key: 'depreciation-by-asset', category: 'fixed-assets', kind: 'period', title: L('Depreciation and Amortization by Asset', 'بيان بالإهلاكات والاستهلاكات لكل أصل'), filters: ['period', 'assetStatus', 'assetClass'], run: LR.depreciationByAsset },
 
   { key: 'expenses-by-account', category: 'expenses', kind: 'period', title: L('Expenses by Account with Counterpart Accounts', 'بيان بالمصروفات والحساب المقابل ونسبتها لإجمالي المصروفات'), filters: ['period', 'expenseAccount', 'expenseType'], run: LR.expensesByAccount },
+
+  { key: 'tax-wht-debit', category: 'taxes', kind: 'period', title: L('Commercial and Industrial Profit Tax - Debit', 'ضرائب الأرباح التجارية والصناعية - مدين'), filters: TAX_FILTERS, run: TX.whtDebit },
+  { key: 'tax-wht-credit', category: 'taxes', kind: 'period', title: L('Commercial and Industrial Profit Tax - Credit', 'ضرائب الأرباح التجارية والصناعية - دائن'), filters: TAX_FILTERS, run: TX.whtCredit },
+  { key: 'tax-vat-debit', category: 'taxes', kind: 'period', title: L('Value Added Tax - Debit', 'ضرائب القيمة المضافة - مدين'), filters: TAX_FILTERS, run: TX.vatDebit },
+  { key: 'tax-vat-credit', category: 'taxes', kind: 'period', title: L('Value Added Tax - Credit', 'ضرائب القيمة المضافة - دائن'), filters: TAX_FILTERS, run: TX.vatCredit },
+  { key: 'tax-accounts-overview', category: 'taxes', kind: 'period', title: L('Tax Accounts Overview', 'ملخص حسابات الضرائب'), filters: ['period'], run: TX.taxAccountsOverview },
 ];
 
 const REPORTS_BY_KEY = new Map(REPORTS.map(r => [r.key, r]));

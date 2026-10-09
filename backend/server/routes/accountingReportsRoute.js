@@ -7,6 +7,7 @@ const validatorMiddleware = require('../middleware/validatorMiddleware');
 const { Resources, Actions } = require('../utils/appConstant');
 const {
   getCatalog,
+  getTaxAccounts,
   getReport,
   exportReport,
   getDisclosureNotes,
@@ -32,8 +33,10 @@ const noteValidators = (creating) => [
   validatorMiddleware,
 ];
 
-// Registered before '/:key' so they are never matched as a report key ('notes' is not one).
+// Registered before '/:key' so they are never matched as a report key ('notes' and 'tax-accounts'
+// are not ones).
 router.get('/', getCatalog);
+router.get('/tax-accounts', getTaxAccounts);
 router
   .route('/notes')
   .get(getDisclosureNotes)
