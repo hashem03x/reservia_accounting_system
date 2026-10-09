@@ -17,11 +17,13 @@ const {
 } = require('../controller/analyticsController');
 
 const authController = require('../controller/user/authController');
+const { getFinancialDashboard } = require('../controller/analytics/financialDashboardController');
 
 const router = express.Router();
 
 router.use(authController.protect, authController.allowedTo('admin'));
 
+router.get('/financial-dashboard', getFinancialDashboard);
 router.get('/sales-overview', getSalesOverview);
 router.get('/top-selling-products', getTopSellingProducts);
 router.get('/revenue-by-category', getRevenueByCategory);
