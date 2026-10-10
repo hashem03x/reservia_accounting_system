@@ -80,11 +80,11 @@ export default function AllAdminOptions({
       label: translations.pages.analytics,
       Icon: outlineIcons.Analytics,
     },
-    {
-      to: `${paths.admin}/${paths.reports}`,
-      label: translations.pages.reports,
-      Icon: outlineIcons.ChartBar,
-    },
+    // {
+    //   to: `${paths.admin}/${paths.reports}`,
+    //   label: translations.pages.reports,
+    //   Icon: outlineIcons.ChartBar,
+    // },
     {
       to: `${paths.admin}/${paths.financialReports}`,
       label: translations.pages.financialReports,
