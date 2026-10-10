@@ -35,6 +35,10 @@ const assetPaymentSchema = new Schema(
 
 const fixedAssetSchema = Schema(
   {
+    // FA-0001, FA-0002, ... (services/fixedAssets/fixedAssetNumberService.js) - assigned on creation,
+    // never changed. Assets created before numbering existed get one from
+    // scripts/backfillFixedAssetNumbers.js and show "-" until then.
+    assetNumber: { type: Number, unique: true, sparse: true, immutable: true },
     name: {
       type: String,
       required: true,
@@ -138,6 +142,10 @@ fixedAssetSchema.pre(/^find/, function (next) {
     .populate({ path: 'accumulatedAccountId', select: 'code name nameAr type' })
     .populate({ path: 'depreciationAccountId', select: 'code name nameAr type' });
   next();
+});
+
+fixedAssetSchema.virtual('assetCode').get(function () {
+  return this.assetNumber ? `FA-${String(this.assetNumber).padStart(4, '0')}` : null;
 });
 
 // Monthly depreciation/amortization: cost / useful life in months.

@@ -15,7 +15,8 @@ import { formatDate } from "@/utils/helpers/date-formaters";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import { getExpenseCategoryLabel } from "@/utils/constants/expense-categories";
 import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
-import { Badge, Button, Table } from "@mantine/core";
+import { Badge, Button, Table, TextInput } from "@mantine/core";
+import ExpenseCategorySelect from "@/components/global/expense-category-select";
 import { solidIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
@@ -40,7 +41,16 @@ export default function Expenses() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activePage, setActivePage] = useState(parseInt(searchParams.get("page") || "1"));
 
-  const params = { page: activePage.toString() };
+  // Filters: category (an id or "none") and the expense date range - kept in the URL.
+  const [category, setCategory] = useState(searchParams.get("category") || "");
+  const [from, setFrom] = useState(searchParams.get("from") || "");
+  const [to, setTo] = useState(searchParams.get("to") || "");
+  const params = {
+    page: activePage.toString(),
+    ...(category ? { category } : {}),
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+  };
 
   const {
     privateRequest,
@@ -83,7 +93,7 @@ export default function Expenses() {
     if (!canIReadExpenses) return;
     const cancelRequest = handleLoadExpenses();
     return cancelRequest;
-  }, [canIReadExpenses, activePage]);
+  }, [canIReadExpenses, activePage, category, from, to]);
 
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
 
@@ -101,8 +111,37 @@ export default function Expenses() {
         ),
       }}
     >
+      {canIReadExpenses && (
+        <div
+          className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-gray-100 p-3 dark:border-gray-700 sm:grid-cols-3"
+          data-tour="expenses-filters"
+        >
+          <ExpenseCategorySelect
+            mode="filter"
+            value={category}
+            onChange={(v) => {
+              setActivePage(1);
+              setCategory(v);
+            }}
+          />
+          <TextInput
+            type="date"
+            label={translate("From", "من")}
+            value={from}
+            onChange={(e) => (setActivePage(1), setFrom(e.target.value))}
+          />
+          <TextInput
+            type="date"
+            label={translate("To", "إلى")}
+            value={to}
+            onChange={(e) => (setActivePage(1), setTo(e.target.value))}
+          />
+        </div>
+      )}
       {!canIReadExpenses ? (
-        <UnauthorizedSection message={translate("You don't have permission to read expenses", "ليس لديك إذن لقراءة النفقات")} />
+        <UnauthorizedSection
+          message={translate("You don't have permission to read expenses", "ليس لديك إذن لقراءة النفقات")}
+        />
       ) : loading ? (
         <LoadingSection message={translate("Loading expenses...", "جاري تحميل النفقات...")} />
       ) : error ? (
@@ -118,12 +157,13 @@ export default function Expenses() {
         ) : (
           <>
             <DataTableContainer>
-              <DataTable className="min-w-[1050px]">
+              <DataTable className="min-w-[1150px]">
                 <Table.Thead className={dataTableHeadClassName}>
                   <Table.Tr>
                     <Table.Th className="whitespace-nowrap">{translate("Date", "التاريخ")}</Table.Th>
                     <Table.Th>{translate("Vendor", "البائع")}</Table.Th>
                     <Table.Th>{translate("Expense Account", "حساب المصروف")}</Table.Th>
+                    <Table.Th>{translate("Category", "التصنيف")}</Table.Th>
                     <Table.Th>{translate("Reference", "المرجع")}</Table.Th>
                     <Table.Th className="whitespace-nowrap text-right">{translate("Total", "الإجمالي")}</Table.Th>
                     <Table.Th className="whitespace-nowrap text-right">{translate("Paid", "المدفوع")}</Table.Th>
@@ -136,19 +176,44 @@ export default function Expenses() {
                   {paginatedExpenses.data.map((expense) =>
                     expense.vendor ? (
                       <Table.Tr key={expense._id} className="cursor-pointer" onClick={() => navigate(expense._id)}>
-                        <Table.Td className="whitespace-nowrap">{formatDate(expense.date || expense.createdAt, language)}</Table.Td>
+                        <Table.Td className="whitespace-nowrap">
+                          {formatDate(expense.date || expense.createdAt, language)}
+                        </Table.Td>
                         <Table.Td className="font-medium">
                           <TruncatedText text={expense.vendor.name} maxWidthClassName="max-w-[160px]" />
                         </Table.Td>
-                        <Table.Td className="whitespace-nowrap">{expense.expenseAccount ? `${expense.expenseAccount.code} - ${expense.expenseAccount.name}` : "-"}</Table.Td>
+                        <Table.Td className="whitespace-nowrap">
+                          {expense.expenseAccount ? `${expense.expenseAccount.code} - ${expense.expenseAccount.name}` : "-"}
+                        </Table.Td>
+                        <Table.Td>
+                          <TruncatedText
+                            text={
+                              expense.category
+                                ? language === "ar-EG" && expense.category.nameAr
+                                  ? expense.category.nameAr
+                                  : expense.category.name
+                                : "-"
+                            }
+                            maxWidthClassName="max-w-[140px]"
+                          />
+                        </Table.Td>
                         <Table.Td>
                           <TruncatedText text={expense.reference || "-"} maxWidthClassName="max-w-[140px]" />
                         </Table.Td>
-                        <Table.Td className="whitespace-nowrap text-right tabular-nums font-semibold">{money(expense.totalAmount)}</Table.Td>
-                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{money(expense.paidAmount ?? 0)}</Table.Td>
-                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{money(expense.remainingAmount)}</Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right font-semibold tabular-nums">
+                          {money(expense.totalAmount)}
+                        </Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                          {money(expense.paidAmount ?? 0)}
+                        </Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                          {money(expense.remainingAmount)}
+                        </Table.Td>
                         <Table.Td className="whitespace-nowrap">
-                          <Badge color={expenseStatusColors[(expense.paymentStatus || "unpaid") as ExpensePaymentStatus]} variant="light">
+                          <Badge
+                            color={expenseStatusColors[(expense.paymentStatus || "unpaid") as ExpensePaymentStatus]}
+                            variant="light"
+                          >
                             {statusLabel(expense.paymentStatus || "unpaid")}
                           </Badge>
                         </Table.Td>
@@ -159,12 +224,19 @@ export default function Expenses() {
                       <Table.Tr key={expense._id} className="text-gray-500">
                         <Table.Td className="whitespace-nowrap">{formatDate(expense.createdAt, language)}</Table.Td>
                         <Table.Td>-</Table.Td>
-                        <Table.Td className="whitespace-nowrap">{expense.expenseCategory ? getExpenseCategoryLabel(expense.expenseCategory, language) : "-"}</Table.Td>
+                        <Table.Td className="whitespace-nowrap">
+                          {expense.expenseCategory ? getExpenseCategoryLabel(expense.expenseCategory, language) : "-"}
+                        </Table.Td>
+                        <Table.Td>-</Table.Td>
                         <Table.Td>
                           <TruncatedText text={expense.description || "-"} maxWidthClassName="max-w-[140px]" />
                         </Table.Td>
-                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{money(expense.payment?.amountPaid)}</Table.Td>
-                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{money(expense.payment?.amountPaid)}</Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                          {money(expense.payment?.amountPaid)}
+                        </Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                          {money(expense.payment?.amountPaid)}
+                        </Table.Td>
                         <Table.Td className="whitespace-nowrap text-right tabular-nums">{money(0)}</Table.Td>
                         <Table.Td className="whitespace-nowrap">
                           <Badge color="gray" variant="light">
@@ -179,7 +251,11 @@ export default function Expenses() {
               </DataTable>
             </DataTableContainer>
 
-            <PaginationHandler<Expense> paginatedData={paginatedExpenses} activePage={activePage} setActivePage={setActivePage} />
+            <PaginationHandler<Expense>
+              paginatedData={paginatedExpenses}
+              activePage={activePage}
+              setActivePage={setActivePage}
+            />
           </>
         ))
       )}

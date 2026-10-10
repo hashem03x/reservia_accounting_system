@@ -91,6 +91,7 @@ export default function FixedAssetDetail() {
 
         <Tabs.Panel value="details">
           <div className="grid grid-cols-1 gap-x-8 gap-y-2 md:grid-cols-2">
+            <InfoItem label={translate("Asset No.", "رقم الأصل")} value={asset.assetCode || "-"} />
             <InfoItem
               label={translate("Status", "الحالة")}
               value={

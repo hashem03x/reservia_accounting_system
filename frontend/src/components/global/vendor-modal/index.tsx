@@ -25,6 +25,7 @@ export default function VendorModal({
 
   const [name, setName] = useState(vendorToUpdate?.name || "");
   const [type, setType] = useState<VendorType>(vendorToUpdate?.type || vendorTypes.current.value);
+  const [cashFlowActivity, setCashFlowActivity] = useState<string>(vendorToUpdate?.cashFlowActivity || "");
   const [phone, setPhone] = useState(vendorToUpdate?.contact.phone || "");
   const [email, setEmail] = useState(vendorToUpdate?.contact.email || "");
   const [country, setCountry] = useState(vendorToUpdate?.address?.country || "");
@@ -65,6 +66,7 @@ export default function VendorModal({
         data: {
           name,
           type,
+          cashFlowActivity: cashFlowActivity || null,
           balance: savedVendor ? savedVendor.balance : 0,
           contact: { phone, email: email || undefined },
           address: {
@@ -73,7 +75,10 @@ export default function VendorModal({
             street: street || undefined,
             postalCode: postalCode || undefined,
           },
-          taxInfo: { taxRegistrationNumber: taxRegistrationNumber || undefined, commercialRegistrationNumber: commercialRegistrationNumber || undefined },
+          taxInfo: {
+            taxRegistrationNumber: taxRegistrationNumber || undefined,
+            commercialRegistrationNumber: commercialRegistrationNumber || undefined,
+          },
           bankInfo: {
             bankName: bankName || undefined,
             branch: branch || undefined,
@@ -98,6 +103,7 @@ export default function VendorModal({
     setTimeout(() => {
       setName(vendorToUpdate?.name || "");
       setType(vendorToUpdate?.type || vendorTypes.current.value);
+      setCashFlowActivity(vendorToUpdate?.cashFlowActivity || "");
       setPhone(vendorToUpdate?.contact.phone || "");
       setEmail(vendorToUpdate?.contact.email || "");
       setCountry(vendorToUpdate?.address?.country || "");
@@ -165,6 +171,23 @@ export default function VendorModal({
               required
             />
           </div>
+
+          <Select
+            value={cashFlowActivity || null}
+            onChange={(value) => setCashFlowActivity(value || "")}
+            data={[
+              { value: "operating", label: translate("Operating", "تشغيلية") },
+              { value: "investing", label: translate("Investing", "استثمارية") },
+              { value: "financing", label: translate("Financing", "تمويلية") },
+            ]}
+            label={translate("Cash Flow Classification (optional)", "التصنيف في التدفقات النقدية (اختياري)")}
+            description={translate(
+              'How payments to this vendor appear in the Cash Flow Statement. Leave empty to classify by account (operating). Use Financing for e.g. "Supplier - Finance Activities".',
+              'كيف تظهر المدفوعات لهذا المورد في قائمة التدفقات النقدية. اتركه فارغاً للتصنيف حسب الحساب (تشغيلية). استخدم تمويلية مثلاً لـ "Supplier - Finance Activities".',
+            )}
+            placeholder={translate("By account (default)", "حسب الحساب (افتراضي)")}
+            clearable
+          />
 
           <TextInput
             type="tel"
@@ -288,7 +311,12 @@ export default function VendorModal({
           <Button onClick={handleClose} variant="light" color="dark" fullWidth>
             {savedVendor ? translate("Close", "إغلاق") : translations.cancel}
           </Button>
-          <Button type="submit" loading={loading} disabled={!name || !type || !phone || !dataChanged || !!ibanError} fullWidth>
+          <Button
+            type="submit"
+            loading={loading}
+            disabled={!name || !type || !phone || !dataChanged || !!ibanError}
+            fullWidth
+          >
             {savedVendor ? translate("Save", "حفظ") : title}
           </Button>
         </div>

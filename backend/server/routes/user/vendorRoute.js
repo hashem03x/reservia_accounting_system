@@ -15,6 +15,7 @@ const {
 
 
 const {
+  getVendorFixedAssetAcquisitions,
   createVendor,
   getAllVendors,
   getVendor,
@@ -44,6 +45,14 @@ router.route('/')
     createVendorValidators,
     createVendor);
 
+
+// Fixed assets acquired from this vendor, with paid / outstanding amounts from the ledger.
+router.get(
+  '/:id/fixed-asset-acquisitions',
+  checkUserPermissions({ resource: 'vendors', action: 'read' }),
+  readVendorValidators,
+  getVendorFixedAssetAcquisitions
+);
 
 router.route('/:id')
   .get(

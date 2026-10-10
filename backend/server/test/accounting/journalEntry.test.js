@@ -72,8 +72,8 @@ test('a balanced draft entry can be posted', async () => {
     entryNumber,
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 100, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 100 },
+      { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
     ]),
   });
 
@@ -99,8 +99,8 @@ test('an unbalanced entry is rejected at creation time, for both draft and poste
         entryNumber,
         project: project._id,
         lines: projectLines([
-          { account: cash._id, debit: 100, credit: 0 },
-          { account: revenue._id, debit: 0, credit: 40 },
+          { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+          { account: revenue._id, description: 'Test line', debit: 0, credit: 40 },
         ]),
       }),
     /not balanced/
@@ -114,8 +114,8 @@ test('an unbalanced entry is rejected at creation time, for both draft and poste
         status: 'posted',
         project: project._id,
         lines: projectLines([
-          { account: cash._id, debit: 100, credit: 0 },
-          { account: revenue._id, debit: 0, credit: 40 },
+          { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+          { account: revenue._id, description: 'Test line', debit: 0, credit: 40 },
         ]),
       }),
     /not balanced/
@@ -129,7 +129,7 @@ test('a line cannot have both a debit and a credit, or neither', async () => {
       JournalEntry.create({
         entryNumber,
         project: project._id,
-        lines: projectLines([{ account: cash._id, debit: 100, credit: 100 }]),
+        lines: projectLines([{ account: cash._id, description: 'Test line', debit: 100, credit: 100 }]),
       }),
     /either a debit or a credit/
   );
@@ -140,7 +140,7 @@ test('a line cannot have both a debit and a credit, or neither', async () => {
       JournalEntry.create({
         entryNumber: entryNumber2,
         project: project._id,
-        lines: projectLines([{ account: cash._id, debit: 0, credit: 0 }]),
+        lines: projectLines([{ account: cash._id, description: 'Test line', debit: 0, credit: 0 }]),
       }),
     /either a debit or a credit/
   );
@@ -153,7 +153,7 @@ test('a line cannot have both a debit and a credit, or neither', async () => {
 test('a single-line entry can never balance, so it is rejected at creation (before the two-line posting rule would even apply)', async () => {
   const entryNumber = await getNextJournalEntryNumber();
   await assert.rejects(
-    () => JournalEntry.create({ entryNumber, project: project._id, lines: projectLines([{ account: cash._id, debit: 50, credit: 0 }]) }),
+    () => JournalEntry.create({ entryNumber, project: project._id, lines: projectLines([{ account: cash._id, description: 'Test line', debit: 50, credit: 0 }]) }),
     /not balanced/
   );
 });
@@ -165,8 +165,8 @@ test('a posted entry cannot have its lines modified directly', async () => {
     status: 'posted',
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 100, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 100 },
+      { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
     ]),
   });
 
@@ -180,8 +180,8 @@ test('entryNumber is unique', async () => {
     entryNumber,
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 100, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 100 },
+      { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
     ]),
   });
 
@@ -191,8 +191,8 @@ test('entryNumber is unique', async () => {
         entryNumber,
         project: project._id,
         lines: projectLines([
-          { account: cash._id, debit: 50, credit: 0 },
-          { account: revenue._id, debit: 0, credit: 50 },
+          { account: cash._id, description: 'Test line', debit: 50, credit: 0 },
+          { account: revenue._id, description: 'Test line', debit: 0, credit: 50 },
         ]),
       }),
     err => err.code === 11000
@@ -208,8 +208,8 @@ test('at most one journal entry can exist per (sourceType, sourceId) pair', asyn
     sourceId: sourceProjectId,
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 100, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 100 },
+      { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
     ]),
   });
 
@@ -222,8 +222,8 @@ test('at most one journal entry can exist per (sourceType, sourceId) pair', asyn
         sourceId: sourceProjectId,
         project: project._id,
         lines: projectLines([
-          { account: cash._id, debit: 100, credit: 0 },
-          { account: revenue._id, debit: 0, credit: 100 },
+          { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+          { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
         ]),
       }),
     err => err.code === 11000
@@ -241,8 +241,8 @@ test('reversing a posted entry creates a balanced mirrored entry on the admin-ch
     status: 'posted',
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 100, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 100 },
+      { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
     ]),
   });
 
@@ -262,6 +262,7 @@ test('reversing a posted entry creates a balanced mirrored entry on the admin-ch
     project: original.project,
     lines: projectLines(original.lines.map(line => ({
       account: line.account._id || line.account,
+      description: line.description,
       debit: line.credit,
       credit: line.debit,
     }))),
@@ -320,12 +321,12 @@ test('createJournalEntryValidators: RULE 1 and RULE 2 fast pre-checks', async ()
   }
 
   const balancedLines = [
-    { account: cash._id.toString(), debit: 100, credit: 0 },
-    { account: revenue._id.toString(), debit: 0, credit: 100 },
+    { account: cash._id.toString(), description: 'Test line', debit: 100, credit: 0 },
+    { account: revenue._id.toString(), description: 'Test line', debit: 0, credit: 100 },
   ];
   const unbalancedLines = [
-    { account: cash._id.toString(), debit: 100, credit: 0 },
-    { account: revenue._id.toString(), debit: 0, credit: 40 },
+    { account: cash._id.toString(), description: 'Test line', debit: 100, credit: 0 },
+    { account: revenue._id.toString(), description: 'Test line', debit: 0, credit: 40 },
   ];
 
   const noProject = await runValidators({ lines: balancedLines });
@@ -359,8 +360,8 @@ test('re-checking reversal eligibility inside the transaction rejects an entry t
     status: 'posted',
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 100, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 100 },
+      { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
     ]),
   });
 
@@ -372,8 +373,8 @@ test('re-checking reversal eligibility inside the transaction rejects an entry t
     status: 'posted',
     reversalOfEntry: original._id,
     lines: [
-      { account: cash._id, debit: 0, credit: 100 },
-      { account: revenue._id, debit: 100, credit: 0 },
+      { account: cash._id, description: 'Test line', debit: 0, credit: 100 },
+      { account: revenue._id, description: 'Test line', debit: 100, credit: 0 },
     ],
   });
   await JournalEntry.updateOne({ _id: original._id }, { $set: { reversedByEntry: firstReversal._id, status: 'reversed' } });
@@ -405,8 +406,8 @@ test('RULE 2: a new (non-reversal) journal entry without a project is rejected',
       JournalEntry.create({
         entryNumber,
         lines: [
-          { account: cash._id, debit: 100, credit: 0 },
-          { account: revenue._id, debit: 0, credit: 100 },
+          { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+          { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
         ],
       }),
     /Project is required/
@@ -421,8 +422,8 @@ test('RULE 2: a journal entry referencing a non-existent project is rejected', a
         entryNumber,
         project: new mongoose.Types.ObjectId(),
         lines: [
-          { account: cash._id, debit: 100, credit: 0 },
-          { account: revenue._id, debit: 0, credit: 100 },
+          { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+          { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
         ],
       }),
     /project does not exist/
@@ -439,8 +440,8 @@ test('RULE 2: the Fixed Asset purchase auto-entry (source: fixed_asset_purchase)
     source: 'fixed_asset_purchase',
     status: 'posted',
     lines: [
-      { account: cash._id, debit: 500, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 500 },
+      { account: cash._id, description: 'Test line', debit: 500, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 500 },
     ],
   });
   assert.equal(entry.project, null);
@@ -456,8 +457,8 @@ test('RULE 2: reversal entries are exempt from the mandatory-project rule (rever
     totalDebit: 100,
     totalCredit: 100,
     lines: [
-      { account: cash._id, debit: 100, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 100 },
+      { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
     ],
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -472,8 +473,8 @@ test('RULE 2: reversal entries are exempt from the mandatory-project rule (rever
     reversalOfEntry: legacyOriginal._id,
     project: legacyOriginal.project,
     lines: [
-      { account: cash._id, debit: 0, credit: 100 },
-      { account: revenue._id, debit: 100, credit: 0 },
+      { account: cash._id, description: 'Test line', debit: 0, credit: 100 },
+      { account: revenue._id, description: 'Test line', debit: 100, credit: 0 },
     ],
   });
   assert.ok(reversal._id, 'reversing a project-less legacy entry must still succeed');
@@ -489,8 +490,8 @@ test('RULE 3: the controller-level pre-check rejects reversing the same entry tw
     status: 'posted',
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 100, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 100 },
+      { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
     ]),
   });
 
@@ -503,8 +504,8 @@ test('RULE 3: the controller-level pre-check rejects reversing the same entry tw
     reversalOfEntry: original._id,
     project: original.project,
     lines: projectLines([
-      { account: cash._id, debit: 0, credit: 100 },
-      { account: revenue._id, debit: 100, credit: 0 },
+      { account: cash._id, description: 'Test line', debit: 0, credit: 100 },
+      { account: revenue._id, description: 'Test line', debit: 100, credit: 0 },
     ]),
   });
   original.reversedByEntry = reversal._id;
@@ -535,8 +536,8 @@ test('RULE 3: a reversal entry cannot itself be reversed (no Original -> Reversa
     status: 'posted',
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 100, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 100 },
+      { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
     ]),
   });
 
@@ -547,8 +548,8 @@ test('RULE 3: a reversal entry cannot itself be reversed (no Original -> Reversa
     reversalOfEntry: original._id,
     project: original.project,
     lines: projectLines([
-      { account: cash._id, debit: 0, credit: 100 },
-      { account: revenue._id, debit: 100, credit: 0 },
+      { account: cash._id, description: 'Test line', debit: 0, credit: 100 },
+      { account: revenue._id, description: 'Test line', debit: 100, credit: 0 },
     ]),
   });
   original.reversedByEntry = reversal._id;

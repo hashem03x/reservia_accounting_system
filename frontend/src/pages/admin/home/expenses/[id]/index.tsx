@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ExpenseCategorySelect from "@/components/global/expense-category-select";
 import { useParams } from "react-router-dom";
 import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
@@ -28,7 +29,8 @@ import { Expense } from "@/types/expense";
 import { ChartOfAccountRef } from "@/types/orders";
 import { expenseStatusColors, useExpenseStatusLabel } from "../_components/status";
 
-const accountText = (account?: ChartOfAccountRef | string | null) => (account && typeof account !== "string" ? `${account.code} - ${account.name}` : "-");
+const accountText = (account?: ChartOfAccountRef | string | null) =>
+  account && typeof account !== "string" ? `${account.code} - ${account.name}` : "-";
 
 export default function ExpenseDetail() {
   const { id } = useParams();
@@ -37,7 +39,15 @@ export default function ExpenseDetail() {
   const canCreate = useHasPermission(resources.expenses, actions.create);
   const canUpdate = useHasPermission(resources.expenses, actions.update);
 
-  const { privateRequest, loading, setLoading, error, setError, data: expense, setData: setExpense } = useDataHandler<Expense | null>({
+  const {
+    privateRequest,
+    loading,
+    setLoading,
+    error,
+    setError,
+    data: expense,
+    setData: setExpense,
+  } = useDataHandler<Expense | null>({
     initialData: null,
     initialLoading: true,
   });
@@ -59,7 +69,14 @@ export default function ExpenseDetail() {
   const [editOpened, { open: openEdit, close: closeEdit }] = useDisclosure();
 
   if (loading) return <LoadingSection message={translate("Loading expense...", "جاري تحميل النفقة...")} />;
-  if (error) return <ErrorSection errorTitle={translate("Error loading expense", "خطأ في تحميل النفقة")} errorMessage={error} button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }} />;
+  if (error)
+    return (
+      <ErrorSection
+        errorTitle={translate("Error loading expense", "خطأ في تحميل النفقة")}
+        errorMessage={error}
+        button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }}
+      />
+    );
   if (!expense) return null;
 
   const money = (value: unknown) => formatAmount(value, translations.currency);
@@ -89,16 +106,43 @@ export default function ExpenseDetail() {
       }}
     >
       <div className="grid grid-cols-1 gap-x-8 gap-y-2 md:grid-cols-2">
-        <InfoItem label={translate("Status", "الحالة")} value={<Badge color={expenseStatusColors[status]} variant="light">{statusLabel(status)}</Badge>} />
+        <InfoItem
+          label={translate("Status", "الحالة")}
+          value={
+            <Badge color={expenseStatusColors[status]} variant="light">
+              {statusLabel(status)}
+            </Badge>
+          }
+        />
         <InfoItem label={translate("Date", "التاريخ")} value={formatDate(expense.date || expense.createdAt, language)} />
-        <InfoItem label={translate("Vendor", "البائع")} value={expense.vendor ? `${expense.vendor.name}${expense.vendor.vendorNumber != null ? ` (${expense.vendor.vendorNumber})` : ""}` : "-"} />
+        <InfoItem
+          label={translate("Vendor", "البائع")}
+          value={
+            expense.vendor
+              ? `${expense.vendor.name}${expense.vendor.vendorNumber != null ? ` (${expense.vendor.vendorNumber})` : ""}`
+              : "-"
+          }
+        />
         <InfoItem label={translate("Expense Account", "حساب المصروف")} value={accountText(expense.expenseAccount)} />
         <InfoItem label={translate("Amount", "المبلغ")} value={money(expense.amount)} />
-        <InfoItem label={translate("VAT", "ضريبة القيمة المضافة")} value={`${money(expense.vatAmount ?? 0)} (${expense.vatPercentage ?? 0}%)`} />
+        <InfoItem
+          label={translate("VAT", "ضريبة القيمة المضافة")}
+          value={`${money(expense.vatAmount ?? 0)} (${expense.vatPercentage ?? 0}%)`}
+        />
         <InfoItem label={translate("Total", "الإجمالي")} value={money(expense.totalAmount)} />
         <InfoItem label={translate("Paid", "المدفوع")} value={money(expense.paidAmount ?? 0)} />
         <InfoItem label={translate("Remaining", "المتبقي")} value={money(remaining)} />
         <InfoItem label={translate("Reference", "المرجع")} value={expense.reference || "-"} />
+        <InfoItem
+          label={translate("Expense Category", "تصنيف المصروف")}
+          value={
+            expense.category
+              ? language === "ar-EG" && expense.category.nameAr
+                ? expense.category.nameAr
+                : expense.category.name
+              : "-"
+          }
+        />
         <InfoItem label={translate("Journal Entry", "القيد")} value={<JournalEntryLink entry={expense.journalEntry} />} />
         <InfoItem label={translate("By", "بواسطة")} value={expense.createdBy?.name || "-"} />
       </div>
@@ -144,7 +188,17 @@ export default function ExpenseDetail() {
 }
 
 // Dr Vendor / Cr the selected Cash or Cash Equivalent account - never more than what is still owed.
-function AddExpensePaymentModal({ opened, close, expense, onPaid }: { opened: boolean; close: () => void; expense: Expense; onPaid: () => void }) {
+function AddExpensePaymentModal({
+  opened,
+  close,
+  expense,
+  onPaid,
+}: {
+  opened: boolean;
+  close: () => void;
+  expense: Expense;
+  onPaid: () => void;
+}) {
   const { language, translate, translations } = useLanguage();
   const { data: warehouses } = useWarehouses();
   const { updateWarehouseBalanceById } = useWarehouseHelpers();
@@ -199,7 +253,12 @@ function AddExpensePaymentModal({ opened, close, expense, onPaid }: { opened: bo
           thousandSeparator
           required
         />
-        <PaymentAccountSelect value={paymentAccount} onChange={setPaymentAccount} label={translate("Payment Method", "طريقة الدفع")} required />
+        <PaymentAccountSelect
+          value={paymentAccount}
+          onChange={setPaymentAccount}
+          label={translate("Payment Method", "طريقة الدفع")}
+          required
+        />
         <Select
           label={translate("Warehouse", "الفرع")}
           placeholder={translate("Select warehouse", "اختر الفرع")}
@@ -209,8 +268,18 @@ function AddExpensePaymentModal({ opened, close, expense, onPaid }: { opened: bo
           required
         />
         <DateInput label={translate("Date", "التاريخ")} value={date} onChange={setDate} />
-        <Textarea label={translate("Notes (optional)", "ملاحظات (اختياري)")} value={notes} onChange={(e) => setNotes(e.target.value)} autosize minRows={2} />
-        <Button type="submit" loading={loading} disabled={!(value > 0 && value <= remaining) || !paymentAccount || !warehouseId}>
+        <Textarea
+          label={translate("Notes (optional)", "ملاحظات (اختياري)")}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          autosize
+          minRows={2}
+        />
+        <Button
+          type="submit"
+          loading={loading}
+          disabled={!(value > 0 && value <= remaining) || !paymentAccount || !warehouseId}
+        >
           {translate("Pay", "دفع")}
         </Button>
       </form>
@@ -218,23 +287,40 @@ function AddExpensePaymentModal({ opened, close, expense, onPaid }: { opened: bo
   );
 }
 
-function EditExpenseModal({ opened, close, expense, onSaved }: { opened: boolean; close: () => void; expense: Expense; onSaved: () => void }) {
+function EditExpenseModal({
+  opened,
+  close,
+  expense,
+  onSaved,
+}: {
+  opened: boolean;
+  close: () => void;
+  expense: Expense;
+  onSaved: () => void;
+}) {
   const { language, translate } = useLanguage();
   const [reference, setReference] = useState(expense.reference || "");
   const [notes, setNotes] = useState(expense.notes || "");
+  const [category, setCategory] = useState(expense.category?._id || "");
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
   useEffect(() => {
     if (!opened) return;
     setReference(expense.reference || "");
     setNotes(expense.notes || "");
+    setCategory(expense.category?._id || "");
     setError("");
   }, [opened]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     handleRequest(language, setLoading, setError, async () => {
-      await privateRequest({ language, method: "PATCH", url: `expenses/${expense._id}`, data: { reference, notes } });
+      await privateRequest({
+        language,
+        method: "PATCH",
+        url: `expenses/${expense._id}`,
+        data: { reference, notes, category: category || null },
+      });
       onSaved();
       close();
     });
@@ -244,9 +330,25 @@ function EditExpenseModal({ opened, close, expense, onSaved }: { opened: boolean
     <Modal opened={opened} onClose={close} title={translate("Edit Expense", "تعديل النفقة")}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {error && <ErrorAlert error={error} />}
-        <p className="text-xs text-gray-500">{translate("Amounts, accounts and vendor cannot change once posted.", "لا يمكن تغيير المبالغ والحسابات والبائع بعد الترحيل.")}</p>
-        <TextInput label={translate("Reference", "المرجع")} value={reference} onChange={(e) => setReference(e.target.value)} />
-        <Textarea label={translate("Notes", "ملاحظات")} value={notes} onChange={(e) => setNotes(e.target.value)} autosize minRows={2} />
+        <p className="text-xs text-gray-500">
+          {translate(
+            "Amounts, accounts and vendor cannot change once posted.",
+            "لا يمكن تغيير المبالغ والحسابات والبائع بعد الترحيل.",
+          )}
+        </p>
+        <TextInput
+          label={translate("Reference", "المرجع")}
+          value={reference}
+          onChange={(e) => setReference(e.target.value)}
+        />
+        <ExpenseCategorySelect value={category} onChange={setCategory} />
+        <Textarea
+          label={translate("Notes", "ملاحظات")}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          autosize
+          minRows={2}
+        />
         <Button type="submit" loading={loading}>
           {translate("Save", "حفظ")}
         </Button>

@@ -105,8 +105,8 @@ test('Case 1 - a project-related automatic JE: every line gets the entry Project
     description: 'project lines',
     project: project._id,
     lines: [
-      { account: accounts.cash._id, debit: 500, credit: 0 },
-      { account: accounts[AutomaticJournalAccountCodes.customerAdvancesPayable]._id, debit: 0, credit: 500, partyNumber: customer.customerNumber, partyType: 'customer' },
+      { account: accounts.cash._id, description: 'Test line', debit: 500, credit: 0 },
+      { account: accounts[AutomaticJournalAccountCodes.customerAdvancesPayable]._id, description: 'Test line', debit: 0, credit: 500, partyNumber: customer.customerNumber, partyType: 'customer' },
     ],
   });
   assertProjectOnEveryLine(entry, project);
@@ -124,8 +124,8 @@ test('Case 1b - a client-supplied wrong projectNumber is replaced by the Project
     description: 'number',
     project: project._id,
     lines: [
-      { account: accounts[AutomaticJournalAccountCodes.advanceToSuppliers]._id, debit: 10, credit: 0, projectNumber: 'GUESSED' },
-      { account: accounts.cash._id, debit: 0, credit: 10, projectNumber: 'GUESSED' },
+      { account: accounts[AutomaticJournalAccountCodes.advanceToSuppliers]._id, description: 'Test line', debit: 10, credit: 0, projectNumber: 'GUESSED' },
+      { account: accounts.cash._id, description: 'Test line', debit: 0, credit: 10, projectNumber: 'GUESSED' },
     ],
   });
   assertProjectOnEveryLine(entry, project);
@@ -138,8 +138,8 @@ test('Case 2 - a genuinely non-project JE needs no Project and is still created'
     sourceId: new mongoose.Types.ObjectId(),
     description: 'no project',
     lines: [
-      { account: accounts.cash._id, debit: 75, credit: 0 },
-      { account: accounts[AutomaticJournalAccountCodes.customerAdvancesPayable]._id, debit: 0, credit: 75 },
+      { account: accounts.cash._id, description: 'Test line', debit: 75, credit: 0 },
+      { account: accounts[AutomaticJournalAccountCodes.customerAdvancesPayable]._id, description: 'Test line', debit: 0, credit: 75 },
     ],
   });
   assert.equal(entry.project, null);
@@ -159,8 +159,8 @@ test('Case 3 - parent.project = Project A with a line.project = null is rejected
         source: 'automatic',
         project: project._id,
         lines: [
-          { account: accounts.cash._id, debit: 225000, credit: 0, project: null, projectNumber: null },
-          { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, debit: 0, credit: 225000, project: project._id, projectNumber: project.projectNumber },
+          { account: accounts.cash._id, description: 'Test line', debit: 225000, credit: 0, project: null, projectNumber: null },
+          { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, description: 'Test line', debit: 0, credit: 225000, project: project._id, projectNumber: project.projectNumber },
         ],
       }),
     /Journal line 1 \(debit 225000\) is missing the Project of its journal entry/
@@ -173,8 +173,8 @@ test('Case 3 - parent.project = Project A with a line.project = null is rejected
         source: 'automatic',
         project: project._id,
         lines: [
-          { account: accounts.cash._id, debit: 1, credit: 0, project: project._id, projectNumber: null },
-          { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, debit: 0, credit: 1, project: project._id, projectNumber: project.projectNumber },
+          { account: accounts.cash._id, description: 'Test line', debit: 1, credit: 0, project: project._id, projectNumber: null },
+          { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, description: 'Test line', debit: 0, credit: 1, project: project._id, projectNumber: project.projectNumber },
         ],
       }),
     /missing the Project Number/
@@ -188,8 +188,8 @@ test('Case 3 - parent.project = Project A with a line.project = null is rejected
         source: 'automatic',
         project: project._id,
         lines: [
-          { account: accounts.cash._id, debit: 1, credit: 0, project: otherProject._id, projectNumber: otherProject.projectNumber },
-          { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, debit: 0, credit: 1, project: project._id, projectNumber: project.projectNumber },
+          { account: accounts.cash._id, description: 'Test line', debit: 1, credit: 0, project: otherProject._id, projectNumber: otherProject.projectNumber },
+          { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, description: 'Test line', debit: 0, credit: 1, project: project._id, projectNumber: project.projectNumber },
         ],
       }),
     /references a different Project/
@@ -208,8 +208,8 @@ test('Case 3b - a builder sending a line for a different Project fails with a cl
         description: 'mixed',
         project: project._id,
         lines: [
-          { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, debit: 5, credit: 0, project: otherProject._id },
-          { account: accounts.cash._id, debit: 0, credit: 5 },
+          { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, description: 'Test line', debit: 5, credit: 0, project: otherProject._id },
+          { account: accounts.cash._id, description: 'Test line', debit: 0, credit: 5 },
         ],
       }),
     err => err.statusCode === 400 && /Journal line 1 references a different project/.test(err.message)
@@ -328,8 +328,8 @@ test('inherently project-related actions are refused without a project', async (
           sourceId: new mongoose.Types.ObjectId(),
           description: 'no project',
           lines: [
-            { account: accounts.cash._id, debit: 1, credit: 0 },
-            { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, debit: 0, credit: 1 },
+            { account: accounts.cash._id, description: 'Test line', debit: 1, credit: 0 },
+            { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, description: 'Test line', debit: 0, credit: 1 },
           ],
         }),
       new RegExp(`Project is required for this automatic Journal Entry \\(${accountingAction}\\)`)
@@ -347,8 +347,8 @@ test('reversing a historical project entry whose lines lack the Project fills th
     source: 'automatic',
     project: project._id,
     lines: [
-      { account: accounts.cash._id, debit: 40, credit: 0, project: null, projectNumber: null },
-      { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, debit: 0, credit: 40, project: null, projectNumber: null },
+      { account: accounts.cash._id, description: 'Test line', debit: 40, credit: 0, project: null, projectNumber: null },
+      { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, description: 'Test line', debit: 0, credit: 40, project: null, projectNumber: null },
     ],
     totalDebit: 40,
     totalCredit: 40,
@@ -363,7 +363,7 @@ test('reversing a historical project entry whose lines lack the Project fills th
     lines: await applyEntryProjectToLines({
       project: original.project,
       allowLineProjectOverride: true,
-      lines: original.lines.map(line => ({ account: line.account._id, debit: line.credit, credit: line.debit, project: null, projectNumber: null })),
+      lines: original.lines.map(line => ({ account: line.account._id, description: 'Test line', debit: line.credit, credit: line.debit, project: null, projectNumber: null })),
     }),
   });
   assertProjectOnEveryLine(reversal, project);

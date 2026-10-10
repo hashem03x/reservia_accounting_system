@@ -71,7 +71,9 @@ export default function Home() {
       }}
     >
       <div className="flex flex-col gap-5">
-        <KpiSection summary={summary} loading={loading} error={error} onRetry={loadSummary} />
+        <div data-tour="home-kpis">
+          <KpiSection summary={summary} loading={loading} error={error} onRetry={loadSummary} />
+        </div>
 
         <QuickActionsSection />
 

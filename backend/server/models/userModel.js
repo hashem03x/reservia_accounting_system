@@ -90,6 +90,12 @@ const userSchema = mongoose.Schema(
     // staff roles (moderator/operator/admin).
     customerNumber: { type: Number, unique: true, sparse: true, immutable: true },
     taxInfo: taxInfoSchema,
+    // The admin dashboard's guided tour, per user: offered on the first visit until it is finished
+    // or dismissed; "Make a tour" in the sidebar restarts it at any time (PUT /users/me/tour).
+    tour: {
+      completedAt: { type: Date, default: null },
+      dismissedAt: { type: Date, default: null },
+    },
     bankInfo: bankInfoSchema,
     documents: { type: [businessDocumentSchema], default: [] },
 

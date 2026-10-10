@@ -324,10 +324,11 @@ async function run() {
   for (const entry of jePlan.entries) {
     const entryNumber = await getNextJournalEntryNumber();
     const project = entry.project ? projectDocsByCode.get(entry.project) : null;
-    await JournalEntry.create({
+    const description = `Imported journal entry - Document #${entry.docNumber}`;
+    const imported = new JournalEntry({
       entryNumber,
       date: entry.date,
-      description: `Imported journal entry - Document #${entry.docNumber}`,
+      description,
       source: 'manual',
       reference: String(entry.docNumber),
       project: project ? project._id : null,
@@ -340,8 +341,13 @@ async function run() {
         credit: l.credit,
         currency: l.currency,
         exchangeRate: l.exchangeRate,
+        description,
       })),
     });
+    // Historical data: the source file has no Sub Accounts, so the manual-entry Sub Account rule
+    // (journalLinePartyService.js) is explicitly not applied. Closed periods still are.
+    imported.$locals.historicalImport = true;
+    await imported.save();
     journalLinesCreated += entry.lines.length;
   }
 

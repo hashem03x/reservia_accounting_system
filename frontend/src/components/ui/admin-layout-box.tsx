@@ -20,7 +20,7 @@ export default function AdminLayoutBox({
   return (
     <div className="root-flex-1 flex min-h-full flex-col gap-5 rounded-lg border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
       {header && (
-        <header className="flex flex-wrap items-center justify-between gap-3">
+        <header className="flex flex-wrap items-center justify-between gap-3" data-tour="page-header">
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
               {header.backLink && (

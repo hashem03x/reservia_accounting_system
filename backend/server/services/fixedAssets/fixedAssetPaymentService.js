@@ -9,6 +9,8 @@ const ApiError = require('../../utils/apiError');
 const { round2 } = require('../../utils/orderTotals');
 const { AutomaticJournalAccountCodes, isPaymentAccountEligible } = require('../../utils/accountingConstants');
 const { postAutomaticJournalEntry, getAccountIdByCode, resolveVendorNumber } = require('../accounting/accountingEventService');
+const { assertPeriodsOpen } = require('../accounting/accountingPeriodService');
+const { formatAssetNumber } = require('./fixedAssetNumberService');
 
 // Payments against a fixed asset's acquisition payable.
 //
@@ -30,9 +32,9 @@ const idOf = ref => (ref?._id || ref ? String(ref?._id || ref) : null);
  * The asset's payment position: { payable, totalPaid, outstanding, status, review, payments }.
  * status: 'unpaid' | 'partially_paid' | 'paid' | 'not_applicable' (no payable to pay).
  */
-async function paymentPosition(asset, session) {
-  const payments = asset.payments || [];
-  const entryIds = [asset.acquisitionJournalEntry, ...payments.map(p => p.journalEntry)].map(idOf).filter(Boolean);
+/** The acquisition and payment entries of the given assets, in one query: Map id -> entry. */
+async function loadPositionEntries(assets, session) {
+  const entryIds = assets.flatMap(asset => [asset.acquisitionJournalEntry, ...(asset.payments || []).map(p => p.journalEntry)]).map(idOf).filter(Boolean);
   const entries = entryIds.length
     ? await JournalEntry.find({ _id: { $in: entryIds } })
         .select('entryNumber status reversedByEntry lines.account lines.credit')
@@ -40,7 +42,12 @@ async function paymentPosition(asset, session) {
         .session(session || null)
         .lean()
     : [];
-  const entryById = new Map(entries.map(e => [String(e._id), e]));
+  return new Map(entries.map(e => [String(e._id), e]));
+}
+
+async function paymentPosition(asset, session, preloadedEntries = null) {
+  const payments = asset.payments || [];
+  const entryById = preloadedEntries || (await loadPositionEntries([asset], session));
 
   let payable = null;
   let review = null;
@@ -156,6 +163,7 @@ async function recordFixedAssetPayment(assetId, input, userId, session) {
   if (asset.acquisitionDate && paymentDate.toISOString().slice(0, 10) < new Date(asset.acquisitionDate).toISOString().slice(0, 10)) {
     throw new ApiError('The payment date cannot be before the asset date.', 400);
   }
+  await assertPeriodsOpen(paymentDate, session);
 
   if (!paymentAccount) throw new ApiError('Payment method is required.', 400);
   const account = await ChartOfAccount.findById(paymentAccount).session(session || null).lean();
@@ -205,4 +213,46 @@ async function recordFixedAssetPayment(assetId, input, userId, session) {
   return { asset, payment: record, journalEntry: entry, duplicate: false };
 }
 
-module.exports = { paymentPosition, getFixedAssetPayments, recordFixedAssetPayment };
+/**
+ * Every fixed asset acquired from a vendor, for the vendor's page: acquisition date, asset number
+ * and name, amount owed (the acquisition entry's credit to Suppliers), paid, outstanding, status,
+ * the acquisition entry and each payment's entry and reference. Read from the same ledger figures
+ * as the asset's Payments tab - one query for all of the vendor's entries, nothing re-computed.
+ */
+async function vendorFixedAssetAcquisitions(vendorId) {
+  const assets = await FixedAsset.find({ vendor: vendorId }).sort({ acquisitionDate: -1, createdAt: -1 });
+  const entryById = await loadPositionEntries(assets);
+  const rows = [];
+  for (const asset of assets) {
+    // eslint-disable-next-line no-await-in-loop
+    const position = await paymentPosition(asset, null, entryById);
+    const acquisition = entryById.get(idOf(asset.acquisitionJournalEntry)) || null;
+    rows.push({
+      _id: asset._id,
+      assetNumber: formatAssetNumber(asset.assetNumber),
+      name: asset.name,
+      assetClass: asset.assetClass,
+      acquisitionDate: asset.acquisitionDate,
+      projectNumber: null,
+      cost: asset.price ?? null,
+      vatAmount: asset.vatAmount ?? 0,
+      acquisitionAmount: position.payable,
+      currency: 'EGP',
+      totalPaid: position.totalPaid,
+      outstanding: position.outstanding,
+      status: position.status,
+      review: position.review,
+      acquisitionJournalEntry: acquisition ? { _id: acquisition._id, entryNumber: acquisition.entryNumber, status: acquisition.status } : null,
+      payments: position.rows.map(({ payment, entry, status }) => ({
+        date: payment.date,
+        amount: payment.amount,
+        reference: payment.reference || null,
+        status,
+        journalEntry: entry ? { _id: entry._id, entryNumber: entry.entryNumber } : null,
+      })),
+    });
+  }
+  return rows;
+}
+
+module.exports = { paymentPosition, getFixedAssetPayments, recordFixedAssetPayment, vendorFixedAssetAcquisitions };

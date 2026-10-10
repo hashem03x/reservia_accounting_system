@@ -39,6 +39,7 @@ exports.createExpenseValidator = [
   check('date').optional({ nullable: true }).isISO8601().withMessage('Invalid date'),
   check('reference').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
   check('notes').optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),
+  check('category').optional({ nullable: true }).isMongoId().withMessage('Invalid expense category id'),
   // Optional immediate payment.
   check('payment.paymentAccount').optional({ nullable: true }).isMongoId().withMessage('Invalid payment account id').custom(eligiblePaymentAccount),
   check('payment.warehouseId')
@@ -64,6 +65,7 @@ exports.addExpensePaymentValidator = [
 
 exports.updateExpenseValidator = [
   check('id').isMongoId().withMessage('Invalid expense id'),
+  check('category').optional({ nullable: true }).custom(value => value === '' || /^[a-f\d]{24}$/i.test(String(value))).withMessage('Invalid expense category id'),
   check('reference').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
   check('notes').optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),
   validatorMiddleware,

@@ -1,4 +1,6 @@
 const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
+const JournalEntry = require('../../models/accounting/journalEntryModel');
+const Vendor = require('../../models/vendor/vendor');
 const { assetClassOf, isAccumulatedAccountFor } = require('../fixedAssets/fixedAssetAccounts');
 const C = require('./reportCommon');
 
@@ -239,11 +241,35 @@ function flowCategoryOf(account) {
   return 'operating';
 }
 
+// Cash Flow classification - the one rule set every cash flow figure uses (the Cash Flow Statement,
+// project cash flows and the analytics dashboard), applied to each counterpart line of a cash entry,
+// in this order:
+//   1. the entry's own type: the payment of a fixed asset acquisition is an investing outflow
+//      (FLOW_BY_ACTION). A reversal entry follows the entry it reverses, so a reversed payment
+//      cancels in the same activity;
+//   2. the vendor's classification: a line carrying a vendor whose Cash Flow Activity is set
+//      (Vendor.cashFlowActivity - e.g. "Supplier - Finance Activities" = financing) is classified as
+//      that vendor's activity;
+//   3. otherwise the counterpart account (flowCategoryOf): equity = financing, fixed asset and
+//      accumulated depreciation accounts = investing, everything else = operating.
+// Only real cash lines move cash, so an unpaid acquisition or cost (no cash line) and depreciation
+// (non-cash) never appear; nothing is counted twice because each counterpart line carries exactly
+// its own share of the entry's cash movement.
+const FLOW_BY_ACTION = {
+  FIXED_ASSET_PAYMENT_RECORDED: 'investing',
+  FIXED_ASSET_ACQUISITION: 'investing',
+};
+const RULE_LABELS = {
+  action: L('Transaction type', 'نوع العملية'),
+  vendor: L('Vendor cash flow classification', 'تصنيف المورد في التدفقات النقدية'),
+};
+
 /**
  * The cash movements of ledger entries touching a Cash / Cash Equivalent account in the window.
  * For each entry, its net cash movement equals the sum of its non-cash lines (credit - debit) -
  * a balanced entry guarantees it - so each counterpart line carries its exact share of the cash
  * movement and nothing is counted twice. Entries made only of cash lines are internal transfers.
+ * `classify(entry, line)` returns { category, rule } for a counterpart line (see the rules above).
  */
 async function cashMovements({ start, end }, accounts) {
   const cashIds = [...accounts.values()].filter(isPaymentAccountEligible).map(a => a._id);
@@ -252,15 +278,31 @@ async function cashMovements({ start, end }, accounts) {
     const a = accounts.get(C.idOf(id));
     return !!a && isPaymentAccountEligible(a);
   };
-  return { cashIds, entries, truncated, isCash };
+
+  const reversedIds = [...new Map(entries.filter(e => e.reversalOfEntry).map(e => [C.idOf(e.reversalOfEntry), e.reversalOfEntry])).values()];
+  const [originals, vendors] = await Promise.all([
+    reversedIds.length ? JournalEntry.collection.find({ _id: { $in: reversedIds } }, { projection: { accountingAction: 1 } }).toArray() : [],
+    Vendor.collection.find({ cashFlowActivity: { $in: ['operating', 'investing', 'financing'] } }, { projection: { vendorNumber: 1, cashFlowActivity: 1 } }).toArray(),
+  ]);
+  const actionOfOriginal = new Map(originals.map(o => [String(o._id), o.accountingAction]));
+  const vendorActivity = new Map(vendors.filter(v => v.vendorNumber != null).map(v => [v.vendorNumber, v.cashFlowActivity]));
+
+  const classify = (entry, line) => {
+    const action = entry.reversalOfEntry ? actionOfOriginal.get(C.idOf(entry.reversalOfEntry)) : entry.accountingAction;
+    if (action && FLOW_BY_ACTION[action]) return { category: FLOW_BY_ACTION[action], rule: 'action' };
+    if (line.partyType === 'vendor' && vendorActivity.has(line.partyNumber)) return { category: vendorActivity.get(line.partyNumber), rule: 'vendor' };
+    return { category: flowCategoryOf(accounts.get(C.idOf(line.account))), rule: null };
+  };
+  return { cashIds, entries, truncated, isCash, classify };
 }
 
 async function cashFlow(query) {
   const period = C.resolvePeriod(query);
   const accounts = await C.loadAccounts();
-  const { cashIds, entries, truncated, isCash } = await cashMovements(period, accounts);
+  const { cashIds, entries, truncated, isCash, classify } = await cashMovements(period, accounts);
 
   const byAccount = new Map(); // category|accountId -> { inflow, outflow }
+  const reclassified = []; // counterpart lines classified by transaction type or vendor, for drill-down
   let transfers = 0;
   let transferAmount = 0;
   for (const entry of entries) {
@@ -273,7 +315,24 @@ async function cashFlow(query) {
         const amount = (line.credit || 0) - (line.debit || 0); // + inflow, - outflow
         if (amount !== 0) {
           const account = accounts.get(C.idOf(line.account));
-          const key = `${flowCategoryOf(account)}|${C.idOf(line.account)}`;
+          const { category, rule } = classify(entry, line);
+          const key = `${category}|${C.idOf(line.account)}`;
+          if (rule) {
+            reclassified.push({
+              date: entry.date,
+              entryNumber: entry.entryNumber,
+              description: line.description || entry.description || null,
+              account: account ? `${account.code} - ${account.name}` : null,
+              party: line.partyType === 'vendor' && line.partyNumber != null ? String(line.partyNumber) : null,
+              activity: FLOW_CATEGORIES[category].en,
+              activityAr: FLOW_CATEGORIES[category].ar,
+              rule: RULE_LABELS[rule].en,
+              ruleAr: RULE_LABELS[rule].ar,
+              inflow: amount > 0 ? round2(amount) : 0,
+              outflow: amount < 0 ? round2(-amount) : 0,
+              _links: { entryNumber: { kind: 'journalEntry', id: String(entry._id) } },
+            });
+          }
           if (!byAccount.has(key)) byAccount.set(key, { inflow: 0, outflow: 0, account });
           const bucket = byAccount.get(key);
           if (amount > 0) bucket.inflow += amount;
@@ -307,6 +366,26 @@ async function cashFlow(query) {
     });
   }
 
+  reclassified.sort((a, b) => new Date(a.date) - new Date(b.date) || a.entryNumber - b.entryNumber);
+  sections.push({
+    key: 'classified',
+    title: L('Cash Flows Classified by Transaction Type or Vendor', 'تدفقات نقدية مصنفة حسب نوع العملية أو المورد'),
+    paginate: true,
+    columns: [
+      col('date', 'Date', 'التاريخ', 'date'),
+      col('entryNumber', 'Entry No.', 'رقم القيد'),
+      col('description', 'Description', 'البيان'),
+      col('account', 'Counterpart Account', 'الحساب المقابل'),
+      col('party', 'Vendor No.', 'رقم المورد'),
+      col('activity', 'Activity', 'النشاط', 'status'),
+      col('rule', 'Classified by', 'أساس التصنيف', 'status'),
+      col('inflow', 'Cash In', 'متحصلات', 'money'),
+      col('outflow', 'Cash Out', 'مدفوعات', 'money'),
+    ],
+    rows: reclassified,
+    totals: reclassified.length ? { description: 'Total', descriptionAr: 'الإجمالي', inflow: C.sumBy(reclassified, 'inflow'), outflow: C.sumBy(reclassified, 'outflow') } : null,
+  });
+
   const cashSet = new Set(cashIds.map(String));
   const sumCash = balances => round2([...balances].filter(([id]) => cashSet.has(id)).reduce((s, [, b]) => s + b.debit - b.credit, 0));
   const [openingBalances, closingBalances] = await Promise.all([
@@ -334,8 +413,8 @@ async function cashFlow(query) {
     sections,
     notes: [
       note(
-        'Direct method from the ledger: only entries that touch a Cash / Cash Equivalent account move cash. Each entry\'s cash movement is attributed to its counterpart accounts (equity = financing; fixed asset and accumulated depreciation accounts = investing; everything else = operating).',
-        'الطريقة المباشرة من دفتر الأستاذ: القيود التي تمس حساب نقدية أو ما في حكمها فقط هي التي تحرك النقدية. يُنسب أثر كل قيد على النقدية إلى حساباته المقابلة (حقوق الملكية = تمويلية؛ حسابات الأصول الثابتة ومجمع الإهلاك = استثمارية؛ وغير ذلك = تشغيلية).'
+        'Direct method from the ledger: only entries that touch a Cash / Cash Equivalent account move cash. Each entry\'s cash movement is attributed to its counterpart accounts (equity = financing; fixed asset and accumulated depreciation accounts = investing; everything else = operating). Payments for fixed asset acquisitions are investing, and payments to a vendor with a Cash Flow Activity (e.g. "Supplier - Finance Activities") follow that activity; a reversal follows the entry it reverses. Unpaid amounts and depreciation (non-cash) never appear. The last table lists every cash flow classified by transaction type or vendor.',
+        'الطريقة المباشرة من دفتر الأستاذ: القيود التي تمس حساب نقدية أو ما في حكمها فقط هي التي تحرك النقدية. يُنسب أثر كل قيد على النقدية إلى حساباته المقابلة (حقوق الملكية = تمويلية؛ حسابات الأصول الثابتة ومجمع الإهلاك = استثمارية؛ وغير ذلك = تشغيلية). سداد اقتناء الأصول الثابتة استثماري، والمدفوعات لمورد له تصنيف تدفقات نقدية (مثل "Supplier - Finance Activities") تتبع ذلك التصنيف؛ والقيد العكسي يتبع القيد الذي يعكسه. لا تظهر المبالغ غير المدفوعة ولا الإهلاك (غير نقدي). الجدول الأخير يعرض كل التدفقات المصنفة حسب نوع العملية أو المورد.'
       ),
       note(
         `Transfers between cash/bank accounts are excluded (${transfers} entr${transfers === 1 ? 'y' : 'ies'}, ${round2(transferAmount)}). The Chart of Accounts does not identify loan/borrowing accounts, so their cash movements fall under operating activities.`,

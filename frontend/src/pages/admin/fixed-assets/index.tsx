@@ -130,32 +130,50 @@ export default function FixedAssets() {
               <DataTable className="min-w-[1100px]">
                 <Table.Thead className={dataTableHeadClassName}>
                   <Table.Tr>
+                    <Table.Th className="whitespace-nowrap">{translate("Asset No.", "رقم الأصل")}</Table.Th>
                     <Table.Th>{translate("Asset", "الأصل")}</Table.Th>
                     <Table.Th>{translate("Vendor", "البائع")}</Table.Th>
                     <Table.Th>{translate("Asset Account", "حساب الأصل")}</Table.Th>
                     <Table.Th className="whitespace-nowrap">{translate("Date", "التاريخ")}</Table.Th>
                     <Table.Th className="whitespace-nowrap text-right">{translate("Cost", "التكلفة")}</Table.Th>
                     <Table.Th className="whitespace-nowrap text-right">{translate("Accumulated", "المجمع")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap text-right">{translate("Book Value", "القيمة الدفترية")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap text-right">{translate("Useful Life (months)", "العمر الإنتاجي بالشهور")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">
+                      {translate("Book Value", "القيمة الدفترية")}
+                    </Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">
+                      {translate("Useful Life (months)", "العمر الإنتاجي بالشهور")}
+                    </Table.Th>
                     <Table.Th className="whitespace-nowrap">{translate("Status", "الحالة")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedAssets.data.map((asset) => (
                     <Table.Tr key={asset._id} className="cursor-pointer" onClick={() => navigate(asset._id)}>
+                      <Table.Td className="whitespace-nowrap tabular-nums">{asset.assetCode || "-"}</Table.Td>
                       <Table.Td className="font-medium">
                         <TruncatedText text={asset.name} maxWidthClassName="max-w-[180px]" />
                       </Table.Td>
                       <Table.Td>
                         <TruncatedText text={asset.vendor?.name || "-"} maxWidthClassName="max-w-[160px]" />
                       </Table.Td>
-                      <Table.Td className="whitespace-nowrap">{asset.assetAccountId ? `${asset.assetAccountId.code} - ${asset.assetAccountId.name}` : "-"}</Table.Td>
-                      <Table.Td className="whitespace-nowrap">{asset.acquisitionDate ? formatDate(asset.acquisitionDate, language) : "-"}</Table.Td>
-                      <Table.Td className="whitespace-nowrap text-right tabular-nums">{formatAmount(asset.price, translations.currency)}</Table.Td>
-                      <Table.Td className="whitespace-nowrap text-right tabular-nums">{formatAmount(asset.accumulatedDepreciation ?? 0, translations.currency)}</Table.Td>
-                      <Table.Td className="whitespace-nowrap text-right font-semibold tabular-nums">{formatAmount(asset.bookValue, translations.currency)}</Table.Td>
-                      <Table.Td className="whitespace-nowrap text-right tabular-nums">{asset.usefulLifeMonths ?? "-"}</Table.Td>
+                      <Table.Td className="whitespace-nowrap">
+                        {asset.assetAccountId ? `${asset.assetAccountId.code} - ${asset.assetAccountId.name}` : "-"}
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap">
+                        {asset.acquisitionDate ? formatDate(asset.acquisitionDate, language) : "-"}
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                        {formatAmount(asset.price, translations.currency)}
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                        {formatAmount(asset.accumulatedDepreciation ?? 0, translations.currency)}
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap text-right font-semibold tabular-nums">
+                        {formatAmount(asset.bookValue, translations.currency)}
+                      </Table.Td>
+                      <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                        {asset.usefulLifeMonths ?? "-"}
+                      </Table.Td>
                       <Table.Td className="whitespace-nowrap">
                         <Badge color={fixedAssetStatusColors[asset.status || "active"]} variant="light">
                           {statusLabel(asset.status || "active")}
@@ -167,12 +185,20 @@ export default function FixedAssets() {
               </DataTable>
             </DataTableContainer>
 
-            <PaginationHandler<FixedAsset> paginatedData={paginatedAssets} activePage={activePage} setActivePage={setActivePage} />
+            <PaginationHandler<FixedAsset>
+              paginatedData={paginatedAssets}
+              activePage={activePage}
+              setActivePage={setActivePage}
+            />
           </>
         ))
       )}
 
-      <CreateFixedAssetModal opened={createModalOpened} close={closeCreateModal} onCreated={(asset) => navigate(asset._id)} />
+      <CreateFixedAssetModal
+        opened={createModalOpened}
+        close={closeCreateModal}
+        onCreated={(asset) => navigate(asset._id)}
+      />
       <RunDepreciationModal opened={runModalOpened} close={closeRunModal} onCompleted={handleLoadFixedAssets} />
     </AdminLayoutBox>
   );

@@ -7,6 +7,7 @@ const apiResponse = require('../../utils/apiResponse');
 const { getNextJournalEntryNumber } = require('../../services/accounting/journalEntryNumberService');
 const { getGeneralLedgerLines, resolveSubAccountsForEntries } = require('../../services/accounting/generalLedgerService');
 const { applyEntryProjectToLines } = require('../../services/accounting/journalEntryProjectService');
+const { lineRules } = require('../../services/accounting/journalLinePartyService');
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
 
 const createJournalEntry = asyncHandler(async (req, res) => {
@@ -58,7 +59,19 @@ function withEntryListFields(entries) {
   });
 }
 
-const getJournalEntries = factory.getAll(JournalEntry, 'JournalEntry', ' ', false, withEntryListFields);
+const listJournalEntries = factory.getAll(JournalEntry, 'JournalEntry', ' ', false, withEntryListFields);
+// Journal entries are listed by Entry Number, ascending (numeric - entryNumber is a Number), unless
+// the caller asks for another order. Entry numbers are unique, so the order is stable across pages
+// and filters.
+const getJournalEntries = (req, res, next) => {
+  if (!req.query.sort) req.query.sort = 'entryNumber';
+  return listJournalEntries(req, res, next);
+};
+
+// GET /journal-entries/line-rules - which accounts require a customer / vendor Sub Account.
+const getJournalLineRules = asyncHandler(async (req, res) => {
+  res.status(200).json(apiResponse('Journal line rules retrieved successfully', true, await lineRules()));
+});
 
 // Same `{ data }` shape as factory.getOne, plus `resolvedSubAccount`: the customer/vendor the entry
 // belongs to, resolved from its source document - the Sub Account shown on any line that does not
@@ -75,7 +88,7 @@ const getJournalEntry = asyncHandler(async (req, res, next) => {
 });
 
 const getJournalEntriesForProject = asyncHandler(async (req, res) => {
-  const entries = await JournalEntry.find({ project: req.params.projectId }).sort({ date: 1, entryNumber: 1 });
+  const entries = await JournalEntry.find({ project: req.params.projectId }).sort({ entryNumber: 1 });
   res.status(200).json(apiResponse('Project journal entries retrieved successfully', true, entries));
 });
 
@@ -107,7 +120,7 @@ const getJournalEntriesForSalesOrder = asyncHandler(async (req, res) => {
       { sourceType: 'PAYMENT', sourceId: { $in: paymentIds } },
       { triggeredBySalesOrder: salesOrderId },
     ],
-  }).sort({ date: 1, entryNumber: 1 });
+  }).sort({ entryNumber: 1 });
 
   res.status(200).json(apiResponse('Sales order journal entries retrieved successfully', true, entries));
 });
@@ -127,7 +140,7 @@ const getJournalEntriesForPurchaseOrder = asyncHandler(async (req, res) => {
       { sourceType: 'PO', sourceId: purchaseOrderId },
       { sourceType: 'PAYMENT', sourceId: { $in: paymentIds } },
     ],
-  }).sort({ date: 1, entryNumber: 1 });
+  }).sort({ entryNumber: 1 });
 
   res.status(200).json(apiResponse('Purchase order journal entries retrieved successfully', true, entries));
 });
@@ -168,7 +181,7 @@ const getJournalEntriesForAdvancedPayment = asyncHandler(async (req, res, next) 
   const linkedIds = linked.map(e => e._id);
 
   const entries = linkedIds.length
-    ? await JournalEntry.find({ $or: [{ _id: { $in: linkedIds } }, { reversalOfEntry: { $in: linkedIds } }] }).sort({ date: 1, entryNumber: 1 })
+    ? await JournalEntry.find({ $or: [{ _id: { $in: linkedIds } }, { reversalOfEntry: { $in: linkedIds } }] }).sort({ entryNumber: 1 })
     : [];
 
   res.status(200).json(apiResponse('Advanced payment journal entries retrieved successfully', true, entries));
@@ -372,6 +385,7 @@ const getGeneralLedger = asyncHandler(async (req, res) => {
 module.exports = {
   createJournalEntry,
   getJournalEntries,
+  getJournalLineRules,
   getJournalEntry,
   getJournalEntriesForProject,
   getJournalEntriesForSalesOrder,

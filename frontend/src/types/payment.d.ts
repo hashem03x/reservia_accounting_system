@@ -19,7 +19,8 @@ export type PaymentCategory =
   | "expense"
   | "transfer"
   | "finance-charges"
-  | "currency-transfer";
+  | "currency-transfer"
+  | "fixed-asset";
 export type PaymentStatus = "unpaid" | "partial" | "paid" | "unknown";
 
 export type Payment = {

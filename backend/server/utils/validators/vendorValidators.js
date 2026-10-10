@@ -37,7 +37,7 @@ const createVendorValidators = [
     check('name')
         .notEmpty().withMessage('Name is required')
         .isLength({ min: 2, max: 50 }).withMessage('Name must be between 2 and 50 characters')
-        .matches(/^[a-zA-Z\s\u0600-\u06FF]+$/).withMessage('Name must only contain letters and spaces'),
+        .matches(/^[a-zA-Z\s\u0600-\u06FF\-\u2013]+$/).withMessage('Name must only contain letters, spaces and hyphens'),
 
      check('contact.phone')
           .optional()
@@ -101,6 +101,10 @@ const createVendorValidators = [
     check('isActive')
         .optional()
         .isBoolean().withMessage('isActive must be a boolean'),
+
+    check('cashFlowActivity')
+        .optional({ nullable: true })
+        .isIn(['operating', 'investing', 'financing']).withMessage('Cash flow activity must be operating, investing or financing'),
         validatorMiddleware
 ];
 
@@ -110,6 +114,9 @@ const updateVendorValidators = [
     check('email').optional().isEmail().withMessage('Please provide a valid email'),
     check('phone').optional({ nullable: true }).isMobilePhone().withMessage('Please provide a valid phone number'),
     ...taxAndBankInfoValidators,
+    check('cashFlowActivity')
+        .optional({ nullable: true })
+        .isIn(['operating', 'investing', 'financing']).withMessage('Cash flow activity must be operating, investing or financing'),
     // Add other validators as needed
     validatorMiddleware,
   ];

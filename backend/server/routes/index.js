@@ -62,6 +62,7 @@ const mountRoutes = app => {
   app.use('/api/v1/projects', projectRoute);
   app.use('/api/v1/accounts', chartOfAccountRoute);
   app.use('/api/v1/journal-entries', journalEntryRoute);
+  app.use('/api/v1/accounting-periods', require('./accounting/accountingPeriodRoute'));
 
   // advanced payments (customer/vendor advances against a project)
   app.use('/api/v1/advanced-payments', require('./payments/advancedPaymentRoute'));
@@ -72,6 +73,7 @@ const mountRoutes = app => {
 
   // transfer route
   app.use('/api/v1/transfer', transferRoute);
+  app.use('/api/v1/puc-transfers', require('./inventory/pucTransferRoute'));
 
   // po route
   app.use('/api/v1/purchaseOrder', require('./po/poRoute'));
@@ -94,6 +96,7 @@ const mountRoutes = app => {
 
   // expense route
   app.use('/api/v1/expenses', require('./expenseRoutes'));
+  app.use('/api/v1/expense-categories', require('./expenseCategoryRoute'));
 
   // Reports route
   app.use('/api/v1/reports', require('./reportsRoute'));

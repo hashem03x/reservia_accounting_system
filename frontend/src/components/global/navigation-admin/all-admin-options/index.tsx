@@ -8,6 +8,7 @@ import { useUser } from "@/context/UserContext";
 import { isAdmin } from "@/utils/constants/roles";
 import AdminButton from "./components/admin-button";
 import AdminNavLink from "./components/admin-nav-link";
+import { useTour } from "@/components/global/guided-tour/tour-context";
 
 export type Link = { to: string; label: string; Icon?: IconType; nestedLinks?: Link[] };
 
@@ -15,12 +16,19 @@ export type Link = { to: string; label: string; Icon?: IconType; nestedLinks?: L
 const NEXT_COLOR_SCHEME = { light: "dark", dark: "auto", auto: "light" } as const;
 const COLOR_SCHEME_ICON = { light: outlineIcons.Sun, dark: outlineIcons.Moon, auto: outlineIcons.Computer };
 
-export default function AllAdminOptions({ closeDrawer, collapsed = false }: { closeDrawer?: () => void; collapsed?: boolean }) {
+export default function AllAdminOptions({
+  closeDrawer,
+  collapsed = false,
+}: {
+  closeDrawer?: () => void;
+  collapsed?: boolean;
+}) {
   const { translate, translations, toggleLanguage } = useLanguage();
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   const { user } = useUser();
 
   const navigate = useNavigate();
+  const { start: startTour } = useTour();
 
   const colorSchemeLabel = translate(
     { light: "Light Theme", dark: "Dark Theme", auto: "System Theme" }[colorScheme],
@@ -96,6 +104,21 @@ export default function AllAdminOptions({ closeDrawer, collapsed = false }: { cl
     ...(user && isAdmin(user.role)
       ? [{ to: `/${paths.admin}/${paths.sectors}`, label: translations.pages.sectors, Icon: outlineIcons.Building }]
       : []),
+    // Administrator controls (see the RoleGuard around their routes in App.tsx).
+    ...(user && isAdmin(user.role)
+      ? [
+          {
+            to: `/${paths.admin}/${paths.accountingPeriods}`,
+            label: translations.pages.accountingPeriods,
+            Icon: outlineIcons.Clock,
+          },
+          {
+            to: `/${paths.admin}/${paths.expenseCategories}`,
+            label: translations.pages.expenseCategories,
+            Icon: outlineIcons.Squares,
+          },
+        ]
+      : []),
     {
       to: `/${paths.admin}/${paths.accounts}`,
       label: translations.pages.accounts,
@@ -166,14 +189,31 @@ export default function AllAdminOptions({ closeDrawer, collapsed = false }: { cl
         ))}
       </nav>
 
-      <footer className="flex flex-col gap-1 py-2">
+      {/* Pinned to the bottom of the sidebar, also while the menu scrolls. */}
+      <footer className="sticky bottom-0 flex flex-col gap-1 border-t border-gray-100 bg-white py-2">
+        <AdminButton
+          Icon={outlineIcons.Compass}
+          label="Make a tour"
+          onClick={() => {
+            closeDrawer && closeDrawer();
+            startTour();
+          }}
+          collapsed={collapsed}
+          dataTour="make-a-tour"
+          highlighted
+        />
         <AdminButton
           Icon={COLOR_SCHEME_ICON[colorScheme]}
           label={colorSchemeLabel}
           onClick={() => setColorScheme(NEXT_COLOR_SCHEME[colorScheme])}
           collapsed={collapsed}
         />
-        <AdminButton Icon={outlineIcons.Globe} label={translate("عربي", "English")} onClick={toggleLanguage} collapsed={collapsed} />
+        <AdminButton
+          Icon={outlineIcons.Globe}
+          label={translate("عربي", "English")}
+          onClick={toggleLanguage}
+          collapsed={collapsed}
+        />
         <hr />
         <AdminButton
           Icon={outlineIcons.ArrowUpCircle}

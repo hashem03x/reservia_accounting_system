@@ -8,6 +8,8 @@ export type User = {
   permissions: Permission[];
   addresses: Address[];
   wishlist: string[]; // array of product ids
+  // The admin dashboard's guided tour - when it was finished / dismissed (PUT users/me/tour).
+  tour?: { completedAt?: string | null; dismissedAt?: string | null } | null;
   createdAt: Date;
   updatedAt: Date;
 };

@@ -1,9 +1,13 @@
+const mongoose = require('mongoose');
 const Project = require('../../models/project/projectModel');
 const Sector = require('../../models/project/sectorModel');
 const { ProjectStatuses } = require('../../utils/accountingConstants');
 const { computeProjectExecution } = require('../../utils/projectExecution');
 const C = require('./reportCommon');
 const { cashMovements } = require('./financialStatements');
+const SalesOrder = require('../../models/sales/salesOrderModel');
+const User = require('../../models/userModel');
+const { pucAccountsOf } = require('../project/pucAccountService');
 
 const { round2, col, check, note, summaryItem, L } = C;
 
@@ -170,28 +174,197 @@ const profitNotes = () => [
 ];
 
 // ---------------------------------------------------------------- 9. Profitability of each project
+/**
+ * PUC (Projects Under Construction) balance of each project from the ledger: opening (before the
+ * period), movement in the period and closing, on the PUC accounts (pucAccountService.js) - lines
+ * without a project under key null. Returns { byProject, companyClosing, accounts }.
+ */
+async function projectPucFigures(period, accounts) {
+  const pucAccounts = await pucAccountsOf(accounts);
+  const ids = pucAccounts.map(a => a._id);
+  const byProject = new Map();
+  let companyClosing = 0;
+  if (ids.length) {
+    const totals = await C.ledgerTotals({ start: period.start, end: period.end, lineMatch: { 'lines.account': { $in: ids } }, groupBy: { project: '$lines.project' } });
+    for (const t of totals) {
+      const key = C.idOf(t.key.project);
+      if (!byProject.has(key)) byProject.set(key, { pucOpening: 0, pucMovement: 0, pucClosing: 0 });
+      const p = byProject.get(key);
+      p.pucOpening = round2(p.pucOpening + t.openingDebit - t.openingCredit);
+      p.pucMovement = round2(p.pucMovement + t.periodDebit - t.periodCredit);
+      p.pucClosing = round2(p.pucOpening + p.pucMovement);
+    }
+    const closing = await C.balancesByAccount({ end: period.end });
+    companyClosing = round2(ids.reduce((sum, id) => sum + (closing.get(String(id))?.debit || 0) - (closing.get(String(id))?.credit || 0), 0));
+  }
+  return { byProject, companyClosing, accounts: pucAccounts };
+}
+
+const NO_PUC = { pucOpening: 0, pucMovement: 0, pucClosing: 0 };
+const pucColumns = () => [
+  col('pucOpening', 'PUC Opening Balance', 'رصيد مشروعات تحت التنفيذ أول المدة', 'money'),
+  col('pucMovement', 'PUC Movement', 'حركة مشروعات تحت التنفيذ', 'money'),
+  col('pucClosing', 'PUC Balance', 'رصيد مشروعات تحت التنفيذ', 'money'),
+];
+
+/**
+ * Every revenue line behind the revenue total, for the period (and the selected projects when
+ * filtered): its entry, Sales Order, customer, project, revenue account and amount excluding VAT
+ * (credit - debit, so a reversal is negative), with the Sales Order's items for reference.
+ */
+async function revenueDetail(period, accounts, projectIds) {
+  const revenueIds = [...accounts.values()].filter(a => a.type === 'revenue').map(a => a._id);
+  if (!revenueIds.length) return { rows: [], truncated: false };
+  const { entries, truncated } = await C.ledgerEntries({ start: period.start, end: period.end, entryMatch: { 'lines.account': { $in: revenueIds } } });
+  const revenueSet = new Set(revenueIds.map(String));
+
+  // Reversal entries take their Sales Order from the entry they reverse.
+  const originalIds = entries.filter(e => e.reversalOfEntry).map(e => e.reversalOfEntry);
+  const originals = originalIds.length ? await C.ledgerEntries({ end: period.end, entryMatch: { _id: { $in: originalIds } } }) : { entries: [] };
+  const originalById = new Map(originals.entries.map(e => [String(e._id), e]));
+  const orderIdOf = e => C.idOf(e.triggeredBySalesOrder) || C.idOf(originalById.get(C.idOf(e.reversalOfEntry))?.triggeredBySalesOrder);
+
+  const orderIds = [...new Set(entries.map(orderIdOf).filter(Boolean))];
+  const orders = orderIds.length ? await SalesOrder.collection.find({ _id: { $in: orderIds.map(id => new mongoose.Types.ObjectId(id)) } }, { projection: { code: 1, customer: 1, items: 1 } }).toArray() : [];
+  const orderById = new Map(orders.map(o => [String(o._id), o]));
+  const productIds = [...new Set(orders.flatMap(o => (o.items || []).map(i => C.idOf(i.product))))];
+  const projectIdsUsed = [...new Set(entries.flatMap(e => e.lines.map(l => C.idOf(l.project))).filter(Boolean))];
+  const customerIds = orders.map(o => o.customer).filter(Boolean);
+  const customerNumbers = [...new Set(entries.flatMap(e => e.lines.filter(l => l.partyType === 'customer' && l.partyNumber != null).map(l => l.partyNumber)))];
+  const [products, projects, customers] = await Promise.all([
+    productIds.length ? mongoose.connection.collection('products').find({ _id: { $in: productIds.map(id => new mongoose.Types.ObjectId(id)) } }, { projection: { title: 1, sku: 1 } }).toArray() : [],
+    projectIdsUsed.length ? Project.collection.find({ _id: { $in: projectIdsUsed.map(id => new mongoose.Types.ObjectId(id)) } }, { projection: { projectNumber: 1, name: 1 } }).toArray() : [],
+    User.collection.find({ $or: [{ _id: { $in: customerIds } }, { customerNumber: { $in: customerNumbers } }] }, { projection: { name: 1, customerNumber: 1 } }).toArray(),
+  ]);
+  const productById = new Map(products.map(p => [String(p._id), p]));
+  const projectById = new Map(projects.map(p => [String(p._id), p]));
+  const customerById = new Map(customers.map(c => [String(c._id), c]));
+  const customerByNumber = new Map(customers.filter(c => c.customerNumber != null).map(c => [c.customerNumber, c]));
+  const wanted = projectIds ? new Set(projectIds.map(String)) : null;
+
+  const rows = [];
+  for (const entry of entries) {
+    const order = orderById.get(orderIdOf(entry)) || null;
+    for (const line of entry.lines) {
+      if (!revenueSet.has(C.idOf(line.account))) continue;
+      const projectId = C.idOf(line.project);
+      if (wanted && !wanted.has(projectId)) continue;
+      const amount = round2((line.credit || 0) - (line.debit || 0));
+      if (amount === 0) continue;
+      const account = accounts.get(C.idOf(line.account));
+      const project = projectById.get(projectId);
+      const partyLine = entry.lines.find(l => l.partyType === 'customer' && l.partyNumber != null);
+      const customer = (order?.customer && customerById.get(String(order.customer))) || (partyLine && customerByNumber.get(partyLine.partyNumber)) || null;
+      const items = (order?.items || []).map(i => {
+        const product = productById.get(C.idOf(i.product));
+        const name = product?.title?.en || product?.sku || 'Product';
+        const quantity = round2((i.starterQuantity || 0) - (i.returnedQuantity || 0));
+        const discount = i.itemDiscount?.value ? ` less ${i.itemDiscount.type === 'percentage' ? `${i.itemDiscount.value}%` : i.itemDiscount.value}` : '';
+        return `${name} x ${quantity} @ ${i.unitPrice}${discount}`;
+      });
+      rows.push({
+        date: entry.date,
+        entryNumber: entry.entryNumber,
+        status: entry.reversalOfEntry ? 'Reversal' : entry.status === 'reversed' ? 'Posted, later reversed' : 'Posted',
+        statusAr: entry.reversalOfEntry ? 'قيد عكسي' : entry.status === 'reversed' ? 'مرحل ثم عُكس' : 'مرحل',
+        salesOrder: order?.code || null,
+        customer: customer ? `${customer.customerNumber != null ? `${customer.customerNumber} - ` : ''}${customer.name}` : null,
+        projectNumber: project?.projectNumber || line.projectNumber || null,
+        projectName: project?.name || null,
+        account: account ? `${account.code} - ${account.name}` : null,
+        description: line.description || entry.description || null,
+        quantity: order ? round2((order.items || []).reduce((q, i) => q + (i.starterQuantity || 0) - (i.returnedQuantity || 0), 0)) : null,
+        items: items.length ? items.join('; ') : null,
+        amount,
+        currency: line.currency || 'EGP',
+        exchangeRate: line.exchangeRate ?? (line.currency ? null : 1),
+        _links: {
+          entryNumber: { kind: 'journalEntry', id: String(entry._id) },
+          ...(order ? { salesOrder: { kind: 'salesOrder', id: String(order._id) } } : {}),
+          ...(customer ? { customer: { kind: 'customer', id: String(customer._id) } } : {}),
+          ...(projectId ? { projectNumber: { kind: 'project', id: projectId } } : {}),
+        },
+      });
+    }
+  }
+  return { rows, truncated };
+}
+
 async function projectProfitability(query) {
   const period = C.resolvePeriod(query);
-  const [projects, figures] = await Promise.all([loadProjects(query), projectLedgerFigures(period)]);
+  const accounts = await C.loadAccounts();
+  const [projects, figures, puc] = await Promise.all([loadProjects(query), projectLedgerFigures(period), projectPucFigures(period, accounts)]);
   const filtered = !!(query.projectStatus || query.sector || query.customer || query.project);
-  const rows = projects.map(p => ({ ...projectCells(p), contractValue: typeof p.contractValue === 'number' ? p.contractValue : null, ...profitCells(figures.get(String(p._id)) || { revenue: 0, costOfSales: 0, otherExpenses: 0 }) }));
-  if (!filtered && figures.has(null)) rows.push({ projectNumber: NOT_LINKED.en, projectNumberAr: NOT_LINKED.ar, _rowType: 'muted', ...profitCells(figures.get(null)) });
+  const rows = projects.map(p => ({
+    ...projectCells(p),
+    contractValue: typeof p.contractValue === 'number' ? p.contractValue : null,
+    ...profitCells(figures.get(String(p._id)) || { revenue: 0, costOfSales: 0, otherExpenses: 0 }),
+    ...(puc.byProject.get(String(p._id)) || NO_PUC),
+  }));
+  if (!filtered && (figures.has(null) || puc.byProject.has(null))) {
+    rows.push({ projectNumber: NOT_LINKED.en, projectNumberAr: NOT_LINKED.ar, _rowType: 'muted', ...profitCells(figures.get(null) || { revenue: 0, costOfSales: 0, otherExpenses: 0 }), ...(puc.byProject.get(null) || NO_PUC) });
+  }
   const totals = profitTotals(rows);
+  const pucTotals = { pucOpening: C.sumBy(rows, 'pucOpening'), pucMovement: C.sumBy(rows, 'pucMovement'), pucClosing: C.sumBy(rows, 'pucClosing') };
+  const revenue = await revenueDetail(period, accounts, filtered ? projects.map(p => p._id) : null);
+  const revenueTotal = C.sumBy(revenue.rows, 'amount');
   return {
     period,
-    summary: [summaryItem('revenue', 'Revenue', 'الإيرادات', totals.revenue), summaryItem('grossProfit', 'Gross profit', 'مجمل الربح', totals.grossProfit), summaryItem('grossMargin', 'Gross margin', 'نسبة مجمل الربح', totals.grossMargin, 'percent')],
-    checks: [],
+    summary: [
+      summaryItem('revenue', 'Revenue', 'الإيرادات', totals.revenue),
+      summaryItem('grossProfit', 'Gross profit', 'مجمل الربح', totals.grossProfit),
+      summaryItem('grossMargin', 'Gross margin', 'نسبة مجمل الربح', totals.grossMargin, 'percent'),
+      summaryItem('pucClosing', 'PUC balance', 'رصيد مشروعات تحت التنفيذ', pucTotals.pucClosing),
+    ],
+    checks: [
+      check('Revenue details add up to the revenue total', 'تفاصيل الإيرادات تساوي إجمالي الإيرادات', !revenue.truncated && revenueTotal === totals.revenue, `${revenueTotal} / ${totals.revenue}`),
+      ...(filtered ? [] : [check('Project PUC balances add up to the company PUC balance', 'أرصدة مشروعات تحت التنفيذ للمشروعات تساوي رصيد الشركة', pucTotals.pucClosing === puc.companyClosing, `${pucTotals.pucClosing} / ${puc.companyClosing}`)]),
+    ],
     sections: [
       {
         key: 'projects',
         title: L('Project Profitability', 'ربحية المشروعات'),
         paginate: true,
-        columns: [col('projectNumber', 'Project No.', 'رقم المشروع'), col('projectName', 'Project', 'المشروع'), col('customer', 'Customer', 'العميل'), col('sector', 'Sector', 'السيكتور'), col('contractValue', 'Contract Value', 'قيمة العقد', 'money'), ...profitColumns()],
+        columns: [col('projectNumber', 'Project No.', 'رقم المشروع'), col('projectName', 'Project', 'المشروع'), col('customer', 'Customer', 'العميل'), col('sector', 'Sector', 'السيكتور'), col('contractValue', 'Contract Value', 'قيمة العقد', 'money'), ...profitColumns(), ...pucColumns()],
         rows,
-        totals: { projectNumber: 'Total', projectNumberAr: 'الإجمالي', contractValue: C.sumBy(rows, 'contractValue'), ...totals },
+        totals: { projectNumber: 'Total', projectNumberAr: 'الإجمالي', contractValue: C.sumBy(rows, 'contractValue'), ...totals, ...pucTotals },
+      },
+      {
+        key: 'revenue',
+        title: L('Revenue Details', 'تفاصيل الإيرادات'),
+        paginate: true,
+        columns: [
+          col('date', 'Date', 'التاريخ', 'date'),
+          col('entryNumber', 'Entry No.', 'رقم القيد'),
+          col('status', 'Posting Status', 'حالة الترحيل', 'status'),
+          col('salesOrder', 'Sales Order', 'أمر البيع'),
+          col('customer', 'Customer', 'العميل'),
+          col('projectNumber', 'Project No.', 'رقم المشروع'),
+          col('projectName', 'Project', 'المشروع'),
+          col('account', 'Revenue Account', 'حساب الإيراد'),
+          col('description', 'Description', 'البيان'),
+          col('quantity', 'Quantity', 'الكمية', 'number'),
+          col('items', 'Products / Services (qty @ unit price, discount)', 'الأصناف (الكمية @ سعر الوحدة، الخصم)', 'longtext'),
+          col('amount', 'Revenue excl. VAT', 'الإيراد بدون الضريبة', 'money'),
+          col('currency', 'Currency', 'العملة'),
+          col('exchangeRate', 'Rate', 'سعر الصرف', 'number'),
+        ],
+        rows: revenue.rows,
+        totals: { date: null, entryNumber: 'Total', entryNumberAr: 'الإجمالي', amount: revenueTotal },
       },
     ],
-    notes: [...profitNotes(), ...(filtered ? [] : [note('The "Not linked to a project" row holds P&L lines without a project, so the totals equal the Statement of Profit or Loss.', 'صف "غير مرتبط بمشروع" يضم سطور الأرباح والخسائر بدون مشروع، فتتساوى الإجماليات مع قائمة الدخل.')])],
+    notes: [
+      ...profitNotes(),
+      ...(filtered ? [] : [note('The "Not linked to a project" row holds P&L lines without a project, so the totals equal the Statement of Profit or Loss.', 'صف "غير مرتبط بمشروع" يضم سطور الأرباح والخسائر بدون مشروع، فتتساوى الإجماليات مع قائمة الدخل.')]),
+      note(
+        `PUC balance = the ledger balance of the project's Projects Under Construction accounts (${puc.accounts.map(a => a.code).join(', ') || 'none found'}) on lines tagged with the project: opening before the period, movement in it, and closing at its end. PUC transfers between projects move the balance from one project to the other and leave the company total unchanged.`,
+        `رصيد مشروعات تحت التنفيذ = رصيد حسابات مشروعات تحت التنفيذ (${puc.accounts.map(a => a.code).join(', ') || 'لا يوجد'}) في دفتر الأستاذ على السطور المرتبطة بالمشروع: أول المدة والحركة خلالها وآخر المدة. التحويلات بين المشروعات تنقل الرصيد من مشروع لآخر دون تغيير إجمالي الشركة.`
+      ),
+      note(
+        'Revenue details list every revenue line behind the revenue total (excluding VAT, which is posted to VAT Payable). A reversed entry and its reversal both appear and cancel out. Quantities, unit prices and discounts come from the Sales Order that triggered the recognition, for reference; the amount is always the posted revenue.',
+        'تفاصيل الإيرادات تعرض كل سطر إيراد وراء إجمالي الإيرادات (بدون ضريبة القيمة المضافة المرحلة لحساب الضريبة المستحقة). القيد المعكوس وقيده العكسي يظهران ويلغي أحدهما الآخر. الكميات وأسعار الوحدة والخصومات من أمر البيع الذي أدى للإثبات للاسترشاد؛ والمبلغ دائماً هو الإيراد المرحل.'
+      ),
+    ],
   };
 }
 

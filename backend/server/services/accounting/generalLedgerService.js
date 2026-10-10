@@ -20,6 +20,12 @@ const VENDOR_CONTROL_CODES = new Set([AutomaticJournalAccountCodes.suppliers, Au
 
 const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 
+// The ledger is every POSTED entry, including entries later reversed: reversing marks the original
+// 'reversed' and posts a mirror entry, and both are real postings that together net to zero (the
+// same rule as the accounting reports - services/reports/reportCommon.js). Counting only 'posted'
+// dropped the reversed original but kept its mirror, so a reversed entry showed as minus itself.
+const LEDGER_STATUSES = ['posted', 'reversed'];
+
 /**
  * Sum of posted debit/credit for a single account (matched by either the line's main `account`
  * or its `subAccount`), and the resulting balance.
@@ -37,7 +43,7 @@ async function getAccountBalance(accountId) {
   if (!account) return null;
 
   const [totals] = await JournalEntry.aggregate([
-    { $match: { status: 'posted' } },
+    { $match: { status: { $in: LEDGER_STATUSES } } },
     { $unwind: '$lines' },
     { $match: { $or: [{ 'lines.account': account._id }, { 'lines.subAccount': account._id }] } },
     { $group: { _id: null, debit: { $sum: '$lines.debit' }, credit: { $sum: '$lines.credit' } } },
@@ -63,7 +69,7 @@ async function getAccountBalance(accountId) {
  */
 async function getTrialBalance() {
   const rows = await JournalEntry.aggregate([
-    { $match: { status: 'posted' } },
+    { $match: { status: { $in: LEDGER_STATUSES } } },
     { $unwind: '$lines' },
     { $group: { _id: '$lines.account', debit: { $sum: '$lines.debit' }, credit: { $sum: '$lines.credit' } } },
     { $lookup: { from: 'chartofaccounts', localField: '_id', foreignField: '_id', as: 'account' } },
@@ -263,7 +269,7 @@ async function computeRunningBalances(accountIds) {
   if (accountIds.length === 0) return map;
 
   const rows = await JournalEntry.aggregate([
-    { $match: { status: 'posted' } },
+    { $match: { status: { $in: LEDGER_STATUSES } } },
     { $unwind: { path: '$lines', includeArrayIndex: 'lineIndex' } },
     { $match: { 'lines.account': { $in: accountIds } } },
     {
@@ -297,17 +303,17 @@ async function computeRunningBalances(accountIds) {
  * at the ENTRY level (same semantics as every other paginated list in this app - `page`/`limit`
  * map directly onto `ApiFeatures.paginate()`'s existing response shape, see handlersFactory.js),
  * so the frontend's existing PaginationHandler/PaginatedData<T> work unmodified; a page's "rows"
- * are simply every line of every entry on that page. Only `status: 'posted'` entries are included,
- * matching getAccountBalance/getTrialBalance's existing convention - a draft entry has no real
- * ledger effect yet.
+ * are simply every line of every entry on that page. Only ledger entries (posted, including ones
+ * later reversed - see LEDGER_STATUSES) are included, matching getAccountBalance/getTrialBalance -
+ * a draft entry has no real ledger effect yet.
  */
 async function getGeneralLedgerLines({ page = 1, limit = 50 } = {}) {
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const limitNum = Math.max(1, parseInt(limit, 10) || 50);
   const skip = (pageNum - 1) * limitNum;
 
-  const countDocuments = await JournalEntry.countDocuments({ status: 'posted' });
-  const entries = await JournalEntry.find({ status: 'posted' })
+  const countDocuments = await JournalEntry.countDocuments({ status: { $in: LEDGER_STATUSES } });
+  const entries = await JournalEntry.find({ status: { $in: LEDGER_STATUSES } })
     .sort({ date: 1, entryNumber: 1 })
     .skip(skip)
     .limit(limitNum);

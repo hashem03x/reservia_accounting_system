@@ -20,7 +20,11 @@ export default function AdminAside() {
 
   return (
     <aside style={{ width }}>
-      <div style={{ width }} className="fixed z-10 flex h-screen flex-col overflow-y-auto border-x bg-white transition-[width] duration-150">
+      <div
+        style={{ width }}
+        className="fixed z-10 flex h-screen flex-col overflow-y-auto border-x bg-white transition-[width] duration-150"
+        data-tour="admin-sidebar"
+      >
         <header className={`flex items-center border-b p-4 ${collapsed ? "justify-center" : "justify-between"}`}>
           {!collapsed && <Logo title={translations.adminPanel} />}
           {collapsed && <Logo />}

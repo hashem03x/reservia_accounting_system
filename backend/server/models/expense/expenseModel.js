@@ -1,5 +1,6 @@
 const { Schema, model } = require('mongoose');
 const { expensesCategories } = require('../../utils/appConstant');
+require('./expenseCategoryModel');
 
 // An Expense is either:
 //   - a vendor expense (the Expenses module - services/expenses/expenseService.js): a vendor, a
@@ -32,6 +33,10 @@ const expenseSchema = new Schema(
 
     vendor: { type: Schema.Types.ObjectId, ref: 'Vendor' },
     expenseAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount' },
+    // Analysis grouping (Expense Categories - models/expense/expenseCategoryModel.js). Optional:
+    // expenses created before categories existed have none. Separate from the legacy
+    // `expenseCategory` string above, which only legacy cash expenses use.
+    category: { type: Schema.Types.ObjectId, ref: 'ExpenseCategory', default: null },
     amount: { type: Number, min: 0 }, // before VAT
     vatPercentage: { type: Number, default: 0, min: 0 },
     vatAmount: { type: Number, default: 0, min: 0 },
@@ -57,6 +62,7 @@ const expenseSchema = new Schema(
 expenseSchema.index({ expenseCategory: 1 });
 expenseSchema.index({ paymentId: 1 });
 expenseSchema.index({ vendor: 1 });
+expenseSchema.index({ category: 1, date: 1 });
 
 expenseSchema.virtual('remainingAmount').get(function () {
   if (typeof this.totalAmount !== 'number') return undefined;
@@ -89,6 +95,7 @@ expenseSchema.pre(/^find/, function () {
     })
     .populate({ path: 'vendor', select: 'name vendorNumber' })
     .populate({ path: 'expenseAccount', select: 'code name nameAr type' })
+    .populate({ path: 'category', select: 'name nameAr isActive' })
     .populate({ path: 'payments.paymentAccount', select: 'code name nameAr' });
 });
 

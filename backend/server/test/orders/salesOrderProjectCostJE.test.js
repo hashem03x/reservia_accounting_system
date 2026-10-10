@@ -189,19 +189,22 @@ test('a project with no linked customer: JV0010 and JV0011 lines carry the Sales
   }
 });
 
-test('manual journal entries are unchanged: typed line descriptions are kept and no Sub Account is added', async () => {
+test('manual journal entries keep their typed line descriptions, get no Sub Account added, and need a description on every line', async () => {
+  const lines = [
+    { account: accounts['50000001']._id, debit: 10, credit: 0, project: project._id, projectNumber: 'PRJ001', description: 'Typed by the accountant' },
+    { account: accounts[C.wipRawMaterials]._id, debit: 0, credit: 10, project: project._id, projectNumber: 'PRJ001' },
+  ];
+  // Every manual line must be described by the user - never filled in silently.
+  await assert.rejects(() => JournalEntry.create({ entryNumber: 9900001, description: 'Manual adjustment', source: 'manual', project: project._id, lines }), /Journal line 2: a description is required/);
   const entry = await JournalEntry.create({
     entryNumber: 9900001,
     description: 'Manual adjustment',
     source: 'manual',
     project: project._id,
-    lines: [
-      { account: accounts['50000001']._id, debit: 10, credit: 0, project: project._id, projectNumber: 'PRJ001', description: 'Typed by the accountant' },
-      { account: accounts[C.wipRawMaterials]._id, debit: 0, credit: 10, project: project._id, projectNumber: 'PRJ001' },
-    ],
+    lines: [lines[0], { ...lines[1], description: 'Second line' }],
   });
   assert.equal(entry.lines[0].description, 'Typed by the accountant');
-  assert.equal(entry.lines[1].description, undefined);
+  assert.equal(entry.lines[1].description, 'Second line');
   entry.lines.forEach(line => assert.equal(line.partyNumber, null));
 });
 

@@ -26,7 +26,8 @@ export type ReportFilterName =
   | "taxAccount"
   | "taxMovement"
   | "taxSource"
-  | "taxReference";
+  | "taxReference"
+  | "expenseCategory";
 
 export type ReportCatalogEntry = { key: string; kind: ReportKind; title: LocalizedText; filters: ReportFilterName[] };
 export type ReportCatalog = { categories: { key: string; title: LocalizedText; reports: ReportCatalogEntry[] }[] };
@@ -34,7 +35,16 @@ export type ReportCatalog = { categories: { key: string; title: LocalizedText; r
 export type ReportColumnType = "text" | "money" | "number" | "percent" | "date" | "status" | "account" | "name" | "longtext";
 export type ReportColumn = { key: string; label: LocalizedText; type: ReportColumnType };
 
-export type ReportLinkKind = "project" | "customer" | "vendor" | "shareholder" | "journalEntry" | "salesOrder" | "purchaseOrder" | "fixedAsset" | "account";
+export type ReportLinkKind =
+  | "project"
+  | "customer"
+  | "vendor"
+  | "shareholder"
+  | "journalEntry"
+  | "salesOrder"
+  | "purchaseOrder"
+  | "fixedAsset"
+  | "account";
 
 export type ReportRow = Record<string, unknown> & {
   _rowType?: "header" | "subtotal" | "total" | "muted" | "item";

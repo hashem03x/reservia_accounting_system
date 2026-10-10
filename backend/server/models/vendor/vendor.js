@@ -22,7 +22,8 @@ const vendorSchema = new Schema(
       required: [true, 'Vendor name is required'],
       minlength: [2, 'Vendor name must be at least 2 characters'],
       maxlength: [50, 'Vendor name cannot exceed 50 characters'],
-      match: [/^[a-zA-Z\s\u0621-\u064A\u0660-\u0669]+$/, 'Vendor name must only contain letters and spaces'],
+      // Letters, spaces and hyphens (e.g. the "Supplier - Finance Activities" cash flow vendor).
+      match: [/^[a-zA-Z\s\u0621-\u064A\u0660-\u0669\-\u2013]+$/, 'Vendor name must only contain letters, spaces and hyphens'],
     },
     contact: {
       phone: {
@@ -100,6 +101,12 @@ const vendorSchema = new Schema(
     taxInfo: taxInfoSchema,
     bankInfo: bankInfoSchema,
     documents: { type: [businessDocumentSchema], default: [] },
+    // Cash Flow Statement classification of payments to this vendor (services/reports/
+    // financialStatements.js#cashMovements). Null = by the counterpart account (operating for
+    // Suppliers). A dedicated "Supplier - Finance Activities" vendor is set to 'financing', so
+    // finance-cost expenses paid to it are financing cash flows - set explicitly per vendor,
+    // never inferred from its name.
+    cashFlowActivity: { type: String, enum: { values: ['operating', 'investing', 'financing', null], message: '{VALUE} is not a valid cash flow activity' }, default: null },
     isActive: {
       type: Boolean,
       default: true,

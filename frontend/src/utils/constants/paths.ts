@@ -43,6 +43,8 @@ const paths = {
   advancedPayments: "advanced-payments",
   shareholders: "shareholders",
   financialReports: "financial-reports",
+  accountingPeriods: "accounting-periods",
+  expenseCategories: "expense-categories",
   incomeStatement: "income-statement",
   balanceSheet: "balance-sheet",
 };

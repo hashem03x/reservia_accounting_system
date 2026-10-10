@@ -7,6 +7,7 @@ import useSectors from "@/hooks/useSectors";
 import CustomerSearch from "@/components/global/customer-search";
 import VendorSearch from "@/components/global/vendor-search";
 import PaymentAccountSelect from "@/components/global/payment-account-select";
+import ExpenseCategorySelect from "@/components/global/expense-category-select";
 import { toDateOnly } from "@/utils/helpers/format-date";
 import { Customer } from "@/types/customer";
 import { Vendor } from "@/types/vendor";
@@ -20,7 +21,17 @@ const toDate = (value?: string) => (value ? new Date(`${value}T00:00:00`) : null
 const fromDate = (date: Date | null) => (date ? toDateOnly(date) : "");
 
 /** The filter controls a report declares (backend catalog) - nothing else is shown. */
-export default function ReportFilters({ reportKey, filters, values, onChange }: { reportKey: string; filters: ReportFilterName[]; values: FilterValues; onChange: (values: FilterValues) => void }) {
+export default function ReportFilters({
+  reportKey,
+  filters,
+  values,
+  onChange,
+}: {
+  reportKey: string;
+  filters: ReportFilterName[];
+  values: FilterValues;
+  onChange: (values: FilterValues) => void;
+}) {
   const { language, translate } = useLanguage();
   const set = (key: string, value: string) => onChange({ ...values, [key]: value });
   const has = (name: ReportFilterName) => filters.includes(name);
@@ -41,14 +52,30 @@ export default function ReportFilters({ reportKey, filters, values, onChange }: 
   };
 
   const { sectors } = useSectors();
-  const { privateRequest: loadProjects, data: projects, setData: setProjects } = useDataHandler<{ _id: string; projectNumber: string; name?: string }[]>({ initialData: [] });
-  const { privateRequest: loadExpenseAccounts, data: expenseAccounts, setData: setExpenseAccounts } = useDataHandler<ChartOfAccountRef[]>({ initialData: [] });
+  const {
+    privateRequest: loadProjects,
+    data: projects,
+    setData: setProjects,
+  } = useDataHandler<{ _id: string; projectNumber: string; name?: string }[]>({ initialData: [] });
+  const {
+    privateRequest: loadExpenseAccounts,
+    data: expenseAccounts,
+    setData: setExpenseAccounts,
+  } = useDataHandler<ChartOfAccountRef[]>({ initialData: [] });
   // Tax accounts found in the Chart of Accounts, each with the tax reports it belongs to.
-  const { privateRequest: loadTaxAccounts, data: taxAccounts, setData: setTaxAccounts } = useDataHandler<(ChartOfAccountRef & { reports: string[] })[]>({ initialData: [] });
+  const {
+    privateRequest: loadTaxAccounts,
+    data: taxAccounts,
+    setData: setTaxAccounts,
+  } = useDataHandler<(ChartOfAccountRef & { reports: string[] })[]>({ initialData: [] });
   const filterKey = filters.join(",");
   useEffect(() => {
     if (has("project")) {
-      loadProjects({ url: "projects", params: { limit: 1000, sort: "projectNumber", fields: "projectNumber,name" }, language })
+      loadProjects({
+        url: "projects",
+        params: { limit: 1000, sort: "projectNumber", fields: "projectNumber,name" },
+        language,
+      })
         .then((res) => setProjects(res.data || []))
         .catch(() => setProjects([]));
     }
@@ -70,13 +97,47 @@ export default function ReportFilters({ reportKey, filters, values, onChange }: 
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {has("period") && (
         <>
-          <DateInput label={translate("From", "من")} value={toDate(values.from)} onChange={(d) => set("from", fromDate(d))} valueFormat="YYYY-MM-DD" required />
-          <DateInput label={translate("To", "إلى")} value={toDate(values.to)} onChange={(d) => set("to", fromDate(d))} valueFormat="YYYY-MM-DD" required />
+          <DateInput
+            label={translate("From", "من")}
+            value={toDate(values.from)}
+            onChange={(d) => set("from", fromDate(d))}
+            valueFormat="YYYY-MM-DD"
+            required
+          />
+          <DateInput
+            label={translate("To", "إلى")}
+            value={toDate(values.to)}
+            onChange={(d) => set("to", fromDate(d))}
+            valueFormat="YYYY-MM-DD"
+            required
+          />
         </>
       )}
-      {has("asOf") && <DateInput label={translate("As of", "في تاريخ")} value={toDate(values.asOf)} onChange={(d) => set("asOf", fromDate(d))} valueFormat="YYYY-MM-DD" required />}
-      {has("customer") && <CustomerSearch customer={customer} setCustomer={setCustomer} label={translate("Customer", "العميل")} placeholder={translate("All customers", "كل العملاء")} />}
-      {has("vendor") && <VendorSearch vendor={vendor} setVendor={setVendor} label={translate("Supplier", "المورد")} placeholder={translate("All suppliers", "كل الموردين")} />}
+      {has("asOf") && (
+        <DateInput
+          label={translate("As of", "في تاريخ")}
+          value={toDate(values.asOf)}
+          onChange={(d) => set("asOf", fromDate(d))}
+          valueFormat="YYYY-MM-DD"
+          required
+        />
+      )}
+      {has("customer") && (
+        <CustomerSearch
+          customer={customer}
+          setCustomer={setCustomer}
+          label={translate("Customer", "العميل")}
+          placeholder={translate("All customers", "كل العملاء")}
+        />
+      )}
+      {has("vendor") && (
+        <VendorSearch
+          vendor={vendor}
+          setVendor={setVendor}
+          label={translate("Supplier", "المورد")}
+          placeholder={translate("All suppliers", "كل الموردين")}
+        />
+      )}
       {has("project") && (
         <Select
           label={translate("Project", "المشروع")}
@@ -94,7 +155,13 @@ export default function ReportFilters({ reportKey, filters, values, onChange }: 
           placeholder={translate("All sectors", "كل السيكتورات")}
           value={values.sector || null}
           onChange={(v) => set("sector", v || "")}
-          data={[...sectors.map((s) => ({ value: s.name, label: s.isActive === false ? `${s.name} (${translate("inactive", "غير نشط")})` : s.name })), { value: "__none__", label: translate("No sector", "بدون سيكتور") }]}
+          data={[
+            ...sectors.map((s) => ({
+              value: s.name,
+              label: s.isActive === false ? `${s.name} (${translate("inactive", "غير نشط")})` : s.name,
+            })),
+            { value: "__none__", label: translate("No sector", "بدون سيكتور") },
+          ]}
           searchable
           clearable
         />
@@ -114,7 +181,14 @@ export default function ReportFilters({ reportKey, filters, values, onChange }: 
           clearable
         />
       )}
-      {has("cashAccount") && <PaymentAccountSelect value={values.account || ""} onChange={(v) => set("account", v)} label={translate("Bank / Cash Account", "حساب البنك / النقدية")} clearable />}
+      {has("cashAccount") && (
+        <PaymentAccountSelect
+          value={values.account || ""}
+          onChange={(v) => set("account", v)}
+          label={translate("Bank / Cash Account", "حساب البنك / النقدية")}
+          clearable
+        />
+      )}
       {has("expenseAccount") && (
         <Select
           label={translate("Expense Account", "حساب المصروف")}
@@ -205,13 +279,18 @@ export default function ReportFilters({ reportKey, filters, values, onChange }: 
           allowDecimal={false}
         />
       )}
+      {has("expenseCategory") && (
+        <ExpenseCategorySelect mode="filter" value={values.category || ""} onChange={(v) => set("category", v)} />
+      )}
       {has("taxAccount") && (
         <Select
           label={translate("Tax Account", "حساب الضريبة")}
           placeholder={translate("All tax accounts", "كل حسابات الضريبة")}
           value={values.account || null}
           onChange={(v) => set("account", v || "")}
-          data={taxAccounts.filter((a) => a.reports.includes(reportKey)).map((a) => ({ value: a._id, label: `${a.code} - ${(language === "ar-EG" && a.nameAr) || a.name}` }))}
+          data={taxAccounts
+            .filter((a) => a.reports.includes(reportKey))
+            .map((a) => ({ value: a._id, label: `${a.code} - ${(language === "ar-EG" && a.nameAr) || a.name}` }))}
           searchable
           clearable
         />
@@ -260,8 +339,20 @@ export default function ReportFilters({ reportKey, filters, values, onChange }: 
       )}
       {(has("byProject") || has("includeZero")) && (
         <div className="flex flex-col justify-end gap-2 pb-1">
-          {has("byProject") && <Switch label={translate("Break down by project", "تفصيل حسب المشروع")} checked={values.byProject === "true"} onChange={(e) => set("byProject", e.currentTarget.checked ? "true" : "")} />}
-          {has("includeZero") && <Switch label={translate("Include accounts without balances", "إظهار الحسابات بدون أرصدة")} checked={values.includeZero === "true"} onChange={(e) => set("includeZero", e.currentTarget.checked ? "true" : "")} />}
+          {has("byProject") && (
+            <Switch
+              label={translate("Break down by project", "تفصيل حسب المشروع")}
+              checked={values.byProject === "true"}
+              onChange={(e) => set("byProject", e.currentTarget.checked ? "true" : "")}
+            />
+          )}
+          {has("includeZero") && (
+            <Switch
+              label={translate("Include accounts without balances", "إظهار الحسابات بدون أرصدة")}
+              checked={values.includeZero === "true"}
+              onChange={(e) => set("includeZero", e.currentTarget.checked ? "true" : "")}
+            />
+          )}
         </div>
       )}
     </div>

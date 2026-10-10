@@ -1,4 +1,5 @@
 const { Schema, model } = require('mongoose');
+const ApiError = require('../../utils/apiError');
 const { JournalEntryStatus, JournalEntrySources, AccountingActions, AccountingModules } = require('../../utils/accountingConstants');
 
 // Explicit requires (not just string `ref:` names) for every model this schema's pre(/^find/)
@@ -26,13 +27,13 @@ const journalLineSchema = new Schema(
     // behavior") - set only on the one control-account line of an automatic entry that actually
     // represents a business party (e.g. the Suppliers line of a Purchase Order entry, the
     // Accounts Receivable - Projects line of a Sales Order entry) - never on every line of the
-    // entry. Written once at creation time by the automatic accounting engine
+    // entry (later automatic entries stamp it on every line - see PartyOnEveryLineModules). Written once at creation time by the automatic accounting engine
     // (accountingEventService.js) - a real, immutable historical snapshot, not a value re-derived
     // from a live Vendor/Customer lookup on every read (which would incorrectly go blank if that
     // vendor/customer is later soft-deleted). `partyType` disambiguates which control account
     // (Customer AR/Advance vs Vendor Payable/Advance) the number belongs to, since both display as
-    // the same "Sub Account" UI column. Never set on manual entries - those keep using the existing
-    // `subAccount` ChartOfAccount-reference field above.
+    // the same "Sub Account" UI column. On manual entries it is the line's Sub Account chosen in the
+    // Journal Entry form, validated by services/accounting/journalLinePartyService.js.
     partyNumber: { type: Number, default: null },
     partyType: { type: String, enum: { values: ['customer', 'vendor', 'shareholder', null], message: '{VALUE} is not a valid party type' }, default: null },
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
@@ -185,6 +186,21 @@ journalEntrySchema.methods.isBalanced = function () {
 
 journalEntrySchema.pre('save', async function (next) {
   try {
+    // Closed accounting periods (services/accounting/accountingPeriodService.js): an entry can never
+    // be created, edited, posted or re-dated into a closed month, nor moved out of one. Every write
+    // path - manual entries, reversals, every automatic entry, imports - passes through here. Marking
+    // an entry 'reversed' (status only) does not change its month's figures, so it is allowed.
+    const touchesLedger = this.isNew || this.isModified('date') || this.isModified('lines') || (this.isModified('status') && this.status === 'posted');
+    if (touchesLedger) {
+      const dates = [this.date];
+      if (!this.isNew && this.isModified('date')) {
+        const stored = await this.constructor.collection.findOne({ _id: this._id }, { projection: { date: 1 } });
+        if (stored?.date) dates.push(stored.date);
+      }
+      // eslint-disable-next-line global-require
+      await require('../../services/accounting/accountingPeriodService').assertPeriodsOpen(dates, this.$session());
+    }
+
     // Defense-in-depth: a posted entry's lines must never change in place. The controller is the
     // primary gate (a PATCH is rejected once status !== 'draft'), this catches any other code
     // path that might call .save() directly.
@@ -256,6 +272,27 @@ journalEntrySchema.pre('save', async function (next) {
           throw new Error(`${describe(line, index)} has Project Number "${line.projectNumber}", but its Project's number is "${project.projectNumber}".`);
         }
       });
+    }
+
+    // RULE 4: every line has a description. A manual entry's lines must each be described by the
+    // user; a system-generated line without one takes its entry's description - the same explicit
+    // rule the automatic engine applies (journalEntryProjectService / applyEntryDescriptionAndParty).
+    // RULE 5: a manual line's Sub Account (customer / vendor / shareholder number) must exist and fit
+    // its account - customer and vendor control accounts require one
+    // (services/accounting/journalLinePartyService.js). Historical imports are flagged explicitly.
+    if (this.isNew || this.isModified('lines')) {
+      const isManual = this.source === 'manual' && !this.reversalOfEntry;
+      const historicalImport = this.$locals?.historicalImport === true;
+      this.lines.forEach((line, index) => {
+        if (line.description && line.description.trim()) return;
+        if (isManual && !historicalImport) throw new ApiError(`Journal line ${index + 1}: a description is required.`, 400);
+        if (!this.description || !this.description.trim()) throw new ApiError(`Journal line ${index + 1}: a description is required.`, 400);
+        line.description = this.description.trim();
+      });
+      if (isManual && !historicalImport) {
+        // eslint-disable-next-line global-require
+        await require('../../services/accounting/journalLinePartyService').validateLineParties(this.lines, this.$session());
+      }
     }
 
     this.totalDebit = round2(this.lines.reduce((sum, line) => sum + (line.debit || 0), 0));

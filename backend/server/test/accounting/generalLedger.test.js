@@ -78,16 +78,16 @@ async function postEntry(lines) {
 test('account balance = total debits - total credits, even when credits exceed debits (no account-type sign flip)', async () => {
   // Debit-heavy: 150,000 debit, 30,000 credit -> +120,000 (matches master-spec worked example).
   await postEntry([
-    { account: receivable._id, debit: 100000, credit: 0 },
-    { account: cash._id, debit: 0, credit: 100000 },
+    { account: receivable._id, description: 'Test line', debit: 100000, credit: 0 },
+    { account: cash._id, description: 'Test line', debit: 0, credit: 100000 },
   ]);
   await postEntry([
-    { account: receivable._id, debit: 50000, credit: 0 },
-    { account: cash._id, debit: 0, credit: 50000 },
+    { account: receivable._id, description: 'Test line', debit: 50000, credit: 0 },
+    { account: cash._id, description: 'Test line', debit: 0, credit: 50000 },
   ]);
   await postEntry([
-    { account: cash._id, debit: 30000, credit: 0 },
-    { account: receivable._id, debit: 0, credit: 30000 },
+    { account: cash._id, description: 'Test line', debit: 30000, credit: 0 },
+    { account: receivable._id, description: 'Test line', debit: 0, credit: 30000 },
   ]);
 
   const balance = await getAccountBalance(receivable._id);
@@ -98,8 +98,8 @@ test('account balance = total debits - total credits, even when credits exceed d
 
 test('a liability account with more credits than debits shows a NEGATIVE balance (debit - credit, unconditionally)', async () => {
   await postEntry([
-    { account: receivable._id, debit: 100000, credit: 0 },
-    { account: unearnedRevenue._id, debit: 0, credit: 100000 },
+    { account: receivable._id, description: 'Test line', debit: 100000, credit: 0 },
+    { account: unearnedRevenue._id, description: 'Test line', debit: 0, credit: 100000 },
   ]);
 
   const balance = await getAccountBalance(unearnedRevenue._id);
@@ -115,8 +115,8 @@ test('draft (unposted) entries do not affect account balances', async () => {
     status: 'draft',
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 500, credit: 0 },
-      { account: receivable._id, debit: 0, credit: 500 },
+      { account: cash._id, description: 'Test line', debit: 500, credit: 0 },
+      { account: receivable._id, description: 'Test line', debit: 0, credit: 500 },
     ]),
   });
 
@@ -128,12 +128,12 @@ test('draft (unposted) entries do not affect account balances', async () => {
 
 test('trial balance rows include a signed balance per account, and the total balance across the whole ledger is zero for balanced posted data', async () => {
   await postEntry([
-    { account: cash._id, debit: 100000, credit: 0 },
-    { account: unearnedRevenue._id, debit: 0, credit: 100000 },
+    { account: cash._id, description: 'Test line', debit: 100000, credit: 0 },
+    { account: unearnedRevenue._id, description: 'Test line', debit: 0, credit: 100000 },
   ]);
   await postEntry([
-    { account: receivable._id, debit: 50000, credit: 0 },
-    { account: cash._id, debit: 0, credit: 50000 },
+    { account: receivable._id, description: 'Test line', debit: 50000, credit: 0 },
+    { account: cash._id, description: 'Test line', debit: 0, credit: 50000 },
   ]);
 
   const rows = await getTrialBalance();
@@ -159,16 +159,16 @@ test('getAccountBalance returns null for a non-existent account instead of throw
 
 test('getGeneralLedgerLines: running balance accumulates chronologically per account, across separate entries (not reset per page/entry)', async () => {
   await postEntry([
-    { account: cash._id, debit: 1000, credit: 0 },
-    { account: receivable._id, debit: 0, credit: 1000 },
+    { account: cash._id, description: 'Test line', debit: 1000, credit: 0 },
+    { account: receivable._id, description: 'Test line', debit: 0, credit: 1000 },
   ]);
   await postEntry([
-    { account: cash._id, debit: 0, credit: 400 },
-    { account: receivable._id, debit: 400, credit: 0 },
+    { account: cash._id, description: 'Test line', debit: 0, credit: 400 },
+    { account: receivable._id, description: 'Test line', debit: 400, credit: 0 },
   ]);
   await postEntry([
-    { account: cash._id, debit: 250, credit: 0 },
-    { account: receivable._id, debit: 0, credit: 250 },
+    { account: cash._id, description: 'Test line', debit: 250, credit: 0 },
+    { account: receivable._id, description: 'Test line', debit: 0, credit: 250 },
   ]);
 
   const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
@@ -180,8 +180,8 @@ test('getGeneralLedgerLines: running balance accumulates chronologically per acc
 
 test('getGeneralLedgerLines: local-currency balance applies each line\'s own exchangeRate, cumulatively', async () => {
   await postEntry([
-    { account: cash._id, debit: 100, credit: 0, currency: 'USD', exchangeRate: 50 },
-    { account: receivable._id, debit: 0, credit: 100, currency: 'USD', exchangeRate: 50 },
+    { account: cash._id, description: 'Test line', debit: 100, credit: 0, currency: 'USD', exchangeRate: 50 },
+    { account: receivable._id, description: 'Test line', debit: 0, credit: 100, currency: 'USD', exchangeRate: 50 },
   ]);
 
   const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
@@ -193,8 +193,8 @@ test('getGeneralLedgerLines: local-currency balance applies each line\'s own exc
 
 test('getGeneralLedgerLines: a line with no currency/exchangeRate defaults to rate 1 (never recalculated from a current rate)', async () => {
   await postEntry([
-    { account: cash._id, debit: 500, credit: 0 },
-    { account: receivable._id, debit: 0, credit: 500 },
+    { account: cash._id, description: 'Test line', debit: 500, credit: 0 },
+    { account: receivable._id, description: 'Test line', debit: 0, credit: 500 },
   ]);
 
   const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
@@ -225,8 +225,8 @@ test('getGeneralLedgerLines: Sub Account resolves to the Customer Number for a S
     accountingAction: 'SO_PAYMENT_RECORDED',
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 777, credit: 0 },
-      { account: arProjectsAccount._id, debit: 0, credit: 777 },
+      { account: cash._id, description: 'Test line', debit: 777, credit: 0 },
+      { account: arProjectsAccount._id, description: 'Test line', debit: 0, credit: 777 },
     ]),
   });
 
@@ -254,8 +254,8 @@ test('getGeneralLedgerLines: Sub Account resolves to the Vendor Number for a Pur
     sourceId: purchaseOrder._id,
     accountingAction: 'PO_PAYMENT_RECORDED',
     lines: [
-      { account: suppliersAccount._id, debit: 888, credit: 0 },
-      { account: cash._id, debit: 0, credit: 888 },
+      { account: suppliersAccount._id, description: 'Test line', debit: 888, credit: 0 },
+      { account: cash._id, description: 'Test line', debit: 0, credit: 888 },
     ],
   });
 
@@ -280,8 +280,8 @@ test('getGeneralLedgerLines: a NEW-style entry with partyNumber/partyType stampe
     accountingAction: 'SO_PAYMENT_RECORDED',
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 555, credit: 0 },
-      { account: receivable._id, debit: 0, credit: 555, partyNumber: 99999, partyType: 'customer' },
+      { account: cash._id, description: 'Test line', debit: 555, credit: 0 },
+      { account: receivable._id, description: 'Test line', debit: 0, credit: 555, partyNumber: 99999, partyType: 'customer' },
     ]),
   });
 
@@ -294,8 +294,8 @@ test('getGeneralLedgerLines: a NEW-style entry with partyNumber/partyType stampe
 
 test('getGeneralLedgerLines: a manual entry (no sourceType/sourceId) has a null Sub Account, never fabricated', async () => {
   await postEntry([
-    { account: cash._id, debit: 10, credit: 0 },
-    { account: receivable._id, debit: 0, credit: 10 },
+    { account: cash._id, description: 'Test line', debit: 10, credit: 0 },
+    { account: receivable._id, description: 'Test line', debit: 0, credit: 10 },
   ]);
 
   const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
@@ -313,8 +313,8 @@ test('getGeneralLedgerLines: a dangling sourceId (referenced document no longer 
     sourceId: new mongoose.Types.ObjectId(), // no SalesOrder with this id exists
     accountingAction: 'SO_PAYMENT_RECORDED',
     lines: [
-      { account: cash._id, debit: 42, credit: 0 },
-      { account: receivable._id, debit: 0, credit: 42 },
+      { account: cash._id, description: 'Test line', debit: 42, credit: 0 },
+      { account: receivable._id, description: 'Test line', debit: 0, credit: 42 },
     ],
   });
 
@@ -325,8 +325,8 @@ test('getGeneralLedgerLines: a dangling sourceId (referenced document no longer 
 
 test('getGeneralLedgerLines: Project Number prefers the live project\'s own projectNumber over a denormalized/stale lines.projectNumber', async () => {
   const entry = await postEntry([
-    { account: cash._id, debit: 15, credit: 0 },
-    { account: receivable._id, debit: 0, credit: 15 },
+    { account: cash._id, description: 'Test line', debit: 15, credit: 0 },
+    { account: receivable._id, description: 'Test line', debit: 0, credit: 15 },
   ]);
   // A stale denormalized number can no longer be saved through the model (RULE 3) - it is planted
   // directly, as historical data written before that rule would look.
@@ -340,8 +340,8 @@ test('getGeneralLedgerLines: Project Number prefers the live project\'s own proj
 
 test('getGeneralLedgerLines: response shape matches the existing PaginatedData convention (results/paginationResult/data)', async () => {
   await postEntry([
-    { account: cash._id, debit: 1, credit: 0 },
-    { account: receivable._id, debit: 0, credit: 1 },
+    { account: cash._id, description: 'Test line', debit: 1, credit: 0 },
+    { account: receivable._id, description: 'Test line', debit: 0, credit: 1 },
   ]);
 
   const result = await getGeneralLedgerLines({ page: 1, limit: 1 });

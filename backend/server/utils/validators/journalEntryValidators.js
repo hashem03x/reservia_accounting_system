@@ -23,12 +23,16 @@ const linesAreBalanced = check('lines').custom(lines => {
   return true;
 });
 
+// Every manual line needs a description and may carry a Sub Account (partyType + partyNumber) -
+// whether the sub-account fits the account is checked by journalLinePartyService.js (model hook).
 const lineValidators = (prefix = 'lines.*') => [
   check(`${prefix}.account`).notEmpty().withMessage('Account (GA) is required for every line').isMongoId().withMessage('Invalid account id'),
   check(`${prefix}.subAccount`).optional({ nullable: true }).isMongoId().withMessage('Invalid sub-account id'),
   check(`${prefix}.project`).optional({ nullable: true }).isMongoId().withMessage('Invalid project id'),
   check(`${prefix}.projectNumber`).optional({ nullable: true }).isString().trim(),
-  check(`${prefix}.description`).optional({ nullable: true }).isString().trim().isLength({ max: 300 }),
+  check(`${prefix}.description`).isString().withMessage('A description is required for every line').trim().notEmpty().withMessage('A description is required for every line').isLength({ max: 300 }),
+  check(`${prefix}.partyType`).optional({ nullable: true }).isIn(['customer', 'vendor', 'shareholder']).withMessage('Invalid sub-account type'),
+  check(`${prefix}.partyNumber`).optional({ nullable: true }).isInt({ min: 0 }).withMessage('Invalid sub-account number'),
   check(`${prefix}.debit`).optional().isFloat({ min: 0 }).withMessage('Debit must be a non-negative number'),
   check(`${prefix}.credit`).optional().isFloat({ min: 0 }).withMessage('Credit must be a non-negative number'),
   check(`${prefix}.unearnedRevenue`).optional().isFloat({ min: 0 }).withMessage('Unearned revenue must be a non-negative number'),

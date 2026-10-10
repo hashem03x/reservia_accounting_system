@@ -34,6 +34,8 @@ export type Expense = {
   // Vendor expense
   vendor?: { _id: string; name: string; vendorNumber?: number | null } | null;
   expenseAccount?: ChartOfAccountRef | null;
+  // Analysis grouping (Admin -> Expense Categories); null on expenses created without one.
+  category?: { _id: string; name: string; nameAr?: string | null; isActive: boolean } | null;
   amount?: number;
   vatPercentage?: number;
   vatAmount?: number;

@@ -192,9 +192,9 @@ test('cash.total only sums eligible Cash & Cash Equivalent accounts (same two si
   const revenueAccount = await ChartOfAccount.create({ code: `DASH-REV-${Date.now()}`, name: 'Revenue', type: 'revenue' });
 
   const entryNumber1 = await getNextJournalEntryNumber();
-  await JournalEntry.create({ entryNumber: entryNumber1, status: 'posted', source: 'automatic', lines: [{ account: cashAccount._id, debit: 10000, credit: 0 }, { account: revenueAccount._id, debit: 0, credit: 10000 }] });
+  await JournalEntry.create({ entryNumber: entryNumber1, status: 'posted', source: 'automatic', lines: [{ account: cashAccount._id, description: 'Test line', debit: 10000, credit: 0 }, { account: revenueAccount._id, description: 'Test line', debit: 0, credit: 10000 }] });
   const entryNumber2 = await getNextJournalEntryNumber();
-  await JournalEntry.create({ entryNumber: entryNumber2, status: 'posted', source: 'automatic', lines: [{ account: otherCashAccount._id, debit: 5000, credit: 0 }, { account: revenueAccount._id, debit: 0, credit: 5000 }] });
+  await JournalEntry.create({ entryNumber: entryNumber2, status: 'posted', source: 'automatic', lines: [{ account: otherCashAccount._id, description: 'Test line', debit: 5000, credit: 0 }, { account: revenueAccount._id, description: 'Test line', debit: 0, credit: 5000 }] });
 
   const summary = await getDashboardSummaryData();
   assert.equal(summary.cash.accounts.length, 2, 'the revenue account must never be classified as Cash & Cash Equivalent');

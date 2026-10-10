@@ -22,6 +22,7 @@ const {
   assignRole,
   createOfflineCustomer,
   updateOfflineCustomer,
+  updateMyTourStatus,
 } = require('../controller/user/userController');
 
 const {
@@ -44,6 +45,7 @@ router.put('/updateMe', updateLoggedUserValidator, updateLoggedUserData);
 
 router.delete('/deleteMe', deleteLoggedUser);
 router.put('/updateMyPassword', updateLoggedUserValidatorPass, updateLoggedUserPassword);
+router.put('/me/tour', updateMyTourStatus);
 
 // Admin
 // router.use(checkUserPermissions({resource:'users', action:['read']}));

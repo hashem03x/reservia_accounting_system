@@ -114,6 +114,9 @@ exports.AccountingActions = [
   // A payment to the asset's vendor (services/fixedAssets/fixedAssetPaymentService.js): Dr Suppliers
   // (vendor) / Cr the payment account - settles the acquisition payable, never re-capitalizes.
   'FIXED_ASSET_PAYMENT_RECORDED',
+  // PUC Transfer of a stock product to a project (services/inventory/pucTransferService.js): Dr PUC -
+  // Raw Materials (project) / Cr Materials Inventory, or between two projects' PUC - Raw Materials.
+  'PUC_TRANSFER',
   // Expenses (services/expenses/expenseService.js): Dr expense (+ input VAT) / Cr Suppliers
   // (vendor); a payment Dr Suppliers / Cr the payment account.
   'EXPENSE_RECORDED',
@@ -143,7 +146,7 @@ exports.ProjectRequiredAccountingActions = [
 // which is the older (pre-existing) idempotency-key vocabulary for the two legacy automatic flows
 // (project creation, fixed asset purchase) - kept separate rather than merged, since those two
 // still only ever produce exactly one JE each and don't need an `accountingAction` to disambiguate.
-exports.AccountingSourceTypes = ['ADVANCED_PAYMENT', 'PO', 'SO', 'PAYMENT', 'PROJECT', 'FIXED_ASSET', 'EXPENSE', 'SHAREHOLDER'];
+exports.AccountingSourceTypes = ['ADVANCED_PAYMENT', 'PO', 'SO', 'PAYMENT', 'PROJECT', 'FIXED_ASSET', 'EXPENSE', 'SHAREHOLDER', 'PUC_TRANSFER'];
 
 exports.ProjectStatuses = ['active', 'completed', 'cancelled', 'on_hold'];
 
@@ -228,7 +231,7 @@ exports.ProjectCostRecognitionDescription = 'تحميل المشروع بالت�
 // so an automatic entry's module can never drift into inconsistent casing/spelling. 'Manual' is
 // the default for every hand-entered journal entry (source: 'manual'); the two legacy automatic
 // flows (project_creation, fixed_asset_purchase) keep their own plain labels for the same reason.
-exports.AccountingModules = ['Advanced Payment', 'Purchase Order', 'Sales Order', 'Payment', 'Manual', 'Fixed Asset', 'Project', 'Expense', 'Equity'];
+exports.AccountingModules = ['Advanced Payment', 'Purchase Order', 'Sales Order', 'Payment', 'Manual', 'Fixed Asset', 'Project', 'Expense', 'Equity', 'Inventory'];
 
 // accountingAction -> Module label. Deliberately keyed by accountingAction (not sourceType) -
 // PO_PAYMENT_RECORDED/SO_PAYMENT_RECORDED both carry `sourceType: 'PAYMENT'` but their real business
@@ -253,6 +256,7 @@ exports.AccountingModuleByAction = {
   FIXED_ASSET_ACQUISITION: 'Fixed Asset',
   FIXED_ASSET_DEPRECIATION: 'Fixed Asset',
   FIXED_ASSET_PAYMENT_RECORDED: 'Fixed Asset',
+  PUC_TRANSFER: 'Inventory',
   EXPENSE_RECORDED: 'Expense',
   EXPENSE_PAYMENT_RECORDED: 'Expense',
   SHAREHOLDER_CONTRIBUTION: 'Equity',

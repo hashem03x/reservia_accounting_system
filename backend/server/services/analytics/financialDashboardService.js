@@ -3,7 +3,7 @@ const ApiError = require('../../utils/apiError');
 const { AutomaticJournalAccountCodes, isPaymentAccountEligible } = require('../../utils/accountingConstants');
 const { isDepreciationExpenseAccount } = require('../fixedAssets/fixedAssetAccounts');
 const C = require('../reports/reportCommon');
-const { cashMovements, flowCategoryOf } = require('../reports/financialStatements');
+const { cashMovements } = require('../reports/financialStatements');
 
 // Financial Analytics dashboard (GET /analytics/financial-dashboard). Built on the same ledger
 // foundation as the accounting reports (services/reports/*): posted + reversed entries count (a
@@ -123,7 +123,7 @@ const SALES_ACTIONS = ['PROJECT_REVENUE_RECOGNITION'];
 const PURCHASE_ACTIONS = ['PO_INVENTORY_RECEIPT', 'PO_SERVICE_TO_WIP', 'EXPENSE_RECORDED', 'FIXED_ASSET_ACQUISITION'];
 
 // ---------------------------------------------------------------- cash flows of a window
-function cashFlowOf(entries, isCash, accounts, bucketOf) {
+function cashFlowOf({ entries, isCash, classify }, bucketOf) {
   const totals = { operating: 0, investing: 0, financing: 0 };
   const buckets = new Map();
   for (const entry of entries) {
@@ -132,7 +132,7 @@ function cashFlowOf(entries, isCash, accounts, bucketOf) {
     for (const line of nonCash) {
       const amount = (line.credit || 0) - (line.debit || 0);
       if (amount !== 0) {
-        const category = flowCategoryOf(accounts.get(C.idOf(line.account)));
+        const { category } = classify(entry, line);
         totals[category] += amount;
         if (bucketOf) {
           const key = bucketOf(entry.date);
@@ -163,7 +163,7 @@ async function snapshot(period, accounts) {
     pl: profitAndLossOf(periodBalances, accounts),
     opening: positionOf(openingBalances, accounts),
     closing: positionOf(closingBalances, accounts),
-    cash: cashFlowOf(cash.entries, cash.isCash, accounts).totals,
+    cash: cashFlowOf(cash).totals,
     cashTruncated: cash.truncated,
     creditSales,
     creditPurchases,
@@ -418,7 +418,7 @@ async function series(period, accounts) {
     }
   }
   const cash = await cashMovements(period, accounts);
-  const { buckets } = cashFlowOf(cash.entries, cash.isCash, accounts, keyOf);
+  const { buckets } = cashFlowOf(cash, keyOf);
   for (const [key, flows] of buckets) {
     const point = points.get(key);
     if (point) Object.assign(point, { operating: flows.operating, investing: flows.investing, financing: flows.financing });

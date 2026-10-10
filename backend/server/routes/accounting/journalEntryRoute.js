@@ -7,6 +7,7 @@ const { Resources, Actions } = require('../../utils/appConstant');
 const {
   createJournalEntry,
   getJournalEntries,
+  getJournalLineRules,
   getJournalEntry,
   getJournalEntriesForProject,
   getJournalEntriesForSalesOrder,
@@ -25,6 +26,7 @@ router.use(authController.protect);
 // as advancedPaymentRoute.js's '/available').
 router.get('/general-ledger', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getGeneralLedger);
 
+router.get('/line-rules', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalLineRules);
 router.get('/project/:projectId', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalEntriesForProject);
 router.get('/sales-order/:salesOrderId', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalEntriesForSalesOrder);
 router.get('/purchase-order/:purchaseOrderId', checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalEntriesForPurchaseOrder);

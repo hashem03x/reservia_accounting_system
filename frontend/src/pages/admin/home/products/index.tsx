@@ -28,6 +28,7 @@ import NoResultsSection from "@/components/ui/sections/no-results";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import { isAdmin } from "@/utils/constants/roles";
+import PucTransferModal from "./_components/puc-transfer-modal";
 import { useUser } from "@/context/UserContext";
 import GlobalDiscount from "./_components/global-discount";
 
@@ -127,6 +128,8 @@ export default function Products() {
   }, [activePage, debouncedKeyword, mainCategoryFilter, subcategoryFilter]);
 
   const canICreateProducts = useRef(useHasPermission(resources.products, actions.create)).current; // Ref to avoid re-renders
+  const canIUpdateProducts = useHasPermission(resources.products, actions.update);
+  const [pucProduct, setPucProduct] = useState<{ id: string; name: string } | null>(null);
   const isAdminRef = useRef(loggedInUser ? isAdmin(loggedInUser.role) : false); // Ref to avoid re-renders
   const AmIAdmin = loggedInUser && isAdminRef.current;
 
@@ -346,6 +349,25 @@ export default function Products() {
                               >
                                 {translate("View Transactions", "عرض الحركات")}
                               </Link>
+                              {canIUpdateProducts && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPucProduct({
+                                      id: product._id,
+                                      name:
+                                        (language === "ar-EG" ? product.title?.ar : product.title?.en) ||
+                                        product.title?.en ||
+                                        "",
+                                    });
+                                  }}
+                                  className="w-fit text-start text-xs text-primary-600 hover:underline"
+                                  data-tour="products-puc-transfer"
+                                >
+                                  {translate("PUC Transfer", "تحويل لمشروعات تحت التنفيذ")}
+                                </button>
+                              )}
                             </div>
                           )}
                         </Table.Td>
@@ -378,6 +400,15 @@ export default function Products() {
             />
           </>
         ))
+      )}
+      {pucProduct && (
+        <PucTransferModal
+          opened={!!pucProduct}
+          close={() => setPucProduct(null)}
+          productId={pucProduct.id}
+          productName={pucProduct.name}
+          onDone={() => handleLoadProducts()}
+        />
       )}
     </AdminLayoutBox>
   );

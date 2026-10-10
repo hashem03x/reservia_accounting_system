@@ -9,6 +9,8 @@ const ApiError = require('../../utils/apiError');
 const { computeOrderTotals, round2 } = require('../../utils/orderTotals');
 const { AutomaticJournalAccountCodes, isPaymentAccountEligible } = require('../../utils/accountingConstants');
 const { postAutomaticJournalEntry, getAccountIdByCode, resolveVendorNumber } = require('../accounting/accountingEventService');
+const { resolveExpenseCategory } = require('./expenseCategoryService');
+const { assertPeriodsOpen } = require('../accounting/accountingPeriodService');
 
 /** An account an expense can be recorded on: an active Chart of Accounts account of type 'expense'. */
 const isExpenseAccountEligible = account => !!account && account.isActive !== false && account.type === 'expense';
@@ -46,6 +48,7 @@ async function addExpensePayment(expenseId, { amount, paymentAccount, warehouseI
   const vendorId = expense.vendor._id || expense.vendor;
   const vendorNumber = await resolveVendorNumber(vendorId, { required: true }, session);
   const paymentDate = date ? new Date(date) : new Date();
+  await assertPeriodsOpen(paymentDate, session);
 
   const [payment] = await Payment.create(
     [
@@ -101,12 +104,14 @@ async function addExpensePayment(expenseId, { amount, paymentAccount, warehouseI
  * pays it straight away through addExpensePayment. Never touches inventory.
  */
 async function createExpense(input, userId, session) {
-  const { vendor: vendorId, expenseAccount: expenseAccountId, amount, vatPercentage, date, reference, notes, payment } = input;
+  const { vendor: vendorId, expenseAccount: expenseAccountId, amount, vatPercentage, date, reference, notes, payment, category } = input;
 
   const vendorNumber = await resolveVendorNumber(vendorId, { required: true }, session);
   const expenseAccount = await ChartOfAccount.findById(expenseAccountId).session(session || null).lean();
   if (!isExpenseAccountEligible(expenseAccount)) throw new ApiError('The expense account must be an active Chart of Accounts expense account.', 400);
 
+  const categoryId = await resolveExpenseCategory(category, { session });
+  await assertPeriodsOpen(date ? new Date(date) : new Date(), session);
   const base = round2(Number(amount));
   const { vatAmount, total } = computeOrderTotals({ subtotal: base, vatPercentage });
   const expenseDate = date ? new Date(date) : new Date();
@@ -116,6 +121,7 @@ async function createExpense(input, userId, session) {
       {
         vendor: vendorId,
         expenseAccount: expenseAccount._id,
+        category: categoryId,
         amount: base,
         vatPercentage: Number(vatPercentage) || 0,
         vatAmount,
@@ -156,13 +162,14 @@ async function createExpense(input, userId, session) {
   return expense;
 }
 
-/** Only the free-text fields - amounts, accounts and vendor are fixed once posted. */
-async function updateExpense(id, { reference, notes }, session) {
+/** Only the free-text fields and the category - amounts, accounts and vendor are fixed once posted. */
+async function updateExpense(id, { reference, notes, category }, session) {
   const expense = await Expense.findById(id).session(session || null);
   if (!expense) throw new ApiError('Expense not found', 404);
   if (!expense.vendor) throw new ApiError('Legacy expenses cannot be edited.', 400);
   if (reference !== undefined) expense.reference = reference;
   if (notes !== undefined) expense.notes = notes;
+  if (category !== undefined) expense.category = await resolveExpenseCategory(category, { currentCategoryId: expense.category?._id || expense.category, session });
   await expense.save({ session });
   return expense;
 }

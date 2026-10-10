@@ -18,6 +18,9 @@ export interface FixedAssetDepreciation {
 
 export interface FixedAsset {
   _id: string;
+  // FA-0001, ... - null for an asset created before numbering (until backfilled).
+  assetNumber?: number | null;
+  assetCode?: string | null;
   name: string;
   vendor?: { _id: string; name: string; vendorNumber?: number | null } | null;
   // Acquisition cost (excluding VAT).
@@ -111,4 +114,30 @@ export interface FixedAssetPayments {
     currency: string;
   };
   payments: FixedAssetPaymentRow[];
+}
+
+// GET vendors/:id/fixed-asset-acquisitions - the vendor page's fixed asset acquisitions.
+export interface VendorFixedAssetAcquisition {
+  _id: string;
+  assetNumber: string | null;
+  name: string;
+  assetClass?: FixedAssetClass | null;
+  acquisitionDate?: string;
+  projectNumber: string | null;
+  cost: number | null;
+  vatAmount: number;
+  acquisitionAmount: number | null;
+  currency: string;
+  totalPaid: number;
+  outstanding: number | null;
+  status: FixedAssetPaymentStatus;
+  review: string | null;
+  acquisitionJournalEntry: (JournalEntryRef & { status: string }) | null;
+  payments: {
+    date: string;
+    amount: number;
+    reference: string | null;
+    status: FixedAssetPaymentRowStatus;
+    journalEntry: JournalEntryRef | null;
+  }[];
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
@@ -23,6 +23,9 @@ import DeleteVendorModal from "./_components/delete-vendor-modal";
 import UpdateBalanceModal from "./_components/update-balance-modal";
 import VendorOrdersHistory from "./_components/vendor-orders-history";
 import VendorPaymentsHistory from "./_components/vendor-payments-history";
+import VendorFixedAssets from "./_components/vendor-fixed-assets";
+import { VendorFixedAssetAcquisition } from "@/types/fixed-asset";
+import paths from "@/utils/constants/paths";
 import AdminGaurd from "@/components/ui/admin-gaurd";
 
 export default function Vendor() {
@@ -42,6 +45,7 @@ export default function Vendor() {
 
   const [vendorPurchaseOrders, setVendorPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [vendorPayments, setVendorPayments] = useState<Payment[]>([]);
+  const [fixedAssetAcquisitions, setFixedAssetAcquisitions] = useState<VendorFixedAssetAcquisition[]>([]);
 
   useDocumentTitle(`${vendor?.name ?? translate("Vendor Data", "بيانات البائع")} | ${translations.pages.vendors}`);
 
@@ -50,7 +54,7 @@ export default function Vendor() {
     const canceled = { current: false };
 
     const executeFetch = async () => {
-      const [vendorResponse, ordersResponse, paymentsResponse] = await Promise.all([
+      const [vendorResponse, ordersResponse, paymentsResponse, acquisitionsResponse] = await Promise.all([
         privateRequest({ url: `vendors/${id}`, signal: controller.signal, language }),
         canIReadPurchaseOrders &&
           privateRequest({
@@ -66,12 +70,16 @@ export default function Vendor() {
             signal: controller.signal,
             language,
           }),
+        privateRequest({ url: `vendors/${id}/fixed-asset-acquisitions`, signal: controller.signal, language }),
       ]);
-      if (vendorResponse.data.isDeleted) setError(translate("This vendor does not exist.", "هذا البائع غير موجود."));
+      if (!vendorResponse?.data) setError(translate("This vendor does not exist.", "هذا البائع غير موجود."));
+      else if (vendorResponse.data.isDeleted) setError(translate("This vendor does not exist.", "هذا البائع غير موجود."));
       else {
         setVendor(vendorResponse.data);
-        setVendorPurchaseOrders(ordersResponse.data);
-        setVendorPayments(paymentsResponse.data);
+        // A list the user may not read is not requested at all (`false`) - keep it empty, never undefined.
+        setVendorPurchaseOrders(ordersResponse ? ordersResponse.data || [] : []);
+        setVendorPayments(paymentsResponse ? paymentsResponse.data || [] : []);
+        setFixedAssetAcquisitions(acquisitionsResponse?.data || []);
       }
     };
 
@@ -94,6 +102,7 @@ export default function Vendor() {
 
   const canIReadPurchaseOrders = useHasPermission(resources.purchaseOrders, actions.read);
   const canIReadPayments = useHasPermission(resources.cash, actions.read);
+  const canIReadReports = useHasPermission(resources.reports, actions.read);
 
   // ========== Handle Modals ==========
 
@@ -150,6 +159,28 @@ export default function Vendor() {
                 {translate("Vendor No. (Sub Account)", "رقم البائع (الحساب الفرعي)")}:{" "}
                 <span className="tabular-nums text-gray-800">{vendor.vendorNumber ?? "-"}</span>
               </p>
+              {vendor.cashFlowActivity && (
+                <p className="text-sm text-gray-600">
+                  {translate("Cash flow classification", "التصنيف في التدفقات النقدية")}:{" "}
+                  <span className="font-medium text-gray-800">
+                    {
+                      {
+                        operating: translate("Operating", "تشغيلية"),
+                        investing: translate("Investing", "استثمارية"),
+                        financing: translate("Financing", "تمويلية"),
+                      }[vendor.cashFlowActivity]
+                    }
+                  </span>
+                </p>
+              )}
+              {canIReadReports && (
+                <Link
+                  className="w-fit text-sm text-blue-600 hover:underline"
+                  to={`/${paths.admin}/${paths.financialReports}/supplier-balances?vendor=${vendor._id}&from=${new Date().getUTCFullYear()}-01-01&to=${new Date().toISOString().slice(0, 10)}`}
+                >
+                  {translate("Account statement (ledger)", "كشف الحساب (دفتر الأستاذ)")}
+                </Link>
+              )}
 
               <AdminGaurd>
                 <div className="flex flex-wrap items-center gap-1 font-medium">
@@ -223,7 +254,11 @@ export default function Vendor() {
             )}
 
             {/* Bank Info */}
-            {(vendor.bankInfo?.bankName || vendor.bankInfo?.branch || vendor.bankInfo?.accountNumber || vendor.bankInfo?.iban || vendor.bankInfo?.swiftCode) && (
+            {(vendor.bankInfo?.bankName ||
+              vendor.bankInfo?.branch ||
+              vendor.bankInfo?.accountNumber ||
+              vendor.bankInfo?.iban ||
+              vendor.bankInfo?.swiftCode) && (
               <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
                 <h4>{translate("Bank Info", "البيانات البنكية")}</h4>
                 {vendor.bankInfo?.bankName && (
@@ -268,6 +303,13 @@ export default function Vendor() {
             {canIReadPurchaseOrders && vendorPurchaseOrders.length > 0 && (
               <div className="rounded-md bg-gray-100 p-4">
                 <VendorOrdersHistory orders={vendorPurchaseOrders} />
+              </div>
+            )}
+
+            {/* Fixed asset acquisitions */}
+            {fixedAssetAcquisitions.length > 0 && (
+              <div className="rounded-md bg-gray-100 p-4">
+                <VendorFixedAssets acquisitions={fixedAssetAcquisitions} />
               </div>
             )}
 

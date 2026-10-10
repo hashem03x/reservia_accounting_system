@@ -5,7 +5,17 @@ export type JournalEntrySource = "manual" | "project_creation" | "fixed_asset_pu
 // The originating business module (docs section "Module field") - normalized through
 // AccountingModules/AccountingModuleByAction on the backend, never a free-text variation. `null`
 // only for an entry that predates this field.
-export type AccountingModule = "Advanced Payment" | "Purchase Order" | "Sales Order" | "Payment" | "Manual" | "Fixed Asset" | "Project" | "Expense" | "Equity";
+export type AccountingModule =
+  | "Advanced Payment"
+  | "Purchase Order"
+  | "Sales Order"
+  | "Payment"
+  | "Manual"
+  | "Fixed Asset"
+  | "Project"
+  | "Expense"
+  | "Equity"
+  | "Inventory";
 
 export interface JournalLine {
   // Nullable: populate resolves a reference to a since-removed account to null - never assume it.
@@ -102,13 +112,25 @@ export interface GeneralLedgerRow {
   module: AccountingModule | null;
 }
 
+export type PartyType = "customer" | "vendor" | "shareholder";
+
 export interface JournalLineInput {
   account: string;
   subAccount?: string | null;
   project?: string | null;
   projectNumber?: string | null;
+  // The line's Sub Account: a Customer / Vendor / Shareholder number (required on customer and
+  // vendor control accounts - GET journal-entries/line-rules).
+  partyType?: PartyType | null;
+  partyNumber?: number | null;
   debit: number | string;
   credit: number | string;
   description?: string;
   unearnedRevenue?: number | string;
+}
+
+// GET journal-entries/line-rules - the accounts that require a customer / vendor Sub Account.
+export interface JournalLineRules {
+  customerAccounts: string[];
+  vendorAccounts: string[];
 }

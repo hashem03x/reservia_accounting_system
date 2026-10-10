@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ExpenseCategorySelect from "@/components/global/expense-category-select";
 import { useLanguage } from "@/context/LanguageContext";
 import { useWarehouses } from "@/context/WarehousesContext";
 import useDataHandler from "@/hooks/useDataHandler";
@@ -18,13 +19,22 @@ import { ChartOfAccountRef } from "@/types/orders";
 
 // A vendor expense: Dr the chosen expense account (+ VAT) / Cr the vendor. It can be paid at once
 // (Pay now) or later from the expense's page.
-export default function ExpenseModal({ opened, close, callback }: { opened: boolean; close: () => void; callback: (expense: Expense) => void }) {
+export default function ExpenseModal({
+  opened,
+  close,
+  callback,
+}: {
+  opened: boolean;
+  close: () => void;
+  callback: (expense: Expense) => void;
+}) {
   const { language, translate, translations } = useLanguage();
   const { data: warehouses } = useWarehouses();
   const { updateWarehouseBalanceById } = useWarehouseHelpers();
 
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [expenseAccount, setExpenseAccount] = useState("");
+  const [category, setCategory] = useState("");
   const [amount, setAmount] = useState<string | number>("");
   const [vatPercentage, setVatPercentage] = useState<string | number>(0);
   const [date, setDate] = useState<Date | null>(new Date());
@@ -35,7 +45,11 @@ export default function ExpenseModal({ opened, close, callback }: { opened: bool
   const [warehouseId, setWarehouseId] = useState("");
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
-  const { privateRequest: loadAccounts, data: expenseAccounts, setData: setExpenseAccounts } = useDataHandler<ChartOfAccountRef[]>({ initialData: [] });
+  const {
+    privateRequest: loadAccounts,
+    data: expenseAccounts,
+    setData: setExpenseAccounts,
+  } = useDataHandler<ChartOfAccountRef[]>({ initialData: [] });
 
   useEffect(() => {
     if (!opened || expenseAccounts.length) return;
@@ -59,6 +73,7 @@ export default function ExpenseModal({ opened, close, callback }: { opened: bool
         data: {
           vendor: vendor?._id,
           expenseAccount,
+          category: category || undefined,
           amount,
           vatPercentage: vat,
           date: date ? toDateOnly(date) : undefined,
@@ -98,7 +113,13 @@ export default function ExpenseModal({ opened, close, callback }: { opened: bool
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {error && <ErrorAlert error={error} />}
 
-        <VendorSearch vendor={vendor} setVendor={setVendor} label={translate("Vendor", "البائع")} placeholder={translate("Search for a vendor", "ابحث عن بائع")} required />
+        <VendorSearch
+          vendor={vendor}
+          setVendor={setVendor}
+          label={translate("Vendor", "البائع")}
+          placeholder={translate("Search for a vendor", "ابحث عن بائع")}
+          required
+        />
 
         <Select
           label={translate("Expense Account", "حساب المصروف")}
@@ -106,29 +127,71 @@ export default function ExpenseModal({ opened, close, callback }: { opened: bool
           value={expenseAccount || null}
           onChange={(v) => setExpenseAccount(v || "")}
           data={expenseAccounts.map((a) => ({ value: a._id, label: `${a.code} - ${a.name}` }))}
-          nothingFoundMessage={translate("No expense accounts in the Chart of Accounts", "لا توجد حسابات مصروفات في دليل الحسابات")}
+          nothingFoundMessage={translate(
+            "No expense accounts in the Chart of Accounts",
+            "لا توجد حسابات مصروفات في دليل الحسابات",
+          )}
           searchable
           required
         />
 
+        <ExpenseCategorySelect value={category} onChange={setCategory} />
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <NumberInput label={translate("Amount", "المبلغ")} value={amount} onChange={setAmount} min={0.01} decimalScale={2} thousandSeparator required />
-          <NumberInput label={translate("VAT %", "ضريبة القيمة المضافة %")} value={vatPercentage} onChange={setVatPercentage} min={0} max={100} decimalScale={2} />
+          <NumberInput
+            label={translate("Amount", "المبلغ")}
+            value={amount}
+            onChange={setAmount}
+            min={0.01}
+            decimalScale={2}
+            thousandSeparator
+            required
+          />
+          <NumberInput
+            label={translate("VAT %", "ضريبة القيمة المضافة %")}
+            value={vatPercentage}
+            onChange={setVatPercentage}
+            min={0}
+            max={100}
+            decimalScale={2}
+          />
         </div>
 
         <p className="-mt-2 text-sm text-gray-600">
-          {translate("Total", "الإجمالي")}: <b>{total.toLocaleString()} {translations.currency}</b>
+          {translate("Total", "الإجمالي")}:{" "}
+          <b>
+            {total.toLocaleString()} {translations.currency}
+          </b>
           {vatAmount > 0 && ` (${translate("VAT", "الضريبة")} ${vatAmount.toLocaleString()})`}
         </p>
 
         <DateInput label={translate("Date", "التاريخ")} value={date} onChange={setDate} required />
-        <TextInput label={translate("Reference (optional)", "المرجع (اختياري)")} value={reference} onChange={(e) => setReference(e.target.value)} />
-        <Textarea label={translate("Notes (optional)", "ملاحظات (اختياري)")} value={notes} onChange={(e) => setNotes(e.target.value)} autosize minRows={2} />
+        <TextInput
+          label={translate("Reference (optional)", "المرجع (اختياري)")}
+          value={reference}
+          onChange={(e) => setReference(e.target.value)}
+        />
+        <Textarea
+          label={translate("Notes (optional)", "ملاحظات (اختياري)")}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          autosize
+          minRows={2}
+        />
 
-        <Switch label={translate("Pay now", "الدفع الآن")} checked={payNow} onChange={(e) => setPayNow(e.currentTarget.checked)} />
+        <Switch
+          label={translate("Pay now", "الدفع الآن")}
+          checked={payNow}
+          onChange={(e) => setPayNow(e.currentTarget.checked)}
+        />
         {payNow && (
           <>
-            <PaymentAccountSelect value={paymentAccount} onChange={setPaymentAccount} label={translate("Payment Method", "طريقة الدفع")} required />
+            <PaymentAccountSelect
+              value={paymentAccount}
+              onChange={setPaymentAccount}
+              label={translate("Payment Method", "طريقة الدفع")}
+              required
+            />
             <Select
               label={translate("Warehouse", "الفرع")}
               placeholder={translate("Select warehouse", "اختر الفرع")}

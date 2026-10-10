@@ -3,6 +3,7 @@ const PR = require('./projectReports');
 const PA = require('./partyReports');
 const LR = require('./ledgerReports');
 const TX = require('./taxReports');
+const EC = require('./expenseCategoryReports');
 const { L } = require('./reportCommon');
 
 // The accounting reports catalog (from the reports list "تقارير.csv"): category, bilingual title,
@@ -54,6 +55,7 @@ const REPORTS = [
   { key: 'depreciation-by-asset', category: 'fixed-assets', kind: 'period', title: L('Depreciation and Amortization by Asset', 'بيان بالإهلاكات والاستهلاكات لكل أصل'), filters: ['period', 'assetStatus', 'assetClass'], run: LR.depreciationByAsset },
 
   { key: 'expenses-by-account', category: 'expenses', kind: 'period', title: L('Expenses by Account with Counterpart Accounts', 'بيان بالمصروفات والحساب المقابل ونسبتها لإجمالي المصروفات'), filters: ['period', 'expenseAccount', 'expenseType'], run: LR.expensesByAccount },
+  { key: 'expenses-by-category', category: 'expenses', kind: 'period', title: L('Expenses by Category', 'بيان بالمصروفات حسب التصنيف'), filters: ['period', 'expenseCategory', 'vendor'], run: EC.expensesByCategory },
 
   { key: 'tax-wht-debit', category: 'taxes', kind: 'period', title: L('Commercial and Industrial Profit Tax - Debit', 'ضرائب الأرباح التجارية والصناعية - مدين'), filters: TAX_FILTERS, run: TX.whtDebit },
   { key: 'tax-wht-credit', category: 'taxes', kind: 'period', title: L('Commercial and Industrial Profit Tax - Credit', 'ضرائب الأرباح التجارية والصناعية - دائن'), filters: TAX_FILTERS, run: TX.whtCredit },

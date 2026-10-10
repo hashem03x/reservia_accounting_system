@@ -25,4 +25,9 @@ export type Vendor = {
   taxInfo?: TaxInfo;
   bankInfo?: BankInfo;
   documents: BusinessDocument[];
+  // How payments to this vendor appear in the Cash Flow Statement; null = by the counterpart account
+  // (operating). E.g. "Supplier - Finance Activities" = financing.
+  cashFlowActivity?: CashFlowActivity | null;
 };
+
+export type CashFlowActivity = "operating" | "investing" | "financing";

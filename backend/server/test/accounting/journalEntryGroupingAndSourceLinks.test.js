@@ -102,8 +102,8 @@ async function createBalancedEntry(overrides = {}) {
     status: 'posted',
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 100, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 100 },
+      { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 100 },
     ]),
     ...overrides,
   });
@@ -118,10 +118,10 @@ test('getJournalEntries: a single entry with many lines is returned as exactly O
     status: 'posted',
     project: project._id,
     lines: projectLines([
-      { account: cash._id, debit: 25, credit: 0 },
-      { account: cash._id, debit: 25, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 25 },
-      { account: revenue._id, debit: 0, credit: 25 },
+      { account: cash._id, description: 'Test line', debit: 25, credit: 0 },
+      { account: cash._id, description: 'Test line', debit: 25, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 25 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 25 },
     ]),
   });
 
@@ -159,8 +159,8 @@ test('getJournalEntries: an unbalanced historical entry (bypassing validation) s
     totalDebit: 100,
     totalCredit: 40,
     lines: projectLines([
-      { account: cash._id, debit: 100, credit: 0 },
-      { account: revenue._id, debit: 0, credit: 40 },
+      { account: cash._id, description: 'Test line', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'Test line', debit: 0, credit: 40 },
     ]),
     createdAt: new Date(),
     updatedAt: new Date(),

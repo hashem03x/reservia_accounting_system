@@ -5,6 +5,8 @@ const { computeOrderTotals, round2 } = require('../../utils/orderTotals');
 const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
 const { postAutomaticJournalEntry, getAccountIdByCode, resolveVendorNumber, deterministicSourceId } = require('../accounting/accountingEventService');
 const { resolveFixedAssetAccounts } = require('./fixedAssetAccounts');
+const { getNextFixedAssetNumber } = require('./fixedAssetNumberService');
+const { assertPeriodsOpen } = require('../accounting/accountingPeriodService');
 
 const PERIOD_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
@@ -36,12 +38,17 @@ async function createFixedAsset(input, userId, session) {
     throw new ApiError(err.message, 400);
   }
 
+  // Closed accounting periods: refused before anything is written (the acquisition entry is
+  // checked again when it is saved).
+  await assertPeriodsOpen(acquisitionDate, session);
+
   const cost = round2(Number(price));
   const { vatAmount, total } = computeOrderTotals({ subtotal: cost, vatPercentage });
 
   const [asset] = await FixedAsset.create(
     [
       {
+        assetNumber: await getNextFixedAssetNumber(),
         name,
         vendor: vendorId,
         price: cost,
@@ -123,6 +130,8 @@ async function runDepreciation({ period, userId }, session) {
   if (period > currentPeriod) throw new ApiError('A future month cannot be depreciated.', 400);
 
   const date = periodDate(period);
+  // A closed month cannot be depreciated (every depreciation entry is checked again when saved).
+  await assertPeriodsOpen(date, session);
   const monthEnd = new Date(date);
   monthEnd.setUTCHours(23, 59, 59, 999);
 

@@ -2,6 +2,8 @@ const factory = require('../handlersFactory');
 
 const Vendor = require('../../models/vendor/vendor');
 const { createDocumentHandlers } = require('../documentController');
+const asyncHandler = require('express-async-handler');
+const { vendorFixedAssetAcquisitions } = require('../../services/fixedAssets/fixedAssetPaymentService');
 
 const { uploadDocument: uploadVendorDocument, deleteDocument: deleteVendorDocument } = createDocumentHandlers(Vendor, 'Vendor');
 
@@ -85,7 +87,14 @@ const deleteVendor = async (req, res) => {
   res.status(200).json({ success: true, message: 'Vendor deleted successfully', data: vendor });
 };
 
+// GET /vendors/:id/fixed-asset-acquisitions - fixed assets bought from this vendor, with the amount
+// owed, paid and outstanding read from the ledger (fixedAssetPaymentService.js).
+const getVendorFixedAssetAcquisitions = asyncHandler(async (req, res) => {
+  res.status(200).json({ status: 'success', data: await vendorFixedAssetAcquisitions(req.params.id) });
+});
+
 module.exports = {
+  getVendorFixedAssetAcquisitions,
   createVendor,
   getAllVendors,
   getVendor,

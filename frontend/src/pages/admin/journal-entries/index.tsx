@@ -59,7 +59,7 @@ export default function JournalEntries() {
     const executeFetch = async () => {
       const response = await privateRequest({
         url: "journal-entries",
-        params: { limit: ITEMS_PER_PAGE, sort: "-date", ...params },
+        params: { limit: ITEMS_PER_PAGE, sort: "entryNumber", ...params },
         signal: controller.signal,
         language,
       });
@@ -122,7 +122,9 @@ export default function JournalEntries() {
                     <Table.Th className="whitespace-nowrap">{translate("Currency", "العملة")}</Table.Th>
                     <Table.Th className="whitespace-nowrap text-right">{translate("Rate", "السعر")}</Table.Th>
                     <Table.Th className="whitespace-nowrap text-right">{translate("Total Debit", "إجمالي المدين")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap text-right">{translate("Total Credit", "إجمالي الدائن")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap text-right">
+                      {translate("Total Credit", "إجمالي الدائن")}
+                    </Table.Th>
                     <Table.Th className="whitespace-nowrap text-right">{translate("Balance", "الرصيد")}</Table.Th>
                     <Table.Th>{translate("Description", "الوصف")}</Table.Th>
                     <Table.Th className="whitespace-nowrap">{translate("Status", "الحالة")}</Table.Th>
@@ -142,10 +144,18 @@ export default function JournalEntries() {
                         <Table.Td className="whitespace-nowrap">{entry.module || "-"}</Table.Td>
                         <Table.Td className="whitespace-nowrap">{entry.project?.projectNumber || "-"}</Table.Td>
                         <Table.Td className="whitespace-nowrap">{entry.currency || "-"}</Table.Td>
-                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{entry.rate ? entry.rate.toLocaleString() : "-"}</Table.Td>
-                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{entry.totalDebit.toLocaleString()}</Table.Td>
-                        <Table.Td className="whitespace-nowrap text-right tabular-nums">{entry.totalCredit.toLocaleString()}</Table.Td>
-                        <Table.Td className={`whitespace-nowrap text-right tabular-nums ${difference !== 0 ? "text-red-600" : ""}`}>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                          {entry.rate ? entry.rate.toLocaleString() : "-"}
+                        </Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                          {entry.totalDebit.toLocaleString()}
+                        </Table.Td>
+                        <Table.Td className="whitespace-nowrap text-right tabular-nums">
+                          {entry.totalCredit.toLocaleString()}
+                        </Table.Td>
+                        <Table.Td
+                          className={`whitespace-nowrap text-right tabular-nums ${difference !== 0 ? "text-red-600" : ""}`}
+                        >
                           {difference.toLocaleString()}
                         </Table.Td>
                         <Table.Td>{entry.description || "-"}</Table.Td>

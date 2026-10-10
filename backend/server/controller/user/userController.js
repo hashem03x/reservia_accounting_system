@@ -421,3 +421,21 @@ exports.getAllRoleLogs = asyncHandler(async (req, res, next) => {
     data: logs,
   });
 });
+
+/**
+ *  @description    Record the signed-in user's guided tour status: { status: 'completed' | 'dismissed' | 'reset' }
+ *  @route          PUT /api/v1/users/me/tour
+ *  @access         Private/Protect
+ */
+exports.updateMyTourStatus = asyncHandler(async (req, res, next) => {
+  const { status } = req.body || {};
+  const now = new Date();
+  const changes = {
+    completed: { 'tour.completedAt': now },
+    dismissed: { 'tour.dismissedAt': now },
+    reset: { 'tour.completedAt': null, 'tour.dismissedAt': null },
+  }[status];
+  if (!changes) return next(new ApiError('Tour status must be completed, dismissed or reset.', 400));
+  const user = await User.findByIdAndUpdate(req.user._id, { $set: changes }, { new: true }).select('tour');
+  res.status(200).json({ data: { tour: user?.tour || null } });
+});

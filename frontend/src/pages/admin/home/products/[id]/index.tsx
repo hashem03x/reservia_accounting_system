@@ -8,6 +8,7 @@ import { Product as ProductType } from "@/types/product";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import ProductHandler from "../_components/product-handler";
+import PucTransfersSection from "../_components/puc-transfers-section";
 
 export default function Product() {
   const { language, translate, translations } = useLanguage();
@@ -63,6 +64,12 @@ export default function Product() {
       className="min-h-full bg-white shadow"
     />
   ) : (
-    product && <ProductHandler product={product} />
+    product && (
+      <div className="flex flex-col gap-4">
+        {/* Stock products can be moved into a project's PUC; a service has no stock. */}
+        {product.type !== "service" && <PucTransfersSection product={product} />}
+        <ProductHandler product={product} />
+      </div>
+    )
   );
 }
