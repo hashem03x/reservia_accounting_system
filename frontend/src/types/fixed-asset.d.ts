@@ -58,9 +58,13 @@ export interface FixedAssetAccountOptions {
 }
 
 export interface DepreciationRunResult {
+  run?: string;
   period: string;
   date: string;
   totalAmount: number;
+  // Assets looked at but not depreciated, and why; earlier months never depreciated per asset.
+  skipped?: { asset: string; name: string; reason: string }[];
+  missingEarlierMonths?: { asset: string; name: string; periods: string[] }[];
   processed: {
     asset: string;
     name: string;

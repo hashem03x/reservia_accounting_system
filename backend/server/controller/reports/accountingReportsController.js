@@ -6,6 +6,8 @@ const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { REPORTS_BY_KEY, CATEGORIES, catalog } = require('../../services/reports/reportRegistry');
 const { taxAccountOptions } = require('../../services/reports/taxReports');
+const { loadAccounts } = require('../../services/reports/reportCommon');
+const { pucAccountsOf, pucCategoryOf } = require('../../services/project/pucAccountService');
 
 // Accounting reports (services/reports/*): read-only - running, exporting or printing a report
 // never creates, updates or deletes an accounting record.
@@ -39,6 +41,12 @@ const getCatalog = asyncHandler(async (req, res) => {
 // tax reports each belongs to (the tax reports' account filter).
 const getTaxAccounts = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Tax accounts retrieved successfully', true, await taxAccountOptions()));
+});
+
+// GET /accounting-reports/puc-accounts - the PUC accounts and their cost category (PUC report filter).
+const getPucAccounts = asyncHandler(async (req, res) => {
+  const accounts = await pucAccountsOf(await loadAccounts());
+  res.status(200).json(apiResponse('PUC accounts retrieved successfully', true, accounts.map(a => ({ _id: String(a._id), code: a.code, name: a.name, nameAr: a.nameAr || null, category: pucCategoryOf(a).key }))));
 });
 
 // GET /accounting-reports/:key - sections flagged `paginate` return one page of rows (totals are
@@ -187,4 +195,4 @@ const deleteDisclosureNote = asyncHandler(async (req, res, next) => {
   res.status(204).send();
 });
 
-module.exports = { getCatalog, getTaxAccounts, getReport, exportReport, runReport, buildWorkbook, getDisclosureNotes, createDisclosureNote, updateDisclosureNote, deleteDisclosureNote };
+module.exports = { getCatalog, getTaxAccounts, getPucAccounts, getReport, exportReport, runReport, buildWorkbook, getDisclosureNotes, createDisclosureNote, updateDisclosureNote, deleteDisclosureNote };

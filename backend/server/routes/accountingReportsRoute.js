@@ -8,6 +8,7 @@ const { Resources, Actions } = require('../utils/appConstant');
 const {
   getCatalog,
   getTaxAccounts,
+  getPucAccounts,
   getReport,
   exportReport,
   getDisclosureNotes,
@@ -37,6 +38,7 @@ const noteValidators = (creating) => [
 // are not ones).
 router.get('/', getCatalog);
 router.get('/tax-accounts', getTaxAccounts);
+router.get('/puc-accounts', getPucAccounts);
 router
   .route('/notes')
   .get(getDisclosureNotes)

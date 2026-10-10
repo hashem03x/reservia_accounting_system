@@ -50,19 +50,22 @@ async function projectQuantity(productId, projectId, session) {
   const project = new mongoose.Types.ObjectId(String(projectId));
   const [[purchased], transfers] = await Promise.all([
     PurchaseOrder.aggregate([
-      { $match: { project } },
+      // Orders allocated automatically are counted through their allocation records below.
+      { $match: { project, 'projectAllocation.status': { $ne: 'allocated' } } },
       { $unwind: '$items' },
       { $match: { 'items.productId': product } },
       { $group: { _id: null, quantity: { $sum: { $subtract: [{ $ifNull: ['$items.starterQuantity', 0] }, { $ifNull: ['$items.returnedQuantity', 0] }] } } } },
     ]).session(session || null),
-    PucTransfer.find({ product, $or: [{ project }, { sourceProject: project }] }).select('quantity project sourceProject journalEntry').session(session || null).lean(),
+    PucTransfer.find({ product, $or: [{ project }, { sourceProject: project }] }).select('quantity project sourceProject journalEntry sourceType').session(session || null).lean(),
   ]);
   // A transfer whose journal entry was reversed no longer counts.
   const entries = await JournalEntry.collection.find({ _id: { $in: transfers.map(t => t.journalEntry) } }, { projection: { status: 1 }, session: session || undefined }).toArray();
   const live = new Set(entries.filter(e => e.status === 'posted').map(e => String(e._id)));
   let quantity = purchased?.quantity || 0;
   for (const t of transfers) {
-    if (live.has(String(t.journalEntry))) {
+    if (t.sourceType === 'purchase-return') {
+      if (idOf(t.project) === String(project)) quantity -= t.quantity; // released for a return
+    } else if (!t.journalEntry || live.has(String(t.journalEntry))) {
       if (idOf(t.project) === String(project)) quantity += t.quantity;
       if (idOf(t.sourceProject) === String(project)) quantity -= t.quantity;
     }

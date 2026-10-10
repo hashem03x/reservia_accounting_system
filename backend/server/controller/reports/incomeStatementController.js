@@ -3,7 +3,7 @@ const SalesOrder = require('../../models/sales/salesOrderModel');
 const PurchaseOrder = require('../../models/vendor/purchaseOrder');
 const Expense = require('../../models/expense/expenseModel');
 const exportToExcel = require('../../utils/exportToExcel');
-const FixedAsset = require('../../models/fixedAssets');
+const { depreciationInPeriod } = require('../../services/fixedAssets/depreciationLedgerService');
 
 exports.getNetProfit = async function (endDate, warehouseId = '', startDate) {
   // Parse input dates or use defaults
@@ -223,29 +223,14 @@ exports.getNetProfit = async function (endDate, warehouseId = '', startDate) {
     },
   };
 
-  // Get fixed assets for both periods
-  const [currentFixedAssets, previousFixedAssets] = await Promise.all([
-    FixedAsset.find({
-      ...currentQuery,
-      ...(warehouseId && warehouseId !== 'all' ? { warehouseId: warehouseId } : {}),
-    }).lean(),
-    FixedAsset.find({
-      ...previousQuery,
-      ...(warehouseId && warehouseId !== 'all' ? { warehouseId: warehouseId } : {}),
-    }).lean(),
+  // Depreciation and amortization of each period, from the depreciation entries posted for it
+  // (net of reversals) - not the lifetime accumulated depreciation of the assets created in it,
+  // which put a whole asset's depreciation in its acquisition month and none in the months it was
+  // actually depreciated.
+  const [currentLossValue, previousLossValue] = await Promise.all([
+    depreciationInPeriod(currentQuery.createdAt.$gte, currentQuery.createdAt.$lte),
+    depreciationInPeriod(previousQuery.createdAt.$gte, previousQuery.createdAt.$lte),
   ]);
-
-  // Fixed asset value decline for the current period (accumulated depreciation)
-  const currentLossValue = currentFixedAssets.reduce((total, asset) => {
-    const loss = asset.accumulatedDepreciation || 0;
-    return total + loss;
-  }, 0);
-
-  // Fixed asset value decline for the previous period (accumulated depreciation)
-  const previousLossValue = previousFixedAssets.reduce((total, asset) => {
-    const loss = asset.accumulatedDepreciation || 0;
-    return total + loss;
-  }, 0);
 
   reportData.netProfit.current -= currentLossValue;
   reportData.netProfit.previous -= previousLossValue;
@@ -499,29 +484,14 @@ exports.getIncomeStatementReport = asyncHandler(async (req, res) => {
     },
   };
 
-  // Get fixed assets for both periods
-  const [currentFixedAssets, previousFixedAssets] = await Promise.all([
-    FixedAsset.find({
-      ...currentQuery,
-      ...(warehouseId && warehouseId !== 'all' ? { warehouseId: warehouseId } : {}),
-    }).lean(),
-    FixedAsset.find({
-      ...previousQuery,
-      ...(warehouseId && warehouseId !== 'all' ? { warehouseId: warehouseId } : {}),
-    }).lean(),
+  // Depreciation and amortization of each period, from the depreciation entries posted for it
+  // (net of reversals) - not the lifetime accumulated depreciation of the assets created in it,
+  // which put a whole asset's depreciation in its acquisition month and none in the months it was
+  // actually depreciated.
+  const [currentLossValue, previousLossValue] = await Promise.all([
+    depreciationInPeriod(currentQuery.createdAt.$gte, currentQuery.createdAt.$lte),
+    depreciationInPeriod(previousQuery.createdAt.$gte, previousQuery.createdAt.$lte),
   ]);
-
-  // Fixed asset value decline for the current period (accumulated depreciation)
-  const currentLossValue = currentFixedAssets.reduce((total, asset) => {
-    const loss = asset.accumulatedDepreciation || 0;
-    return total + loss;
-  }, 0);
-
-  // Fixed asset value decline for the previous period (accumulated depreciation)
-  const previousLossValue = previousFixedAssets.reduce((total, asset) => {
-    const loss = asset.accumulatedDepreciation || 0;
-    return total + loss;
-  }, 0);
 
   reportData.netProfit.current -= currentLossValue;
   reportData.netProfit.previous -= previousLossValue;
@@ -731,29 +701,14 @@ exports.exportIncomeStatementReport = asyncHandler(async (req, res) => {
   const currentTotalExpenses = Object.values(currentExpensesByCategory).reduce((a, b) => (a || 0) + (b || 0), 0);
   const previousTotalExpenses = Object.values(previousExpensesByCategory).reduce((a, b) => (a || 0) + (b || 0), 0);
 
-  // Get fixed assets for both periods
-  const [currentFixedAssets, previousFixedAssets] = await Promise.all([
-    FixedAsset.find({
-      ...currentQuery,
-      ...(warehouseId && warehouseId !== 'all' ? { warehouseId: warehouseId } : {}),
-    }).lean(),
-    FixedAsset.find({
-      ...previousQuery,
-      ...(warehouseId && warehouseId !== 'all' ? { warehouseId: warehouseId } : {}),
-    }).lean(),
+  // Depreciation and amortization of each period, from the depreciation entries posted for it
+  // (net of reversals) - not the lifetime accumulated depreciation of the assets created in it,
+  // which put a whole asset's depreciation in its acquisition month and none in the months it was
+  // actually depreciated.
+  const [currentLossValue, previousLossValue] = await Promise.all([
+    depreciationInPeriod(currentQuery.createdAt.$gte, currentQuery.createdAt.$lte),
+    depreciationInPeriod(previousQuery.createdAt.$gte, previousQuery.createdAt.$lte),
   ]);
-
-  // Fixed asset value decline for the current period (accumulated depreciation)
-  const currentLossValue = currentFixedAssets.reduce((total, asset) => {
-    const loss = asset.accumulatedDepreciation || 0;
-    return total + loss;
-  }, 0);
-
-  // Fixed asset value decline for the previous period (accumulated depreciation)
-  const previousLossValue = previousFixedAssets.reduce((total, asset) => {
-    const loss = asset.accumulatedDepreciation || 0;
-    return total + loss;
-  }, 0);
 
   // Calculate net profit
   const currentNetProfit = currentGrossProfit - currentTotalExpenses - currentLossValue;

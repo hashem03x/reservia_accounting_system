@@ -8,6 +8,7 @@ const {
   getFixedAsset,
   getFixedAssetAccountOptions,
   runDepreciation,
+  getDepreciationRuns,
   getFixedAssetPayments,
   recordFixedAssetPayment,
 } = require('../controller/fixedAssetController');
@@ -22,6 +23,7 @@ router.use(authController.protect);
 
 // Registered before '/:id' so these paths are never matched as an id.
 router.get('/account-options', checkUserPermissions({ resource: Resources.expenses, action: Actions.read }), getFixedAssetAccountOptions);
+router.get('/depreciation/runs', checkUserPermissions({ resource: Resources.expenses, action: Actions.read }), getDepreciationRuns);
 router.post('/depreciation/run', checkUserPermissions({ resource: Resources.expenses, action: Actions.create }), runDepreciationValidators, runDepreciation);
 
 router

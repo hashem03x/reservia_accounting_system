@@ -13,6 +13,8 @@ const factory = require('../handlersFactory');
 const ApiError = require('../../utils/apiError'); // DEV_URL
 const { consumeVendorAdvancedPayment } = require('../../services/payments/advancedPaymentService');
 const { postPurchaseOrderJournalEntries, postPurchaseOrderAdvanceAppliedJE } = require('../../services/accounting/accountingEventService');
+const { allocatePurchaseOrderToProject, allocationState } = require('../../services/inventory/poProjectAllocationService');
+const { purchaseOrderPayments } = require('../../services/purchases/purchaseOrderPaymentService');
 
 // Applies a PO's items to the products they reference: recomputes each product's moving-average
 // cost (using stock levels BEFORE this purchase, same formula as before) and increments its stock
@@ -121,6 +123,10 @@ exports.createPO = asyncHandler(async (req, res, next) => {
       await postPurchaseOrderAdvanceAppliedJE(purchaseOrder, consumedAdvanceAmount, session);
     }
 
+    // The received stock lines go on to the order's project (quantity side of PO_INVENTORY_TO_WIP),
+    // in this same transaction - a failure leaves neither stock nor allocation behind.
+    await allocatePurchaseOrderToProject(purchaseOrder._id, { userId: req.user._id, session });
+
     await session.commitTransaction();
 
     res.status(201).json({
@@ -138,6 +144,40 @@ exports.createPO = asyncHandler(async (req, res, next) => {
 });
 
 exports.getAllPO = factory.getAll(PO);
+
+async function inTransaction(work) {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      result = await work(session);
+    });
+    return result;
+  } finally {
+    session.endSession();
+  }
+}
+
+// GET /purchaseOrder/:id/project-allocation - per line: ordered, received, returned, allocated to
+// the project and still unallocated, with the allocation records and the order's WIP entry.
+exports.getProjectAllocation = asyncHandler(async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(new ApiError('Invalid purchase order id', 400));
+  res.status(200).json({ status: 'success', data: await allocationState(req.params.id) });
+});
+
+// POST /purchaseOrder/:id/project-allocation - allocates whatever received quantity is still
+// unallocated (an order created before automatic allocation, or a retry). Idempotent.
+exports.allocateToProject = asyncHandler(async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(new ApiError('Invalid purchase order id', 400));
+  const state = await inTransaction(session => allocatePurchaseOrderToProject(req.params.id, { userId: req.user._id, session }));
+  res.status(200).json({ status: 'success', data: state });
+});
+
+// GET /purchaseOrder/:id/payments - the order's payment summary and history (purchaseOrderPaymentService).
+exports.getPurchaseOrderPayments = asyncHandler(async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(new ApiError('Invalid purchase order id', 400));
+  res.status(200).json({ status: 'success', data: await purchaseOrderPayments(req.params.id) });
+});
 
 exports.getPO = factory.getOne(PO);
 

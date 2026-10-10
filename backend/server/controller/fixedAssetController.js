@@ -4,7 +4,7 @@ const FixedAsset = require('../models/fixedAssets');
 const factory = require('./handlersFactory');
 const ApiError = require('../utils/apiError');
 const { logAccountingEvent, logAccountingError } = require('../utils/accountingLogger');
-const { createFixedAsset, updateFixedAsset, runDepreciation } = require('../services/fixedAssets/fixedAssetService');
+const { createFixedAsset, updateFixedAsset, runDepreciation, listDepreciationRuns } = require('../services/fixedAssets/fixedAssetService');
 const { getFixedAssetAccountOptions } = require('../services/fixedAssets/fixedAssetAccounts');
 const { getFixedAssetPayments, recordFixedAssetPayment } = require('../services/fixedAssets/fixedAssetPaymentService');
 
@@ -87,4 +87,9 @@ exports.recordFixedAssetPayment = asyncHandler(async (req, res) => {
     logAccountingError('FIXED_ASSET_PAYMENT_FAILED', err, { fixedAssetId: req.params.id, durationMs: Date.now() - startedAt, requestId: req.id });
     throw err;
   }
+});
+
+// GET /fixed-assets/depreciation/runs - the latest depreciation runs and their results.
+exports.getDepreciationRuns = asyncHandler(async (req, res) => {
+  res.status(200).json({ status: 'success', data: await listDepreciationRuns() });
 });

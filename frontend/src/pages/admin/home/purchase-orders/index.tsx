@@ -147,10 +147,10 @@ export default function PurchaseOrders() {
                     <Table.Th>{translate("Vendor", "البائع")}</Table.Th>
                     <Table.Th>{translate("Project", "المشروع")}</Table.Th>
                     <Table.Th>{translate("Payment Status", "حالة الدفع")}</Table.Th>
-                    <Table.Th>{translate("Total Amount", "المبلغ الإجمالي")}</Table.Th>
-                    <Table.Th>{translate("Paid Amount", "المبلغ المدفوع")}</Table.Th>
-                    <Table.Th title={translate("Amount Due to Vendor", "المبلغ المستحق للبائع")}>
-                      {translate("Remaining Amount", "المبلغ المتبقي")}
+                    <Table.Th>{translate("Total Payable", "إجمالي المستحق")}</Table.Th>
+                    <Table.Th>{translate("Total Paid", "إجمالي المدفوع")}</Table.Th>
+                    <Table.Th title={translate("Amount still owed to the vendor", "المبلغ المتبقي المستحق للبائع")}>
+                      {translate("Outstanding", "المتبقي")}
                     </Table.Th>
                     <Table.Th>{translate("Date", "التاريخ")}</Table.Th>
                     <Table.Th>{translate("By", "بواسطة")}</Table.Th>

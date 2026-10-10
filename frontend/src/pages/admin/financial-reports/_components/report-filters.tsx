@@ -68,6 +68,17 @@ export default function ReportFilters({
     data: taxAccounts,
     setData: setTaxAccounts,
   } = useDataHandler<(ChartOfAccountRef & { reports: string[] })[]>({ initialData: [] });
+  // Every Chart of Accounts account (General Ledger account selector) and the PUC accounts.
+  const {
+    privateRequest: loadAllAccounts,
+    data: allAccounts,
+    setData: setAllAccounts,
+  } = useDataHandler<ChartOfAccountRef[]>({ initialData: [] });
+  const {
+    privateRequest: loadPucAccounts,
+    data: pucAccounts,
+    setData: setPucAccounts,
+  } = useDataHandler<(ChartOfAccountRef & { category: string })[]>({ initialData: [] });
   const filterKey = filters.join(",");
   useEffect(() => {
     if (has("project")) {
@@ -83,6 +94,16 @@ export default function ReportFilters({
       loadExpenseAccounts({ url: "expenses/account-options", language })
         .then((res) => setExpenseAccounts(res.data || []))
         .catch(() => setExpenseAccounts([]));
+    }
+    if (has("glAccount")) {
+      loadAllAccounts({ url: "accounts", params: { limit: 2000, sort: "code", fields: "code,name,nameAr,type" }, language })
+        .then((res) => setAllAccounts(res.data || []))
+        .catch(() => setAllAccounts([]));
+    }
+    if (has("pucAccount")) {
+      loadPucAccounts({ url: "accounting-reports/puc-accounts", language })
+        .then((res) => setPucAccounts(res.data || []))
+        .catch(() => setPucAccounts([]));
     }
     if (has("taxAccount")) {
       loadTaxAccounts({ url: "accounting-reports/tax-accounts", language })
@@ -277,6 +298,104 @@ export default function ReportFilters({
           min={0}
           max={3650}
           allowDecimal={false}
+        />
+      )}
+      {has("glAccount") && (
+        <Select
+          label={translate("Account (number - name)", "الحساب (الرقم - الاسم)")}
+          placeholder={translate("All accounts", "كل الحسابات")}
+          value={values.account || null}
+          onChange={(v) => set("account", v || "")}
+          data={allAccounts.map((a) => ({
+            value: a._id,
+            label: `${a.code} - ${(language === "ar-EG" && a.nameAr) || a.name}`,
+          }))}
+          searchable
+          clearable
+          nothingFoundMessage={translate("No account matches", "لا يوجد حساب مطابق")}
+        />
+      )}
+      {has("entryNumber") && (
+        <NumberInput
+          label={translate("Entry No.", "رقم القيد")}
+          value={values.entryNumber === undefined || values.entryNumber === "" ? "" : Number(values.entryNumber)}
+          onChange={(v) => set("entryNumber", v === "" ? "" : String(v))}
+          min={1}
+          allowDecimal={false}
+        />
+      )}
+      {has("glSearch") && (
+        <TextInput
+          label={translate("Search", "بحث")}
+          placeholder={translate("Account, description, party, document...", "الحساب أو البيان أو الطرف أو المستند...")}
+          value={values.search || ""}
+          onChange={(e) => set("search", e.currentTarget.value)}
+          maxLength={100}
+        />
+      )}
+      {has("glSort") && (
+        <Select
+          label={translate("Sort", "الترتيب")}
+          value={values.sort || "date"}
+          onChange={(v) => set("sort", v || "date")}
+          data={options([
+            ["date", "Date (oldest first)", "التاريخ (الأقدم أولاً)"],
+            ["-date", "Date (newest first)", "التاريخ (الأحدث أولاً)"],
+            ["entryNumber", "Entry number", "رقم القيد"],
+            ["-entryNumber", "Entry number (descending)", "رقم القيد (تنازلي)"],
+            ["account", "Account number", "رقم الحساب"],
+            ["-amount", "Amount (largest first)", "المبلغ (الأكبر أولاً)"],
+            ["amount", "Amount (smallest first)", "المبلغ (الأصغر أولاً)"],
+          ])}
+        />
+      )}
+      {has("pucCategory") && (
+        <Select
+          label={translate("PUC Category", "فئة التكلفة")}
+          placeholder={translate("All categories", "كل الفئات")}
+          value={values.category || null}
+          onChange={(v) => set("category", v || "")}
+          data={options([
+            ["materials", "Materials", "مواد"],
+            ["labor", "Labor", "عمالة"],
+            ["design", "Designs and Engineering", "التصميمات والهندسة"],
+            ["equipment", "Equipment", "معدات"],
+            ["subcontractors", "Subcontractors", "مقاولو الباطن"],
+            ["services", "Services", "خدمات"],
+            ["other", "Other Project Costs", "تكاليف أخرى للمشروع"],
+          ])}
+          clearable
+        />
+      )}
+      {has("pucAccount") && (
+        <Select
+          label={translate("PUC Account", "حساب مشروعات تحت التنفيذ")}
+          placeholder={translate("All PUC accounts", "كل الحسابات")}
+          value={values.account || null}
+          onChange={(v) => set("account", v || "")}
+          data={pucAccounts.map((a) => ({
+            value: a._id,
+            label: `${a.code} - ${(language === "ar-EG" && a.nameAr) || a.name}`,
+          }))}
+          searchable
+          clearable
+        />
+      )}
+      {has("pucSource") && (
+        <Select
+          label={translate("Source Document", "نوع المستند")}
+          placeholder={translate("All", "الكل")}
+          value={values.source || null}
+          onChange={(v) => set("source", v || "")}
+          data={options([
+            ["Purchase Order", "Purchase Order", "أمر شراء"],
+            ["Inventory", "PUC Transfer", "تحويل مشروعات تحت التنفيذ"],
+            ["Sales Order", "Sales Order", "أمر بيع"],
+            ["Project", "Project", "مشروع"],
+            ["Manual", "Manual entry", "قيد يدوي"],
+            ["Reversal", "Reversal", "قيد عكسي"],
+          ])}
+          clearable
         />
       )}
       {has("expenseCategory") && (

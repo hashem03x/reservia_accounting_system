@@ -14,14 +14,22 @@ const pucTransferSchema = new Schema(
     quantity: { type: Number, required: true, min: [0.001, 'Quantity must be greater than 0'] },
     // The product's cost per unit at the time of the transfer, and quantity x cost.
     unitCost: { type: Number, required: true, min: 0 },
-    amount: { type: Number, required: true, min: 0.01 },
-    sourceType: { type: String, enum: ['warehouse', 'project'], required: true },
+    amount: { type: Number, required: true, min: 0 },
+    // warehouse / project: a PUC Transfer made by a user. purchase-order: the automatic allocation of
+    // a Purchase Order line's received quantity to its project (no entry of its own - the PO's
+    // PO_INVENTORY_TO_WIP entry already moved its cost). purchase-return: an allocation released
+    // because the quantity was returned to the supplier.
+    sourceType: { type: String, enum: ['warehouse', 'project', 'purchase-order', 'purchase-return'], required: true },
+    purchaseOrder: { type: Schema.Types.ObjectId, ref: 'PurchaseOrder', default: null },
+    poItem: { type: Schema.Types.ObjectId, default: null },
     warehouse: { type: Schema.Types.ObjectId, ref: 'Warehouse', default: null },
     sourceProject: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
     project: { type: Schema.Types.ObjectId, ref: 'Project', required: true },
     date: { type: Date, required: true },
     notes: { type: String, trim: true, maxlength: 500 },
-    journalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', required: true },
+    // The transfer's journal entry (purchase-order: the PO's PO_INVENTORY_TO_WIP entry; none for a
+    // purchase-return - Reservia posts no entry for purchase returns).
+    journalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', default: null },
     // The client's submission key - a repeated request with the same key returns this transfer.
     requestKey: { type: String, trim: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -32,6 +40,7 @@ const pucTransferSchema = new Schema(
 pucTransferSchema.index({ product: 1, date: -1 });
 pucTransferSchema.index({ project: 1 });
 pucTransferSchema.index({ sourceProject: 1 });
+pucTransferSchema.index({ purchaseOrder: 1, poItem: 1 });
 pucTransferSchema.index({ requestKey: 1 }, { unique: true, partialFilterExpression: { requestKey: { $type: 'string' } } });
 
 module.exports = model('PucTransfer', pucTransferSchema);

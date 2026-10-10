@@ -1,5 +1,5 @@
 const asyncHandler = require('express-async-handler');
-const FixedAsset = require('../../models/fixedAssets');
+const { netBookValueAsOf } = require('../../services/fixedAssets/depreciationLedgerService');
 const Warehouse = require('../../models/inventory/warehouseModel');
 const Payment = require('../../models/vendor/paymentModel');
 const User = require('../../models/userModel');
@@ -30,8 +30,9 @@ exports.getBalanceSheetReport = asyncHandler(async (req, res) => {
     : {};
 
   // 1. Calculate Non-current assets (Fixed Assets)
-  const fixedAssets = await FixedAsset.find(dateQuery);
-  const totalNonCurrentAssets = fixedAssets.reduce((sum, asset) => sum + (asset.bookValue || 0), 0);
+  // Net book value at the report date: cost less the depreciation posted up to that date (the asset's
+  // current Book Value would also deduct depreciation of later months).
+  const totalNonCurrentAssets = await netBookValueAsOf(dateQuery.createdAt?.$lte || new Date(), dateQuery);
 
   // 2. Calculate Current Assets
   // Get warehouse balances
@@ -171,8 +172,9 @@ exports.exportBalanceSheetReport = asyncHandler(async (req, res) => {
     : {};
 
   // 1. Calculate Non-current assets (Fixed Assets)
-  const fixedAssets = await FixedAsset.find(dateQuery);
-  const totalNonCurrentAssets = fixedAssets.reduce((sum, asset) => sum + (asset.bookValue || 0), 0);
+  // Net book value at the report date: cost less the depreciation posted up to that date (the asset's
+  // current Book Value would also deduct depreciation of later months).
+  const totalNonCurrentAssets = await netBookValueAsOf(dateQuery.createdAt?.$lte || new Date(), dateQuery);
 
   // 2. Calculate Current Assets
   // Get warehouse balances

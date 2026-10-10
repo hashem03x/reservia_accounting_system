@@ -54,6 +54,10 @@ const paymentSchema = Schema(
       paymentId: { type: Schema.Types.ObjectId, ref: 'Payment' }, // Reference to the tax payment
     },
     notes: { type: String },
+    // Set when the payment's journal entry is reversed (services/payments/paymentReversalService.js):
+    // the payment no longer counts as paid, but the record is kept.
+    reversedByEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', default: null },
+    reversedAt: { type: Date, default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

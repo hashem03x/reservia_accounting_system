@@ -128,7 +128,7 @@ function applyEntryDescriptionAndPartyToLines(lines, description, party, withPar
  * of the business operation - see journalEntryModel.js's compound unique index, which is the real
  * backstop against a race duplicating this under concurrent requests).
  */
-async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, project, lines, session, triggeredBySalesOrder, advancedPayment, party }) {
+async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, reference, project, lines, session, triggeredBySalesOrder, advancedPayment, party }) {
   const existing = await JournalEntry.findOne({ sourceType, sourceId, accountingAction }).session(session || null);
   if (existing) return existing;
 
@@ -164,6 +164,7 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
         entryNumber,
         date: date || new Date(),
         description,
+        ...(reference ? { reference } : {}),
         source: 'automatic',
         // Normalized through the one accountingAction -> Module map (docs section "Module field") -
         // never a free-text/inconsistently-cased variation (see accountingConstants.js).

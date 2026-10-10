@@ -342,6 +342,17 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
       currentOriginal.reversedAt = new Date();
       currentOriginal.status = 'reversed';
       await currentOriginal.save({ session });
+
+      // A reversed depreciation entry gives its month back to the asset (Book Value, accumulated
+      // depreciation), so the asset matches the ledger and the month can be depreciated again.
+      if (currentOriginal.accountingAction === 'FIXED_ASSET_DEPRECIATION') {
+        // eslint-disable-next-line global-require
+        await require('../../services/fixedAssets/fixedAssetService').applyDepreciationReversal(currentOriginal._id, reversal._id, session);
+      }
+      // A reversed vendor payment stops counting as paid on its Purchase Order / Expense, and the
+      // vendor and warehouse balances it moved are restored.
+      // eslint-disable-next-line global-require
+      await require('../../services/payments/paymentReversalService').applyPaymentReversal(currentOriginal, reversal, session);
     });
 
     logAccountingEvent('JOURNAL_ENTRY_REVERSED', {

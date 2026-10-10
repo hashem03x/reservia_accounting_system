@@ -9,6 +9,11 @@ const depreciationSchema = new Schema(
     amount: { type: Number, required: true, min: 0.01 },
     date: { type: Date, required: true },
     journalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', required: true },
+    // The depreciation run that posted it (models/fixedAssetDepreciationRunModel.js).
+    run: { type: Schema.Types.ObjectId, ref: 'FixedAssetDepreciationRun', default: null },
+    // Set when its journal entry is reversed: the month no longer counts and can be run again.
+    reversed: { type: Boolean, default: false },
+    reversedByEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { _id: false, timestamps: { createdAt: true, updatedAt: false } }

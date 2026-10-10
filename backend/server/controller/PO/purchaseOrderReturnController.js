@@ -9,6 +9,7 @@ const Payment = require('../../models/vendor/paymentModel');
 const Transfer = require('../../models/inventory/transferModel');
 const ApiError = require('../../utils/apiError');
 const factory = require('../handlersFactory');
+const { releaseAllocationForReturn } = require('../../services/inventory/poProjectAllocationService');
 
 const findTransferredQuantity = async (productId, sourceWarehouseId, session) => {
   // Find transfers where this product was moved from source warehouse
@@ -150,6 +151,10 @@ exports.returnPurchaseOrderItem = async (req, res, next) => {
     if (!productForType) return next(new ApiError(`Product with ID ${productId} not found.`));
 
     if (productForType.type !== 'service') {
+      // Stock received on a project order was allocated to the project - release the returned
+      // quantity from the project back into the warehouse first, so the return below can take it.
+      await releaseAllocationForReturn(purchaseOrder, productId, returnedQuantity, { userId: req.user._id, session });
+
       // recalc moving average before update stock with returned quantity
       await calculateMovingAverageOnReturn(returnRecords[0], session);
 

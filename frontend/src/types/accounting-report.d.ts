@@ -27,7 +27,14 @@ export type ReportFilterName =
   | "taxMovement"
   | "taxSource"
   | "taxReference"
-  | "expenseCategory";
+  | "expenseCategory"
+  | "glAccount"
+  | "entryNumber"
+  | "glSearch"
+  | "glSort"
+  | "pucCategory"
+  | "pucAccount"
+  | "pucSource";
 
 export type ReportCatalogEntry = { key: string; kind: ReportKind; title: LocalizedText; filters: ReportFilterName[] };
 export type ReportCatalog = { categories: { key: string; title: LocalizedText; reports: ReportCatalogEntry[] }[] };

@@ -52,6 +52,9 @@ const purchaseOrderSchema = new Schema(
         starterSubtotal: { type: Number, min: 0 },
         returnedQuantity: { type: Number, default: 0, min: 0 },
         subtotal: { type: Number, min: 0 }, // Final Subtotal After calculating returned quantity
+        // Quantity of this received line moved from the warehouse to the PO's project (PUC) - net of
+        // allocations released by returns (services/inventory/poProjectAllocationService.js).
+        allocatedQuantity: { type: Number, default: 0, min: 0 },
         // LEGACY - no longer used for accounting. Service purchases now always post to the
         // Service's own PUC Account (Product.pucAccount, see accountingEventService.js#
         // postPurchaseOrderJournalEntries, PO_SERVICE_TO_WIP). Kept on the schema only so existing
@@ -77,6 +80,13 @@ const purchaseOrderSchema = new Schema(
     paidAmount: { type: Number, min: 0, default: 0 },
     remainingAmount: { type: Number },
     paymentStatus: { type: String, enum: ['unpaid', 'partial', 'paid', 'unknown'], default: 'unpaid' },
+    // Automatic allocation of the received stock lines to the PO's project (PUC): 'allocated' once
+    // every received quantity is on the project; 'not_applicable' for an order with no project or
+    // no stock lines; null for an order created before automatic allocation existed.
+    projectAllocation: {
+      status: { type: String, enum: ['allocated', 'not_applicable', null], default: null },
+      at: { type: Date, default: null },
+    },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     notes: { type: String },
   },

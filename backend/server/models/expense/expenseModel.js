@@ -20,6 +20,8 @@ const expensePaymentSchema = new Schema(
     paymentAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', required: true },
     date: { type: Date, required: true },
     journalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', required: true },
+    // Set when the payment's journal entry is reversed - it no longer counts as paid.
+    reversedByEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { _id: false }

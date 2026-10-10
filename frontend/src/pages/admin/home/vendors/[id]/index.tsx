@@ -24,6 +24,7 @@ import UpdateBalanceModal from "./_components/update-balance-modal";
 import VendorOrdersHistory from "./_components/vendor-orders-history";
 import VendorPaymentsHistory from "./_components/vendor-payments-history";
 import VendorFixedAssets from "./_components/vendor-fixed-assets";
+import VendorExpenses from "./_components/vendor-expenses";
 import { VendorFixedAssetAcquisition } from "@/types/fixed-asset";
 import paths from "@/utils/constants/paths";
 import AdminGaurd from "@/components/ui/admin-gaurd";
@@ -103,6 +104,7 @@ export default function Vendor() {
   const canIReadPurchaseOrders = useHasPermission(resources.purchaseOrders, actions.read);
   const canIReadPayments = useHasPermission(resources.cash, actions.read);
   const canIReadReports = useHasPermission(resources.reports, actions.read);
+  const canIReadExpenses = useHasPermission(resources.expenses, actions.read);
 
   // ========== Handle Modals ==========
 
@@ -303,6 +305,13 @@ export default function Vendor() {
             {canIReadPurchaseOrders && vendorPurchaseOrders.length > 0 && (
               <div className="rounded-md bg-gray-100 p-4">
                 <VendorOrdersHistory orders={vendorPurchaseOrders} />
+              </div>
+            )}
+
+            {/* Expenses (loaded by the section itself - a failure shows there, never blanks the page) */}
+            {canIReadExpenses && (
+              <div className="rounded-md bg-gray-100 p-4">
+                <VendorExpenses vendorId={vendor._id} />
               </div>
             )}
 

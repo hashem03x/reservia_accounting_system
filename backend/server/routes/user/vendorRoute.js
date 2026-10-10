@@ -15,6 +15,7 @@ const {
 
 
 const {
+  getVendorExpenses,
   getVendorFixedAssetAcquisitions,
   createVendor,
   getAllVendors,
@@ -52,6 +53,14 @@ router.get(
   checkUserPermissions({ resource: 'vendors', action: 'read' }),
   readVendorValidators,
   getVendorFixedAssetAcquisitions
+);
+
+// The vendor's expenses (read with the expenses permission - they are expense records).
+router.get(
+  '/:id/expenses',
+  checkUserPermissions({ resource: 'expenses', action: 'read' }),
+  readVendorValidators,
+  getVendorExpenses
 );
 
 router.route('/:id')

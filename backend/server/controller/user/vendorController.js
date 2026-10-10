@@ -4,6 +4,7 @@ const Vendor = require('../../models/vendor/vendor');
 const { createDocumentHandlers } = require('../documentController');
 const asyncHandler = require('express-async-handler');
 const { vendorFixedAssetAcquisitions } = require('../../services/fixedAssets/fixedAssetPaymentService');
+const { vendorExpenses } = require('../../services/expenses/vendorExpenseService');
 
 const { uploadDocument: uploadVendorDocument, deleteDocument: deleteVendorDocument } = createDocumentHandlers(Vendor, 'Vendor');
 
@@ -93,7 +94,14 @@ const getVendorFixedAssetAcquisitions = asyncHandler(async (req, res) => {
   res.status(200).json({ status: 'success', data: await vendorFixedAssetAcquisitions(req.params.id) });
 });
 
+// GET /vendors/:id/expenses?from=&to=&status= - the vendor's expenses with paid / outstanding amounts.
+const getVendorExpenses = asyncHandler(async (req, res) => {
+  const { from, to, status } = req.query;
+  res.status(200).json({ status: 'success', data: await vendorExpenses(req.params.id, { from, to, status }) });
+});
+
 module.exports = {
+  getVendorExpenses,
   getVendorFixedAssetAcquisitions,
   createVendor,
   getAllVendors,

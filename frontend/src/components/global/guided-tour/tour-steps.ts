@@ -209,8 +209,8 @@ export const TOUR_STEPS: TourStep[] = [
     access: read("reports"),
     title: { en: "Financial Reports", ar: "التقارير المالية" },
     body: {
-      en: "Trial Balance, Profit or Loss, Financial Position, Cash Flow (operating / investing / financing), project, customer and supplier reports, Expenses by Category and the Tax reports - all from posted journal entries, exportable to Excel and PDF.",
-      ar: "ميزان المراجعة وقائمة الدخل والمركز المالي والتدفقات النقدية (تشغيلية / استثمارية / تمويلية) وتقارير المشروعات والعملاء والموردين والمصروفات حسب التصنيف وتقارير الضرائب - كلها من القيود المرحلة، مع التصدير إلى Excel و PDF.",
+      en: "General Ledger line items (by account number), Trial Balance, Profit or Loss, Financial Position, Cash Flow (operating / investing / financing), project reports including the PUC / Project Cost report, customer and supplier reports, Expenses by Category and the Tax reports - all from posted journal entries, exportable to Excel and PDF.",
+      ar: "دفتر الأستاذ العام التفصيلي (برقم الحساب) وميزان المراجعة وقائمة الدخل والمركز المالي والتدفقات النقدية (تشغيلية / استثمارية / تمويلية) وتقارير المشروعات ومنها تقرير تكاليف المشروعات والعملاء والموردين والمصروفات حسب التصنيف وتقارير الضرائب - كلها من القيود المرحلة، مع التصدير إلى Excel و PDF.",
     },
   },
   {

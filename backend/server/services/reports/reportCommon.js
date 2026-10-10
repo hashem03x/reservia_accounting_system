@@ -158,7 +158,7 @@ const MAX_DETAIL_ROWS = 20000;
 async function ledgerEntries({ start = null, end, entryMatch = {}, limit = MAX_DETAIL_ROWS }) {
   const entries = await JournalEntry.collection
     .find(ledgerMatch({ start, end, extra: entryMatch }), {
-      projection: { entryNumber: 1, date: 1, description: 1, status: 1, accountingAction: 1, sourceType: 1, sourceId: 1, module: 1, reversalOfEntry: 1, triggeredBySalesOrder: 1, project: 1, lines: 1 },
+      projection: { entryNumber: 1, date: 1, description: 1, status: 1, accountingAction: 1, sourceType: 1, sourceId: 1, module: 1, reversalOfEntry: 1, triggeredBySalesOrder: 1, project: 1, reference: 1, lines: 1 },
     })
     .sort({ date: 1, entryNumber: 1 })
     .limit(limit + 1)

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
@@ -11,10 +11,19 @@ import ErrorAlert from "@/components/ui/error-alert";
 import Modal from "@/components/ui/modal";
 import JournalEntryLink from "@/components/global/journal-entry-link";
 import { DepreciationRunResult } from "@/types/fixed-asset";
+import { DepreciationRunRecord } from "@/types/purchase-order-extras";
 
 // Manual monthly depreciation/amortization run: every active asset not yet depreciated for the
 // chosen month gets one entry (Dr Depreciation & Amortization / Cr Accumulated) - all or nothing.
-export default function RunDepreciationModal({ opened, close, onCompleted }: { opened: boolean; close: () => void; onCompleted: () => void }) {
+export default function RunDepreciationModal({
+  opened,
+  close,
+  onCompleted,
+}: {
+  opened: boolean;
+  close: () => void;
+  onCompleted: () => void;
+}) {
   const { language, translate, translations } = useLanguage();
   const privateRequest = usePrivateRequest();
 
@@ -25,9 +34,15 @@ export default function RunDepreciationModal({ opened, close, onCompleted }: { o
   function handleRun(e: React.FormEvent) {
     e.preventDefault();
     if (!month) return;
-    if (!confirm(translate(`Run depreciation for ${toMonthOnly(month)}?`, `تشغيل الإهلاك لشهر ${toMonthOnly(month)}؟`))) return;
+    if (!confirm(translate(`Run depreciation for ${toMonthOnly(month)}?`, `تشغيل الإهلاك لشهر ${toMonthOnly(month)}؟`)))
+      return;
     handleRequest(language, setLoading, setError, async () => {
-      const res = await privateRequest({ language, method: "POST", url: "fixed-assets/depreciation/run", data: { period: toMonthOnly(month) } });
+      const res = await privateRequest({
+        language,
+        method: "POST",
+        url: "fixed-assets/depreciation/run",
+        data: { period: toMonthOnly(month) },
+      });
       setResult(res.data);
       onCompleted();
     });
@@ -97,8 +112,12 @@ export default function RunDepreciationModal({ opened, close, onCompleted }: { o
                   {result.processed.map((row) => (
                     <Table.Tr key={row.asset}>
                       <Table.Td>{row.name}</Table.Td>
-                      <Table.Td className="text-right tabular-nums">{formatAmount(row.amount, translations.currency)}</Table.Td>
-                      <Table.Td className="text-right tabular-nums">{formatAmount(row.bookValue, translations.currency)}</Table.Td>
+                      <Table.Td className="text-right tabular-nums">
+                        {formatAmount(row.amount, translations.currency)}
+                      </Table.Td>
+                      <Table.Td className="text-right tabular-nums">
+                        {formatAmount(row.bookValue, translations.currency)}
+                      </Table.Td>
                       <Table.Td>
                         <JournalEntryLink entry={{ _id: row.journalEntry, entryNumber: row.entryNumber }} />
                       </Table.Td>
@@ -108,8 +127,82 @@ export default function RunDepreciationModal({ opened, close, onCompleted }: { o
               </Table>
             </>
           )}
+          {!!result.missingEarlierMonths?.length && (
+            <Alert color="yellow" title={translate("Earlier months not yet depreciated", "شهور سابقة لم تُهلك بعد")}>
+              <p className="mb-1 text-sm">
+                {translate(
+                  "Each month is its own run. Run these months as well so the accumulated depreciation is complete:",
+                  "كل شهر له تشغيل مستقل. شغّل هذه الشهور أيضاً ليكتمل مجمع الإهلاك:",
+                )}
+              </p>
+              <ul className="list-disc ps-5 text-sm">
+                {result.missingEarlierMonths.map((m) => (
+                  <li key={m.asset}>
+                    {m.name}: {m.periods.join(", ")}
+                  </li>
+                ))}
+              </ul>
+            </Alert>
+          )}
+          {!!result.skipped?.length && (
+            <div className="flex flex-col gap-1">
+              <h5 className="text-sm font-semibold">{translate("Not depreciated this month", "لم يُهلك هذا الشهر")}</h5>
+              <ul className="list-disc ps-5 text-sm text-gray-600 dark:text-gray-300">
+                {result.skipped.map((s) => (
+                  <li key={s.asset}>
+                    {s.name}: {s.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
+      <RunHistory refreshKey={result?.run || ""} />
     </Modal>
+  );
+}
+
+// The latest depreciation runs (audit trail): month, assets depreciated, total, by whom.
+function RunHistory({ refreshKey }: { refreshKey: string }) {
+  const { language, translate, translations } = useLanguage();
+  const privateRequest = usePrivateRequest();
+  const [runs, setRuns] = useState<DepreciationRunRecord[]>([]);
+  useEffect(() => {
+    privateRequest({ url: "fixed-assets/depreciation/runs", language })
+      .then((res) => setRuns((res.data || []).slice(0, 10)))
+      .catch(() => setRuns([]));
+  }, [refreshKey]);
+  if (!runs.length) return null;
+  return (
+    <div className="mt-5 flex flex-col gap-2">
+      <h5 className="text-sm font-semibold">{translate("Recent runs", "آخر التشغيلات")}</h5>
+      <Table className="text-sm" withColumnBorders>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>{translate("Month", "الشهر")}</Table.Th>
+            <Table.Th>{translate("Run at", "وقت التشغيل")}</Table.Th>
+            <Table.Th className="text-end">{translate("Depreciated", "تم إهلاكها")}</Table.Th>
+            <Table.Th className="text-end">{translate("Not depreciated", "لم تُهلك")}</Table.Th>
+            <Table.Th className="text-end">{translate("Total", "الإجمالي")}</Table.Th>
+            <Table.Th>{translate("By", "بواسطة")}</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {runs.map((r) => (
+            <Table.Tr key={r._id}>
+              <Table.Td className="tabular-nums">{r.period}</Table.Td>
+              <Table.Td className="whitespace-nowrap">{new Date(r.createdAt).toLocaleString(language)}</Table.Td>
+              <Table.Td className="text-end tabular-nums">{r.processed.length}</Table.Td>
+              <Table.Td className="text-end tabular-nums" title={r.skipped.map((s) => `${s.name}: ${s.reason}`).join("; ")}>
+                {r.skipped.length}
+              </Table.Td>
+              <Table.Td className="text-end tabular-nums">{formatAmount(r.totalAmount, translations.currency)}</Table.Td>
+              <Table.Td>{r.createdBy?.name || "-"}</Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </div>
   );
 }

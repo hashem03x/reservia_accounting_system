@@ -543,4 +543,5 @@ module.exports = {
   profitTotals,
   profitNotes,
   NOT_LINKED,
+  projectCells,
 };
