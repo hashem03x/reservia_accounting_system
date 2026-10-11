@@ -267,6 +267,12 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
   if (original.reversalOfEntry) {
     return next(new ApiError('A reversal entry cannot itself be reversed.', 400));
   }
+  // Revenue / cost recognition follows the project's executed percentage (a tracker on the project).
+  // Reversing one entry by hand would leave the tracker and the ledger disagreeing; cancelling or
+  // returning the Sales Order lowers the executed percentage and posts the reversal itself.
+  if (['PROJECT_REVENUE_RECOGNITION', 'PROJECT_COST_RECOGNITION'].includes(original.accountingAction)) {
+    return next(new ApiError("Revenue and cost recognition entries follow the project's executed percentage and cannot be reversed by hand. Cancel or return the Sales Order (or correct the project), which posts the reversal.", 400));
+  }
 
   const { reversalDate, reference } = req.body;
   const startedAt = Date.now();

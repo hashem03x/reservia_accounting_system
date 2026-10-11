@@ -6,6 +6,7 @@ const TX = require('./taxReports');
 const EC = require('./expenseCategoryReports');
 const GL = require('./generalLedgerReport');
 const PC = require('./projectCostReports');
+const PP = require('./projectProfitReports');
 const { L } = require('./reportCommon');
 
 // The accounting reports catalog (from the reports list "تقارير.csv"): category, bilingual title,
@@ -39,6 +40,8 @@ const REPORTS = [
   { key: 'project-profitability', category: 'projects', kind: 'period', title: L('Project Profitability and Gross Profit Margin', 'بيان بربحية كل مشروع ونسبة مجمل الربح'), filters: ['period', ...PROJECT_FILTERS], run: PR.projectProfitability },
   { key: 'project-cash-flows', category: 'projects', kind: 'period', title: L('Cash Flows by Project', 'بيان بالتدفقات النقدية لكل مشروع'), filters: ['period', ...PROJECT_FILTERS], run: PR.projectCashFlows },
   { key: 'project-costs', category: 'projects', kind: 'period', title: L('PUC / Project Cost Report', 'تقرير تكاليف المشروعات (مشروعات تحت التنفيذ)'), filters: ['period', ...PROJECT_FILTERS, 'pucCategory', 'pucAccount', 'vendor', 'pucSource'], run: PC.projectCosts },
+  { key: 'puc-estimates', category: 'projects', kind: 'asOf', title: L('PUC - Estimated vs Actual Cost by Project', 'مشروعات تحت التنفيذ - التكلفة التقديرية مقابل الفعلية لكل مشروع'), filters: ['asOf', ...PROJECT_FILTERS, 'pucCategory'], run: PP.pucEstimates },
+  { key: 'project-profit-analysis', category: 'projects', kind: 'period', title: L('Project Profitability - Revenue and Every Cost', 'ربحية المشروع - الإيرادات وكل التكاليف'), filters: ['period', ...PROJECT_FILTERS, 'glAccount'], run: PP.projectProfitAnalysis },
   { key: 'projects-by-sector', category: 'projects', kind: 'list', title: L('Number of Projects by Sector', 'بيان بعدد المشروعات في كل سيكتور'), filters: ['customer', 'projectStatus'], run: PR.projectsBySector },
   { key: 'sector-profitability', category: 'projects', kind: 'period', title: L('Profitability by Sector', 'بيان بربحية كل سيكتور'), filters: ['period', 'customer', 'projectStatus'], run: PR.sectorProfitability },
   { key: 'sector-cash-flows', category: 'projects', kind: 'period', title: L('Cash Flows by Sector', 'بيان بالتدفقات النقدية لكل سيكتور'), filters: ['period', 'customer', 'projectStatus'], run: PR.sectorCashFlows },

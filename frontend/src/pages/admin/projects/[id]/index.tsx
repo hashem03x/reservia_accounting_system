@@ -21,6 +21,7 @@ import { AverageCostLineInput, Project } from "@/types/project";
 import { Customer } from "@/types/customer";
 import { JournalEntry } from "@/types/journal-entry";
 import ProjectContractSection from "../_components/project-contract-section";
+import ProjectCostAdjustmentSection from "../_components/project-cost-adjustment-section";
 import CustomerSearch from "@/components/global/customer-search";
 import AverageCostEditor from "../_components/average-cost-editor";
 import SectorSelect from "@/components/global/sector-select";
@@ -348,6 +349,8 @@ export default function ProjectDetail() {
       <div className="mt-6">
         <ProjectContractSection project={project} onChange={(contract) => setProject({ ...project, contract })} />
       </div>
+
+      <ProjectCostAdjustmentSection projectId={project._id} />
 
       <div className="mt-6 flex flex-col gap-3">
         <h4>{translate("Journal Entries", "القيود اليومية")}</h4>

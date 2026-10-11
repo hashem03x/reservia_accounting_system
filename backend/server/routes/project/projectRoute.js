@@ -37,6 +37,21 @@ router
   .get(checkUserPermissions({ resource: Resources.projects, action: Actions.read }), getContract)
   .delete(checkUserPermissions({ resource: Resources.projects, action: Actions.update }), deleteContract);
 
+// End-of-project PUC cost adjustment: preview for project readers; drafting it creates a journal
+// entry, so it needs the journal entries create permission.
+const { getCostAdjustment, createCostAdjustment } = require('../../controller/project/projectCostAdjustmentController');
+const { check } = require('express-validator');
+const validatorMiddleware = require('../../middleware/validatorMiddleware');
+router
+  .route('/:id/cost-adjustment')
+  .get(checkUserPermissions({ resource: Resources.projects, action: Actions.read }), check('id').isMongoId().withMessage('Invalid project id'), validatorMiddleware, getCostAdjustment)
+  .post(
+    checkUserPermissions({ resource: Resources.journalEntries, action: Actions.create }),
+    check('id').isMongoId().withMessage('Invalid project id'),
+    check('date').optional({ nullable: true }).isISO8601().withMessage('Invalid date'),
+    validatorMiddleware,
+    createCostAdjustment
+  );
 router.get('/:id/journal-entries', checkUserPermissions({ resource: Resources.projects, action: Actions.read }), getProjectJournalEntries);
 
 module.exports = router;

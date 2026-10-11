@@ -707,6 +707,21 @@ async function resolveProjectCustomerNumber(project, triggeredBySalesOrder, sess
 // 10. Project revenue recognition (JV0010)
 // ---------------------------------------------------------------------------
 
+const DERECOGNITION_REFERENCE = 'DERECOGNITION';
+
+/**
+ * The source key of a recognition step. Keys are numbered by "cycle" - how many decreases
+ * (de-recognitions, marked with the DERECOGNITION reference) the project has had for this action:
+ *   - cycle 0 keeps the plain key (project + percentage), so every existing entry and a retry of a
+ *     step whose trackers were not saved still find the same entry (no duplicate);
+ *   - after a decrease, reaching a percentage again is a new step with a new key, so it is posted
+ *     instead of being mistaken for the entry of the earlier cycle.
+ */
+async function recognitionSourceId(seed, accountingAction, projectId, session) {
+  const cycle = await JournalEntry.countDocuments({ project: projectId, accountingAction, reference: DERECOGNITION_REFERENCE }).session(session || null);
+  return deterministicSourceId(cycle === 0 ? seed : `${seed}#${cycle}`);
+}
+
 /**
  * PROJECT_REVENUE_RECOGNITION (JV0010): Dr Accounts Receivable - Projects, Cr Revenue, for the
  * INCREMENTAL executed-percentage share of the project's contractValue since the last recognition.
@@ -722,9 +737,12 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
   if (!project.contractValue) return null;
   const previousPct = project.revenueRecognizedPercentage || 0;
   const currentPct = project.executedPercentage || 0;
-  if (currentPct <= previousPct) return null;
+  if (currentPct === previousPct) return null;
+  // A DECREASE (a Sales Order cancelled or returned) reverses the recognized slice: the same lines
+  // with debit and credit swapped, so cancellations never leave revenue, VAT or receivables behind.
+  const decrease = currentPct < previousPct;
 
-  const deltaAmount = round2((project.contractValue * (currentPct - previousPct)) / 100);
+  const deltaAmount = round2((project.contractValue * Math.abs(currentPct - previousPct)) / 100);
   if (deltaAmount <= 0) return null;
 
   // VAT/Withholding Tax on the recognized revenue slice (docs section "Sales Order VAT fix") -
@@ -749,12 +767,17 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
   let vatRatio = 0;
   let whtRatio = 0;
   const triggeringOrder = triggeringOrderId
-    ? await SalesOrder.findById(triggeringOrderId).select('totalAmount vatAmount withholdingTaxAmount').session(session || null).lean()
+    ? await SalesOrder.findById(triggeringOrderId).select('totalAmount vatAmount withholdingTaxAmount vatPercentage withholdingTaxPercentage').session(session || null).lean()
     : null;
   if (triggeringOrder) {
     const base = triggeringOrder.totalAmount || 0;
     vatRatio = base > 0 ? (triggeringOrder.vatAmount || 0) / base : 0;
     whtRatio = base > 0 ? (triggeringOrder.withholdingTaxAmount || 0) / base : 0;
+    // A fully returned / cancelled order may have no amount left - its own rates still apply.
+    if (base <= 0) {
+      vatRatio = (triggeringOrder.vatPercentage || 0) / 100;
+      whtRatio = (triggeringOrder.withholdingTaxPercentage || 0) / 100;
+    }
   } else {
     const [taxTotals] = await SalesOrder.aggregate([
       { $match: { project: project._id, orderStatus: { $ne: 'canceled' } } },
@@ -782,7 +805,7 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
     getAccountIdByCode(AutomaticJournalAccountCodes.revenue, session),
   ]);
 
-  const lines = [
+  let lines = [
     {
       account: arProjectsId,
       debit: arAmount,
@@ -802,12 +825,14 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
     lines.push({ account: withholdingTaxReceivableId, debit: deltaWht, credit: 0, project: project._id });
   }
 
+  if (decrease) lines = lines.map(l => ({ ...l, debit: l.credit, credit: l.debit }));
   const entry = await postAutomaticJournalEntry({
     accountingAction: 'PROJECT_REVENUE_RECOGNITION',
     sourceType: 'PROJECT',
-    sourceId: deterministicSourceId(`${project._id}:PROJECT_REVENUE_RECOGNITION:${currentPct}`),
+    sourceId: await recognitionSourceId(`${project._id}:PROJECT_REVENUE_RECOGNITION:${decrease ? `DOWN:${previousPct}:` : ''}${currentPct}`, 'PROJECT_REVENUE_RECOGNITION', project._id, session),
+    ...(decrease ? { reference: DERECOGNITION_REFERENCE } : {}),
     date,
-    description: `Revenue recognition - project ${project.projectNumber} (${previousPct}% -> ${currentPct}%)`,
+    description: `${decrease ? 'Revenue reversal' : 'Revenue recognition'} - project ${project.projectNumber} (${previousPct}% -> ${currentPct}%)`,
     project: project._id,
     lines,
     session,
@@ -866,7 +891,9 @@ function findCorrespondingPucAccount(costAccount, pucAccounts) {
 async function postProjectCostRecognitionJE(project, session, triggeredBySalesOrder = null, date = new Date()) {
   const previousPct = project.costRecognizedPercentage || 0;
   const currentPct = project.executedPercentage || 0;
-  if (currentPct <= previousPct) return null;
+  if (currentPct === previousPct) return null;
+  // A decrease (Sales Order cancelled / returned) moves the slice back from cost of sales to PUC.
+  const decrease = currentPct < previousPct;
 
   const costLines = (project.averageCostLines || []).filter(line => (line.account?._id || line.account) && line.amount > 0);
   if (costLines.length === 0) return null;
@@ -881,12 +908,13 @@ async function postProjectCostRecognitionJE(project, session, triggeredBySalesOr
   const credits = [];
   for (const line of costLines) {
     const costAccount = costAccountsById.get(String(line.account?._id || line.account));
-    const amount = round2(round2((line.amount * currentPct) / 100) - round2((line.amount * previousPct) / 100));
+    const amount = Math.abs(round2(round2((line.amount * currentPct) / 100) - round2((line.amount * previousPct) / 100)));
     if (costAccount && amount > 0) {
       const pucAccount = findCorrespondingPucAccount(costAccount, pucAccounts);
       if (pucAccount) {
-        debits.push({ account: costAccount._id, debit: amount, credit: 0, project: project._id });
-        credits.push({ account: pucAccount._id, debit: 0, credit: amount, project: project._id });
+        const [dr, cr] = decrease ? [pucAccount, costAccount] : [costAccount, pucAccount];
+        debits.push({ account: dr._id, debit: amount, credit: 0, project: project._id });
+        credits.push({ account: cr._id, debit: 0, credit: amount, project: project._id });
       } else {
         logAccountingEvent('project_cost_recognition_no_puc_account', { projectNumber: project.projectNumber, account: costAccount.code, amount });
       }
@@ -899,9 +927,10 @@ async function postProjectCostRecognitionJE(project, session, triggeredBySalesOr
     accountingAction: 'PROJECT_COST_RECOGNITION',
     sourceType: 'PROJECT',
     // Distinct from the keys of earlier versions of this entry.
-    sourceId: deterministicSourceId(`${project._id}:PROJECT_COST_RECOGNITION:COST-TO-PUC:${currentPct}`),
+    sourceId: await recognitionSourceId(`${project._id}:PROJECT_COST_RECOGNITION:COST-TO-PUC:${decrease ? `DOWN:${previousPct}:` : ''}${currentPct}`, 'PROJECT_COST_RECOGNITION', project._id, session),
+    ...(decrease ? { reference: DERECOGNITION_REFERENCE } : {}),
     date,
-    description,
+    description: decrease ? `${description} - عكس (${previousPct}% -> ${currentPct}%)` : description,
     project: project._id,
     lines: [...debits, ...credits],
     party: { number: customerNumber, type: 'customer' },
@@ -915,7 +944,8 @@ async function postProjectCostRecognitionJE(project, session, triggeredBySalesOr
 
 /**
  * Posts revenue recognition (JV0010) and then cost recognition (JV0011) for a project whose
- * executedPercentage just increased - both with the same document date. Called from
+ * executedPercentage just changed - both with the same document date. An increase recognizes the new
+ * slice; a decrease (a Sales Order cancelled or returned) reverses the slice that is no longer executed. Called from
  * projectAccountingService.js#recalculateExecutedPercentage (Sales Order create/cancel/return) and
  * projectController.js#updateProject, inside the same session as the project's own save (so the
  * percentage trackers and the JEs commit together or not at all). Returns the posted entries (0-2).
@@ -946,4 +976,5 @@ module.exports = {
   postPaymentVendorAdvanceAppliedJE,
   postSalesOrderAdvanceAppliedJE,
   postProjectExecutionRecognitionJEs,
+  findCorrespondingPucAccount,
 };
