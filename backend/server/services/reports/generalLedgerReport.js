@@ -59,14 +59,20 @@ async function sourceDocuments(entries) {
   const code = new Map([...salesOrders, ...purchaseOrders, ...paidPOs, ...paidSOs].map(d => [String(d._id), d.code]));
   const assetLabel = a => `${a.assetNumber ? `FA-${String(a.assetNumber).padStart(4, '0')} ` : ''}${a.name}`;
   const byEntry = new Map();
-  depreciated.forEach(a => a.depreciations.forEach(d => byEntry.set(String(d.journalEntry), assetLabel(a))));
+  const assetIdByEntry = new Map();
+  depreciated.forEach(a =>
+    a.depreciations.forEach(d => {
+      byEntry.set(String(d.journalEntry), assetLabel(a));
+      assetIdByEntry.set(String(d.journalEntry), String(a._id));
+    })
+  );
   transfers.forEach(t => byEntry.set(String(t.journalEntry), `PUC transfer ${t._id}`));
   const paymentOf = new Map(payments.map(p => [String(p._id), p]));
   const expenseOf = new Map(expenses.map(x => [String(x._id), x.reference || String(x._id)]));
   const assetOf = new Map(assets.map(a => [String(a._id), assetLabel(a)]));
   const advanceOf = new Set(advances.map(a => String(a._id)));
 
-  return entry => {
+  const resolve = entry => {
     const id = String(entry.sourceId);
     if (byEntry.has(String(entry._id))) return byEntry.get(String(entry._id));
     if (entry.sourceType === 'SO' || entry.triggeredBySalesOrder) return code.get(String(entry.sourceType === 'SO' ? entry.sourceId : entry.triggeredBySalesOrder)) || null;
@@ -81,6 +87,9 @@ async function sourceDocuments(entries) {
     if (entry.accountingAction === 'FIXED_ASSET_ACQUISITION') return assetOf.get(id) || null;
     return entry.reference || null;
   };
+  /** The fixed asset an acquisition / depreciation entry belongs to (drill-down), or null. */
+  resolve.fixedAssetOf = entry => assetIdByEntry.get(String(entry._id)) || (entry.accountingAction === 'FIXED_ASSET_ACQUISITION' && assetOf.has(String(entry.sourceId)) ? String(entry.sourceId) : null);
+  return resolve;
 }
 
 /** Customer / vendor / shareholder names by number. */
@@ -138,7 +147,8 @@ async function generalLedgerLines(query) {
     // The Trial Balance's movements for the same accounts and period (no line filters).
     accountId ? C.ledgerTotals({ start: period.start, end: period.end, lineMatch: { 'lines.account': accountId } }) : C.ledgerTotals({ start: period.start, end: period.end }),
   ]);
-  const natural = (account, debit, credit) => round2(C.DEBIT_NATURE_TYPES.has(account?.type) ? debit - credit : credit - debit);
+  // Each account's own view: a contra-asset (accumulated depreciation / amortization) runs on the credit side.
+  const natural = (account, debit, credit) => round2(C.normalSideOf(account) === 'debit' ? debit - credit : credit - debit);
   const totalsBy = new Map(totals.map(t => [t.accountId, t]));
 
   const flat = [];
@@ -165,6 +175,7 @@ async function generalLedgerLines(query) {
     const module = entry.reversalOfEntry ? 'Reversal' : entry.module || (entry.accountingAction ? null : 'Manual');
     const sourceType = SOURCE_LABELS[module] || (module ? L(module, module) : null);
     const projectRef = C.idOf(line.project);
+    const assetRef = sourceOf.fixedAssetOf(entry);
     seq += 1;
     return {
       _seq: seq,
@@ -190,6 +201,7 @@ async function generalLedgerLines(query) {
       statusAr: entry.reversalOfEntry ? 'قيد عكسي' : entry.status === 'reversed' ? 'معكوس' : 'مرحل',
       _links: {
         entryNumber: { kind: 'journalEntry', id: String(entry._id) },
+        ...(assetRef ? { sourceNumber: { kind: 'fixedAsset', id: assetRef } } : {}),
         ...(projectRef ? { projectNumber: { kind: 'project', id: projectRef } } : {}),
         ...(party ? { party: { kind: party.kind, id: party.id } } : {}),
       },
@@ -210,8 +222,8 @@ async function generalLedgerLines(query) {
         code: account?.code || '?',
         name: account?.name || 'Unknown account',
         nameAr: account?.nameAr || null,
-        normalSide: C.DEBIT_NATURE_TYPES.has(account?.type) ? 'Debit' : 'Credit',
-        normalSideAr: C.DEBIT_NATURE_TYPES.has(account?.type) ? 'مدين' : 'دائن',
+        normalSide: C.normalSideOf(account) === 'debit' ? 'Debit' : 'Credit',
+        normalSideAr: C.normalSideOf(account) === 'debit' ? 'مدين' : 'دائن',
         opening,
         debit: t.periodDebit,
         credit: t.periodCredit,

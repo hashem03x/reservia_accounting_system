@@ -16,6 +16,7 @@
     "db:import-accounting-data": "node server/scripts/importReversiaAccountingData.js",
     "db:create-admin": "node server/scripts/createAdminUser.js",
     "db:backfill-journal-line-projects": "node server/scripts/backfillJournalLineProjects.js",
+    "db:audit-depreciation": "node server/scripts/auditDepreciationEntries.js",
     "db:recalculate-project-remaining": "node server/scripts/recalculateProjectRemaining.js",
     "start": "node server.js",
     "dev": "cross-env NODE_ENV=development nodemon server.js",

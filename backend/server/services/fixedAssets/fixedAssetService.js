@@ -19,6 +19,17 @@ function periodDate(period) {
 }
 
 /**
+ * The date a depreciation entry is posted on: the month's last day (periodDate), or - for the month
+ * still in progress - the moment of the run. Never a date after the run: an entry dated in the
+ * future is counted by the Chart of Accounts balances at once but left out of the Trial Balance and
+ * every report up to today (their default end date), so the books would disagree until month end.
+ */
+function postingDate(period, now = new Date()) {
+  const monthEnd = periodDate(period);
+  return monthEnd > now ? new Date(now) : monthEnd;
+}
+
+/**
  * Creates a Fixed Asset and its acquisition entry (FIXED_ASSET_ACQUISITION) in the caller's
  * transaction:
  *
@@ -200,6 +211,9 @@ async function syncReversedDepreciations(session) {
  * depreciated for are listed in `missingEarlierMonths` - nothing is skipped silently. The result is
  * saved as a FixedAssetDepreciationRun.
  *
+ * The entry is dated the month's last day, or the run day while the month is still in progress
+ * (postingDate) - never in the future.
+ *
  * Never twice: the asset is only updated while the month has no live record and its Book Value is
  * unchanged since it was read, and the entry's source key includes the month. A month whose entry
  * was reversed (applyDepreciationReversal) is depreciated again with a new entry.
@@ -210,10 +224,10 @@ async function runDepreciation({ period, userId }, session) {
   const currentPeriod = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
   if (period > currentPeriod) throw new ApiError('A future month cannot be depreciated.', 400);
 
-  const date = periodDate(period);
+  const date = postingDate(period, now);
   // A closed month cannot be depreciated (every depreciation entry is checked again when saved).
   await assertPeriodsOpen(date, session);
-  const monthEnd = new Date(date);
+  const monthEnd = periodDate(period);
   monthEnd.setUTCHours(23, 59, 59, 999);
 
   await syncReversedDepreciations(session);
@@ -291,4 +305,4 @@ async function runDepreciation({ period, userId }, session) {
 const listDepreciationRuns = (limit = 50) =>
   FixedAssetDepreciationRun.find({}).sort({ createdAt: -1 }).limit(limit).populate({ path: 'createdBy', select: 'name' }).lean();
 
-module.exports = { createFixedAsset, updateFixedAsset, runDepreciation, periodDate, applyDepreciationReversal, syncReversedDepreciations, listDepreciationRuns };
+module.exports = { createFixedAsset, updateFixedAsset, runDepreciation, periodDate, postingDate, applyDepreciationReversal, syncReversedDepreciations, listDepreciationRuns };

@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const JournalEntry = require('../../models/accounting/journalEntryModel');
+const { isAccumulatedGroupAccount } = require('../fixedAssets/fixedAssetAccounts');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const ApiError = require('../../utils/apiError');
 const { sortByAccountCode } = require('../../utils/accountCodeSort');
@@ -85,6 +86,15 @@ const groupOf = account => account?.parentGroupNameEn || account?.parentAccount?
 const groupArOf = account => account?.parentGroupNameAr || account?.parentAccount?.nameAr || null;
 const accountRef = account => (account ? { _id: String(account._id), code: account.code, name: account.name, nameAr: account.nameAr || null } : null);
 const accountLabel = account => (account ? `${account.code} - ${account.name}` : null);
+
+/**
+ * Accumulated depreciation / amortization: recorded as asset accounts (so the Statement of Financial
+ * Position nets them inside their group) but credit-nature - a contra-asset account. Recognized by the
+ * Fixed Assets module's own Chart of Accounts group rules, never by code.
+ */
+const isContraAsset = account => !!account && account.type === 'asset' && isAccumulatedGroupAccount(account);
+/** 'debit' | 'credit' - the side an account's balance normally sits on (an account's own view). */
+const normalSideOf = account => (DEBIT_NATURE_TYPES.has(account?.type) && !isContraAsset(account) ? 'debit' : 'credit');
 
 /** Signed natural balance: positive when the account carries its normal-side balance. */
 const naturalBalance = (account, debit, credit) => round2(DEBIT_NATURE_TYPES.has(account?.type) ? debit - credit : credit - debit);
@@ -176,7 +186,33 @@ const sumBy = (rows, key) => round2(rows.reduce((s, r) => s + (typeof r[key] ===
 
 const sortAccountsByCode = (rows, getCode) => sortByAccountCode(rows, getCode);
 
+/**
+ * For a report that runs up to today (or later): a failed check listing the posted entries dated
+ * after its end date - entries dated in the future. The Chart of Accounts balances count every date,
+ * so without this the two would disagree with nothing to say why. null when there are none, or when
+ * the report ends before today (later entries are then simply outside its window).
+ */
+async function futureDatedEntriesCheck(endDay) {
+  if (!endDay || endDay < today()) return null;
+  const match = ledgerMatch({ extra: { date: { $gt: dayEnd(endDay) } } });
+  const count = await JournalEntry.collection.countDocuments(match);
+  if (!count) return null;
+  const sample = await JournalEntry.collection.find(match, { projection: { entryNumber: 1, date: 1 } }).sort({ date: 1, entryNumber: 1 }).limit(5).toArray();
+  const [last] = await JournalEntry.collection.find(match, { projection: { date: 1 } }).sort({ date: -1 }).limit(1).toArray();
+  const listed = sample.map(e => `no. ${e.entryNumber} (${e.date.toISOString().slice(0, 10)})`).join(', ');
+  const lastDay = last.date.toISOString().slice(0, 10);
+  return check(
+    `No posted entries dated after ${endDay}`,
+    `لا توجد قيود مرحلة بتاريخ بعد ${endDay}`,
+    false,
+    `${count} posted entr${count === 1 ? 'y is' : 'ies are'} dated after the end date and not included (${listed}${count > sample.length ? ', ...' : ''}); the Chart of Accounts balances include them. Set the end date to ${lastDay} to include them.`
+  );
+}
+
 module.exports = {
+  futureDatedEntriesCheck,
+  isContraAsset,
+  normalSideOf,
   LEDGER_STATUSES,
   DEBIT_NATURE_TYPES,
   PROFIT_AND_LOSS_TYPES,

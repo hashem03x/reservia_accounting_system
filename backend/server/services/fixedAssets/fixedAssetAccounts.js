@@ -35,6 +35,9 @@ function isAccumulatedAccountFor(account, assetClass) {
   return isOrInGroup(account, assetClass === 'intangible' ? G.accumulatedAmortization : G.accumulatedDepreciation);
 }
 
+/** An Accumulated Depreciation / Amortization account by its group alone (active or not) - a contra-asset. */
+const isAccumulatedGroupAccount = account => !!account && (isOrInGroup(account, G.accumulatedDepreciation) || isOrInGroup(account, G.accumulatedAmortization));
+
 function isDepreciationExpenseAccount(account) {
   return isUsable(account) && isOrInGroup(account, G.depreciationExpense);
 }
@@ -81,4 +84,4 @@ async function resolveFixedAssetAccounts({ assetAccount, accumulatedAccount, dep
   return { assetClass, assetAccount: asset, accumulatedAccount: accumulated, depreciationAccount: expense };
 }
 
-module.exports = { assetClassOf, isAccumulatedAccountFor, isDepreciationExpenseAccount, getFixedAssetAccountOptions, resolveFixedAssetAccounts };
+module.exports = { assetClassOf, isAccumulatedAccountFor, isAccumulatedGroupAccount, isDepreciationExpenseAccount, getFixedAssetAccountOptions, resolveFixedAssetAccounts };
