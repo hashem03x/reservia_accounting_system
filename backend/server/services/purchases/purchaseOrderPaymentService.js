@@ -56,6 +56,9 @@ async function purchaseOrderPayments(purchaseOrderId) {
       journalEntry: entry ? { _id: entry._id, entryNumber: entry.entryNumber } : null,
       reversalEntry: reversal ? { _id: reversal._id, entryNumber: reversal.entryNumber, date: reversal.date } : null,
       createdBy: p.createdBy || null,
+      // The advance a payment drew on (reversed as a settlement - services/accounting/reversalService.js).
+      advancedPayment: p.advancedPayment?._id || p.advancedPayment || null,
+      onCreation: false,
     };
   });
   if (advanceEntry) {
@@ -75,6 +78,8 @@ async function purchaseOrderPayments(purchaseOrderId) {
       journalEntry: { _id: advanceEntry._id, entryNumber: advanceEntry.entryNumber },
       reversalEntry: reversal ? { _id: reversal._id, entryNumber: reversal.entryNumber, date: reversal.date } : null,
       createdBy: null,
+      advancedPayment: advanceEntry.advancedPayment || null,
+      onCreation: true,
     });
   }
 

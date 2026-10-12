@@ -39,6 +39,12 @@ export type Payment = {
   paymentCategory: PaymentCategory;
   paidWithPaymob: boolean;
   notes?: string;
+  // Funded from an Advanced Payment (a settlement) - reversed from the advance, not as a payment.
+  advancedPayment?: string | { _id: string } | null;
+  // Set once the payment is reversed (Journal Entries -> Reverse, or Reverse on the payment).
+  reversedAt?: string | null;
+  reversedByEntry?: string | null;
+  reversalReason?: string | null;
   createdAt: string;
   updatedAt: string;
   createdBy?: {

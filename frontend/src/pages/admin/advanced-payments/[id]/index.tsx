@@ -15,9 +15,16 @@ import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import ErrorAlert from "@/components/ui/error-alert";
 import { AdvancedPayment } from "@/types/advanced-payment";
+import { ReverseAction } from "@/components/global/reversals/payment-reverse-cell";
+import ReversalHistory from "@/components/global/reversals/reversal-history";
 import OrderJournalEntriesSection from "@/components/global/order-journal-entries-section";
 
-const statusColors: Record<string, string> = { available: "green", partially_used: "yellow", fully_used: "gray", cancelled: "red" };
+const statusColors: Record<string, string> = {
+  available: "green",
+  partially_used: "yellow",
+  fully_used: "gray",
+  cancelled: "red",
+};
 
 export default function AdvancedPaymentDetail() {
   const { id } = useParams();
@@ -25,7 +32,15 @@ export default function AdvancedPaymentDetail() {
   const navigate = useNavigate();
   const canUpdate = useHasPermission(resources.advancedPayments, actions.update);
 
-  const { privateRequest, loading, setLoading, error, setError, data: payment, setData: setPayment } = useDataHandler<AdvancedPayment | null>({
+  const {
+    privateRequest,
+    loading,
+    setLoading,
+    error,
+    setError,
+    data: payment,
+    setData: setPayment,
+  } = useDataHandler<AdvancedPayment | null>({
     initialData: null,
     initialLoading: true,
   });
@@ -33,7 +48,9 @@ export default function AdvancedPaymentDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState("");
 
-  useDocumentTitle(payment ? `${translations.pages.advancedPayments} | ${translations.adminPanel}` : translations.pages.advancedPayments);
+  useDocumentTitle(
+    payment ? `${translations.pages.advancedPayments} | ${translations.adminPanel}` : translations.pages.advancedPayments,
+  );
 
   function load() {
     handleRequest(language, setLoading, setError, async () => {
@@ -55,7 +72,14 @@ export default function AdvancedPaymentDetail() {
   }
 
   if (loading) return <LoadingSection message={translate("Loading advanced payment...", "جاري تحميل الدفعة المقدمة...")} />;
-  if (error) return <ErrorSection errorTitle={translate("Error loading advanced payment", "خطأ في تحميل الدفعة المقدمة")} errorMessage={error} button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }} />;
+  if (error)
+    return (
+      <ErrorSection
+        errorTitle={translate("Error loading advanced payment", "خطأ في تحميل الدفعة المقدمة")}
+        errorMessage={error}
+        button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }}
+      />
+    );
   if (!payment) return null;
 
   const partyName = payment.type === "customer" ? payment.customer?.name : payment.vendor?.name;
@@ -78,16 +102,31 @@ export default function AdvancedPaymentDetail() {
       {actionError && <ErrorAlert error={actionError} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <InfoCard label={translate("Type", "النوع")} value={payment.type === "customer" ? translate("Customer", "عميل") : translate("Vendor", "بائع")} />
-        <InfoCard label={payment.type === "customer" ? translate("Customer", "العميل") : translate("Vendor", "البائع")} value={partyName || "-"} />
+        <InfoCard
+          label={translate("Type", "النوع")}
+          value={payment.type === "customer" ? translate("Customer", "عميل") : translate("Vendor", "بائع")}
+        />
+        <InfoCard
+          label={payment.type === "customer" ? translate("Customer", "العميل") : translate("Vendor", "البائع")}
+          value={partyName || "-"}
+        />
         <InfoCard label={translate("Project", "المشروع")} value={payment.project?.projectNumber || "-"} />
         <InfoCard
           label={translate("Payment Method", "طريقة الدفع")}
           value={payment.paymentAccount ? `${payment.paymentAccount.code} - ${payment.paymentAccount.name}` : "-"}
         />
-        <InfoCard label={translate("Status", "الحالة")} value={<Badge color={statusColors[payment.status] || "gray"}>{payment.status}</Badge>} />
-        <InfoCard label={translate("Original Amount", "المبلغ الأصلي")} value={`${(payment.amount || 0).toLocaleString()} ${payment.currency || ""}`} />
-        <InfoCard label={translate("Remaining Amount", "المبلغ المتبقي")} value={`${(payment.remainingAmount || 0).toLocaleString()} ${payment.currency || ""}`} />
+        <InfoCard
+          label={translate("Status", "الحالة")}
+          value={<Badge color={statusColors[payment.status] || "gray"}>{payment.status}</Badge>}
+        />
+        <InfoCard
+          label={translate("Original Amount", "المبلغ الأصلي")}
+          value={`${(payment.amount || 0).toLocaleString()} ${payment.currency || ""}`}
+        />
+        <InfoCard
+          label={translate("Remaining Amount", "المبلغ المتبقي")}
+          value={`${(payment.remainingAmount || 0).toLocaleString()} ${payment.currency || ""}`}
+        />
         <InfoCard label={translate("Reference", "المرجع")} value={payment.reference || "-"} />
         <InfoCard label={translate("Date", "التاريخ")} value={formatDate(payment.createdAt, language)} />
       </div>
@@ -117,7 +156,9 @@ export default function AdvancedPaymentDetail() {
       <div className="mt-6 flex flex-col gap-3">
         <h4>{translate("Usage History", "سجل الاستخدام")}</h4>
         {usageHistory.length === 0 ? (
-          <p className="text-sm text-gray-400">{translate("This advanced payment has not been used yet.", "لم يتم استخدام هذه الدفعة المقدمة بعد.")}</p>
+          <p className="text-sm text-gray-400">
+            {translate("This advanced payment has not been used yet.", "لم يتم استخدام هذه الدفعة المقدمة بعد.")}
+          </p>
         ) : (
           <Table striped highlightOnHover>
             <Table.Thead>
@@ -126,6 +167,7 @@ export default function AdvancedPaymentDetail() {
                 <Table.Th>{translate("Amount Consumed", "المبلغ المستهلك")}</Table.Th>
                 <Table.Th>{translate("Date", "التاريخ")}</Table.Th>
                 <Table.Th>{translate("Status", "الحالة")}</Table.Th>
+                <Table.Th>{translate("Reversal", "العكس")}</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -133,7 +175,10 @@ export default function AdvancedPaymentDetail() {
                 <Table.Tr
                   key={i}
                   className={entry.salesOrder ? "cursor-pointer" : ""}
-                  onClick={() => entry.salesOrder && navigate(`/${paths.admin}/${paths.home}/${paths.salesOrders}/${entry.salesOrder!._id}`)}
+                  onClick={() =>
+                    entry.salesOrder &&
+                    navigate(`/${paths.admin}/${paths.home}/${paths.salesOrders}/${entry.salesOrder!._id}`)
+                  }
                 >
                   <Table.Td>{entry.salesOrder?.code || "-"}</Table.Td>
                   <Table.Td>{(entry.amountConsumed || 0).toLocaleString()}</Table.Td>
@@ -143,11 +188,38 @@ export default function AdvancedPaymentDetail() {
                       {entry.reversed ? translate("Reversed", "ملغي") : translate("Active", "نشط")}
                     </Badge>
                   </Table.Td>
+                  {/* Reverses only this application of the advance (never the advance's own receipt). */}
+                  <Table.Td onClick={(e) => e.stopPropagation()}>
+                    {!entry.reversed &&
+                      payment.status !== "cancelled" &&
+                      (entry.payment || entry.salesOrder || entry.purchaseOrder) && (
+                        <ReverseAction
+                          target={
+                            entry.payment
+                              ? { mode: "settlement", advancedPaymentId: payment._id, paymentId: entry.payment }
+                              : entry.salesOrder
+                                ? { mode: "settlement", advancedPaymentId: payment._id, salesOrderId: entry.salesOrder._id }
+                                : {
+                                    mode: "settlement",
+                                    advancedPaymentId: payment._id,
+                                    purchaseOrderId: entry.purchaseOrder!,
+                                  }
+                          }
+                          amount={entry.amountConsumed || 0}
+                          direction={payment.type === "customer" ? "in" : "out"}
+                          onDone={load}
+                        />
+                      )}
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
           </Table>
         )}
+      </div>
+
+      <div className="mt-6">
+        <ReversalHistory query={{ advancedPayment: payment._id }} refreshKey={payment.remainingAmount} />
       </div>
     </AdminLayoutBox>
   );

@@ -25,6 +25,7 @@ const fixedAssetRoute = require('./fixedAssetRoute');
 const projectRoute = require('./project/projectRoute');
 const chartOfAccountRoute = require('./accounting/chartOfAccountRoute');
 const journalEntryRoute = require('./accounting/journalEntryRoute');
+const reversalRoute = require('./accounting/reversalRoute');
 
 const bahrianDatabaseHealthRoute = require('./databaseHealth');
 const databaseExportRoute = require('./databaseExportRoute');
@@ -65,6 +66,8 @@ const mountRoutes = app => {
   app.use('/api/v1/projects', projectRoute);
   app.use('/api/v1/accounts', chartOfAccountRoute);
   app.use('/api/v1/journal-entries', journalEntryRoute);
+  // Accounting reversals: returns, payment and settlement reversals (services/accounting/reversalService.js)
+  app.use('/api/v1/reversals', reversalRoute);
   app.use('/api/v1/accounting-periods', require('./accounting/accountingPeriodRoute'));
 
   // advanced payments (customer/vendor advances against a project)

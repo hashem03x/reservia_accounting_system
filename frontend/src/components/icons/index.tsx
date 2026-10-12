@@ -249,4 +249,5 @@ export const navIcons = {
   Search: Hi2.HiOutlineMagnifyingGlass,
   Menu: Hi2.HiOutlineBars3,
   Close: Hi2.HiOutlineXMark,
+  Backup: Hi2.HiOutlineCircleStack,
 };

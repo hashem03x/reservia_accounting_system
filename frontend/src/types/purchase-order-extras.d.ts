@@ -62,6 +62,9 @@ export interface PurchaseOrderPayments {
     status: "posted" | "reversed" | "recorded";
     journalEntry: { _id: string; entryNumber: number } | null;
     reversalEntry: { _id: string; entryNumber: number; date: string } | null;
+    advancedPayment?: string | null;
+    // The advance applied when the order was created (not a payment record).
+    onCreation?: boolean;
   }[];
 }
 

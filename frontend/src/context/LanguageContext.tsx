@@ -49,6 +49,8 @@ export const LanguageContext = createContext<LanguageContextProps>({
       tour: "",
       switchLanguage: "",
       showSection: "",
+      administration: "",
+      backupRestore: "",
     },
     pages: {
       home: "",
@@ -151,6 +153,8 @@ export default function LanguageProvider({ children }: { children: React.ReactNo
       tour: translate("Guided tour", "جولة تعريفية"),
       switchLanguage: translate("Switch to Arabic", "التبديل إلى الإنجليزية"),
       showSection: translate("Show section", "إظهار القسم"),
+      administration: translate("Administration", "الإدارة"),
+      backupRestore: translate("Backup & Restore", "النسخ الاحتياطي والاستعادة"),
     },
     pages: {
       home: translate("Home", "الرئيسية"),

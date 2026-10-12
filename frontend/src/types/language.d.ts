@@ -44,6 +44,8 @@ export interface LanguageContextProps {
       tour: string;
       switchLanguage: string;
       showSection: string;
+      administration: string;
+      backupRestore: string;
     };
     pages: {
       home: string;

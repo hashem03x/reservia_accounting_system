@@ -58,6 +58,9 @@ const paymentSchema = Schema(
     // the payment no longer counts as paid, but the record is kept.
     reversedByEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', default: null },
     reversedAt: { type: Date, default: null },
+    // Who reversed it and why (services/accounting/reversalService.js) - null for an entry-page reversal.
+    reversalReason: { type: String, trim: true, default: null },
+    reversedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

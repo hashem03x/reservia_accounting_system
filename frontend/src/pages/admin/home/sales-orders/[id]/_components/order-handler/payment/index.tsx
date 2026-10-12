@@ -14,10 +14,27 @@ import handleRequest from "@/utils/helpers/handle-request";
 import { notifyError } from "@/utils/helpers/notifiers";
 import PayAllModal from "./_components/pay-all-modal";
 import { getOrderTotal } from "@/utils/helpers/order-totals";
+import PaymentReverseCell, { ReverseAction } from "@/components/global/reversals/payment-reverse-cell";
 
 export default function Payment() {
   const { translate, language, translations } = useLanguage();
-  const { order, payments, orderPaymentStatusElement, setOrder } = useOrder();
+  const { order, payments, orderPaymentStatusElement, setOrder, setPayments } = useOrder();
+  const { privateRequest: refreshRequest } = useDataHandler({ initialData: null });
+  // A reversal changes the order's paid / outstanding amounts and the payments - reloaded, not guessed.
+  async function refresh() {
+    const [orderRes, paymentsRes] = await Promise.all([
+      refreshRequest({ url: `sale-orders/${order._id}`, language }),
+      refreshRequest({ url: "payment", params: { salesOrderId: order._id }, language }),
+    ]);
+    setOrder(orderRes.data);
+    setPayments(paymentsRes.data);
+  }
+  const creationAdvance = (order as { advancedPayment?: string | { _id: string } | null }).advancedPayment;
+  const creationAdvanceId = creationAdvance
+    ? typeof creationAdvance === "string"
+      ? creationAdvance
+      : creationAdvance._id
+    : null;
   const [opened, { open, close }] = useDisclosure(false);
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
@@ -58,6 +75,22 @@ export default function Payment() {
       }}
     >
       <div className="flex flex-col gap-6">
+        {creationAdvanceId && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-100 px-3 py-2 text-sm">
+            <span>
+              {translate(
+                "This order was paid from an Advanced Payment when it was created.",
+                "تم سداد هذا الأمر من دفعة مقدمة عند إنشائه.",
+              )}
+            </span>
+            <ReverseAction
+              target={{ mode: "settlement", advancedPaymentId: creationAdvanceId, salesOrderId: order._id }}
+              amount={order.paidAmount || 0}
+              direction="in"
+              onDone={refresh}
+            />
+          </div>
+        )}
         <section>
           <div className="overflow-x-auto rounded-md border">
             <Table className="text-nowrap text-sm" withColumnBorders verticalSpacing="xs">
@@ -103,6 +136,7 @@ export default function Payment() {
                     <Table.Th>{translate("Payment Method", "طريقة الدفع")}</Table.Th>
                     <Table.Th>{translate("Payment Category", "التصنيف")}</Table.Th>
                     <Table.Th>{translate("Notes", "ملاحظات")}</Table.Th>
+                    <Table.Th>{translate("Reversal", "العكس")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody className="text-gray-800">
@@ -119,6 +153,9 @@ export default function Payment() {
                       </Table.Td>
                       <Table.Td>{getPaymentCategoryLabel(payment.paymentCategory, language)}</Table.Td>
                       <Table.Td>{payment.notes}</Table.Td>
+                      <Table.Td>
+                        <PaymentReverseCell payment={payment} onDone={refresh} />
+                      </Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>

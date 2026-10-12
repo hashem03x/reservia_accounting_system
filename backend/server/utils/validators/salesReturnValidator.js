@@ -11,7 +11,7 @@ const createReturnValidate = [
 
   body('returnedQuantity').notEmpty().withMessage('Returned quantity is required').isInt({ gt: 0 }).withMessage('Returned quantity must be a positive integer'),
 
-  body('paymentMethod').notEmpty().withMessage('Payment method is required').isIn(PaymentMethods).withMessage('Invalid payment method'),
+  body('paymentMethod').optional({ nullable: true }).isIn(PaymentMethods).withMessage('Invalid payment method'),
 
   body('notes').optional().isString().withMessage('Notes must be a string'),
 
@@ -23,7 +23,7 @@ const returnAllItemsValidate = [
 
   body('warehouseId').isMongoId().withMessage('Warehouse ID must be a mongoID').notEmpty().withMessage('Warehouse ID is required'),
 
-  body('paymentMethod').notEmpty().withMessage('Payment method is required').isIn(PaymentMethods).withMessage('Invalid payment method'),
+  body('paymentMethod').optional({ nullable: true }).isIn(PaymentMethods).withMessage('Invalid payment method'),
 
   body('notes').optional().isString().withMessage('Notes must be a string'),
 

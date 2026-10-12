@@ -235,7 +235,7 @@ salesOrderSchema.pre(/^find/, function () {
 
   this.populate({
     path: 'items.product',
-    select: 'title price priceAfterDiscount colors barcode sku',
+    select: 'title price priceAfterDiscount colors barcode sku type',
   });
 
   this.populate({

@@ -7,6 +7,7 @@ const apiResponse = require('../../utils/apiResponse');
 const { getNextJournalEntryNumber } = require('../../services/accounting/journalEntryNumberService');
 const { getGeneralLedgerLines, resolveSubAccountsForEntries } = require('../../services/accounting/generalLedgerService');
 const { applyEntryProjectToLines } = require('../../services/accounting/journalEntryProjectService');
+const { mirrorReverseEntry } = require('../../services/accounting/journalReversalCore');
 const { lineRules } = require('../../services/accounting/journalLinePartyService');
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
 
@@ -270,6 +271,16 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
   // Revenue / cost recognition follows the project's executed percentage (a tracker on the project).
   // Reversing one entry by hand would leave the tracker and the ledger disagreeing; cancelling or
   // returning the Sales Order lowers the executed percentage and posts the reversal itself.
+  // Return entries belong to their return (services/accounting/reversalService.js) - undoing one
+  // by hand would leave the order's returned quantities and stock disagreeing with the ledger.
+  if (original.accountingAction === 'PURCHASE_RETURN') {
+    return next(new ApiError('A purchase return entry cannot be reversed by hand.', 400));
+  }
+  // Part of this entry was already reversed by a return: reversing all of it now would reverse the
+  // returned part twice.
+  if (await JournalEntry.exists({ reversalOfEntry: original._id })) {
+    return next(new ApiError('Part of this entry was already reversed by a return, so it cannot be reversed in full.', 400));
+  }
   if (['PROJECT_REVENUE_RECOGNITION', 'PROJECT_COST_RECOGNITION'].includes(original.accountingAction)) {
     return next(new ApiError("Revenue and cost recognition entries follow the project's executed percentage and cannot be reversed by hand. Cancel or return the Sales Order (or correct the project), which posts the reversal.", 400));
   }
@@ -294,60 +305,9 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
         throw new ApiError('A reversal entry cannot itself be reversed.', 400);
       }
 
-      const entryNumber = await getNextJournalEntryNumber(session);
-
-      const [created] = await JournalEntry.create(
-        [
-          {
-            entryNumber,
-            date: reversalDate,
-            description: `Reversal of entry #${currentOriginal.entryNumber}${currentOriginal.description ? ` - ${currentOriginal.description}` : ''}`,
-            reference,
-            project: currentOriginal.project,
-            source: currentOriginal.source,
-            module: currentOriginal.module,
-            sourceType: null,
-            sourceId: null,
-            status: 'posted',
-            // Lines mirror the original with debit/credit swapped. A project-related original's
-            // lines all get the entry's Project and its real Project Number - this also completes
-            // a historical original whose lines were posted without them, so reversing it never
-            // fails. A historical line that named a different project keeps it (a reversal must
-            // mirror the original exactly).
-            lines: await applyEntryProjectToLines({
-              project: currentOriginal.project,
-              session,
-              allowLineProjectOverride: true,
-              lines: currentOriginal.lines.map(line => ({
-                account: line.account._id || line.account,
-                subAccount: line.subAccount?._id || line.subAccount || null,
-                partyNumber: line.partyNumber ?? null,
-                partyType: line.partyType ?? null,
-                project: line.project?._id || line.project || null,
-                projectNumber: line.projectNumber,
-                debit: line.credit,
-                credit: line.debit,
-                description: line.description,
-                unearnedRevenue: 0,
-              })),
-            }),
-            reversalOfEntry: currentOriginal._id,
-            // A reversal belongs to the same Advanced Payment as the entry it reverses.
-            advancedPayment: currentOriginal.advancedPayment || null,
-            createdBy: req.user._id,
-            postedBy: req.user._id,
-            postedAt: new Date(),
-          },
-        ],
-        { session }
-      );
-      reversal = created;
-
-      currentOriginal.reversedByEntry = reversal._id;
-      currentOriginal.reversedBy = req.user._id;
-      currentOriginal.reversedAt = new Date();
-      currentOriginal.status = 'reversed';
-      await currentOriginal.save({ session });
+      // The shared mirror reversal (services/accounting/journalReversalCore.js) - the same one the
+      // reversal engine uses, so an entry reversed from here or from its document is identical.
+      ({ reversal } = await mirrorReverseEntry({ entryId: currentOriginal._id, date: reversalDate, reference, userId: req.user._id, session }));
 
       // A reversed depreciation entry gives its month back to the asset (Book Value, accumulated
       // depreciation), so the asset matches the ledger and the month can be depreciated again.
@@ -359,6 +319,10 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
       // vendor and warehouse balances it moved are restored.
       // eslint-disable-next-line global-require
       await require('../../services/payments/paymentReversalService').applyPaymentReversal(currentOriginal, reversal, session);
+      // A reversed advance application (at order creation) gives the amount back to the advance and
+      // makes the order outstanding again.
+      // eslint-disable-next-line global-require
+      await require('../../services/accounting/reversalService').applySettlementEntryReversal(currentOriginal, session);
     });
 
     logAccountingEvent('JOURNAL_ENTRY_REVERSED', {

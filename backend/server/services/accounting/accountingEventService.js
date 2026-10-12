@@ -128,7 +128,7 @@ function applyEntryDescriptionAndPartyToLines(lines, description, party, withPar
  * of the business operation - see journalEntryModel.js's compound unique index, which is the real
  * backstop against a race duplicating this under concurrent requests).
  */
-async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, reference, project, lines, session, triggeredBySalesOrder, advancedPayment, party }) {
+async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceId, date, description, reference, project, lines, session, triggeredBySalesOrder, advancedPayment, party, reversalOfEntry }) {
   const existing = await JournalEntry.findOne({ sourceType, sourceId, accountingAction }).session(session || null);
   if (existing) return existing;
 
@@ -182,6 +182,9 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
         // an entry that consumed it) - what the Advanced Payment details page lists, never a text
         // match. Null for every entry unrelated to an advance.
         advancedPayment: advancedPayment?._id || advancedPayment || null,
+        // A partial reversal (a purchase return) points at the entry whose slice it reverses, so the
+        // reports classify it like that entry; the original stays posted (only part of it is undone).
+        reversalOfEntry: reversalOfEntry || null,
         status: 'posted',
         lines: projectLines,
       },

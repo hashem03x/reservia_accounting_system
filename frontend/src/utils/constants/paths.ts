@@ -39,6 +39,7 @@ const paths = {
   projects: "projects",
   sectors: "sectors",
   projectManagers: "project-managers",
+  backup: "backup",
   accounts: "accounts",
   journalEntries: "journal-entries",
   advancedPayments: "advanced-payments",

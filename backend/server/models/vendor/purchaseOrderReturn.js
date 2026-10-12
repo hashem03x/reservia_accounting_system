@@ -10,11 +10,14 @@ const purchaseOrderReturnSchema = new Schema(
     //   returnAmount: { type: Number, required: true },
     //   notes: String
     // }],
-    warehouseId: { type: Schema.Types.ObjectId, ref: 'Warehouse', required: true },
+    // Null for a returned service (no stock moves).
+    warehouseId: { type: Schema.Types.ObjectId, ref: 'Warehouse', default: null },
     productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
     returnedQuantity: { type: Number, required: true },
     returnedAmount: { type: Number, required: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    // The AccountingReversal (services/accounting/reversalService.js) this return line belongs to.
+    reversal: { type: Schema.Types.ObjectId, ref: 'AccountingReversal', default: null },
     notes: String
   },
   {

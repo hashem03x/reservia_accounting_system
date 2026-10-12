@@ -231,6 +231,14 @@ export function useAdminNavigation(): NavSection[] {
           },
         ],
       },
+      {
+        // System-level work, kept apart from daily operations and accounting.
+        key: "administration",
+        title: nav.administration,
+        items: [
+          { key: "backup", to: admin(paths.backup), label: nav.backupRestore, Icon: navIcons.Backup, adminOnly: true },
+        ],
+      },
     ];
 
     const canSee = (item: ItemDef) =>

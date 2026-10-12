@@ -255,7 +255,7 @@ purchaseOrderSchema.pre(/^find/, function () {
 
   this.populate({
     path: 'items.productId',
-    select: 'title price priceAfterDiscount category subcategory barcode sku', // categories needed for barcode printing
+    select: 'title price priceAfterDiscount category subcategory barcode sku type', // categories needed for barcode printing; type tells a service (no stock) apart
   });
 
   this.populate({

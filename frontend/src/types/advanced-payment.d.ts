@@ -4,6 +4,8 @@ export type AdvancedPaymentStatus = "available" | "partially_used" | "fully_used
 export interface AdvancedPaymentUsageEntry {
   salesOrder?: { _id: string; code: string; totalAmount: number; grandTotal?: number; paidAmount: number } | null;
   purchaseOrder?: string | null;
+  // Set when the advance was used through an Add Payment (not at order creation).
+  payment?: string | null;
   amountConsumed: number;
   reversed: boolean;
   note?: string | null;

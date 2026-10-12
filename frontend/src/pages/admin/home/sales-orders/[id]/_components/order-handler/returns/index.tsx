@@ -1,22 +1,55 @@
+import { useState } from "react";
+import usePrivateRequest from "@/hooks/usePrivateRequest";
+import useHasPermission from "@/hooks/useHasPermission";
+import resources from "@/utils/constants/resources";
+import actions from "@/utils/constants/actions";
+import ReturnOrderModal from "@/components/global/reversals/return-order-modal";
+import ReversalHistory from "@/components/global/reversals/reversal-history";
 import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import EmptySection from "@/components/ui/sections/empty";
 import { Button, Table } from "@mantine/core";
 import { useOrder } from "../../../context";
-import ReturnItemModal from "./_components/return-item-modal";
 import ReturnRecordRow from "./_components/return-record-row";
 import ReturnedItemRow from "./_components/returned-item-row";
-import ReturnAllItemsModal from "./_components/return-all-items-modal";
 
 export default function Returns() {
-  const { translate } = useLanguage();
-  const { returnRecords, returnedItems, order } = useOrder();
+  const { translate, language } = useLanguage();
+  const { order, setOrder, setPayments, returnRecords, setReturnRecords, returnedItems } = useOrder();
+  const privateRequest = usePrivateRequest();
+  const canReturn = useHasPermission(resources.salesOrders, actions.update);
 
   const [opened, { open, close }] = useDisclosure();
-  const [openedAll, { open: openAll, close: closeAll }] = useDisclosure();
+  const [historyKey, setHistoryKey] = useState(0);
 
-  const hasItemsToReturn = order.items.some((item) => item.starterQuantity - item.returnedQuantity > 0);
+  const lines = order.items
+    .filter((item) => item.product)
+    .map((item) => ({
+      productId: item.product!._id,
+      title: item.product!.title,
+      ordered: item.starterQuantity,
+      returned: item.returnedQuantity,
+      unitPrice: item.unitPriceAfterDiscount,
+      isService: item.product!.type === "service",
+    }));
+  const hasItemsToReturn = lines.some((l) => l.ordered - l.returned > 0);
+  // An id, or the populated warehouse.
+  const warehouse = order.warehouse as unknown as string | { _id: string } | null;
+
+  // A return changes the order (totals, paid amount), may add a refund payment and adds return
+  // records - all reloaded from the server, never guessed locally.
+  async function refresh() {
+    const [orderRes, paymentsRes, returnsRes] = await Promise.all([
+      privateRequest({ url: `sale-orders/${order._id}`, language }),
+      privateRequest({ url: "payment", params: { salesOrderId: order._id }, language }),
+      privateRequest({ url: "sale-orders/returns", params: { salesOrderId: order._id }, language }),
+    ]);
+    setOrder(orderRes.data);
+    setPayments(paymentsRes.data);
+    setReturnRecords(returnsRes.data);
+    setHistoryKey((k) => k + 1);
+  }
 
   return (
     <AdminLayoutBox
@@ -24,19 +57,22 @@ export default function Returns() {
         title: translate("Returns", "المرتجعات"),
         sideElements: (
           <>
-            {hasItemsToReturn && (
-              <div className="flex gap-2">
-                <Button onClick={open} radius="md">
-                  {translate("Return Item", "ارجاع عنصر")}
-                </Button>
-                <Button onClick={openAll} radius="md" variant="light" color="dark">
-                  {translate("Return All", "ارجاع الكل")}
-                </Button>
-              </div>
+            {hasItemsToReturn && canReturn && (
+              <Button onClick={open} radius="md" color="orange" variant="light">
+                {translate("Return items", "إرجاع أصناف")}
+              </Button>
             )}
-
-            <ReturnItemModal opened={opened} close={close} />
-            <ReturnAllItemsModal opened={openedAll} close={closeAll} />
+            <ReturnOrderModal
+              opened={opened}
+              close={close}
+              kind="sales"
+              orderId={order._id}
+              orderCode={(order as { code?: string }).code}
+              lines={lines}
+              defaultWarehouseId={typeof warehouse === "string" ? warehouse : warehouse?._id || null}
+              paidAmount={order.paidAmount || 0}
+              onDone={() => refresh()}
+            />
           </>
         ),
       }}
@@ -93,6 +129,9 @@ export default function Returns() {
       ) : (
         <EmptySection message={translate("No Items Returned", "لا توجد مرتجعات")} useDefaultImg />
       )}
+      <div className="mt-4">
+        <ReversalHistory query={{ salesOrder: order._id }} refreshKey={historyKey} />
+      </div>
     </AdminLayoutBox>
   );
 }

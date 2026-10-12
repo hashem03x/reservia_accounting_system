@@ -46,7 +46,7 @@ function _schedule(time, timezone) {
     async () => {
       try {
         const result = await runBackup();
-        console.log(`[Backup] Scheduled run complete → ${result.archivePath}`);
+        console.log(`[Backup] Scheduled run complete -> ${result.fileName}`);
       } catch (err) {
         // runBackup already sends email & logs – nothing else to do here
       }

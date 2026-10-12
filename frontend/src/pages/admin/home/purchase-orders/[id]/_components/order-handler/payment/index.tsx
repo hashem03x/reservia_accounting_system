@@ -13,6 +13,7 @@ import { solidIcons } from "@/components/icons";
 import { PaymentMethod } from "@/types/payment";
 import { PurchaseOrderPayments, PurchaseOrderPaymentStatus } from "@/types/purchase-order-extras";
 import { useOrder } from "../../../context";
+import { ReverseAction } from "@/components/global/reversals/payment-reverse-cell";
 import AddPaymentModal from "./_components/add-payment-modal";
 
 const STATUS_COLORS: Record<PurchaseOrderPaymentStatus, string> = {
@@ -29,7 +30,7 @@ const STATUS_COLORS: Record<PurchaseOrderPaymentStatus, string> = {
  */
 export default function Payment() {
   const { translate, language, translations } = useLanguage();
-  const { order, payments } = useOrder();
+  const { order, payments, setOrder, setPayments } = useOrder();
   const [opened, { open, close }] = useDisclosure(false);
   const { privateRequest, loading, setLoading, error, setError, data, setData } =
     useDataHandler<PurchaseOrderPayments | null>({ initialData: null, initialLoading: true });
@@ -43,6 +44,16 @@ export default function Payment() {
   useEffect(() => {
     load();
   }, [order._id, payments.length, order.paidAmount]);
+  // After a reversal: the order (paid / outstanding) and its payments, then this tab's position.
+  async function refresh() {
+    const [orderRes, paymentsRes] = await Promise.all([
+      privateRequest({ url: `purchaseorder/${order._id}`, language }),
+      privateRequest({ url: "payment", params: { purchaseOrderId: order._id }, language }),
+    ]);
+    setOrder(orderRes.data);
+    setPayments(paymentsRes.data);
+    load();
+  }
 
   const money = (n: number) =>
     `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${translations.currency}`;
@@ -147,6 +158,7 @@ export default function Payment() {
                     <Table.Th className="text-end">{translate("Allocated to this PO", "المخصص لهذا الأمر")}</Table.Th>
                     <Table.Th>{translate("Status", "الحالة")}</Table.Th>
                     <Table.Th>{translate("Journal Entry", "القيد")}</Table.Th>
+                    <Table.Th>{translate("Reversal", "العكس")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -195,6 +207,22 @@ export default function Payment() {
                           <span className="ms-1 text-xs">
                             ({translate("reversed by", "معكوسة بـ")} <JournalEntryLink entry={p.reversalEntry} />)
                           </span>
+                        )}
+                      </Table.Td>
+                      <Table.Td className="no-underline">
+                        {p.status !== "reversed" && (
+                          <ReverseAction
+                            target={
+                              p.kind === "advance" && p.advancedPayment
+                                ? p.onCreation
+                                  ? { mode: "settlement", advancedPaymentId: p.advancedPayment, purchaseOrderId: order._id }
+                                  : { mode: "settlement", advancedPaymentId: p.advancedPayment, paymentId: p._id }
+                                : { mode: "payment", paymentId: p._id }
+                            }
+                            amount={p.amount}
+                            direction={p.kind === "refund" ? "in" : "out"}
+                            onDone={refresh}
+                          />
                         )}
                       </Table.Td>
                     </Table.Tr>

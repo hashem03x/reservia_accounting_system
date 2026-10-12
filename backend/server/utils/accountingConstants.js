@@ -123,6 +123,14 @@ exports.AccountingActions = [
   'EXPENSE_PAYMENT_RECORDED',
   // Equity (services/equity/shareholderService.js): Dr the payment account / Cr the equity account.
   'SHAREHOLDER_CONTRIBUTION',
+  // Returns and refunds (services/accounting/reversalService.js). A purchase return reverses the
+  // returned items' slice of the order's receipt: Dr Suppliers (+ Dr WHT Payable) / Cr the inventory,
+  // project WIP or service PUC account (+ Cr Input VAT). A refund settles what a return left paid in
+  // excess: Dr Accounts Receivable / Cr the payment account (customer), Dr the payment account /
+  // Cr Suppliers (vendor).
+  'PURCHASE_RETURN',
+  'SO_REFUND_RECORDED',
+  'PO_REFUND_RECORDED',
 ];
 
 // Automatic actions that are inherently project-related: they are only ever posted for a document
@@ -260,4 +268,7 @@ exports.AccountingModuleByAction = {
   EXPENSE_RECORDED: 'Expense',
   EXPENSE_PAYMENT_RECORDED: 'Expense',
   SHAREHOLDER_CONTRIBUTION: 'Equity',
+  PURCHASE_RETURN: 'Purchase Order',
+  SO_REFUND_RECORDED: 'Sales Order',
+  PO_REFUND_RECORDED: 'Purchase Order',
 };

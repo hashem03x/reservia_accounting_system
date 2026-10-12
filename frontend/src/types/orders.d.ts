@@ -66,6 +66,8 @@ export type PurchaseOrderItem = {
     priceAfterDiscount: number | null;
     sku?: string;
     barcode?: string;
+    // "service" has no stock (returns need no warehouse).
+    type?: "product" | "service";
   } | null;
   unitPrice: number;
   itemDiscount: ItemDiscount;
@@ -124,6 +126,8 @@ export type SalesOrderItem = {
     priceAfterDiscount: number | null;
     sku?: string;
     barcode?: string;
+    // "service" has no stock (returns need no warehouse).
+    type?: "product" | "service";
   } | null;
   unitPrice: number;
   itemDiscount: ItemDiscount;

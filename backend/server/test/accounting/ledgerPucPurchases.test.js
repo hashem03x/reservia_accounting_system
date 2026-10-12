@@ -392,11 +392,12 @@ test('PUC / project cost report: categories, transactions, no double counting, a
 
   const report = await R['project-costs']({ from: '2026-01-01', to: '2026-12-31' });
   const prj1 = report.sections.find(s => s.key === 'projects').rows.find(r => r.projectNumber === 'PRJ001');
-  // Added: the order's 1,000 bars (allocated, then 4 returned - returns post no entry in Reservia)
-  // + 2,000 design + 4,000 labour + 1,500 equipment = 8,500; relieved 500.
-  assert.deepEqual([prj1.costsAdded, prj1.costsRelieved, prj1.pucClosing, prj1.costOfSales], [8500, 500, 8000, 500]);
+  // Added: the order's 1,000 bars + 2,000 design + 4,000 labour + 1,500 equipment = 8,500. Relieved:
+  // the return of 4 bars (its PURCHASE_RETURN entry takes 400 out of PUC - services/accounting/
+  // reversalService.js) + 500 recognized = 900; closing 7,600.
+  assert.deepEqual([prj1.costsAdded, prj1.costsRelieved, prj1.pucClosing, prj1.costOfSales], [8500, 900, 7600, 500]);
   const cats = report.sections.find(s => s.key === 'categories').rows.find(r => r.projectNumber === 'PRJ001');
-  assert.deepEqual([cats.cat_materials, cats.cat_labor, cats.cat_design, cats.cat_equipment, cats.total], [500, 4000, 2000, 1500, 8000]);
+  assert.deepEqual([cats.cat_materials, cats.cat_labor, cats.cat_design, cats.cat_equipment, cats.total], [100, 4000, 2000, 1500, 7600]);
   assert.ok(report.checks.every(c => c.ok), JSON.stringify(report.checks));
   const tx = report.sections.find(s => s.key === 'transactions').rows.filter(r => r.projectNumber === 'PRJ001');
   const bars = tx.find(r => r.category === 'Materials' && r.costAdded === 1000);

@@ -8,6 +8,10 @@ const ApiError = require('../../utils/apiError');
 const factory = require('../handlersFactory');
 const { createSalesOrder } = require('../../services/sales/salesOrderCreation.service');
 const { restoreAdvancedPaymentForSalesOrder } = require('../../services/payments/advancedPaymentService');
+const { mirrorReverseEntry } = require('../../services/accounting/journalReversalCore');
+const { returnSalesOrder } = require('../../services/accounting/reversalService');
+const { legacyKey } = require('../accounting/reversalController');
+const JournalEntry = require('../../models/accounting/journalEntryModel');
 const { recalculateExecutedPercentage } = require('../../services/project/projectAccountingService');
 
 // Create a new sales order
@@ -111,6 +115,10 @@ exports.cancelOrder = asyncHandler(async (req, res, next) => {
         freshOrder.orderStatus = 'canceled';
         await freshOrder.save({ session });
         await restoreAdvancedPaymentForSalesOrder({ advancedPaymentId: freshOrder.advancedPayment, salesOrderId: freshOrder._id, session });
+        // ...and the entry that applied it is reversed too, so the ledger agrees with the advance
+        // (Dr Customer Advances / Cr Accounts Receivable is mirrored).
+        const applied = await JournalEntry.findOne({ sourceType: 'SO', sourceId: freshOrder._id, accountingAction: 'SO_CUSTOMER_ADVANCE_APPLIED', status: 'posted' }).session(session);
+        if (applied) await mirrorReverseEntry({ entryId: applied._id, date: new Date(), reason: 'Sales order cancelled', userId: req.user?._id || null, session });
         // Canceling removes this order's amount from the project's Executed % numerator (docs
         // section "Project Executed % Calculation").
         if (freshOrder.project) {
@@ -189,84 +197,41 @@ exports.updateOrderToDelivered = asyncHandler(async (req, res, next) => {
  */
 exports.returnSalesOrderItemAdmin = asyncHandler(async (req, res, next) => {
   const { salesOrderId } = req.params;
-  const session = await mongoose.startSession();
+  const order = await SalesOrder.findById(salesOrderId).lean();
+  if (!order) return next(new ApiError(`Sales order not found with id ${salesOrderId}`, 404));
+  const items = order.items.filter(i => i.quantityToBeReturned > 0).map(i => ({ productId: String(i.product?._id || i.product), quantity: i.quantityToBeReturned }));
+  if (!items.length) return next(new ApiError('No items are waiting to be returned on this order.', 400));
 
-  try {
-    await session.withTransaction(async () => {
-      // 1. Get sales order by id
-      const salesOrder = await SalesOrder.findById(salesOrderId).session(session);
-      if (!salesOrder) {
-        throw new ApiError(`Sales order not found with id ${salesOrderId}`, 404);
+  // Recorded by the accounting reversal engine (services/accounting/reversalService.js), so the
+  // return posts its ledger reversal. The website order's online refund (a payment-gateway method
+  // with no ledger account, like the online payment it refunds) is made in the same transaction.
+  await returnSalesOrder({
+    salesOrderId,
+    items,
+    warehouseId: order.warehouse?._id || order.warehouse,
+    reason: (typeof req.body?.reason === 'string' && req.body.reason.trim()) || 'Website order return',
+    idempotencyKey: req.body?.idempotencyKey || legacyKey('so-website-return'),
+    userId: req.user._id,
+    afterReturn: async ({ lines, session }) => {
+      for (const line of lines) {
+        // eslint-disable-next-line no-await-in-loop
+        await new Payment({
+          warehouseId: order.warehouse?._id || order.warehouse,
+          salesOrderId,
+          customerId: order.customer?._id || order.customer,
+          type: 'out',
+          amountPaid: line.amount,
+          paymentMethod: 'paymob-online',
+          paymentCategory: 'sales-return',
+          notes: `Return payment for ${line.quantity} items`,
+          createdBy: req.user._id,
+        }).save({ session });
       }
+    },
+  });
 
-      // 2. Loop over items and process returns
-      for (const item of salesOrder.items) {
-        if (item.quantityToBeReturned > 0) {
-          // 2.1 Update returned quantity and reset quantityToBeReturned
-          const returnedQuantity = item.quantityToBeReturned;
-          item.returnedQuantity += returnedQuantity;
-          item.quantityToBeReturned = 0;
-
-          // 2.2 Increase stock on the product - a service has no stock/warehouse concept at all
-          // (see docs/entities/products.md), so returning one never touches inventory.
-          const product = await Product.findById(item.product).session(session);
-          if (!product) {
-            throw new ApiError(`Product not found with id ${item.product}`, 404);
-          }
-
-          if (product.type !== 'service') {
-            const warehouseStock = product.stock.find(stock => stock.warehouse.toString() === salesOrder.warehouse.toString());
-
-            if (!warehouseStock) {
-              product.stock.push({
-                warehouse: salesOrder.warehouse,
-                quantity: returnedQuantity,
-              });
-            } else {
-              warehouseStock.quantity += returnedQuantity;
-            }
-            await product.save({ session });
-          }
-
-          // 2.3 Create payment with type out
-          const returnAmount = returnedQuantity * item.unitPriceAfterDiscount || returnedQuantity * item.unitPrice;
-          const payment = new Payment({
-            warehouseId: salesOrder.warehouse,
-            salesOrderId: salesOrderId,
-            customerId: salesOrder.customer,
-            type: 'out',
-            amountPaid: returnAmount,
-            paymentMethod: 'paymob-online',
-            paymentCategory: 'sales-return',
-            notes: `Return payment for ${returnedQuantity} items`,
-            createdBy: req.user._id,
-          });
-          await payment.save({ session });
-
-          // 2.4 Create salesOrderReturn record
-          const salesOrderReturn = new SalesOrderReturn({
-            salesOrderId,
-            warehouseId: salesOrder.warehouse,
-            productId: item.product,
-            returnedQuantity,
-            returnedAmount: returnAmount,
-            notes: 'Website order return',
-          });
-          await salesOrderReturn.save({ session });
-        }
-      }
-
-      await salesOrder.save({ session });
-    });
-
-    res.status(200).json({
-      status: 'success',
-      message: 'Sales order items returned successfully',
-    });
-  } catch (error) {
-    await session.abortTransaction();
-    next(error);
-  } finally {
-    session.endSession();
-  }
+  res.status(200).json({
+    status: 'success',
+    message: 'Sales order items returned successfully',
+  });
 });

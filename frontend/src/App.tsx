@@ -81,6 +81,7 @@ import AP_Projects from "@/pages/admin/projects";
 import AP_Project from "@/pages/admin/projects/[id]";
 import AP_Sectors from "@/pages/admin/sectors";
 import AP_ProjectManagers from "@/pages/admin/project-managers";
+import AP_Backup from "@/pages/admin/backup";
 import AP_AccountingPeriods from "@/pages/admin/accounting-periods";
 import AP_ExpenseCategories from "@/pages/admin/expense-categories";
 import AP_Accounts from "@/pages/admin/accounts";
@@ -232,6 +233,8 @@ export default function App() {
                   <Route element={<RoleGuard allowedRoles={[roles.admin.value]} />}>
                     <Route path={paths.sectors} element={<AP_Sectors />} />
                     <Route path={paths.projectManagers} element={<AP_ProjectManagers />} />
+                    {/* Backup & Restore - every endpoint is admin-only on the server too. */}
+                    <Route path={paths.backup} element={<AP_Backup />} />
                     {/* Closing / reopening periods and managing expense categories are administrator controls. */}
                     <Route path={paths.accountingPeriods} element={<AP_AccountingPeriods />} />
                     <Route path={paths.expenseCategories} element={<AP_ExpenseCategories />} />

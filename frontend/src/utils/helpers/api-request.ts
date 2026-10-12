@@ -29,7 +29,11 @@ export default async function apiRequest({
 
     if (data)
       if (data instanceof FormData) body = data;
-      else {
+      // Raw bytes (e.g. a backup file chunk) go as they are.
+      else if (data instanceof Blob) {
+        body = data;
+        finalHeaders = { ...headers, "Content-Type": "application/octet-stream" };
+      } else {
         body = JSON.stringify(data);
         finalHeaders = { ...headers, "Content-Type": "application/json" };
       }

@@ -1,19 +1,54 @@
+import { useState } from "react";
+import usePrivateRequest from "@/hooks/usePrivateRequest";
+import useHasPermission from "@/hooks/useHasPermission";
+import resources from "@/utils/constants/resources";
+import actions from "@/utils/constants/actions";
+import ReturnOrderModal from "@/components/global/reversals/return-order-modal";
+import ReversalHistory from "@/components/global/reversals/reversal-history";
 import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import EmptySection from "@/components/ui/sections/empty";
-import { solidIcons } from "@/components/icons";
 import { Button, Table } from "@mantine/core";
 import { useOrder } from "../../../context";
-import ReturnItemModal from "./_components/return-item-modal";
 import ReturnRecordRow from "./_components/return-record-row";
 import ReturnedItemRow from "./_components/returned-item-row";
 
 export default function Returns() {
-  const { translate } = useLanguage();
-  const { returnRecords, returnedItems } = useOrder();
+  const { translate, language } = useLanguage();
+  const { order, setOrder, setPayments, returnRecords, setReturnRecords, returnedItems } = useOrder();
+  const privateRequest = usePrivateRequest();
+  const canReturn = useHasPermission(resources.purchaseOrders, actions.update);
 
   const [opened, { open, close }] = useDisclosure();
+  const [historyKey, setHistoryKey] = useState(0);
+
+  const lines = order.items
+    .filter((item) => item.product)
+    .map((item) => ({
+      productId: item.product!._id,
+      title: item.product!.title,
+      ordered: item.starterQuantity,
+      returned: item.returnedQuantity,
+      unitPrice: item.unitPriceAfterDiscount,
+      isService: item.product!.type === "service",
+    }));
+  const hasItemsToReturn = lines.some((l) => l.ordered - l.returned > 0);
+  const warehouse = (order as { warehouseId?: string | { _id: string } }).warehouseId;
+
+  // A return changes the order (totals, paid amount), may add a refund payment and adds return
+  // records - all reloaded from the server, never guessed locally.
+  async function refresh() {
+    const [orderRes, paymentsRes, returnsRes] = await Promise.all([
+      privateRequest({ url: `purchaseorder/${order._id}`, language }),
+      privateRequest({ url: "payment", params: { purchaseOrderId: order._id }, language }),
+      privateRequest({ url: "purchaseorder/returns", params: { purchaseOrderId: order._id }, language }),
+    ]);
+    setOrder(orderRes.data);
+    setPayments(paymentsRes.data);
+    setReturnRecords(returnsRes.data);
+    setHistoryKey((k) => k + 1);
+  }
 
   return (
     <AdminLayoutBox
@@ -21,11 +56,22 @@ export default function Returns() {
         title: translate("Returns", "المرتجعات"),
         sideElements: (
           <>
-            <Button onClick={open} radius="md" leftSection={<solidIcons.Plus />}>
-              {translate("Return Item", "ارجاع عنصر")}
-            </Button>
-
-            <ReturnItemModal opened={opened} close={close} />
+            {hasItemsToReturn && canReturn && (
+              <Button onClick={open} radius="md" color="orange" variant="light">
+                {translate("Return items", "إرجاع أصناف")}
+              </Button>
+            )}
+            <ReturnOrderModal
+              opened={opened}
+              close={close}
+              kind="purchase"
+              orderId={order._id}
+              orderCode={(order as { code?: string }).code}
+              lines={lines}
+              defaultWarehouseId={typeof warehouse === "string" ? warehouse : warehouse?._id || null}
+              paidAmount={order.paidAmount || 0}
+              onDone={() => refresh()}
+            />
           </>
         ),
       }}
@@ -82,6 +128,9 @@ export default function Returns() {
       ) : (
         <EmptySection message={translate("No Items Returned", "لا توجد مرتجعات")} useDefaultImg />
       )}
+      <div className="mt-4">
+        <ReversalHistory query={{ purchaseOrder: order._id }} refreshKey={historyKey} />
+      </div>
     </AdminLayoutBox>
   );
 }
