@@ -19,6 +19,9 @@ import OrderItemsSection from "./_components/order-items-section";
 import PaymentAccountSelect from "@/components/global/payment-account-select";
 import OrderTaxSection from "@/components/global/order-tax-section";
 import { calculateOrderTotals } from "@/utils/helpers/order-totals";
+import AttachmentPicker from "@/components/global/attachments/attachment-picker";
+import useAttachmentUpload, { uploadPendingAttachments } from "@/components/global/attachments/use-attachment-upload";
+import { notifyError } from "@/utils/helpers/notifiers";
 
 const emptyOrderItem: OrderItemInput = {
   productCode: "",
@@ -46,6 +49,9 @@ export default function NewPurchaseOrder() {
   const [paymentAccount, setPaymentAccount] = useState("");
   const [vatPercentage, setVatPercentage] = useState<string | number>(0);
   const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
+  // Optional PDFs, uploaded right after the order is created.
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const uploadAttachment = useAttachmentUpload();
 
   // Preview only (the backend recomputes and stores every amount) - same canonical formula.
   const subtotal = items.reduce((acc, item) => acc + (item.starterSubtotal || 0), 0);
@@ -112,6 +118,16 @@ export default function NewPurchaseOrder() {
         },
       });
 
+      // The order is saved; a file that fails to upload is reported and can be attached from its page.
+      const failed = await uploadPendingAttachments(uploadAttachment, "purchase-orders", response.data._id, attachmentFiles);
+      if (failed.length)
+        notifyError({
+          language,
+          message: translate(
+            `The order was saved, but ${failed.length} attachment(s) could not be uploaded: ${failed.map((f) => `${f.file.name} (${f.error})`).join(", ")}`,
+            `تم حفظ الطلب، لكن تعذر رفع ${failed.length} من المرفقات: ${failed.map((f) => `${f.file.name} (${f.error})`).join("، ")}`,
+          ),
+        });
       navigate(`/${paths.admin}/${paths.home}/${paths.purchaseOrders}/${response.data._id}`);
     });
   }
@@ -216,6 +232,10 @@ export default function NewPurchaseOrder() {
       <hr />
 
       <OrderItemsSection items={items} setItems={setItems} addNewItem={addNewItem} />
+
+      <hr />
+
+      <AttachmentPicker files={attachmentFiles} onChange={setAttachmentFiles} disabled={loading} />
     </AdminLayoutBox>
   );
 }

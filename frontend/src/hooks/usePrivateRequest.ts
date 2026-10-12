@@ -24,12 +24,14 @@ export default function usePrivateRequest() {
     signal,
     download,
     filename,
+    responseType,
   }: ApiRequestOptions) {
     try {
       if (!user) throw new Error("No user logged in.");
       // Add the access token to the request headers if it doesn't exist
       let newHeaders = headers;
-      if (!new Headers(headers).has("authorization")) newHeaders = { authorization: `Bearer ${user.accessToken}`, ...headers };
+      if (!new Headers(headers).has("authorization"))
+        newHeaders = { authorization: `Bearer ${user.accessToken}`, ...headers };
       // Send the request with the access token
       return await apiRequest({
         url,
@@ -42,6 +44,7 @@ export default function usePrivateRequest() {
         language,
         download,
         filename,
+        responseType,
       });
     } catch (error) {
       if ((error as Error).message === accessTokenError) {
@@ -54,12 +57,14 @@ export default function usePrivateRequest() {
             url,
             method,
             headers: newHeaders,
+            params,
             data,
             credentials,
             signal,
             language,
             download,
             filename,
+            responseType,
           });
         } catch (error) {
           if ((error as Error).message === refreshTokenError) logout();

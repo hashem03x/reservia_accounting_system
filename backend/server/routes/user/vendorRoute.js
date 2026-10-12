@@ -23,7 +23,8 @@ const {
   updateVendor,
   deleteVendor,
   uploadVendorDocument,
-  deleteVendorDocument }
+  deleteVendorDocument,
+  downloadVendorDocument }
   = require('../../controller/user/vendorController');
 
 const { uploadSingleDocument } = require('../../middleware/documentUploadMiddleware');
@@ -89,4 +90,7 @@ router.route('/:id/documents/:documentType')
     checkUserPermissions({ resource: 'vendors', action: 'update' }),
     deleteVendorDocument);
 
+
+// The document itself (real name, type and .pdf extension) - through the API, never a bare storage URL.
+router.get('/:id/documents/:documentType/download', checkUserPermissions({ resource: 'vendors', action: 'read' }), downloadVendorDocument);
 module.exports = router;

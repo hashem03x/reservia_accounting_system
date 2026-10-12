@@ -18,6 +18,7 @@ import paths from "@/utils/constants/paths";
 import { JournalEntry, JournalLine } from "@/types/journal-entry";
 import { groupJournalLines } from "@/utils/helpers/journal-lines";
 import ReverseJournalEntryModal from "../_components/reverse-journal-entry-modal";
+import AttachmentsPanel from "@/components/global/attachments/attachments-panel";
 
 const statusColors: Record<string, string> = { draft: "yellow", posted: "green", reversed: "gray" };
 
@@ -40,7 +41,9 @@ export default function JournalEntryDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState("");
 
-  useDocumentTitle(entry ? `#${entry.entryNumber} | ${translations.pages.journalEntries}` : translations.pages.journalEntries);
+  useDocumentTitle(
+    entry ? `#${entry.entryNumber} | ${translations.pages.journalEntries}` : translations.pages.journalEntries,
+  );
 
   function load() {
     handleRequest(language, setLoading, setError, async () => {
@@ -96,7 +99,14 @@ export default function JournalEntryDetail() {
   }
 
   if (loading) return <LoadingSection message={translate("Loading journal entry...", "جاري تحميل القيد...")} />;
-  if (error) return <ErrorSection errorTitle={translate("Error loading journal entry", "خطأ في تحميل القيد")} errorMessage={error} button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }} />;
+  if (error)
+    return (
+      <ErrorSection
+        errorTitle={translate("Error loading journal entry", "خطأ في تحميل القيد")}
+        errorMessage={error}
+        button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }}
+      />
+    );
   if (!entry) return null;
 
   const lines = entry.lines || [];
@@ -123,7 +133,10 @@ export default function JournalEntryDetail() {
               <Tooltip
                 label={
                   entry.reversedByEntry
-                    ? translate("This entry has already been reversed and cannot be reversed again.", "تم عكس هذا القيد بالفعل ولا يمكن عكسه مرة أخرى.")
+                    ? translate(
+                        "This entry has already been reversed and cannot be reversed again.",
+                        "تم عكس هذا القيد بالفعل ولا يمكن عكسه مرة أخرى.",
+                      )
                     : entry.reversalOfEntry
                       ? translate("A reversal entry cannot itself be reversed.", "لا يمكن عكس قيد عكس بحد ذاته.")
                       : ""
@@ -161,13 +174,19 @@ export default function JournalEntryDetail() {
                 className="text-blue-600 hover:underline"
                 onClick={() =>
                   navigate(
-                    `/${paths.admin}/${sourceOrderIsSalesOrder ? paths.salesOrders : paths.purchaseOrders}/${sourceOrder._id}`
+                    `/${paths.admin}/${sourceOrderIsSalesOrder ? paths.salesOrders : paths.purchaseOrders}/${sourceOrder._id}`,
                   )
                 }
               >
                 {sourceOrderIsSalesOrder
-                  ? translate(`Sales Order ${sourceOrder.code || sourceOrder._id} → View Sales Order`, `طلب بيع ${sourceOrder.code || sourceOrder._id} ← عرض طلب البيع`)
-                  : translate(`Purchase Order ${sourceOrder.code || sourceOrder._id} → View Purchase Order`, `طلب شراء ${sourceOrder.code || sourceOrder._id} ← عرض طلب الشراء`)}
+                  ? translate(
+                      `Sales Order ${sourceOrder.code || sourceOrder._id} → View Sales Order`,
+                      `طلب بيع ${sourceOrder.code || sourceOrder._id} ← عرض طلب البيع`,
+                    )
+                  : translate(
+                      `Purchase Order ${sourceOrder.code || sourceOrder._id} → View Purchase Order`,
+                      `طلب شراء ${sourceOrder.code || sourceOrder._id} ← عرض طلب الشراء`,
+                    )}
               </button>
             }
           />
@@ -227,15 +246,11 @@ export default function JournalEntryDetail() {
               </Table.Tr>
             ) : (
               <>
-                {debitLines.length > 0 && (
-                  <LineGroupHeader label={translate("Debit", "مدين")} color="text-blue-700" />
-                )}
+                {debitLines.length > 0 && <LineGroupHeader label={translate("Debit", "مدين")} color="text-blue-700" />}
                 {debitLines.map(({ line, originalIndex }) => (
                   <JournalLineRow key={`d-${originalIndex}`} line={line} />
                 ))}
-                {creditLines.length > 0 && (
-                  <LineGroupHeader label={translate("Credit", "دائن")} color="text-orange-700" />
-                )}
+                {creditLines.length > 0 && <LineGroupHeader label={translate("Credit", "دائن")} color="text-orange-700" />}
                 {creditLines.map(({ line, originalIndex }) => (
                   <JournalLineRow key={`c-${originalIndex}`} line={line} />
                 ))}
@@ -258,7 +273,17 @@ export default function JournalEntryDetail() {
         </Table>
       </div>
 
-      <ReverseJournalEntryModal opened={reverseModalOpened} close={closeReverseModal} entry={entry} onReversed={handleReversed} />
+      <hr />
+
+      {/* Supporting PDFs - adding or removing one never changes the entry (posted entries stay as posted). */}
+      <AttachmentsPanel ownerKey="journal-entries" ownerId={entry._id} canEdit={canUpdate} />
+
+      <ReverseJournalEntryModal
+        opened={reverseModalOpened}
+        close={closeReverseModal}
+        entry={entry}
+        onReversed={handleReversed}
+      />
     </AdminLayoutBox>
   );
 }
@@ -299,7 +324,9 @@ function JournalLineRow({ line }: { line: JournalLine }) {
       <Table.Td>{line.description || "-"}</Table.Td>
       <Table.Td className="text-right tabular-nums">{debit ? debit.toLocaleString() : "-"}</Table.Td>
       <Table.Td className="text-right tabular-nums">{credit ? credit.toLocaleString() : "-"}</Table.Td>
-      <Table.Td className={`text-right tabular-nums ${lineBalance < 0 ? "text-red-600" : ""}`}>{lineBalance.toLocaleString()}</Table.Td>
+      <Table.Td className={`text-right tabular-nums ${lineBalance < 0 ? "text-red-600" : ""}`}>
+        {lineBalance.toLocaleString()}
+      </Table.Td>
       <Table.Td>{line.currency ? `${line.currency}${line.exchangeRate ? ` @ ${line.exchangeRate}` : ""}` : "-"}</Table.Td>
     </Table.Tr>
   );

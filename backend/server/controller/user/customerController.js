@@ -6,9 +6,10 @@ const factory = require('../handlersFactory');
 const User = require('../../models/userModel');
 const { createDocumentHandlers } = require('../documentController');
 
-const { uploadDocument: uploadCustomerDocument, deleteDocument: deleteCustomerDocument } = createDocumentHandlers(User, 'Customer');
+const { uploadDocument: uploadCustomerDocument, deleteDocument: deleteCustomerDocument, downloadDocument: downloadCustomerDocument } = createDocumentHandlers(User, 'Customer');
 exports.uploadCustomerDocument = uploadCustomerDocument;
 exports.deleteCustomerDocument = deleteCustomerDocument;
+exports.downloadCustomerDocument = downloadCustomerDocument;
 /**
  *  @description Create offline customer
  *  @route       POST /api/v1/users/offline

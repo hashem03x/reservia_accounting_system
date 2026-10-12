@@ -5,6 +5,8 @@ const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { destroyDocument } = require('../../middleware/documentUploadMiddleware');
+const { sendStoredDocument } = require('../documentController');
+const { decodeUploadName } = require('../../utils/uploadFileName');
 const { recalculateRemainingMoney, recalculateExecutedPercentage } = require('../../services/project/projectAccountingService');
 const { logAccountingEvent } = require('../../utils/accountingLogger');
 
@@ -118,7 +120,7 @@ const uploadContract = asyncHandler(async (req, res, next) => {
   project.contract = {
     url: req.file.path,
     publicId: req.file.filename,
-    filename: req.file.originalname,
+    filename: decodeUploadName(req.file.originalname),
     mimeType: req.file.mimetype,
     uploadedAt: new Date(),
     uploadedBy: req.user._id,
@@ -134,6 +136,16 @@ const getContract = asyncHandler(async (req, res, next) => {
   if (!project.contract) return next(new ApiError('This project has no contract attached.', 404));
 
   res.status(200).json(apiResponse('Contract retrieved successfully', true, project.contract));
+});
+
+
+// GET /projects/:id/contract/download[?inline=1] - the contract file through the API, with its real
+// name, type and .pdf extension.
+const downloadContract = asyncHandler(async (req, res, next) => {
+  const project = await Project.findById(req.params.id).select('contract').lean();
+  if (!project) return next(new ApiError('No project found with that id', 404));
+  if (!project.contract) return next(new ApiError('This project has no contract attached.', 404));
+  return sendStoredDocument(res, next, { ...project.contract, documentType: 'contract' }, req.query.inline === '1');
 });
 
 const deleteContract = asyncHandler(async (req, res, next) => {
@@ -165,5 +177,6 @@ module.exports = {
   uploadContract,
   getContract,
   deleteContract,
+  downloadContract,
   getProjectJournalEntries,
 };

@@ -13,17 +13,20 @@ import EmptySection from "@/components/ui/sections/empty";
 import ErrorAlert from "@/components/ui/error-alert";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
 import { outlineIcons } from "@/components/icons";
-import { BackupOverview, BackupRecord, RestoreRecord } from "@/types/backup";
+import { BackupOverview, BackupRecord, BackupScope, RestoreRecord } from "@/types/backup";
 import ConfirmTextModal from "./_components/confirm-text-modal";
 
 const formatSize = (bytes: number) =>
   bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`;
 
 /**
- * Admin -> Backup & Restore: full backups of every business collection (manual and daily), each
- * written then verified before it counts; downloads; and restoring from a stored or uploaded backup
- * - which REPLACES all current data, after a verified recovery backup of it is taken automatically.
- * Every endpoint is admin-only on the server.
+ * Admin -> Backup & Restore: full system backups (manual and daily) of every business collection AND
+ * the actual bytes of every stored file - PDF attachments, customer / vendor documents, project
+ * contracts, server images - each written then verified (records and files by checksum) before it
+ * counts; downloads; and restoring from a stored or uploaded backup - which REPLACES all current data
+ * and puts the files back, after a verified recovery backup is taken automatically. Backups without
+ * the external files ("database only", and every backup from before files were included) are
+ * labelled as such everywhere. Every endpoint is admin-only on the server.
  */
 export default function BackupRestore() {
   const { language, translate, translations } = useLanguage();
@@ -67,33 +70,88 @@ export default function BackupRestore() {
     };
     const [color, en, ar] = map[status] || ["gray", status, status];
     return (
-      <Badge color={color} variant="light">
+      <Badge color={color} variant="light" className="min-w-max">
         {translate(en, ar)}
       </Badge>
     );
   };
 
+  const scopeBadge = (b: Pick<BackupRecord, "scope" | "status">) => {
+    if (b.status !== "completed" && !b.scope) return "-";
+    const map: Record<BackupScope, [string, string, string, string, string]> = {
+      full: [
+        "teal",
+        "Full system",
+        "نظام كامل",
+        "Database records and every stored file.",
+        "سجلات قاعدة البيانات وكل الملفات المخزنة.",
+      ],
+      partial: [
+        "yellow",
+        "Partial",
+        "جزئية",
+        "Taken before a restore while some files were already unreadable - they are not in it.",
+        "أُخذت قبل استعادة بينما كانت بعض الملفات غير قابلة للقراءة - ليست ضمنها.",
+      ],
+      database: [
+        "gray",
+        "Database only",
+        "قاعدة البيانات فقط",
+        "Records only: customer / vendor documents, contracts and server images are NOT included and cannot be restored from it.",
+        "السجلات فقط: مستندات العملاء والموردين والعقود وصور الخادم غير مضمنة ولا يمكن استعادتها منها.",
+      ],
+    };
+    const [color, en, ar, tipEn, tipAr] = map[b.scope || "database"];
+    return (
+      <Tooltip label={translate(tipEn, tipAr)} multiline w={300}>
+        <Badge color={color} variant="light" className="min-w-max">
+          {translate(en, ar)}
+        </Badge>
+      </Tooltip>
+    );
+  };
+
   // ---------------- create
-  const [creating, setCreating] = useState(false);
-  function createBackup() {
+  const [creating, setCreating] = useState<"full" | "database" | null>(null);
+  const [failedFiles, setFailedFiles] = useState<BackupRecord["fileFailures"]>([]);
+  function createBackup(scope: "full" | "database") {
     setNotice(null);
+    setFailedFiles([]);
     handleRequest(
       language,
-      setCreating,
-      (message) => message && setNotice({ ok: false, text: message }),
+      (l) => setCreating(l ? scope : null),
+      (message) => {
+        if (!message) return;
+        setNotice({ ok: false, text: message });
+        load();
+      },
       async () => {
-        const res = await privateRequest({ url: "admin/backup/run", method: "POST", language });
+        const res = await privateRequest({ url: "admin/backup/run", method: "POST", data: { scope }, language });
+        const b = res.data as BackupRecord;
+        const records = b.manifest?.totalDocuments ?? 0;
+        const files = b.files?.count ?? 0;
         setNotice({
           ok: true,
-          text: translate(
-            `Backup completed and verified: ${res.data.manifest?.totalDocuments ?? 0} records in ${res.data.manifest?.collections?.length ?? 0} collections.`,
-            `اكتملت النسخة الاحتياطية وتم التحقق منها: ${res.data.manifest?.totalDocuments ?? 0} سجل في ${res.data.manifest?.collections?.length ?? 0} مجموعة.`,
-          ),
+          text:
+            scope === "full"
+              ? translate(
+                  `Full backup completed and verified: ${records} records and ${files} files (${formatSize(b.files?.totalBytes || 0)}).`,
+                  `اكتملت النسخة الكاملة وتم التحقق منها: ${records} سجل و${files} ملف (${formatSize(b.files?.totalBytes || 0)}).`,
+                )
+              : translate(
+                  `Database backup completed and verified: ${records} records and ${files} attachments stored in the database. Customer / vendor documents, contracts and server images are not included.`,
+                  `اكتملت نسخة قاعدة البيانات وتم التحقق منها: ${records} سجل و${files} مرفق مخزن في قاعدة البيانات. مستندات العملاء والموردين والعقود وصور الخادم غير مضمنة.`,
+                ),
         });
         load();
       },
     );
   }
+  // The latest attempt's unreadable files, named (a full backup is never completed without them).
+  useEffect(() => {
+    const latest = overview?.backups.find((b) => b.kind !== "uploaded");
+    setFailedFiles(latest?.status === "failed" ? latest.fileFailures || [] : []);
+  }, [overview]);
 
   // ---------------- row actions
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -170,12 +228,23 @@ export default function BackupRestore() {
         language,
       });
       closeRestore();
+      const log = res.data as RestoreRecord;
+      const f = log.files;
+      const filesEn = f?.total
+        ? ` and ${f.total} files (${f.cloudinaryRestored + f.localRestored} put back, the rest already in place)`
+        : "";
+      const filesAr = f?.total
+        ? ` و${f.total} ملف (أُعيد ${f.cloudinaryRestored + f.localRestored} والباقي موجود بالفعل)`
+        : "";
       setNotice({
         ok: true,
-        text: translate(
-          `Restore completed: ${res.data.documents} records in ${res.data.collections} collections. A recovery backup of the replaced data was kept.`,
-          `اكتملت الاستعادة: ${res.data.documents} سجل في ${res.data.collections} مجموعة. تم الاحتفاظ بنسخة استرداد للبيانات المستبدلة.`,
-        ),
+        text: [
+          translate(
+            `Restore completed: ${log.documents} records in ${log.collections} collections${filesEn}. A recovery backup of the replaced data was kept.`,
+            `اكتملت الاستعادة: ${log.documents} سجل في ${log.collections} مجموعة${filesAr}. تم الاحتفاظ بنسخة استرداد للبيانات المستبدلة.`,
+          ),
+          ...(log.warnings || []),
+        ].join(" "),
       });
       load();
     });
@@ -270,12 +339,34 @@ export default function BackupRestore() {
             <Button
               variant="default"
               onClick={() => fileInput.current?.click()}
-              disabled={uploadProgress !== null || creating}
+              disabled={uploadProgress !== null || !!creating}
             >
               {translate("Upload a backup file", "رفع ملف نسخة احتياطية")}
             </Button>
-            <Button color="cyan" onClick={createBackup} loading={creating} disabled={uploadProgress !== null}>
-              {translate("Create backup now", "إنشاء نسخة احتياطية الآن")}
+            <Tooltip
+              label={translate(
+                "Records only - customer / vendor documents, contracts and server images are left out.",
+                "السجلات فقط - دون مستندات العملاء والموردين والعقود وصور الخادم.",
+              )}
+              multiline
+              w={260}
+            >
+              <Button
+                variant="default"
+                onClick={() => createBackup("database")}
+                loading={creating === "database"}
+                disabled={uploadProgress !== null || !!creating}
+              >
+                {translate("Database only", "قاعدة البيانات فقط")}
+              </Button>
+            </Tooltip>
+            <Button
+              color="cyan"
+              onClick={() => createBackup("full")}
+              loading={creating === "full"}
+              disabled={uploadProgress !== null || !!creating}
+            >
+              {translate("Create full backup now", "إنشاء نسخة كاملة الآن")}
             </Button>
           </div>
         ),
@@ -295,12 +386,18 @@ export default function BackupRestore() {
 
       <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="rounded-lg border border-gray-100 p-3">
-          <p className="text-xs text-gray-500">{translate("Last successful backup", "آخر نسخة احتياطية ناجحة")}</p>
-          <p className="mt-1 font-semibold">
-            {overview.lastSuccessfulAt
-              ? formatDateAndTime(overview.lastSuccessfulAt, language)
-              : translate("None yet", "لا توجد بعد")}
+          <p className="text-xs text-gray-500">
+            {translate("Last full backup (data and files)", "آخر نسخة كاملة (البيانات والملفات)")}
           </p>
+          <p className="mt-1 font-semibold">
+            {overview.lastFullAt ? formatDateAndTime(overview.lastFullAt, language) : translate("None yet", "لا توجد بعد")}
+          </p>
+          {overview.lastSuccessfulAt && overview.lastSuccessfulAt !== overview.lastFullAt && (
+            <p className="mt-0.5 text-xs text-gray-500">
+              {translate("Last backup of any kind:", "آخر نسخة من أي نوع:")}{" "}
+              {formatDateAndTime(overview.lastSuccessfulAt, language)}
+            </p>
+          )}
         </div>
         <div className="rounded-lg border border-gray-100 p-3">
           <p className="text-xs text-gray-500">{translate("Stored in", "مكان الحفظ")}</p>
@@ -362,6 +459,36 @@ export default function BackupRestore() {
           </div>
         ))}
 
+      {!!failedFiles?.length && (
+        <Alert
+          color="red"
+          variant="light"
+          mb="md"
+          title={translate(
+            "The last full backup failed - these files could not be read",
+            "فشلت آخر نسخة كاملة - تعذرت قراءة هذه الملفات",
+          )}
+        >
+          <ul className="ms-4 list-disc text-sm">
+            {failedFiles.slice(0, 20).map((f) => (
+              <li key={`${f.source}:${f.key}`}>
+                <span className="font-medium">{f.name || f.key}</span>
+                {f.refs.length ? ` - ${f.refs.join(", ")}` : ""}{" "}
+                <span className="text-gray-600">
+                  ({f.source}: {f.error})
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs">
+            {translate(
+              "Put the files back (or remove the references to them) and back up again. A database-only backup protects the records meanwhile.",
+              "أعد الملفات (أو احذف الإشارات إليها) ثم أعد النسخ. نسخة قاعدة البيانات فقط تحمي السجلات في هذه الأثناء.",
+            )}
+          </p>
+        </Alert>
+      )}
+
       <h4 className="mb-2">{translate("Backups", "النسخ الاحتياطية")}</h4>
       {backups.length === 0 ? (
         <EmptySection
@@ -370,15 +497,18 @@ export default function BackupRestore() {
         />
       ) : (
         <DataTableContainer>
-          <DataTable className="min-w-[900px] text-sm">
+          <DataTable className="min-w-[1320px] text-sm">
             <Table.Thead className={dataTableHeadClassName}>
               <Table.Tr>
                 <Table.Th>{translate("Date", "التاريخ")}</Table.Th>
                 <Table.Th>{translate("Type", "النوع")}</Table.Th>
+                <Table.Th>{translate("Contents", "المحتوى")}</Table.Th>
                 <Table.Th>{translate("Status", "الحالة")}</Table.Th>
                 <Table.Th>{translate("Verified", "التحقق")}</Table.Th>
                 <Table.Th className="text-end">{translate("Records", "السجلات")}</Table.Th>
-                <Table.Th className="text-end">{translate("Size", "الحجم")}</Table.Th>
+                <Table.Th className="text-end">{translate("Files", "الملفات")}</Table.Th>
+                <Table.Th className="text-end">{translate("Data / files", "البيانات / الملفات")}</Table.Th>
+                <Table.Th className="text-end">{translate("Backup size", "حجم النسخة")}</Table.Th>
                 <Table.Th>{translate("By", "بواسطة")}</Table.Th>
                 <Table.Th>{translate("Actions", "الإجراءات")}</Table.Th>
               </Table.Tr>
@@ -392,19 +522,29 @@ export default function BackupRestore() {
                       {formatDateAndTime(b.completedAt || b.startedAt, language)}
                     </Table.Td>
                     <Table.Td>{kindLabel(b.kind)}</Table.Td>
-                    <Table.Td>
+                    <Table.Td className="whitespace-nowrap">{scopeBadge(b)}</Table.Td>
+                    <Table.Td className="whitespace-nowrap">
                       <Tooltip label={b.error || ""} disabled={!b.error} multiline w={320}>
                         <span>{statusBadge(b.status)}</span>
                       </Tooltip>
                     </Table.Td>
-                    <Table.Td>
+                    <Table.Td className="whitespace-nowrap">
                       {b.verification?.ok === true ? (
-                        <Badge color="green" variant="dot">
-                          {translate("Intact", "سليمة")}
-                        </Badge>
+                        <Tooltip
+                          label={translate(
+                            `Records and ${b.verification.files ?? 0} files match their checksums.`,
+                            `السجلات و${b.verification.files ?? 0} ملف مطابقة لبصماتها.`,
+                          )}
+                        >
+                          <Badge color="green" variant="dot" className="min-w-max">
+                            {b.scope === "database"
+                              ? translate("Records intact", "السجلات سليمة")
+                              : translate("Records & files intact", "السجلات والملفات سليمة")}
+                          </Badge>
+                        </Tooltip>
                       ) : b.verification?.ok === false ? (
                         <Tooltip label={b.verification.problems.join("; ")} multiline w={320}>
-                          <Badge color="red" variant="dot">
+                          <Badge color="red" variant="dot" className="min-w-max">
                             {translate("Problems", "مشكلات")}
                           </Badge>
                         </Tooltip>
@@ -414,6 +554,25 @@ export default function BackupRestore() {
                     </Table.Td>
                     <Table.Td className="text-end tabular-nums">
                       {b.manifest?.totalDocuments?.toLocaleString("en-US") ?? "-"}
+                    </Table.Td>
+                    <Table.Td className="text-end tabular-nums">
+                      {b.files ? (
+                        <Tooltip
+                          label={translate(
+                            `Attachments ${b.files.sources?.gridfs?.count ?? 0} · Documents ${b.files.sources?.cloudinary?.count ?? 0} · Images ${b.files.sources?.local?.count ?? 0}`,
+                            `مرفقات ${b.files.sources?.gridfs?.count ?? 0} · مستندات ${b.files.sources?.cloudinary?.count ?? 0} · صور ${b.files.sources?.local?.count ?? 0}`,
+                          )}
+                        >
+                          <span>{b.files.count.toLocaleString("en-US")}</span>
+                        </Tooltip>
+                      ) : (
+                        "-"
+                      )}
+                    </Table.Td>
+                    <Table.Td className="whitespace-nowrap text-end tabular-nums">
+                      {b.manifest?.databaseBytes != null
+                        ? `${formatSize(b.manifest.databaseBytes)} / ${formatSize(b.files?.totalBytes || 0)}`
+                        : "-"}
                     </Table.Td>
                     <Table.Td className="whitespace-nowrap text-end tabular-nums">
                       {b.sizeBytes ? formatSize(b.sizeBytes) : "-"}
@@ -481,6 +640,7 @@ export default function BackupRestore() {
                 <Table.Th>{translate("Backup", "النسخة")}</Table.Th>
                 <Table.Th>{translate("Status", "الحالة")}</Table.Th>
                 <Table.Th className="text-end">{translate("Records", "السجلات")}</Table.Th>
+                <Table.Th className="text-end">{translate("Files", "الملفات")}</Table.Th>
                 <Table.Th>{translate("Recovery backup", "نسخة الاسترداد")}</Table.Th>
                 <Table.Th>{translate("By", "بواسطة")}</Table.Th>
               </Table.Tr>
@@ -493,12 +653,34 @@ export default function BackupRestore() {
                     {r.backup?.fileName || "-"}
                   </Table.Td>
                   <Table.Td>
-                    <Tooltip label={r.error || ""} disabled={!r.error} multiline w={320}>
-                      <span>{statusBadge(r.status)}</span>
+                    <Tooltip
+                      label={[r.error, ...(r.warnings || [])].filter(Boolean).join(" ")}
+                      disabled={!r.error && !r.warnings?.length}
+                      multiline
+                      w={360}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {statusBadge(r.status)}
+                        {!!r.warnings?.length && <outlineIcons.ExclamationCircle className="text-yellow-600" />}
+                      </span>
                     </Tooltip>
                   </Table.Td>
                   <Table.Td className="text-end tabular-nums">
                     {r.documents ? r.documents.toLocaleString("en-US") : "-"}
+                  </Table.Td>
+                  <Table.Td className="whitespace-nowrap text-end tabular-nums">
+                    {r.status === "completed" && r.files ? (
+                      <Tooltip
+                        label={translate(
+                          `${r.files.cloudinaryRestored + r.files.localRestored} put back from the backup, ${r.files.cloudinaryUnchanged + r.files.localUnchanged} already in place, ${r.files.gridfs} attachments`,
+                          `أُعيد ${r.files.cloudinaryRestored + r.files.localRestored} من النسخة، ${r.files.cloudinaryUnchanged + r.files.localUnchanged} موجود بالفعل، ${r.files.gridfs} مرفق`,
+                        )}
+                      >
+                        <span>{r.files.total.toLocaleString("en-US")}</span>
+                      </Tooltip>
+                    ) : (
+                      "-"
+                    )}
                   </Table.Td>
                   <Table.Td className="max-w-[240px] truncate" title={r.recoveryBackup?.fileName}>
                     {r.recoveryBackup?.fileName || "-"}
@@ -543,24 +725,37 @@ export default function BackupRestore() {
         <span className="font-semibold">
           {translate("This REPLACES all current data - it does not merge.", "هذا يستبدل كل البيانات الحالية - ولا يدمجها.")}
         </span>
+        {target && target.scope !== "full" && (
+          <Alert color="yellow" variant="light">
+            {target.scope === "partial"
+              ? translate(
+                  "This backup is partial: some files were already unreadable when it was taken and cannot be put back.",
+                  "هذه النسخة جزئية: بعض الملفات كانت غير قابلة للقراءة عند أخذها ولا يمكن إعادتها.",
+                )
+              : translate(
+                  "This backup holds database records only. Attachments stored in the database are included, but customer / vendor documents, contracts and server images are not - they will only work if their files still exist.",
+                  "هذه النسخة تحتوي على سجلات قاعدة البيانات فقط. المرفقات المخزنة في قاعدة البيانات مضمنة، أما مستندات العملاء والموردين والعقود وصور الخادم فلا - وستعمل فقط إذا كانت ملفاتها لا تزال موجودة.",
+                )}
+          </Alert>
+        )}
         <span>
           {translate(
-            `Every business record (accounts, journal entries, orders, payments, projects, users ...) will be exactly as in the backup of ${target?.manifest?.createdAt ? formatDateAndTime(target.manifest.createdAt, language) : ""} (${target?.manifest?.totalDocuments?.toLocaleString("en-US") ?? 0} records). Anything entered since is removed.`,
-            `ستصبح كل السجلات (الحسابات، القيود، الأوامر، المدفوعات، المشروعات، المستخدمون ...) كما في النسخة المؤرخة ${target?.manifest?.createdAt ? formatDateAndTime(target.manifest.createdAt, language) : ""} (${target?.manifest?.totalDocuments?.toLocaleString("en-US") ?? 0} سجل). يُحذف كل ما أُدخل بعدها.`,
+            `Every business record (accounts, journal entries, orders, payments, projects, users ...)${target?.scope === "full" ? " and every stored file (attachments, documents, contracts, images)" : ""} will be exactly as in the backup of ${target?.manifest?.createdAt ? formatDateAndTime(target.manifest.createdAt, language) : ""} (${target?.manifest?.totalDocuments?.toLocaleString("en-US") ?? 0} records). Anything entered since is removed.`,
+            `ستصبح كل السجلات (الحسابات، القيود، الأوامر، المدفوعات، المشروعات، المستخدمون ...)${target?.scope === "full" ? " وكل الملفات المخزنة (المرفقات والمستندات والعقود والصور)" : ""} كما في النسخة المؤرخة ${target?.manifest?.createdAt ? formatDateAndTime(target.manifest.createdAt, language) : ""} (${target?.manifest?.totalDocuments?.toLocaleString("en-US") ?? 0} سجل). يُحذف كل ما أُدخل بعدها.`,
           )}
         </span>
         <span>
           {translate(
-            "Before anything changes, the file is verified again and a verified recovery backup of the current data is taken - if the restore fails it is rolled back automatically. Run it when nobody else is working; users not in the backup will be signed out.",
-            "قبل أي تغيير يُعاد التحقق من الملف وتُؤخذ نسخة استرداد موثقة من البيانات الحالية - وإذا فشلت الاستعادة يتم التراجع عنها تلقائياً. نفّذها عندما لا يعمل أحد آخر؛ سيُسجَّل خروج المستخدمين غير الموجودين في النسخة.",
+            "Before anything changes, the file is verified again (records and files by checksum) and a verified recovery backup of the current data and files is taken - if the restore fails, data and files are rolled back automatically. A document missing from storage is put back as a new copy; nothing in storage is overwritten. Run it when nobody else is working; users not in the backup will be signed out.",
+            "قبل أي تغيير يُعاد التحقق من الملف (السجلات والملفات ببصماتها) وتُؤخذ نسخة استرداد موثقة من البيانات والملفات الحالية - وإذا فشلت الاستعادة يتم التراجع عن البيانات والملفات تلقائياً. المستند المفقود من التخزين يُعاد كنسخة جديدة؛ ولا يُستبدل أي شيء في التخزين. نفّذها عندما لا يعمل أحد آخر؛ سيُسجَّل خروج المستخدمين غير الموجودين في النسخة.",
           )}
         </span>
       </ConfirmTextModal>
 
       <p className="mt-6 flex items-center gap-1.5 text-xs text-gray-500">
         {translate(
-          "Backups contain every business record including user accounts (password hashes) - keep downloaded files somewhere safe.",
-          "تحتوي النسخ على كل السجلات بما فيها حسابات المستخدمين (كلمات المرور المشفرة) - احفظ الملفات المنزلة في مكان آمن.",
+          "Backups contain every business record including user accounts (password hashes) and every attached document - keep downloaded files somewhere safe.",
+          "تحتوي النسخ على كل السجلات بما فيها حسابات المستخدمين (كلمات المرور المشفرة) وكل المستندات المرفقة - احفظ الملفات المنزلة في مكان آمن.",
         )}
       </p>
     </AdminLayoutBox>

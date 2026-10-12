@@ -68,6 +68,8 @@ const mountRoutes = app => {
   app.use('/api/v1/journal-entries', journalEntryRoute);
   // Accounting reversals: returns, payment and settlement reversals (services/accounting/reversalService.js)
   app.use('/api/v1/reversals', reversalRoute);
+  // PDF attachments of purchase orders, sales orders and journal entries (services/files/attachmentService.js)
+  app.use('/api/v1/attachments', require('./attachmentRoute'));
   app.use('/api/v1/accounting-periods', require('./accounting/accountingPeriodRoute'));
 
   // advanced payments (customer/vendor advances against a project)

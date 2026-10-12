@@ -6,7 +6,7 @@ const asyncHandler = require('express-async-handler');
 const { vendorFixedAssetAcquisitions } = require('../../services/fixedAssets/fixedAssetPaymentService');
 const { vendorExpenses } = require('../../services/expenses/vendorExpenseService');
 
-const { uploadDocument: uploadVendorDocument, deleteDocument: deleteVendorDocument } = createDocumentHandlers(Vendor, 'Vendor');
+const { uploadDocument: uploadVendorDocument, deleteDocument: deleteVendorDocument, downloadDocument: downloadVendorDocument } = createDocumentHandlers(Vendor, 'Vendor');
 
 /**
  * @module
@@ -110,4 +110,5 @@ module.exports = {
   deleteVendor,
   uploadVendorDocument,
   deleteVendorDocument,
+  downloadVendorDocument,
 };

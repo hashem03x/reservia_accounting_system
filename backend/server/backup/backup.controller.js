@@ -10,29 +10,39 @@ const { reschedule } = require('./backup.scheduler');
 const { getSettings } = require('./backup.settings');
 const { listBackups: listLegacyArchives, BACKUPS_DIR } = require('./backup.storage');
 const { mode: storageMode } = require('./backup.store');
+const { setFileHeaders } = require('../utils/contentDisposition');
 
 // Admin -> Backup & Restore (every route admin-only - see backup.routes.js). All rules live in
 // backup.service.js.
 
-// POST /admin/backup/run - a manual full backup; responds once it is written AND verified.
+// POST /admin/backup/run  { scope?: 'full' | 'database' } - a manual backup; responds once it is
+// written AND verified. 'full' (default) includes every stored file; it fails, naming the files, if
+// any of them cannot be read.
 const runNow = asyncHandler(async (req, res) => {
-  const backup = await service.createBackup({ kind: 'manual', userId: req.user._id });
-  res.status(201).json({ success: true, message: 'Backup completed and verified.', data: backup });
+  const scope = req.body?.scope === 'database' ? 'database' : 'full';
+  const backup = await service.createBackup({ kind: 'manual', scope, userId: req.user._id });
+  res
+    .status(201)
+    .json({ success: true, message: scope === 'full' ? 'Full backup (data and files) completed and verified.' : 'Database backup completed and verified.', data: backup });
 });
 
 // GET /admin/backup/backups - history (newest first) and the last successful backup.
 const getBackups = asyncHandler(async (req, res) => {
   const backups = await service.listBackups();
   const last = backups.find(b => b.status === 'completed' && b.kind !== 'uploaded') || null;
-  res.status(200).json({ success: true, data: { backups, lastSuccessfulAt: last ? last.completedAt : null, storage: storageMode(), settings: getSettings() } });
+  const lastFull = backups.find(b => b.status === 'completed' && b.kind !== 'uploaded' && b.scope === 'full') || null;
+  res
+    .status(200)
+    .json({
+      success: true,
+      data: { backups, lastSuccessfulAt: last ? last.completedAt : null, lastFullAt: lastFull ? lastFull.completedAt : null, storage: storageMode(), settings: getSettings() },
+    });
 });
 
 // GET /admin/backup/backups/:id/download - streams the file (authenticated, admin-only).
 const downloadBackup = asyncHandler(async (req, res) => {
   const { stream, fileName, sizeBytes } = await service.openDownload(req.params.id);
-  res.setHeader('Content-Type', 'application/gzip');
-  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-  if (sizeBytes) res.setHeader('Content-Length', String(sizeBytes));
+  setFileHeaders(res, { fileName, contentType: 'application/gzip', size: sizeBytes || undefined });
   stream.on('error', err => (res.headersSent ? res.destroy(err) : res.status(500).json({ success: false, message: 'Could not read the backup file.' })));
   stream.pipe(res);
 });
@@ -40,7 +50,18 @@ const downloadBackup = asyncHandler(async (req, res) => {
 // POST /admin/backup/backups/:id/verify - reads the file back and checks it.
 const verifyBackup = asyncHandler(async (req, res) => {
   const result = await service.verify(req.params.id);
-  res.status(200).json({ success: true, data: { ok: result.ok, problems: result.problems, manifest: result.manifest } });
+  res
+    .status(200)
+    .json({
+      success: true,
+      data: {
+        ok: result.ok,
+        problems: result.problems,
+        scope: result.scope,
+        files: result.files,
+        manifest: result.manifest && { ...result.manifest, files: result.manifest.files && { ...result.manifest.files, list: undefined } },
+      },
+    });
 });
 
 // DELETE /admin/backup/backups/:id  { confirm: "DELETE" }
@@ -59,7 +80,13 @@ const putChunk = asyncHandler(async (req, res) => {
 });
 const completeUpload = asyncHandler(async (req, res) => {
   const { backup, verification } = await service.completeUpload(req.params.uploadId, req.user._id);
-  res.status(verification.ok ? 201 : 422).json({ success: verification.ok, message: verification.ok ? 'Backup uploaded and verified.' : 'The uploaded file is not a valid backup.', data: { backup, verification: { ok: verification.ok, problems: verification.problems } } });
+  res
+    .status(verification.ok ? 201 : 422)
+    .json({
+      success: verification.ok,
+      message: verification.ok ? 'Backup uploaded and verified.' : 'The uploaded file is not a valid backup.',
+      data: { backup, verification: { ok: verification.ok, problems: verification.problems } },
+    });
 });
 
 // POST /admin/backup/backups/:id/restore  { confirm: "RESTORE" } - replaces all business data.
@@ -80,7 +107,7 @@ const cronBackup = asyncHandler(async (req, res, next) => {
   const ok = secret.length >= 16 && given.length === secret.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(secret));
   if (!ok) return next(new ApiError('Not allowed.', 401));
   const backup = await service.runBackup();
-  res.status(200).json({ success: true, data: { id: backup._id, fileName: backup.fileName } });
+  res.status(200).json({ success: true, data: { id: backup._id, fileName: backup.fileName, scope: backup.scope, fallbackFrom: backup.fallbackFrom || null } });
 });
 
 // POST /admin/backup/schedule  { "time": "HH:mm" } - the daily automatic backup time.

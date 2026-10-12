@@ -1,5 +1,6 @@
 const fastCsv = require('fast-csv');
 const ApiError = require("./apiError");
+const { contentDisposition, safeFileName } = require('./contentDisposition');
 
 const exportToCsv = async (res, filename, headers, data, options = {}) => {
   if (!data || !data.length) {
@@ -7,7 +8,7 @@ const exportToCsv = async (res, filename, headers, data, options = {}) => {
   }
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Disposition', contentDisposition(safeFileName(filename, 'text/csv')));
 
   // Add BOM for Excel to recognize UTF-8
   res.write('\ufeff');

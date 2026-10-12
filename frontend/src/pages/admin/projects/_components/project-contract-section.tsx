@@ -6,6 +6,7 @@ import { Button, Loader } from "@mantine/core";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import ErrorAlert from "@/components/ui/error-alert";
 import { formatDateAndTime } from "@/utils/helpers/date-formaters";
+import PdfPreviewModal from "@/components/global/attachments/pdf-preview-modal";
 
 const pdfMimeType = "application/pdf";
 
@@ -22,6 +23,21 @@ export default function ProjectContractSection({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [previewing, setPreviewing] = useState(false);
+  // Served by the API with its real name, type and .pdf extension (never the bare storage URL).
+  const fileUrl = `projects/${project._id}/contract/download`;
+
+  async function download() {
+    setError("");
+    setLoading(true);
+    try {
+      await privateRequest({ url: fileUrl, download: true, filename: project.contract?.filename, language });
+    } catch (err) {
+      setError((err as Error)?.message || translate("The download failed.", "فشل التنزيل."));
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -76,7 +92,9 @@ export default function ProjectContractSection({
         <div className="flex items-center gap-2">
           <outlineIcons.Document className="text-gray-500" size={20} />
           <div className="flex flex-col">
-            <p className="text-sm font-medium">{contract ? contract.filename : translate("No contract uploaded", "لم يتم تحميل عقد")}</p>
+            <p className="text-sm font-medium">
+              {contract ? contract.filename : translate("No contract uploaded", "لم يتم تحميل عقد")}
+            </p>
             {contract && (
               <p className="text-xs text-gray-500">
                 {translate("Uploaded", "تم الرفع")} {formatDateAndTime(contract.uploadedAt, language)}
@@ -90,9 +108,14 @@ export default function ProjectContractSection({
           {loading && <Loader size="xs" />}
 
           {contract && !loading && (
-            <a href={contract.url} target="_blank" rel="noopener noreferrer" title={translate("View / Download", "عرض / تحميل")}>
-              <solidIcons.Eye className="text-gray-600 hover:text-blue-600" size={18} />
-            </a>
+            <>
+              <button type="button" onClick={() => setPreviewing(true)} title={translate("View", "عرض")}>
+                <solidIcons.Eye className="text-gray-600 hover:text-blue-600" size={18} />
+              </button>
+              <button type="button" onClick={download} title={translate("Download", "تحميل")}>
+                <solidIcons.Download className="text-gray-600 hover:text-blue-600" size={16} />
+              </button>
+            </>
           )}
 
           {!loading && (
@@ -112,6 +135,11 @@ export default function ProjectContractSection({
       </div>
 
       {error && <ErrorAlert error={error} radius="sm" />}
+      <PdfPreviewModal
+        url={previewing ? fileUrl : null}
+        title={contract?.filename || ""}
+        onClose={() => setPreviewing(false)}
+      />
     </div>
   );
 }

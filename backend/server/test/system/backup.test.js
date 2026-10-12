@@ -13,6 +13,8 @@ const mongoose = require('mongoose');
 
 const DB_URI = process.env.TEST_DB_URI_BACKUP || 'mongodb://127.0.0.1:27017/reversia_test_backup';
 process.env.BACKUP_STORAGE = 'gridfs';
+// Server-disk images: an empty folder of this test's own (attachment and file coverage is in backupFiles.test.js).
+process.env.BACKUP_UPLOADS_DIR = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'rsv-uploads-'));
 
 let service, format, store, Backup, RestoreLog, getTrialBalance;
 let JournalEntry, ChartOfAccount, User;
@@ -99,7 +101,7 @@ test('a full backup contains every business collection (not its own bookkeeping)
   for (const required of ['chartofaccounts', 'journalentries', 'users', 'counters', 'typefixtures']) assert.ok(names.includes(required), required);
   for (const excluded of ['backups', 'restorelogs', 'backupfiles.files', 'backupfiles.chunks', '__txn_probe']) assert.ok(!names.includes(excluded), `${excluded} excluded`);
   assert.equal(first.manifest.collections.find(c => c.name === 'journalentries').count, 3);
-  assert.equal(first.manifest.formatVersion, 1);
+  assert.deepEqual([first.manifest.formatVersion, first.scope], [2, 'full']);
   assert.ok(first.sizeBytes > 0 && /^[0-9a-f]{64}$/.test(first.sha256));
 
   // The file itself: ids and types exactly as in the database.

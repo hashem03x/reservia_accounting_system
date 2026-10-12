@@ -19,9 +19,11 @@ const createPdfStorage = folder =>
     params: {
       folder: `uploads/${folder}`,
       resource_type: 'raw',
+      // A raw asset's public_id IS its delivered file name, so it keeps the .pdf extension - without
+      // it the URL (and a file saved from it) has no extension and opens as an unknown format.
       public_id: (req, file) => {
         const baseName = file.originalname.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
-        return `${baseName}-${Date.now()}`;
+        return `${baseName}-${Date.now()}.pdf`;
       },
     },
   });

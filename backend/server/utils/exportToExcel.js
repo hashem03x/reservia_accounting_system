@@ -1,5 +1,6 @@
 const ExcelJS = require('exceljs');
 const ApiError = require("./apiError");
+const { contentDisposition, safeFileName } = require('./contentDisposition');
 
 const exportToExcel = async (res, filename, headers, data, options = {}) => {
   if (!data || !data.length) {
@@ -45,7 +46,8 @@ const exportToExcel = async (res, filename, headers, data, options = {}) => {
 
   // Set response headers
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
+  // The extension is added only when the name lacks it ("payments_report.xlsx" stays as it is).
+  res.setHeader('Content-Disposition', contentDisposition(safeFileName(filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')));
 
   // Write to response
   await workbook.xlsx.write(res);

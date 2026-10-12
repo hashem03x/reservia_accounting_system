@@ -3,6 +3,9 @@ const ApiError = require('../utils/apiError');
 const apiResponse = require('../utils/apiResponse');
 const { destroyDocument } = require('../middleware/documentUploadMiddleware');
 const { DOCUMENT_TYPES } = require('../models/shared/businessPartnerSchemas');
+const { setFileHeaders } = require('../utils/contentDisposition');
+const cloudinaryFiles = require('../services/files/cloudinaryFiles');
+const { decodeUploadName } = require('../utils/uploadFileName');
 
 /**
  * Shared upload/delete handlers for the optional PDF business documents embedded on Customer
@@ -33,7 +36,7 @@ function createDocumentHandlers(Model, notFoundLabel) {
       documentType,
       url: req.file.path,
       publicId: req.file.filename,
-      filename: req.file.originalname,
+      filename: decodeUploadName(req.file.originalname),
       mimeType: req.file.mimetype,
       uploadedAt: new Date(),
     };
@@ -73,7 +76,36 @@ function createDocumentHandlers(Model, notFoundLabel) {
     res.status(200).json(apiResponse(`${notFoundLabel} document deleted successfully`, true, record));
   });
 
-  return { uploadDocument, deleteDocument };
+  // GET /:id/documents/:documentType/download[?inline=1] - the document through the API, with its
+  // real name, type and .pdf extension (the stored Cloudinary URL of an older upload has none).
+  const downloadDocument = asyncHandler(async (req, res, next) => {
+    const { id, documentType } = req.params;
+    const record = await Model.findById(id).select('documents').lean();
+    if (!record) return next(new ApiError(`No ${notFoundLabel.toLowerCase()} found with that ID`, 404));
+    const document = (record.documents || []).find(doc => doc.documentType === documentType);
+    if (!document) return next(new ApiError(`No "${documentType}" document exists on this ${notFoundLabel.toLowerCase()}.`, 404));
+    return sendStoredDocument(res, next, document, req.query.inline === '1');
+  });
+
+  return { uploadDocument, deleteDocument, downloadDocument };
 }
 
-module.exports = { createDocumentHandlers };
+/**
+ * Streams a Cloudinary-stored PDF ({ url, publicId, filename, mimeType }) to the client with the
+ * headers a browser needs to name and open it correctly.
+ */
+async function sendStoredDocument(res, next, document, inline = false) {
+  let file;
+  try {
+    file = await cloudinaryFiles.openRead({ url: document.url, publicId: document.publicId });
+  } catch (err) {
+    return next(new ApiError(`The document file ${err.message}.`, 502));
+  }
+  const contentType = document.mimeType || 'application/pdf';
+  setFileHeaders(res, { fileName: document.filename || `${documentLabel(document)}.pdf`, contentType, size: file.size ?? undefined, inline });
+  file.stream.on('error', err => (res.headersSent ? res.destroy(err) : next(new ApiError('Could not read the document.', 502))));
+  return file.stream.pipe(res);
+}
+const documentLabel = document => String(document.documentType || 'document').replace(/[^a-zA-Z0-9_-]/g, '_');
+
+module.exports = { createDocumentHandlers, sendStoredDocument };

@@ -8,6 +8,7 @@ const { REPORTS_BY_KEY, CATEGORIES, catalog } = require('../../services/reports/
 const { taxAccountOptions } = require('../../services/reports/taxReports');
 const { loadAccounts, futureDatedEntriesCheck, localizeResult, reportError } = require('../../services/reports/reportCommon');
 const { pucAccountsOf, pucCategoryOf } = require('../../services/project/pucAccountService');
+const { contentDisposition } = require('../../utils/contentDisposition');
 
 // Accounting reports (services/reports/*): read-only - running, exporting or printing a report
 // never creates, updates or deletes an accounting record.
@@ -163,7 +164,7 @@ const exportReport = asyncHandler(async (req, res) => {
   const workbook = await buildWorkbook(result, lang);
   const filename = `${result.key}-${(result.period?.to || result.asOf || new Date().toISOString().slice(0, 10)).replace(/[^0-9-]/g, '')}.xlsx`;
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Disposition', contentDisposition(filename));
   await workbook.xlsx.write(res);
   res.end();
 });

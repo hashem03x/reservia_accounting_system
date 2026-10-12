@@ -9,6 +9,9 @@ import handleRequest from "@/utils/helpers/handle-request";
 import { JournalEntry, JournalLineInput, JournalLineRules, PartyType } from "@/types/journal-entry";
 import { ChartOfAccount } from "@/types/chart-of-account";
 import { outlineIcons } from "@/components/icons";
+import AttachmentPicker from "@/components/global/attachments/attachment-picker";
+import useAttachmentUpload, { uploadPendingAttachments } from "@/components/global/attachments/use-attachment-upload";
+import { notifyError } from "@/utils/helpers/notifiers";
 
 type ProjectOption = { _id: string; projectNumber: string };
 type PartyOption = { number: number; name: string };
@@ -41,6 +44,9 @@ export default function CreateJournalEntryModal({
   const [reference, setReference] = useState("");
   const [entryProject, setEntryProject] = useState("");
   const [lines, setLines] = useState<JournalLineInput[]>([{ ...emptyLine }, { ...emptyLine }]);
+  // Optional PDFs, uploaded right after the entry is created (they never change the entry).
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const uploadAttachment = useAttachmentUpload();
 
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -141,6 +147,15 @@ export default function CreateJournalEntryModal({
         },
       });
 
+      const failed = await uploadPendingAttachments(uploadAttachment, "journal-entries", res.data._id, attachmentFiles);
+      if (failed.length)
+        notifyError({
+          language,
+          message: translate(
+            `The entry was saved, but ${failed.length} attachment(s) could not be uploaded: ${failed.map((f) => `${f.file.name} (${f.error})`).join(", ")}`,
+            `تم حفظ القيد، لكن تعذر رفع ${failed.length} من المرفقات: ${failed.map((f) => `${f.file.name} (${f.error})`).join("، ")}`,
+          ),
+        });
       onCreated(res.data);
       handleClose();
     });
@@ -154,6 +169,7 @@ export default function CreateJournalEntryModal({
       setReference("");
       setEntryProject("");
       setLines([{ ...emptyLine }, { ...emptyLine }]);
+      setAttachmentFiles([]);
       setError("");
     }, 250);
   }
@@ -345,6 +361,8 @@ export default function CreateJournalEntryModal({
             )}
           </Alert>
         )}
+
+        <AttachmentPicker files={attachmentFiles} onChange={setAttachmentFiles} disabled={loading} />
 
         <Button type="submit" loading={loading} disabled={!canSubmit} mt="md">
           {translate("Save as Draft", "حفظ كمسودة")}

@@ -8,6 +8,7 @@ const {
   deleteCustomer,
   uploadCustomerDocument,
   deleteCustomerDocument,
+  downloadCustomerDocument,
 } = require('../../controller/user/customerController');
 
 const { createCustomerValidate, updateCustomerValidate } = require('../../utils/validators/customerValidator');
@@ -63,4 +64,7 @@ router.route('/:id/documents/:documentType')
     deleteCustomerDocument
   );
 
+
+// The document itself (real name, type and .pdf extension) - through the API, never a bare storage URL.
+router.get('/:id/documents/:documentType/download', checkUserPermissions({ resource: Resources.customers, action: Actions.read }), downloadCustomerDocument);
 module.exports = router;

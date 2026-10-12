@@ -5,8 +5,9 @@ import Overview from "./overview";
 import Payment from "./payment";
 import Returns from "./returns";
 import Accounting from "./accounting";
+import Attachments from "./attachments";
 
-type OrderTab = "overview" | "payments" | "retrun" | "accounting";
+type OrderTab = "overview" | "payments" | "retrun" | "accounting" | "attachments";
 
 const TABS: LocalizedEntity<OrderTab> = {
   overview: {
@@ -24,6 +25,10 @@ const TABS: LocalizedEntity<OrderTab> = {
   accounting: {
     value: "accounting",
     label: { en: "Accounting", ar: "المحاسبة" },
+  },
+  attachments: {
+    value: "attachments",
+    label: { en: "Attachments", ar: "المرفقات" },
   },
 };
 
@@ -45,6 +50,7 @@ export default function OrderHandler() {
       {activeTab === TABS.payments.value && <Payment />}
       {activeTab === TABS.retrun.value && <Returns />}
       {activeTab === TABS.accounting.value && <Accounting />}
+      {activeTab === TABS.attachments.value && <Attachments />}
     </div>
   );
 }

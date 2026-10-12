@@ -13,6 +13,7 @@ const {
   deleteProject,
   uploadContract,
   getContract,
+  downloadContract,
   deleteContract,
   getProjectJournalEntries,
 } = require('../../controller/project/projectController');
@@ -36,6 +37,7 @@ router
   .post(checkUserPermissions({ resource: Resources.projects, action: Actions.update }), uploadSingleDocument('projects', 'contract'), uploadContract)
   .get(checkUserPermissions({ resource: Resources.projects, action: Actions.read }), getContract)
   .delete(checkUserPermissions({ resource: Resources.projects, action: Actions.update }), deleteContract);
+router.get('/:id/contract/download', checkUserPermissions({ resource: Resources.projects, action: Actions.read }), downloadContract);
 
 // End-of-project PUC cost adjustment: preview for project readers; drafting it creates a journal
 // entry, so it needs the journal entries create permission.

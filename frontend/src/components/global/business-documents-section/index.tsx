@@ -6,6 +6,7 @@ import { documentTypesArray, getDocumentTypeLabel } from "@/utils/constants/docu
 import { Button, Loader } from "@mantine/core";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import ErrorAlert from "@/components/ui/error-alert";
+import PdfPreviewModal from "@/components/global/attachments/pdf-preview-modal";
 
 const pdfMimeType = "application/pdf";
 const invalidPdfMessage = { en: "Only PDF files are allowed.", ar: "يُسمح فقط بملفات PDF." };
@@ -36,10 +37,7 @@ export default function BusinessDocumentsSection({
       <section className="flex flex-col gap-2">
         <h4>{translate("Documents (Optional)", "المستندات (اختياري)")}</h4>
         <p className="text-xs text-gray-500 sm:text-sm">
-          {translate(
-            "Save this record first to attach PDF documents.",
-            "يرجى الحفظ أولاً لإضافة مستندات PDF.",
-          )}
+          {translate("Save this record first to attach PDF documents.", "يرجى الحفظ أولاً لإضافة مستندات PDF.")}
         </p>
       </section>
     );
@@ -83,6 +81,21 @@ function DocumentSlot({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [previewing, setPreviewing] = useState(false);
+  // Served by the API with its real name, type and .pdf extension (never the bare storage URL).
+  const fileUrl = `${entityType}/${entityId}/documents/${documentType}/download`;
+
+  async function download() {
+    setError("");
+    setLoading(true);
+    try {
+      await privateRequest({ url: fileUrl, download: true, filename: document?.filename, language });
+    } catch (err) {
+      setError((err as Error)?.message || translate("The download failed.", "فشل التنزيل."));
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -150,9 +163,14 @@ function DocumentSlot({
           {loading && <Loader size="xs" />}
 
           {document && !loading && (
-            <a href={document.url} target="_blank" rel="noopener noreferrer" title={translate("View", "عرض")}>
-              <solidIcons.Eye className="text-gray-600 hover:text-blue-600" size={16} />
-            </a>
+            <>
+              <button type="button" onClick={() => setPreviewing(true)} title={translate("View", "عرض")}>
+                <solidIcons.Eye className="text-gray-600 hover:text-blue-600" size={16} />
+              </button>
+              <button type="button" onClick={download} title={translate("Download", "تحميل")}>
+                <solidIcons.Download className="text-gray-600 hover:text-blue-600" size={14} />
+              </button>
+            </>
           )}
 
           {!loading && (
@@ -172,6 +190,11 @@ function DocumentSlot({
       </div>
 
       {error && <ErrorAlert error={error} radius="sm" />}
+      <PdfPreviewModal
+        url={previewing ? fileUrl : null}
+        title={document?.filename || ""}
+        onClose={() => setPreviewing(false)}
+      />
     </div>
   );
 }

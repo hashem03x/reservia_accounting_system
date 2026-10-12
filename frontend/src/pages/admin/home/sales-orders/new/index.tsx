@@ -22,6 +22,9 @@ import { useEffect } from "react";
 import PaymentAccountSelect from "@/components/global/payment-account-select";
 import OrderTaxSection from "@/components/global/order-tax-section";
 import { calculateOrderTotals } from "@/utils/helpers/order-totals";
+import AttachmentPicker from "@/components/global/attachments/attachment-picker";
+import useAttachmentUpload, { uploadPendingAttachments } from "@/components/global/attachments/use-attachment-upload";
+import { notifyError } from "@/utils/helpers/notifiers";
 
 const emptyOrderItem: OrderItemInput = {
   productCode: "",
@@ -50,6 +53,9 @@ export default function NewSalesOrder() {
   const [project, setProject] = useState("");
   const [vatPercentage, setVatPercentage] = useState<string | number>(0);
   const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
+  // Optional PDFs, uploaded right after the order is created.
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const uploadAttachment = useAttachmentUpload();
 
   // Preview only - the backend recomputes every amount on save (utils/orderTotals.js) and never
   // trusts these. `subtotal` is the pre-tax sum of the lines; `orderTotals.total` is the order's
@@ -159,6 +165,16 @@ export default function NewSalesOrder() {
         },
       });
 
+      // The order is saved; a file that fails to upload is reported and can be attached from its page.
+      const failed = await uploadPendingAttachments(uploadAttachment, "sales-orders", response.data._id, attachmentFiles);
+      if (failed.length)
+        notifyError({
+          language,
+          message: translate(
+            `The order was saved, but ${failed.length} attachment(s) could not be uploaded: ${failed.map((f) => `${f.file.name} (${f.error})`).join(", ")}`,
+            `تم حفظ الطلب، لكن تعذر رفع ${failed.length} من المرفقات: ${failed.map((f) => `${f.file.name} (${f.error})`).join("، ")}`,
+          ),
+        });
       navigate(`/${paths.admin}/${paths.home}/${paths.salesOrders}/${response.data._id}`);
     });
   }
@@ -201,7 +217,10 @@ export default function NewSalesOrder() {
           value={`${orderTotals.total.toFixed(2)} ${translations.currency}`}
         />
         {orderTotals.total !== subtotal && (
-          <InfoItem label={translate("Subtotal (before tax)", "الإجمالي قبل الضريبة")} value={`${subtotal.toFixed(2)} ${translations.currency}`} />
+          <InfoItem
+            label={translate("Subtotal (before tax)", "الإجمالي قبل الضريبة")}
+            value={`${subtotal.toFixed(2)} ${translations.currency}`}
+          />
         )}
         {+shippingCost > 0 && (
           <InfoItem
@@ -353,6 +372,10 @@ export default function NewSalesOrder() {
         hideControls
         style={{ maxWidth: 250 }}
       />
+
+      <hr />
+
+      <AttachmentPicker files={attachmentFiles} onChange={setAttachmentFiles} disabled={loading} />
     </AdminLayoutBox>
   );
 }

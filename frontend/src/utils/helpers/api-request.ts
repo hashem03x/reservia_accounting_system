@@ -1,6 +1,7 @@
 import { ApiRequestOptions } from "@/types/api";
 import { logError } from "@/utils/helpers/loggers";
 import translate from "@/utils/helpers/translate";
+import { downloadName, errorFromResponse, isErrorResponse, mediaType } from "@/utils/helpers/file-response";
 
 export default async function apiRequest({
   url,
@@ -13,6 +14,7 @@ export default async function apiRequest({
   signal,
   download,
   filename,
+  responseType = "json",
   // The parsed JSON body of any endpoint - each caller knows its own response shape.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }: ApiRequestOptions): Promise<any> {
@@ -49,18 +51,24 @@ export default async function apiRequest({
     // Send the request
     const response = await fetch(`${import.meta.env.VITE_API_URL}/${url}`, finalOptions);
 
-    // Throw an error if the response isn't ok
-    if (!response.ok) throw await response.json();
-
-    // If it's a download request, download the file and return null
-    if (download) {
-      const contentDisposition = response.headers.get("Content-Disposition");
-      const serverFilename = parseFilenameFromContentDisposition(contentDisposition);
-      const finalFilename = filename || serverFilename || "download";
-
+    // A file request: an error - or a JSON body where a file was expected - is thrown, never saved.
+    if (download || responseType === "blob") {
+      if (isErrorResponse(response)) throw await errorFromResponse(response);
+      const contentType = response.headers.get("Content-Type");
+      // The server's name (with its real extension) first; the caller's name is the fallback.
+      const name = downloadName(response.headers.get("Content-Disposition"), contentType, filename || "download");
       const blob = await response.blob();
-      downloadBlob(blob, finalFilename);
-      return null;
+      if (download) {
+        downloadBlob(blob, name);
+        return null;
+      }
+      return { blob, filename: name, contentType: mediaType(contentType) };
+    }
+
+    // Throw an error if the response isn't ok (JSON when the API sent JSON, else its text/status)
+    if (!response.ok) {
+      if (mediaType(response.headers.get("Content-Type")) === "application/json") throw await response.json();
+      throw await errorFromResponse(response);
     }
 
     // If the response is 204 (No Content), return null
@@ -82,23 +90,6 @@ function serializeParams(params: Record<string, string | number | boolean>): str
   return new URLSearchParams(Object.entries(params).map(([key, value]) => [key, String(value)])).toString();
 }
 
-/** Prefer server filename from Content-Disposition (must be listed in CORS exposedHeaders). */
-function parseFilenameFromContentDisposition(header: string | null): string | undefined {
-  if (!header) return undefined;
-  const rfc5987 = header.match(/filename\*=UTF-8''([^;\r\n]+)/i);
-  if (rfc5987?.[1]) {
-    try {
-      return decodeURIComponent(rfc5987[1]);
-    } catch {
-      return rfc5987[1];
-    }
-  }
-  const nameInQuotes = header.match(/filename="([^"]+)"/i);
-  if (nameInQuotes?.[1]) return nameInQuotes[1];
-  const nameUnquoted = header.match(/filename=([^;\s]+)/i);
-  return nameUnquoted?.[1]?.replace(/^["']|["']$/g, "");
-}
-
 // =============================================================
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -109,5 +100,6 @@ function downloadBlob(blob: Blob, filename: string): void {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
+  // Released a moment later: revoking in the same tick can cancel the save in some browsers.
+  setTimeout(() => window.URL.revokeObjectURL(url), 30_000);
 }
