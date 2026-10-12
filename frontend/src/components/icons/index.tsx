@@ -1,3 +1,4 @@
+import * as Hi2 from "react-icons/hi2";
 import {
   HiOutlineUser,
   HiOutlineTrash,
@@ -207,4 +208,45 @@ export const solidIcons = {
   RolledCloth: GiRolledCloth,
   ArrowPath: HiMiniArrowPath,
   Money: FaMoneyBillWave,
+};
+
+// The admin sidebar's icons: one consistent outline family (Heroicons 2) so every destination has
+// the same weight, size and optical alignment, expanded or collapsed.
+export const navIcons = {
+  Dashboard: Hi2.HiOutlineSquares2X2,
+  Analytics: Hi2.HiOutlinePresentationChartLine,
+  Projects: Hi2.HiOutlineBriefcase,
+  ProjectManagers: Hi2.HiOutlineIdentification,
+  Sectors: Hi2.HiOutlineBuildingOffice2,
+  SalesOrders: Hi2.HiOutlineShoppingCart,
+  PurchaseOrders: Hi2.HiOutlineClipboardDocumentList,
+  Customers: Hi2.HiOutlineUsers,
+  Vendors: Hi2.HiOutlineTruck,
+  Products: Hi2.HiOutlineCube,
+  Warehouses: Hi2.HiOutlineBuildingStorefront,
+  Transfers: Hi2.HiOutlineArrowsRightLeft,
+  Categories: Hi2.HiOutlineTag,
+  JournalEntries: Hi2.HiOutlineBookOpen,
+  Accounts: Hi2.HiOutlineTableCells,
+  AdvancedPayments: Hi2.HiOutlineBanknotes,
+  Shareholders: Hi2.HiOutlineChartPie,
+  AccountingPeriods: Hi2.HiOutlineCalendarDays,
+  Expenses: Hi2.HiOutlineReceiptPercent,
+  ExpenseCategories: Hi2.HiOutlineFolder,
+  FixedAssets: Hi2.HiOutlineCubeTransparent,
+  Reports: Hi2.HiOutlineDocumentChartBar,
+  TrialBalance: Hi2.HiOutlineScale,
+  GeneralLedger: Hi2.HiOutlineDocumentText,
+  ProjectProfit: Hi2.HiOutlineArrowTrendingUp,
+  Tour: Hi2.HiOutlineMap,
+  Light: Hi2.HiOutlineSun,
+  Dark: Hi2.HiOutlineMoon,
+  System: Hi2.HiOutlineComputerDesktop,
+  Language: Hi2.HiOutlineLanguage,
+  Exit: Hi2.HiOutlineArrowRightOnRectangle,
+  Chevron: Hi2.HiChevronDown,
+  Collapse: Hi2.HiOutlineChevronDoubleLeft,
+  Search: Hi2.HiOutlineMagnifyingGlass,
+  Menu: Hi2.HiOutlineBars3,
+  Close: Hi2.HiOutlineXMark,
 };

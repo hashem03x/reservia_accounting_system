@@ -135,8 +135,8 @@ export default function TourProvider({ children }: { children: ReactNode }) {
         <div className="flex flex-col gap-4">
           <p className="text-sm text-gray-600 dark:text-gray-300">
             {translate(
-              'Would you like a short guided tour of the dashboard and its modules? You can restart it any time from "Make a tour" in the sidebar.',
-              'هل تريد جولة إرشادية قصيرة في لوحة التحكم ووحداتها؟ يمكنك إعادتها في أي وقت من "Make a tour" في القائمة الجانبية.',
+              'Would you like a short guided tour of the dashboard and its modules? You can restart it any time with "Guided tour" (the map icon) at the bottom of the sidebar.',
+              'هل تريد جولة إرشادية قصيرة في لوحة التحكم ووحداتها؟ يمكنك إعادتها في أي وقت من "جولة تعريفية" (أيقونة الخريطة) أسفل القائمة الجانبية.',
             )}
           </p>
           <div className="flex justify-end gap-2">

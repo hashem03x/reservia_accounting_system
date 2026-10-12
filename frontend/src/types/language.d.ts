@@ -19,6 +19,32 @@ export interface LanguageContextProps {
     cancel: string;
     loading: string;
     error: string;
+    // Admin sidebar (components/global/navigation-admin).
+    nav: {
+      mainNavigation: string;
+      overview: string;
+      projects: string;
+      salesPurchasing: string;
+      inventory: string;
+      accounting: string;
+      assetsExpenses: string;
+      reports: string;
+      dashboard: string;
+      trialBalance: string;
+      generalLedger: string;
+      projectProfitAnalysis: string;
+      allReports: string;
+      findPage: string;
+      clearSearch: string;
+      noMatches: string;
+      collapse: string;
+      expand: string;
+      openMenu: string;
+      closeMenu: string;
+      tour: string;
+      switchLanguage: string;
+      showSection: string;
+    };
     pages: {
       home: string;
       vendors: string;

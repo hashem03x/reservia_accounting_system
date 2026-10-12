@@ -3,7 +3,7 @@ import { Action, Resource, UserState } from "@/types/user";
 import { isAdmin, isCustomer } from "@/utils/constants/roles";
 
 // The admin dashboard's guided tour - every step in one place, built from the real routes in
-// App.tsx and the sidebar (all-admin-options). A step may navigate to a route and highlight an
+// App.tsx and the sidebar (navigation-admin/nav-config.ts). A step may navigate to a route and highlight an
 // element marked with `data-tour="<target>"` (never a CSS class). Steps the user cannot access are
 // left out; a target that is not on screen (collapsed sidebar, phone layout, empty page) is shown
 // as a centered card instead, so the tour never gets stuck. To add a page, add a step here and a
@@ -28,8 +28,8 @@ export const TOUR_STEPS: TourStep[] = [
     id: "welcome",
     title: { en: "Welcome to Reservia", ar: "مرحباً بك في ريزرفيا" },
     body: {
-      en: 'A short tour of the dashboard, its modules and how they fit the accounting workflow. Use Next / Back, or the arrow keys; Esc closes it. You can restart it any time from "Make a tour" in the sidebar.',
-      ar: 'جولة قصيرة في لوحة التحكم ووحداتها وكيف تتكامل مع الدورة المحاسبية. استخدم التالي / السابق أو الأسهم؛ و Esc للإغلاق. يمكنك إعادتها في أي وقت من "Make a tour" في القائمة الجانبية.',
+      en: 'A short tour of the dashboard, its modules and how they fit the accounting workflow. Use Next / Back, or the arrow keys; Esc closes it. You can restart it any time with "Guided tour" (the map icon) at the bottom of the sidebar.',
+      ar: 'جولة قصيرة في لوحة التحكم ووحداتها وكيف تتكامل مع الدورة المحاسبية. استخدم التالي / السابق أو الأسهم؛ و Esc للإغلاق. يمكنك إعادتها في أي وقت من "جولة تعريفية" (أيقونة الخريطة) أسفل القائمة الجانبية.',
     },
   },
   {
@@ -37,8 +37,8 @@ export const TOUR_STEPS: TourStep[] = [
     target: "admin-sidebar",
     title: { en: "Navigation", ar: "التنقل" },
     body: {
-      en: "Every module is in this sidebar. It can be collapsed to icons with the arrow at the top.",
-      ar: "كل الوحدات في هذه القائمة الجانبية، ويمكن طيها إلى أيقونات بالسهم في الأعلى.",
+      en: "Every module is in this sidebar, grouped by area - open a group to see its pages, or type in 'Find a page'. It can be collapsed to icons with the button at the top.",
+      ar: "كل الوحدات في هذه القائمة الجانبية مجمعة حسب المجال - افتح مجموعة لعرض صفحاتها أو اكتب في 'ابحث عن صفحة'. ويمكن طيها إلى أيقونات بالزر في الأعلى.",
     },
   },
   {
@@ -240,8 +240,8 @@ export const TOUR_STEPS: TourStep[] = [
     target: "make-a-tour",
     title: { en: "That's the tour", ar: "انتهت الجولة" },
     body: {
-      en: 'Restart it whenever you like with "Make a tour" at the bottom of the sidebar.',
-      ar: 'يمكنك إعادتها متى شئت من "Make a tour" أسفل القائمة الجانبية.',
+      en: 'Restart it whenever you like with "Guided tour" (the map icon) at the bottom of the sidebar.',
+      ar: 'يمكنك إعادتها متى شئت من "جولة تعريفية" (أيقونة الخريطة) أسفل القائمة الجانبية.',
     },
   },
 ];

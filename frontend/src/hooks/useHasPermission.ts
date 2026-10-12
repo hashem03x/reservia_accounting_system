@@ -1,6 +1,6 @@
 import { useUser } from "@/context/UserContext";
 import { LocalizedLabel } from "@/types/global";
-import { Action, Resource } from "@/types/user";
+import { Action, Resource, User } from "@/types/user";
 import { isAdmin, isCustomer } from "@/utils/constants/roles";
 
 export default function useHasPermission(
@@ -8,7 +8,15 @@ export default function useHasPermission(
   action: Action | LocalizedLabel<Action>,
 ): boolean {
   const { user } = useUser();
+  return hasPermission(user, resource, action);
+}
 
+/** The same rule as useHasPermission, for checking many resources at once (e.g. the admin sidebar). */
+export function hasPermission(
+  user: Pick<User, "role" | "permissions"> | null | undefined,
+  resource: Resource | LocalizedLabel<Resource>,
+  action: Action | LocalizedLabel<Action>,
+): boolean {
   if (!user) return false;
 
   if (isAdmin(user.role)) return true;
