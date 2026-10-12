@@ -51,4 +51,12 @@ router
 router.get('/:key', getReport);
 router.get('/:key/export', exportReport);
 
+// A report error carries its Arabic text (details.messageAr - services/reports/reportCommon.js); a
+// request made in Arabic (the app sends Accept-Language) gets that text, so the page shows one language.
+// eslint-disable-next-line no-unused-vars
+router.use((err, req, res, next) => {
+  if (err?.details?.messageAr && /^ar\b/i.test(String(req.headers['accept-language'] || ''))) err.message = err.details.messageAr;
+  next(err);
+});
+
 module.exports = router;

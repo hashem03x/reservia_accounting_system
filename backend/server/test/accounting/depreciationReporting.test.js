@@ -344,5 +344,6 @@ test('the audit lists entries that need review and never changes them; zero bala
   await JournalEntry.collection.insertOne({ entryNumber: 900011, date: new Date('2026-08-31'), description: 'Site equipment depreciation', source: 'manual', status: 'posted', project: project._id, lines: [{ account: A.depExpense._id, debit: 2000, credit: 0, project: project._id, projectNumber: 'PRJ001' }, { account: A.accDep._id, debit: 0, credit: 2000, project: project._id, projectNumber: 'PRJ001' }], totalDebit: 2000, totalCredit: 2000 });
   const profit = await R('project-profit-analysis', { from: '2026-08-01', to: '2026-08-31', project: String(project._id) });
   const row = profit.sections[0].rows.find(r => r.projectNumber === 'PRJ001');
-  assert.deepEqual([row.indirectCost, row.netProfit], [2000, -2000], 'the expense - never the accumulated depreciation - is the cost');
+  assert.deepEqual([row.totalCost, row.net, row.result], [2000, -2000, 'Loss'], 'the expense - never the accumulated depreciation - is the cost');
+  assert.deepEqual(profit.sections[1].rows.filter(r => r.accountCode).map(r => [r.accountCode, r.amount]), [['62000001', 2000]]);
 });

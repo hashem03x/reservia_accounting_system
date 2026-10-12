@@ -50,6 +50,7 @@ export interface LanguageContextProps {
       advancedPayments: string;
       shareholders: string;
       sectors: string;
+      projectManagers: string;
     };
   };
 }

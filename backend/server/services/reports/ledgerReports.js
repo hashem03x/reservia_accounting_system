@@ -394,6 +394,7 @@ async function expensesByAccount(query) {
       name: a.account?.name || 'Unknown',
       nameAr: a.account?.nameAr || null,
       group: C.groupOf(a.account),
+      groupAr: C.groupArOf(a.account),
       classification: a.account?.type === 'cogs' ? 'Cost of sales' : 'Expense',
       classificationAr: a.account?.type === 'cogs' ? 'تكلفة مبيعات' : 'مصروف',
       counterpart: C.sortAccountsByCode([...a.counterparts.entries()].map(([id, amount]) => ({ code: accounts.get(id)?.code || '?', name: accounts.get(id)?.name || 'Unknown', amount })), x => x.code)

@@ -38,6 +38,7 @@ const paths = {
   fixedAssets: "fixed-assets",
   projects: "projects",
   sectors: "sectors",
+  projectManagers: "project-managers",
   accounts: "accounts",
   journalEntries: "journal-entries",
   advancedPayments: "advanced-payments",

@@ -92,21 +92,24 @@ export default function Sectors() {
         title: translations.pages.sectors,
         sideElements: (
           <Button color="cyan" variant="light" onClick={openCreate} className="w-full sm:w-auto">
-            {translate("Create Sector", "إنشاء قطاع")}
+            {translate("Create Sector", "إنشاء قسم")}
           </Button>
         ),
       }}
     >
       {loading ? (
-        <LoadingSection message={translate("Loading sectors...", "جاري تحميل القطاعات...")} />
+        <LoadingSection message={translate("Loading sectors...", "جاري تحميل الأقسام...")} />
       ) : error ? (
         <ErrorSection
-          errorTitle={translate("Error loading sectors", "خطأ في تحميل القطاعات")}
+          errorTitle={translate("Error loading sectors", "خطأ في تحميل الأقسام")}
           errorMessage={error}
           button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: reload }}
         />
       ) : sectors.length === 0 ? (
-        <EmptySection useDefaultImg message={translate("No sectors yet. Create the first one.", "لا توجد قطاعات بعد. أنشئ أول قطاع.")} />
+        <EmptySection
+          useDefaultImg
+          message={translate("No sectors yet. Create the first one.", "لا توجد أقسام بعد. أنشئ أول قسم.")}
+        />
       ) : (
         <>
           <div className="mb-4 flex flex-wrap gap-2">
@@ -137,7 +140,7 @@ export default function Sectors() {
           )}
 
           {visibleSectors.length === 0 ? (
-            <EmptySection useDefaultImg message={translate("No sectors match your search.", "لا توجد قطاعات مطابقة.")} />
+            <EmptySection useDefaultImg message={translate("No sectors match your search.", "لا توجد أقسام مطابقة.")} />
           ) : (
             <DataTableContainer>
               <DataTable className="min-w-[760px]">
@@ -166,12 +169,20 @@ export default function Sectors() {
                           </Badge>
                         </Table.Td>
                         <Table.Td className="whitespace-nowrap text-right tabular-nums">{projectsCount}</Table.Td>
-                        <Table.Td className="whitespace-nowrap">{sector.createdAt ? formatDate(sector.createdAt, language) : "-"}</Table.Td>
-                        <Table.Td className="whitespace-nowrap">{sector.updatedAt ? formatDate(sector.updatedAt, language) : "-"}</Table.Td>
+                        <Table.Td className="whitespace-nowrap">
+                          {sector.createdAt ? formatDate(sector.createdAt, language) : "-"}
+                        </Table.Td>
+                        <Table.Td className="whitespace-nowrap">
+                          {sector.updatedAt ? formatDate(sector.updatedAt, language) : "-"}
+                        </Table.Td>
                         <Table.Td className="whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <Tooltip label={translate("Edit", "تعديل")}>
-                              <ActionIcon variant="light" aria-label={translate("Edit", "تعديل")} onClick={() => openEdit(sector)}>
+                              <ActionIcon
+                                variant="light"
+                                aria-label={translate("Edit", "تعديل")}
+                                onClick={() => openEdit(sector)}
+                              >
                                 <outlineIcons.Edit />
                               </ActionIcon>
                             </Tooltip>
@@ -233,10 +244,10 @@ export default function Sectors() {
       <DeleteModal
         opened={deleteOpened}
         onClose={() => !deleteLoading && closeDelete()}
-        title={translate("Delete Sector", "حذف القطاع")}
+        title={translate("Delete Sector", "حذف القسم")}
         subTitle={translate(
           `Permanently delete the sector "${deleting?.name ?? ""}"? This cannot be undone.`,
-          `حذف القطاع "${deleting?.name ?? ""}" نهائياً؟ لا يمكن التراجع عن ذلك.`,
+          `حذف القسم "${deleting?.name ?? ""}" نهائياً؟ لا يمكن التراجع عن ذلك.`,
         )}
         action={confirmDelete}
         loading={deleteLoading}

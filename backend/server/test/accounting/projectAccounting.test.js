@@ -72,6 +72,10 @@ beforeEach(async () => {
   await SalesOrder.deleteMany({});
 
   user = await User.create({ name: 'Test Manager', email: `manager-${Date.now()}@example.com`, role: 'admin', type: 'online' });
+  // The project manager: a Project Manager record with the user's id, as projectManagerService.js
+  // #importLegacyProjectManagers creates for managers referenced before the Project Managers list.
+  await mongoose.connection.collection('projectmanagers').deleteMany({});
+  await mongoose.connection.collection('projectmanagers').insertOne({ _id: user._id, name: user.name, isActive: true });
   customer = await User.create({ name: 'Test Customer', email: `customer-${Date.now()}@example.com`, role: 'user', type: 'online' });
   cogsAccountA = await ChartOfAccount.create({ code: `COGS-A-${Date.now()}`, name: 'Direct Materials', type: 'cogs' });
   cogsAccountB = await ChartOfAccount.create({ code: `COGS-B-${Date.now()}`, name: 'Direct Labor', type: 'cogs' });

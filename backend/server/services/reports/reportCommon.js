@@ -22,15 +22,47 @@ const round2 = n => Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100;
 const pct = (part, whole) => (whole ? round2((part / whole) * 100) : null);
 const idOf = ref => (ref?._id || ref ? String(ref?._id || ref) : null);
 
+// ---------------------------------------------------------------- input errors
+// Every report input error carries its Arabic text (details.messageAr); the reports route returns it
+// to a request made in Arabic (routes/accountingReportsRoute.js), so a report page never mixes languages.
+const FIELD_AR = {
+  'Start date': 'تاريخ البداية',
+  'End date': 'تاريخ النهاية',
+  'As-of date': 'التاريخ',
+  account: 'الحساب',
+  'asset class': 'نوع الأصل',
+  'asset status': 'حالة الأصل',
+  'credit terms (days)': 'مدة الائتمان (بالأيام)',
+  customer: 'العميل',
+  vendor: 'المورد',
+  supplier: 'المورد',
+  'entry number': 'رقم القيد',
+  'expense category': 'فئة المصروف',
+  'expense type': 'نوع المصروف',
+  'movement type': 'نوع الحركة',
+  'order status': 'حالة الأمر',
+  'payment status': 'حالة الدفع',
+  project: 'المشروع',
+  'project status': 'حالة المشروع',
+  sort: 'الترتيب',
+  'source document type': 'نوع المستند',
+  'tax account': 'حساب الضريبة',
+  'PUC category': 'فئة مشروعات تحت التنفيذ',
+};
+const fieldAr = name => FIELD_AR[name] || FIELD_AR[String(name).toLowerCase()] || 'المدخل';
+/** A 400 (or `status`) report error with its English and Arabic text. */
+const reportError = (en, ar, status = 400) => new ApiError(en, status, { messageAr: ar });
+const invalid = name => reportError(`Invalid ${name}.`, `قيمة ${fieldAr(name)} غير صالحة.`);
+
 // ---------------------------------------------------------------- dates
 // Reporting days are UTC calendar days (the server's - and production's - day), given as
 // 'YYYY-MM-DD'. A period covers [from 00:00:00.000Z, to 23:59:59.999Z].
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function parseDay(value, name) {
-  if (!DATE_PATTERN.test(String(value || ''))) throw new ApiError(`${name} must be a date in YYYY-MM-DD format.`, 400);
+  if (!DATE_PATTERN.test(String(value || ''))) throw reportError(`${name} must be a date in YYYY-MM-DD format.`, `${fieldAr(name)} يجب أن يكون تاريخاً بصيغة YYYY-MM-DD.`);
   const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new ApiError(`${name} is not a valid date.`, 400);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw reportError(`${name} is not a valid date.`, `${fieldAr(name)} ليس تاريخاً صحيحاً.`);
   return date;
 }
 const dayStart = day => new Date(`${day}T00:00:00.000Z`);
@@ -43,7 +75,7 @@ function resolvePeriod(query = {}) {
   const from = query.from || `${to.slice(0, 4)}-01-01`;
   parseDay(from, 'Start date');
   parseDay(to, 'End date');
-  if (from > to) throw new ApiError('The start date must be on or before the end date.', 400);
+  if (from > to) throw reportError('The start date must be on or before the end date.', 'يجب أن يكون تاريخ البداية في تاريخ النهاية أو قبله.');
   return { from, to, start: dayStart(from), end: dayEnd(to) };
 }
 
@@ -56,7 +88,7 @@ function resolveAsOf(query = {}) {
 
 function objectIdParam(value, name) {
   if (value === undefined || value === null || value === '') return null;
-  if (!mongoose.Types.ObjectId.isValid(String(value))) throw new ApiError(`Invalid ${name}.`, 400);
+  if (!mongoose.Types.ObjectId.isValid(String(value))) throw invalid(name);
   return new mongoose.Types.ObjectId(String(value));
 }
 
@@ -64,14 +96,14 @@ function numberParam(value, name, { min, max, integer } = {}) {
   if (value === undefined || value === null || value === '') return null;
   const n = Number(value);
   if (!Number.isFinite(n) || (integer && !Number.isInteger(n)) || (min !== undefined && n < min) || (max !== undefined && n > max)) {
-    throw new ApiError(`Invalid ${name}.`, 400);
+    throw invalid(name);
   }
   return n;
 }
 
 function enumParam(value, name, allowed) {
   if (value === undefined || value === null || value === '') return null;
-  if (!allowed.includes(value)) throw new ApiError(`Invalid ${name}.`, 400);
+  if (!allowed.includes(value)) throw invalid(name);
   return value;
 }
 
@@ -179,7 +211,8 @@ async function ledgerEntries({ start = null, end, entryMatch = {}, limit = MAX_D
 // ---------------------------------------------------------------- output builders
 const L = (en, ar) => ({ en, ar });
 const col = (key, en, ar, type = 'text', extra = {}) => ({ key, label: L(en, ar), type, ...extra });
-const check = (en, ar, ok, detail = null) => ({ label: L(en, ar), ok: !!ok, detail });
+// `detail` is shown with a failed check; `detailAr` in Arabic when the detail is text (figures need none).
+const check = (en, ar, ok, detail = null, detailAr = null) => ({ label: L(en, ar), ok: !!ok, detail, ...(detailAr ? { detailAr } : {}) });
 const note = (en, ar) => ({ en, ar });
 const summaryItem = (key, en, ar, value, type = 'money') => ({ key, label: L(en, ar), value, type });
 const sumBy = (rows, key) => round2(rows.reduce((s, r) => s + (typeof r[key] === 'number' ? r[key] : 0), 0));
@@ -205,11 +238,71 @@ async function futureDatedEntriesCheck(endDay) {
     `No posted entries dated after ${endDay}`,
     `لا توجد قيود مرحلة بتاريخ بعد ${endDay}`,
     false,
-    `${count} posted entr${count === 1 ? 'y is' : 'ies are'} dated after the end date and not included (${listed}${count > sample.length ? ', ...' : ''}); the Chart of Accounts balances include them. Set the end date to ${lastDay} to include them.`
+    `${count} posted entr${count === 1 ? 'y is' : 'ies are'} dated after the end date and not included (${listed}${count > sample.length ? ', ...' : ''}); the Chart of Accounts balances include them. Set the end date to ${lastDay} to include them.`,
+    `${count} قيد مرحل بتاريخ بعد تاريخ النهاية وغير مشمول (${sample.map(e => `رقم ${e.entryNumber} (${e.date.toISOString().slice(0, 10)})`).join('، ')}${count > sample.length ? '، ...' : ''})؛ أرصدة دليل الحسابات تشملها. اجعل تاريخ النهاية ${lastDay} لتضمينها.`
   );
 }
 
+// ---------------------------------------------------------------- one language per page
+// Values the reports return as they are stored (statuses, sides, kinds) and their Arabic labels.
+const VALUE_AR = {
+  active: 'نشط', Active: 'نشط', inactive: 'غير نشط', Inactive: 'غير نشط', completed: 'مكتمل', Completed: 'مكتمل',
+  cancelled: 'ملغي', canceled: 'ملغي', on_hold: 'متوقف', pending: 'قيد التنفيذ', delivered: 'تم التسليم',
+  unpaid: 'غير مدفوع', partial: 'مدفوع جزئياً', paid: 'مدفوع', unknown: 'غير معروف', Unknown: 'غير معروف',
+  fully_depreciated: 'مهلك بالكامل', under_maintenance: 'تحت الصيانة', disposed: 'مستبعد', draft: 'مسودة', posted: 'مرحل', reversed: 'معكوس',
+  Dr: 'مدين', Cr: 'دائن', Debit: 'مدين', Credit: 'دائن', Posted: 'مرحل', Reversed: 'معكوس', Reversal: 'قيد عكسي',
+  Services: 'خدمات', Products: 'منتجات', Customer: 'عميل', Supplier: 'مورد', Vendor: 'مورد', Shareholder: 'مساهم',
+  'Internal transfer': 'تحويل داخلي', 'Cost of sales': 'تكلفة المبيعات', Expense: 'مصروف',
+  'No sector record': 'لا يوجد سجل للقسم', 'No journal entry': 'لا يوجد قيد', 'Reversed - not counted': 'معكوس - غير محتسب',
+  'Unassigned (lines without a Sub Account)': 'غير محدد (سطور بدون حساب فرعي)',
+};
+const valueAr = value => VALUE_AR[value] ?? (value.includes(' + ') && value.split(' + ').every(v => VALUE_AR[v]) ? value.split(' + ').map(v => VALUE_AR[v]).join(' + ') : null);
+
+/**
+ * Adds the Arabic text of each text cell a report produced in English only - a stored value from
+ * VALUE_AR, or an account label ("code - name", also inside lists) with the account's Arabic name -
+ * as `${key}Ar`, the variant the Financial Reports page, print and Excel export show in Arabic.
+ * Cells that already have their Arabic text, figures and data entered by users are left as they are.
+ */
+function localizeResult(result, accounts) {
+  const byCode = new Map([...accounts.values()].filter(a => a.code && a.nameAr && a.nameAr !== a.name).map(a => [String(a.code), a]));
+  const accountsAr = text => {
+    const re = /([A-Za-z0-9_.-]+) - /g;
+    let out = '';
+    let last = 0;
+    let match;
+    let changed = false;
+    while ((match = re.exec(text))) {
+      const account = byCode.get(match[1]);
+      const nameAt = match.index + match[0].length;
+      if (account && text.startsWith(account.name, nameAt)) {
+        out += `${text.slice(last, nameAt)}${account.nameAr}`;
+        last = nameAt + account.name.length;
+        re.lastIndex = last;
+        changed = true;
+      }
+    }
+    return changed ? out + text.slice(last) : null;
+  };
+  const localizeRow = (row, keys) => {
+    for (const key of keys) {
+      const value = row[key];
+      if (typeof value !== 'string' || !value || row[`${key}Ar`] != null) continue;
+      const ar = valueAr(value) ?? accountsAr(value);
+      if (ar != null) row[`${key}Ar`] = ar;
+    }
+  };
+  for (const section of result.sections || []) {
+    const keys = (section.columns || []).filter(c => !['money', 'number', 'percent', 'date'].includes(c.type)).map(c => c.key);
+    for (const row of section.rows || []) localizeRow(row, row._rowType === 'header' ? ['name'] : keys);
+    if (section.totals) localizeRow(section.totals, keys);
+  }
+  return result;
+}
+
 module.exports = {
+  localizeResult,
+  reportError,
   futureDatedEntriesCheck,
   isContraAsset,
   normalSideOf,

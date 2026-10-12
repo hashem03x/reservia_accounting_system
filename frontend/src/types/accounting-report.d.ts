@@ -82,7 +82,7 @@ export type ReportResult = {
   period?: { from: string; to: string };
   asOf?: string;
   summary: { key: string; label: LocalizedText; value: number | null; type: "money" | "number" | "percent" }[];
-  checks: { label: LocalizedText; ok: boolean; detail: string | null }[];
+  checks: { label: LocalizedText; ok: boolean; detail: string | null; detailAr?: string | null }[];
   sections: ReportSection[];
   notes: LocalizedText[];
   chart?: { labelKey: string; valueKey: string };

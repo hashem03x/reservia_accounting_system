@@ -25,6 +25,7 @@ import ProjectCostAdjustmentSection from "../_components/project-cost-adjustment
 import CustomerSearch from "@/components/global/customer-search";
 import AverageCostEditor from "../_components/average-cost-editor";
 import SectorSelect from "@/components/global/sector-select";
+import ProjectManagerSelect from "@/components/global/project-manager-select";
 import { AdvancedPayment } from "@/types/advanced-payment";
 
 const advanceStatusColors: Record<string, string> = {
@@ -59,7 +60,7 @@ export default function ProjectDetail() {
   const {
     privateRequest: entriesRequest,
     loading: entriesLoading,
-    setLoading:setEntriesLoading,
+    setLoading: setEntriesLoading,
     data: entries,
     setData: setEntries,
   } = useDataHandler<JournalEntry[]>({ initialData: [], initialLoading: true });
@@ -78,7 +79,7 @@ export default function ProjectDetail() {
       setProject(res.data);
       const entriesRes = await entriesRequest({ url: `projects/${id}/journal-entries`, language });
       setEntries(entriesRes.data);
-      setEntriesLoading(false)
+      setEntriesLoading(false);
       // Retrieved from the Advanced Payment records themselves (docs section "Project Advanced
       // Payment Display") - never duplicated/stored on the Project document.
       const advancesRes = await advancesRequest({
@@ -100,6 +101,7 @@ export default function ProjectDetail() {
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("");
   const [sector, setSector] = useState("");
+  const [projectManager, setProjectManager] = useState("");
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [deliveryDate, setDeliveryDate] = useState<Date | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -118,6 +120,7 @@ export default function ProjectDetail() {
     setDescription(project.description || "");
     setStatus(project.status);
     setSector(project.sector || "");
+    setProjectManager(project.projectManager?._id || "");
     setStartDate(project.startDate ? new Date(project.startDate) : null);
     setDeliveryDate(project.deliveryDate ? new Date(project.deliveryDate) : null);
     // CustomerSearch only ever reads `.name`/`._id` off this object - the populated customer
@@ -141,6 +144,8 @@ export default function ProjectDetail() {
           description,
           status,
           sector: sector || null,
+          // Sent only when set: a project imported without a manager stays without one until chosen.
+          ...(projectManager ? { projectManager } : {}),
           startDate,
           deliveryDate,
           customer: customer?._id || null,
@@ -189,12 +194,21 @@ export default function ProjectDetail() {
             the projectAmount->contractValue rename that hasn't been through
             migrateProjectFieldRenames.js yet - shown as "-", never fabricated as 0 (that would
             misrepresent a real contract's value). Executed/Remaining are the backend's values. */}
-        <SummaryCard label={translate("Contract Value", "قيمة العقد")} value={formatAmount(project.contractValue, translations.currency)} />
-        <SummaryCard label={translate("Executed Amount", "قيمة المنفذ")} value={formatAmount(project.executedAmount, translations.currency)} />
-        <SummaryCard label={translate("Remaining", "المتبقي")} value={formatAmount(project.remainingMoney, translations.currency)} />
+        <SummaryCard
+          label={translate("Contract Value", "قيمة العقد")}
+          value={formatAmount(project.contractValue, translations.currency)}
+        />
+        <SummaryCard
+          label={translate("Executed Amount", "قيمة المنفذ")}
+          value={formatAmount(project.executedAmount, translations.currency)}
+        />
+        <SummaryCard
+          label={translate("Remaining", "المتبقي")}
+          value={formatAmount(project.remainingMoney, translations.currency)}
+        />
         <SummaryCard label={translate("Project Manager", "مدير المشروع")} value={project.projectManager?.name || "-"} />
         <SummaryCard label={translate("Customer", "العميل")} value={project.customer?.name || "-"} />
-        <SummaryCard label={translate("Sector", "القطاع")} value={project.sector || "-"} />
+        <SummaryCard label={translate("Sector", "القسم")} value={project.sector || "-"} />
         <SummaryCard
           label={translate("Start Date", "تاريخ البدء")}
           value={project.startDate ? formatDate(project.startDate, language) : "-"}
@@ -246,6 +260,7 @@ export default function ProjectDetail() {
             onChange={(v) => setStatus(v || "active")}
             data={statusOptions.map((s) => ({ value: s, label: s }))}
           />
+          <ProjectManagerSelect value={projectManager} onChange={setProjectManager} saved={project.projectManager ?? null} />
           <SectorSelect value={sector} onChange={setSector} savedValue={project.sector ?? null} />
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <DateInput label={translate("Start Date", "تاريخ البدء")} value={startDate} onChange={setStartDate} />
@@ -323,9 +338,7 @@ export default function ProjectDetail() {
                 <Table.Tbody>
                   {project.averageCostLines.map((line, i) => (
                     <Table.Tr key={i}>
-                      <Table.Td>
-                        {line.account ? `${line.account.code} - ${line.account.name}` : "-"}
-                      </Table.Td>
+                      <Table.Td>{line.account ? `${line.account.code} - ${line.account.name}` : "-"}</Table.Td>
                       <Table.Td>
                         {line.amount.toLocaleString()} {translations.currency}
                       </Table.Td>

@@ -5,6 +5,7 @@ const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { ProjectStatuses } = require('../accountingConstants');
 const { resolveProjectSector } = require('../../services/project/sectorService');
+const { assertSelectableProjectManager } = require('../../services/project/projectManagerService');
 
 // Fast pre-check for Average Cost lines - the model's pre('validate') hook (projectModel.js) is
 // the real backstop that re-verifies this no matter which code path writes to the document, but
@@ -104,16 +105,16 @@ const createProjectValidators = [
 
   check('contractValue').notEmpty().withMessage('Contract value is required').isFloat({ min: 0.01 }).withMessage('Contract value must be greater than 0'),
 
+  // An existing, active Project Manager (Admin -> Project Managers).
   check('projectManager')
     .notEmpty()
     .withMessage('Project manager is required')
     .isMongoId()
     .withMessage('Invalid project manager id')
-    .custom(value =>
-      User.findById(value).then(user => {
-        if (!user) return Promise.reject(new Error('Project manager does not exist.'));
-      })
-    ),
+    .custom(async value => {
+      await assertSelectableProjectManager(value);
+      return true;
+    }),
 
   check('startDate').notEmpty().withMessage('Start date is required').isISO8601().withMessage('Invalid start date'),
   check('deliveryDate').notEmpty().withMessage('Delivery date is required').isISO8601().withMessage('Invalid delivery date'),
@@ -139,15 +140,18 @@ const updateProjectValidators = [
   check('name').optional().isString().trim().isLength({ max: 150 }),
   check('description').optional().isString().trim().isLength({ max: 1000 }),
   check('contractValue').optional().isFloat({ min: 0.01 }).withMessage('Contract value must be greater than 0'),
+  // Keeping the project's current manager is always allowed (even one deactivated since); any other
+  // value must be an existing, active Project Manager.
   check('projectManager')
     .optional()
     .isMongoId()
     .withMessage('Invalid project manager id')
-    .custom(value =>
-      User.findById(value).then(user => {
-        if (!user) return Promise.reject(new Error('Project manager does not exist.'));
-      })
-    ),
+    .custom(async (value, { req }) => {
+      const current = await Project.findById(req.params.id).select('projectManager').lean();
+      // The Project find hook populates projectManager - compare by id.
+      await assertSelectableProjectManager(value, { currentValue: current?.projectManager?._id || current?.projectManager || null });
+      return true;
+    }),
   check('startDate').optional().isISO8601().withMessage('Invalid start date'),
   check('deliveryDate').optional().isISO8601().withMessage('Invalid delivery date'),
   deliveryNotBeforeStart,

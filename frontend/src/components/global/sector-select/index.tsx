@@ -35,12 +35,16 @@ export default function SectorSelect({
 
   return (
     <Select
-      label={translate("Sector", "القطاع")}
-      placeholder={loading ? translate("Loading sectors...", "جاري تحميل القطاعات...") : translate("Select sector (optional)", "اختر القطاع (اختياري)")}
+      label={translate("Sector", "القسم")}
+      placeholder={
+        loading
+          ? translate("Loading sectors...", "جاري تحميل الأقسام...")
+          : translate("Select sector (optional)", "اختر القسم (اختياري)")
+      }
       value={value || null}
       onChange={(v) => onChange(v || "")}
       data={data}
-      error={error ? translate("Could not load sectors.", "تعذر تحميل القطاعات.") : undefined}
+      error={error ? translate("Could not load sectors.", "تعذر تحميل الأقسام.") : undefined}
       disabled={disabled}
       searchable
       clearable

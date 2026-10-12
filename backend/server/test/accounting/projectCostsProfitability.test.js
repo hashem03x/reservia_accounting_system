@@ -157,32 +157,43 @@ test('PUC estimated vs actual: each category of each project, overruns shown, to
   assert.ok(onlyLabour.sections[0].rows.filter(r => !r._rowType).every(r => r.category === 'Labor'));
 });
 
-test('project profitability: revenue by account, every cost, direct / indirect, margins, estimates and agreement with the P&L', async () => {
+test('project profit analysis: revenue, every cost account on its own line, total costs and revenue - costs, in line with the P&L', async () => {
   const report = await R['project-profit-analysis']({ from: '2026-01-01', to: '2026-12-31' });
-  const prj1 = report.sections[0].rows.find(r => r.projectNumber === 'PRJ001');
-  // Revenue 160,000; direct = cost of sales 75,000 + permits 1,000 = 76,000; indirect = rent 4,000.
-  assert.deepEqual([prj1.revenue, prj1.directCost, prj1.indirectCost, prj1.totalCost, prj1.grossProfit, prj1.netProfit, prj1.margin], [160000, 76000, 4000, 80000, 85000, 80000, 50]);
-  // Actual costs: PUC actual 140,000 + costs not through PUC (80,000 - 75,000 recognized) = 145,000.
-  assert.deepEqual([prj1.actualCost, prj1.actualProfit, prj1.estimatedCost, prj1.estimatedProfit], [145000, 15000, 150000, 150000]);
-  const prj2 = report.sections[0].rows.find(r => r.projectNumber === 'PRJ002');
-  assert.deepEqual([prj2.revenue, prj2.netProfit, prj2.margin, prj2.actualCost], [0, 0, null, 20000], 'zero revenue - margin n/a, never NaN');
-  const prj3 = report.sections[0].rows.find(r => r.projectNumber === 'PRJ003');
-  assert.deepEqual([prj3.revenue, prj3.totalCost, prj3.estimatedCost, prj3.estimatedProfit], [0, 0, null, null]);
+  const row = n => report.sections[0].rows.find(r => r.projectNumber === n);
+  // PRJ001: revenue 150,000 + 10,000 = 160,000; costs raw materials 50,000 + labour 25,000 + site rent
+  // 4,000 + permits 1,000 = 80,000; result 80,000 profit. PUC purchases are assets - not costs until recognized.
+  assert.deepEqual(['revenue', 'totalCost', 'net', 'result'].map(k => row('PRJ001')[k]), [160000, 80000, 80000, 'Profit']);
+  assert.equal(row('PRJ001').resultAr, 'ربح');
+  assert.deepEqual(['revenue', 'totalCost', 'net', 'result'].map(k => row('PRJ002')[k]), [0, 0, 0, 'Break-even'], 'zero revenue and no recognized cost');
+  assert.equal(row('PRJ003').net, 0);
+  assert.deepEqual(report.sections[0].columns.map(c => c.key), ['projectNumber', 'projectName', 'customer', 'revenue', 'totalCost', 'net', 'result'], 'no margins, estimates or other metrics');
+  assert.deepEqual(report.summary.map(s => s.key), ['revenue', 'totalCost', 'net']);
 
-  const accounts = report.sections[1].rows.filter(r => r.projectNumber === 'PRJ001');
-  assert.deepEqual(accounts.filter(r => r.section === 'Revenue').map(r => [r.accountCode, r.amount]).sort(), [['60000001', 150000], ['60000002', 10000]]);
-  const rawCost = accounts.find(r => r.accountCode === '50000001');
-  assert.deepEqual([rawCost.section, rawCost.amount, rawCost.estimate, rawCost.variance], ['Direct cost', 50000, 100000, 50000]);
-  assert.equal(accounts.find(r => r.accountCode === '61000005').section, 'Indirect cost');
-  assert.equal(report.sections[1].rows.find(r => r.projectNumber === 'PRJ002' && r.accountCode === '50000003').estimate, 20000, 'an estimated account with no posted cost still shows');
+  // The breakdown of PRJ001: revenue, each cost account, total costs, the result.
+  const rows = report.sections[1].rows;
+  const start = rows.findIndex(r => r._rowType === 'header' && r.name === 'PRJ001 - Villa');
+  const next = rows.findIndex((r, i) => i > start && r._rowType === 'header');
+  assert.deepEqual(rows.slice(start + 1, next).map(r => [r.item, r.accountCode ?? null, r.amount]), [
+    ['Total revenue', null, 160000],
+    ['Raw Materials', '50000001', 50000],
+    ['Labour Wages', '50000002', 25000],
+    ['Site Rent', '61000005', 4000],
+    ['Permits and Inspections', '61000006', 1000],
+    ['Total costs', null, 80000],
+    ['Net result (profit)', null, 80000],
+  ]);
+  assert.equal(rows[next - 1].itemAr, 'صافي النتيجة (ربح)');
 
   assert.ok(report.checks.every(c => c.ok), JSON.stringify(report.checks));
   const pl = await R['profit-loss']({ from: '2026-01-01', to: '2026-12-31' });
-  assert.equal(report.summary.find(s => s.key === 'netProfit').value, pl.summary.find(s => s.key === 'netProfit').value);
-  // Drill-down: one project and one account.
-  const drill = await R['project-profit-analysis']({ from: '2026-01-01', to: '2026-12-31', project: String(p1._id), account: String(A.siteRent._id) });
-  assert.deepEqual(drill.sections[2].rows.map(r => [r.accountCode, r.cost]), [['61000005', 4000]]);
+  assert.equal(report.summary.find(s => s.key === 'net').value, pl.summary.find(s => s.key === 'netProfit').value);
+  // One project: the journal entry lines behind its figures.
+  const drill = await R['project-profit-analysis']({ from: '2026-01-01', to: '2026-12-31', project: String(p1._id) });
+  const lines = drill.sections[2].rows;
+  assert.deepEqual([C_sum(lines, 'revenue'), C_sum(lines, 'cost')], [160000, 80000]);
+  assert.ok(drill.checks.every(c => c.ok), JSON.stringify(drill.checks));
 });
+const C_sum = (rows, k) => rows.reduce((s, r) => s + (r[k] || 0), 0);
 
 test('the end-of-project cost adjustment: only when completed, drafted (never posted by viewing), once, and it clears PUC', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
@@ -221,9 +232,9 @@ test('the end-of-project cost adjustment: only when completed, drafted (never po
   assert.ok(after.checks.find(c => /ledger/.test(c.label.en)).ok);
   // Cost of sales now equals the actual cost: materials 80,000 + labour 60,000.
   const profit = await R['project-profit-analysis']({ from: '2026-01-01', to: '2026-12-31', project: String(p1._id) });
-  const accounts = profit.sections[1].rows;
-  assert.equal(accounts.find(r => r.accountCode === '50000001').amount, 80000);
-  assert.equal(accounts.find(r => r.accountCode === '50000002').amount, 60000);
+  const costLines = profit.sections[1].rows;
+  assert.equal(costLines.find(r => r.accountCode === '50000001').amount, 80000);
+  assert.equal(costLines.find(r => r.accountCode === '50000002').amount, 60000);
   await assert.rejects(() => inTx(s => prepareCostAdjustment(p1._id, { userId: admin._id }, s)), /Nothing to adjust/);
 });
 
@@ -274,7 +285,7 @@ test('a lower executed percentage reverses revenue and cost recognition; recogni
 test('invalid input is refused and reports never change data', async () => {
   await assert.rejects(() => R['puc-estimates']({ asOf: '2026-13-01' }), /not a valid date|YYYY-MM-DD/);
   await assert.rejects(() => R['puc-estimates']({ asOf: '2026-03-31', category: 'nope' }), /Invalid PUC category/);
-  await assert.rejects(() => R['project-profit-analysis']({ from: '2026-01-01', to: '2026-12-31', account: 'x' }), /Invalid account/);
+  await assert.rejects(() => R['project-profit-analysis']({ from: '2026-01-01', to: '2026-12-31', project: 'x' }), /Invalid project/);
   await assert.rejects(() => costAdjustmentPreview('x'), /Invalid project id/);
   const counts = async () => Promise.all(['journalentries', 'projects'].map(c => mongoose.connection.collection(c).countDocuments()));
   const beforeCounts = await counts();

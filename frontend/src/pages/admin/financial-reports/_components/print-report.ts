@@ -22,25 +22,45 @@ export function printReport(result: ReportResult, isArabic: boolean, filterLines
       const rows = section.rows
         .map((row: ReportRow) =>
           row._rowType === "header"
-            ? rowHtml([`<td colspan="${section.columns.length}">${escape((isArabic ? row.nameAr : null) ?? row.name)}</td>`], "group")
+            ? rowHtml(
+                [`<td colspan="${section.columns.length}">${escape((isArabic ? row.nameAr : null) ?? row.name)}</td>`],
+                "group",
+              )
             : rowHtml(
-                section.columns.map((c) => `<td class="${isFigure(c) ? "num" : ""}">${escape(formatCell(c, row, isArabic))}</td>`),
+                section.columns.map(
+                  (c) => `<td class="${isFigure(c) ? "num" : ""}">${escape(formatCell(c, row, isArabic))}</td>`,
+                ),
                 row._rowType || "",
               ),
         )
         .join("");
-      const totals = section.totals ? rowHtml(section.columns.map((c) => `<td class="${isFigure(c) ? "num" : ""}">${escape(formatCell(c, section.totals as ReportRow, isArabic))}</td>`), "totals") : "";
+      const totals = section.totals
+        ? rowHtml(
+            section.columns.map(
+              (c) =>
+                `<td class="${isFigure(c) ? "num" : ""}">${escape(formatCell(c, section.totals as ReportRow, isArabic))}</td>`,
+            ),
+            "totals",
+          )
+        : "";
       return `<h2>${escape(t(section.title))}</h2><table><thead><tr>${head}</tr></thead><tbody>${rows || `<tr><td colspan="${section.columns.length}">-</td></tr>`}</tbody>${totals ? `<tfoot>${totals}</tfoot>` : ""}</table>`;
     })
     .join("");
 
   const summary = result.summary.length
     ? `<table class="summary">${result.summary
-        .map((s) => `<tr><td>${escape(t(s.label))}</td><td class="num">${escape(s.value === null ? (isArabic ? "غير متاح" : "n/a") : s.type === "money" ? formatCell({ key: "v", type: "money", label: s.label }, { v: s.value }, isArabic) : s.type === "percent" ? `${s.value}%` : s.value)}</td></tr>`)
+        .map(
+          (s) =>
+            `<tr><td>${escape(t(s.label))}</td><td class="num">${escape(s.value === null ? (isArabic ? "غير متاح" : "n/a") : s.type === "money" ? formatCell({ key: "v", type: "money", label: s.label }, { v: s.value }, isArabic) : s.type === "percent" ? `${s.value}%` : s.value)}</td></tr>`,
+        )
         .join("")}</table>`
     : "";
-  const checks = result.checks.length ? `<ul class="checks">${result.checks.map((c) => `<li class="${c.ok ? "ok" : "bad"}">${c.ok ? "✓" : "✗"} ${escape(t(c.label))}${c.detail ? ` (${escape(c.detail)})` : ""}</li>`).join("")}</ul>` : "";
-  const notes = result.notes.length ? `<div class="notes">${result.notes.map((n) => `<p>${escape(t(n))}</p>`).join("")}</div>` : "";
+  const checks = result.checks.length
+    ? `<ul class="checks">${result.checks.map((c) => `<li class="${c.ok ? "ok" : "bad"}">${c.ok ? "✓" : "✗"} ${escape(t(c.label))}${c.detail ? ` (${escape(isArabic ? (c.detailAr ?? c.detail) : c.detail)})` : ""}</li>`).join("")}</ul>`
+    : "";
+  const notes = result.notes.length
+    ? `<div class="notes">${result.notes.map((n) => `<p>${escape(t(n))}</p>`).join("")}</div>`
+    : "";
 
   const html = `<!doctype html><html lang="${isArabic ? "ar" : "en"}" dir="${isArabic ? "rtl" : "ltr"}"><head><meta charset="utf-8"><title>${escape(t(result.title))}</title>
 <style>

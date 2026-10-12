@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
-import { Button, NumberInput, Select, Textarea, TextInput } from "@mantine/core";
+import { Button, NumberInput, Textarea, TextInput } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import useDataHandler from "@/hooks/useDataHandler";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
@@ -12,8 +12,7 @@ import { Customer } from "@/types/customer";
 import SectorSelect from "@/components/global/sector-select";
 import CustomerSearch from "@/components/global/customer-search";
 import AverageCostEditor from "./average-cost-editor";
-
-type StaffOption = { _id: string; name: string; role: string };
+import ProjectManagerSelect from "@/components/global/project-manager-select";
 
 export default function CreateProjectModal({
   opened,
@@ -37,17 +36,8 @@ export default function CreateProjectModal({
   const [sector, setSector] = useState("");
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [averageCostLines, setAverageCostLines] = useState<AverageCostLineInput[]>([]);
-  const [staff, setStaff] = useState<StaffOption[]>([]);
 
-  const { privateRequest: fetchStaffRequest } = useDataHandler({ initialData: null });
   const { loading, setLoading, error, setError } = useDataHandler({ initialData: null });
-
-  useEffect(() => {
-    if (!opened) return;
-    fetchStaffRequest({ url: "users", params: { limit: 500 }, language })
-      .then((res) => setStaff((res.data || []).filter((u: StaffOption) => u.role !== "user")))
-      .catch(() => {});
-  }, [opened]);
 
   const deliveryBeforeStartError =
     startDate && deliveryDate && deliveryDate < startDate
@@ -148,15 +138,8 @@ export default function CreateProjectModal({
           required
         />
 
-        <Select
-          label={translate("Project Manager", "مدير المشروع")}
-          placeholder={translate("Select project manager", "اختر مدير المشروع")}
-          value={projectManager}
-          onChange={(value) => setProjectManager(value || "")}
-          data={staff.map((s) => ({ value: s._id, label: s.name }))}
-          searchable
-          required
-        />
+        {/* The admin-managed Project Managers (Admin -> Project Managers), active ones only. */}
+        <ProjectManagerSelect value={projectManager} onChange={setProjectManager} required />
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <DateInput

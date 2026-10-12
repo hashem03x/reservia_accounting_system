@@ -17,7 +17,7 @@ const STATUS_LABELS = {
   cancelled: L('Cancelled', 'ملغي'),
   on_hold: L('On Hold', 'متوقف'),
 };
-const UNASSIGNED_SECTOR = L('No sector', 'بدون سيكتور');
+const UNASSIGNED_SECTOR = L('No sector', 'بدون قسم');
 const NOT_LINKED = L('Not linked to a project', 'غير مرتبط بمشروع');
 
 /** Projects (soft-deleted ones excluded by the model) matching the shared project filters. */
@@ -72,7 +72,7 @@ async function projectsStatus(query) {
           col('projectNumber', 'Project No.', 'رقم المشروع'),
           col('projectName', 'Project', 'المشروع'),
           col('customer', 'Customer', 'العميل'),
-          col('sector', 'Sector', 'السيكتور'),
+          col('sector', 'Sector', 'القسم'),
           col('projectManager', 'Project Manager', 'مدير المشروع'),
           col('contractValue', 'Contract Value', 'قيمة العقد', 'money'),
           col('executedPercentage', 'Executed %', 'نسبة التنفيذ', 'percent'),
@@ -255,13 +255,15 @@ async function revenueDetail(period, accounts, projectIds) {
       const project = projectById.get(projectId);
       const partyLine = entry.lines.find(l => l.partyType === 'customer' && l.partyNumber != null);
       const customer = (order?.customer && customerById.get(String(order.customer))) || (partyLine && customerByNumber.get(partyLine.partyNumber)) || null;
-      const items = (order?.items || []).map(i => {
+      const itemTexts = (order?.items || []).map(i => {
         const product = productById.get(C.idOf(i.product));
         const name = product?.title?.en || product?.sku || 'Product';
+        const nameAr = product?.title?.ar || product?.sku || 'منتج';
         const quantity = round2((i.starterQuantity || 0) - (i.returnedQuantity || 0));
-        const discount = i.itemDiscount?.value ? ` less ${i.itemDiscount.type === 'percentage' ? `${i.itemDiscount.value}%` : i.itemDiscount.value}` : '';
-        return `${name} x ${quantity} @ ${i.unitPrice}${discount}`;
+        const amount = i.itemDiscount?.value ? (i.itemDiscount.type === 'percentage' ? `${i.itemDiscount.value}%` : i.itemDiscount.value) : null;
+        return { en: `${name} x ${quantity} @ ${i.unitPrice}${amount != null ? ` less ${amount}` : ''}`, ar: `${nameAr} × ${quantity} @ ${i.unitPrice}${amount != null ? ` خصم ${amount}` : ''}` };
       });
+      const items = itemTexts.map(t => t.en);
       rows.push({
         date: entry.date,
         entryNumber: entry.entryNumber,
@@ -275,6 +277,7 @@ async function revenueDetail(period, accounts, projectIds) {
         description: line.description || entry.description || null,
         quantity: order ? round2((order.items || []).reduce((q, i) => q + (i.starterQuantity || 0) - (i.returnedQuantity || 0), 0)) : null,
         items: items.length ? items.join('; ') : null,
+        itemsAr: itemTexts.length ? itemTexts.map(t => t.ar).join('؛ ') : null,
         amount,
         currency: line.currency || 'EGP',
         exchangeRate: line.exchangeRate ?? (line.currency ? null : 1),
@@ -325,7 +328,7 @@ async function projectProfitability(query) {
         key: 'projects',
         title: L('Project Profitability', 'ربحية المشروعات'),
         paginate: true,
-        columns: [col('projectNumber', 'Project No.', 'رقم المشروع'), col('projectName', 'Project', 'المشروع'), col('customer', 'Customer', 'العميل'), col('sector', 'Sector', 'السيكتور'), col('contractValue', 'Contract Value', 'قيمة العقد', 'money'), ...profitColumns(), ...pucColumns()],
+        columns: [col('projectNumber', 'Project No.', 'رقم المشروع'), col('projectName', 'Project', 'المشروع'), col('customer', 'Customer', 'العميل'), col('sector', 'Sector', 'القسم'), col('contractValue', 'Contract Value', 'قيمة العقد', 'money'), ...profitColumns(), ...pucColumns()],
         rows,
         totals: { projectNumber: 'Total', projectNumberAr: 'الإجمالي', contractValue: C.sumBy(rows, 'contractValue'), ...totals, ...pucTotals },
       },
@@ -418,7 +421,7 @@ async function projectCashFlows(query) {
         key: 'projects',
         title: L('Cash Flows by Project', 'التدفقات النقدية لكل مشروع'),
         paginate: true,
-        columns: [col('projectNumber', 'Project No.', 'رقم المشروع'), col('projectName', 'Project', 'المشروع'), col('customer', 'Customer', 'العميل'), col('sector', 'Sector', 'السيكتور'), ...cashColumns()],
+        columns: [col('projectNumber', 'Project No.', 'رقم المشروع'), col('projectName', 'Project', 'المشروع'), col('customer', 'Customer', 'العميل'), col('sector', 'Sector', 'القسم'), ...cashColumns()],
         rows,
         totals: { projectNumber: 'Total', projectNumberAr: 'الإجمالي', ...totals },
       },
@@ -461,19 +464,19 @@ async function projectsBySector(query) {
   const rows = sectorRowsFrom(projects, sectors, () => ({}));
   rows.forEach(r => (r.share = C.pct(r.projects, projects.length)));
   return {
-    summary: [summaryItem('projects', 'Projects', 'عدد المشروعات', projects.length, 'number'), summaryItem('sectors', 'Sectors', 'عدد السيكتورات', sectors.size, 'number')],
+    summary: [summaryItem('projects', 'Projects', 'عدد المشروعات', projects.length, 'number'), summaryItem('sectors', 'Sectors', 'عدد الأقسام', sectors.size, 'number')],
     checks: [check('Counts add up to all projects', 'مجموع الأعداد = كل المشروعات', C.sumBy(rows, 'projects') === projects.length)],
     chart: { labelKey: 'sector', valueKey: 'projects' },
     sections: [
       {
         key: 'sectors',
-        title: L('Projects by Sector', 'المشروعات حسب السيكتور'),
-        columns: [col('sector', 'Sector', 'السيكتور', 'status'), col('sectorStatus', 'Sector Record', 'حالة السيكتور'), col('projects', 'Projects', 'عدد المشروعات', 'number'), col('share', 'Share', 'النسبة', 'percent')],
+        title: L('Projects by Sector', 'المشروعات حسب القسم'),
+        columns: [col('sector', 'Sector', 'القسم', 'status'), col('sectorStatus', 'Sector Record', 'حالة القسم'), col('projects', 'Projects', 'عدد المشروعات', 'number'), col('share', 'Share', 'النسبة', 'percent')],
         rows,
         totals: { sector: 'Total', sectorAr: 'الإجمالي', projects: projects.length, share: projects.length ? 100 : null },
       },
     ],
-    notes: [note('Grouped by the project\'s sector. Projects without a sector, or whose sector has no record, are listed separately.', 'التجميع حسب سيكتور المشروع. المشروعات بدون سيكتور أو التي لا يوجد سجل لسيكتورها تظهر منفصلة.')],
+    notes: [note('Grouped by the project\'s sector. Projects without a sector, or whose sector has no record, are listed separately.', 'التجميع حسب قسم المشروع. المشروعات بدون قسم أو التي لا يوجد سجل لقسمها تظهر منفصلة.')],
   };
 }
 
@@ -497,8 +500,8 @@ async function sectorProfitability(query) {
     period,
     summary: [summaryItem('revenue', 'Revenue', 'الإيرادات', totals.revenue), summaryItem('grossProfit', 'Gross profit', 'مجمل الربح', totals.grossProfit), summaryItem('grossMargin', 'Gross margin', 'نسبة مجمل الربح', totals.grossMargin, 'percent')],
     checks: [],
-    sections: [{ key: 'sectors', title: L('Profitability by Sector', 'ربحية السيكتورات'), columns: [col('sector', 'Sector', 'السيكتور', 'status'), col('projects', 'Projects', 'عدد المشروعات', 'number'), ...profitColumns()], rows, totals: { sector: 'Total', sectorAr: 'الإجمالي', projects: projects.length, ...totals } }],
-    notes: [...profitNotes(), note('Each sector is the sum of its projects in the Project Profitability report (same rules), so the two reports reconcile. P&L lines without a project are not part of any sector.', 'كل سيكتور هو مجموع مشروعاته في تقرير ربحية المشروعات (نفس القواعد)، فيتطابق التقريران. سطور الأرباح والخسائر بدون مشروع لا تتبع أي سيكتور.')],
+    sections: [{ key: 'sectors', title: L('Profitability by Sector', 'ربحية الأقسام'), columns: [col('sector', 'Sector', 'القسم', 'status'), col('projects', 'Projects', 'عدد المشروعات', 'number'), ...profitColumns()], rows, totals: { sector: 'Total', sectorAr: 'الإجمالي', projects: projects.length, ...totals } }],
+    notes: [...profitNotes(), note('Each sector is the sum of its projects in the Project Profitability report (same rules), so the two reports reconcile. P&L lines without a project are not part of any sector.', 'كل قسم هو مجموع مشروعاته في تقرير ربحية المشروعات (نفس القواعد)، فيتطابق التقريران. سطور الأرباح والخسائر بدون مشروع لا تتبع أي قسم.')],
   };
 }
 
@@ -522,8 +525,8 @@ async function sectorCashFlows(query) {
     period,
     summary: [summaryItem('inflow', 'Cash in', 'التدفقات الداخلة', totals.inflow), summaryItem('outflow', 'Cash out', 'التدفقات الخارجة', totals.outflow), summaryItem('net', 'Net cash flow', 'صافي التدفق', totals.net)],
     checks: truncated ? [check('All cash entries included', 'تم تضمين كل قيود النقدية', false, `limited to ${C.MAX_DETAIL_ROWS}`)] : [],
-    sections: [{ key: 'sectors', title: L('Cash Flows by Sector', 'التدفقات النقدية لكل سيكتور'), columns: [col('sector', 'Sector', 'السيكتور', 'status'), col('projects', 'Projects', 'عدد المشروعات', 'number'), ...cashColumns()], rows, totals: { sector: 'Total', sectorAr: 'الإجمالي', projects: projects.length, ...totals } }],
-    notes: [...cashNotes(), note('Each sector is the sum of its projects in the Cash Flows by Project report (same rules). Cash lines without a project are not part of any sector.', 'كل سيكتور هو مجموع مشروعاته في تقرير التدفقات النقدية لكل مشروع (نفس القواعد). سطور النقدية بدون مشروع لا تتبع أي سيكتور.')],
+    sections: [{ key: 'sectors', title: L('Cash Flows by Sector', 'التدفقات النقدية لكل قسم'), columns: [col('sector', 'Sector', 'القسم', 'status'), col('projects', 'Projects', 'عدد المشروعات', 'number'), ...cashColumns()], rows, totals: { sector: 'Total', sectorAr: 'الإجمالي', projects: projects.length, ...totals } }],
+    notes: [...cashNotes(), note('Each sector is the sum of its projects in the Cash Flows by Project report (same rules). Cash lines without a project are not part of any sector.', 'كل قسم هو مجموع مشروعاته في تقرير التدفقات النقدية لكل مشروع (نفس القواعد). سطور النقدية بدون مشروع لا تتبع أي قسم.')],
   };
 }
 

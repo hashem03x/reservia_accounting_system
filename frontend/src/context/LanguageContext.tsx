@@ -56,6 +56,7 @@ export const LanguageContext = createContext<LanguageContextProps>({
       advancedPayments: "",
       shareholders: "",
       sectors: "",
+      projectManagers: "",
     },
   },
 });
@@ -131,7 +132,8 @@ export default function LanguageProvider({ children }: { children: React.ReactNo
       journalEntries: translateResource(resources.journalEntries),
       advancedPayments: translateResource(resources.advancedPayments),
       shareholders: translateResource(resources.shareholders),
-      sectors: translate("Sectors", "القطاعات"),
+      sectors: translate("Sectors", "الأقسام"),
+      projectManagers: translate("Project Managers", "مديرو المشروعات"),
     },
   };
 

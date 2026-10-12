@@ -256,7 +256,7 @@ async function projectCosts(query) {
           col('projectNumber', 'Project No.', 'رقم المشروع'),
           col('projectName', 'Project', 'المشروع'),
           col('customer', 'Customer', 'العميل'),
-          col('sector', 'Sector', 'السيكتور'),
+          col('sector', 'Sector', 'القسم'),
           money('contractValue', 'Contract Value', 'قيمة العقد'),
           col('executedPercentage', 'Executed %', 'نسبة التنفيذ', 'percent'),
           money('pucOpening', 'PUC Opening', 'رصيد أول المدة'),

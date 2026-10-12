@@ -118,7 +118,7 @@ export default function Projects() {
                 <Table.Thead className={dataTableHeadClassName}>
                   <Table.Tr>
                     <Table.Th className="whitespace-nowrap">{translate("Project Number", "رقم المشروع")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap">{translate("Sector", "القطاع")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Sector", "القسم")}</Table.Th>
                     <Table.Th>{translate("Name", "الاسم")}</Table.Th>
                     <Table.Th>{translate("Customer", "العميل")}</Table.Th>
                     <Table.Th className="whitespace-nowrap text-right">{translate("Contract Value", "قيمة العقد")}</Table.Th>

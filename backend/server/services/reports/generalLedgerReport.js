@@ -188,6 +188,7 @@ async function generalLedgerLines(query) {
       subAccountName: sub ? sub.name : party?.name || null,
       projectNumber: projectRef ? projectNumberOf.get(projectRef) || line.projectNumber || null : line.projectNumber || null,
       party: line.partyNumber != null ? `${line.partyType === 'customer' ? 'Customer' : line.partyType === 'vendor' ? 'Vendor' : 'Shareholder'} ${line.partyNumber}${party ? ` - ${party.name}` : ''}` : null,
+      partyAr: line.partyNumber != null ? `${line.partyType === 'customer' ? 'عميل' : line.partyType === 'vendor' ? 'مورد' : 'مساهم'} ${line.partyNumber}${party ? ` - ${party.name}` : ''}` : null,
       sourceType: sourceType?.en || null,
       sourceTypeAr: sourceType?.ar || null,
       sourceNumber: sourceOf(entry),

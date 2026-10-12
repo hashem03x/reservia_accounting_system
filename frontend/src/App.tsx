@@ -80,6 +80,7 @@ import AP_Analytics from "@/pages/admin/analytics";
 import AP_Projects from "@/pages/admin/projects";
 import AP_Project from "@/pages/admin/projects/[id]";
 import AP_Sectors from "@/pages/admin/sectors";
+import AP_ProjectManagers from "@/pages/admin/project-managers";
 import AP_AccountingPeriods from "@/pages/admin/accounting-periods";
 import AP_ExpenseCategories from "@/pages/admin/expense-categories";
 import AP_Accounts from "@/pages/admin/accounts";
@@ -230,6 +231,7 @@ export default function App() {
                   {/* Sector management is admin-only (the API allows only admins to change sectors). */}
                   <Route element={<RoleGuard allowedRoles={[roles.admin.value]} />}>
                     <Route path={paths.sectors} element={<AP_Sectors />} />
+                    <Route path={paths.projectManagers} element={<AP_ProjectManagers />} />
                     {/* Closing / reopening periods and managing expense categories are administrator controls. */}
                     <Route path={paths.accountingPeriods} element={<AP_AccountingPeriods />} />
                     <Route path={paths.expenseCategories} element={<AP_ExpenseCategories />} />

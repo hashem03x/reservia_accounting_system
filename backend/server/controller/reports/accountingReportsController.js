@@ -6,7 +6,7 @@ const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { REPORTS_BY_KEY, CATEGORIES, catalog } = require('../../services/reports/reportRegistry');
 const { taxAccountOptions } = require('../../services/reports/taxReports');
-const { loadAccounts, futureDatedEntriesCheck } = require('../../services/reports/reportCommon');
+const { loadAccounts, futureDatedEntriesCheck, localizeResult, reportError } = require('../../services/reports/reportCommon');
 const { pucAccountsOf, pucCategoryOf } = require('../../services/project/pucAccountService');
 
 // Accounting reports (services/reports/*): read-only - running, exporting or printing a report
@@ -17,11 +17,13 @@ const PAGE_SIZE_MAX = 1000;
 
 async function runReport(key, query) {
   const report = REPORTS_BY_KEY.get(key);
-  if (!report) throw new ApiError(`Unknown report "${key}".`, 404);
+  if (!report) throw reportError(`Unknown report "${key}".`, `التقرير "${key}" غير موجود.`, 404);
   const result = await report.run(query);
   // Entries dated after a report that ends today are flagged (see futureDatedEntriesCheck).
   const futureCheck = await futureDatedEntriesCheck(result.period?.to || result.asOf);
   if (futureCheck) result.checks = [...(result.checks || []), futureCheck];
+  // Arabic text for the stored values and account labels the reports return in English only.
+  localizeResult(result, await loadAccounts());
   const appliedFilters = Object.fromEntries(Object.entries(query).filter(([k, v]) => !['page', 'pageSize', 'lang', 'all'].includes(k) && v !== '' && v != null));
   return {
     key: report.key,

@@ -474,8 +474,8 @@ async function taxMovements(query, category, direction) {
       ...(rowFiltered
         ? []
         : [check(`Detail lines equal the accounts' ${dirLabel.en} movements in the ledger`, `تفاصيل الحركات تساوي الحركة ${dirLabel.ar} للحسابات في دفتر الأستاذ`, !truncated && totalTax === ledgerSide, `${totalTax} / ${ledgerSide}`)]),
-      check('Posted tax agrees with amount × document rate', 'الضريبة المرحلة تتفق مع المبلغ × نسبة المستند', rateMismatches === 0, rateMismatches ? `${rateMismatches} line(s)` : null),
-      check('Every line has a tax registration number', 'كل السطور لها رقم تسجيل ضريبي', missingRegistration === 0, missingRegistration ? `${missingRegistration} line(s)` : null),
+      check('Posted tax agrees with amount × document rate', 'الضريبة المرحلة تتفق مع المبلغ × نسبة المستند', rateMismatches === 0, rateMismatches ? `${rateMismatches} line(s)` : null, rateMismatches ? `${rateMismatches} سطر` : null),
+      check('Every line has a tax registration number', 'كل السطور لها رقم تسجيل ضريبي', missingRegistration === 0, missingRegistration ? `${missingRegistration} line(s)` : null, missingRegistration ? `${missingRegistration} سطر` : null),
       ...(truncated ? [check('All movements included', 'تم تضمين كل الحركات', false, `limited to ${C.MAX_DETAIL_ROWS} entries`)] : []),
     ],
     sections: [
@@ -598,8 +598,8 @@ async function taxAccountsOverview(query) {
     ],
     notes: [
       note(
-        'Tax accounts are found in the Chart of Accounts: the accounts the automatic entries post VAT and withholding tax to, and every account whose name or parent group mentions a tax (VAT / value added / withholding / commercial and industrial profits / ضريبة / ضرائب / قيمة مضافة / خصم وإضافة). The name decides VAT or withholding; the account type decides its normal balance side. Accounts marked "Needs review" are not in the four tax reports until they are renamed or reclassified.',
-        'تُكتشف حسابات الضرائب من دليل الحسابات: الحسابات التي ترحّل إليها القيود الآلية ضريبة القيمة المضافة وضريبة الخصم، وكل حساب يذكر اسمه أو اسم مجموعته الأم ضريبة (ضريبة / ضرائب / قيمة مضافة / خصم وإضافة / أرباح تجارية وصناعية / VAT / withholding). الاسم يحدد قيمة مضافة أم خصم وإضافة؛ ونوع الحساب يحدد طبيعة رصيده. الحسابات المعلّمة "يحتاج مراجعة" لا تظهر في تقارير الضرائب الأربعة حتى يعاد تسميتها أو تصنيفها.',
+        'Tax accounts are found in the Chart of Accounts: the accounts the automatic entries post VAT and withholding tax to, and every account whose name or parent group mentions a tax (VAT / value added / withholding / commercial and industrial profits, and the same words in Arabic). The name decides VAT or withholding; the account type decides its normal balance side. Accounts marked "Needs review" are not in the four tax reports until they are renamed or reclassified.',
+        'تُكتشف حسابات الضرائب من دليل الحسابات: الحسابات التي ترحّل إليها القيود الآلية ضريبة القيمة المضافة وضريبة الخصم، وكل حساب يذكر اسمه أو اسم مجموعته الأم ضريبة (ضريبة / ضرائب / قيمة مضافة / خصم وإضافة / أرباح تجارية وصناعية، وما يقابلها بالإنجليزية). الاسم يحدد قيمة مضافة أم خصم وإضافة؛ ونوع الحساب يحدد طبيعة رصيده. الحسابات المعلّمة "يحتاج مراجعة" لا تظهر في تقارير الضرائب الأربعة حتى يعاد تسميتها أو تصنيفها.',
       ),
       ...missingAutomatic.map(a => note(`The automatic entries post ${a.use.en.toLowerCase()} to account ${a.code}, which is not in the Chart of Accounts.`, `القيود الآلية ترحّل ${a.use.ar} إلى الحساب ${a.code} وهو غير موجود في دليل الحسابات.`)),
     ],

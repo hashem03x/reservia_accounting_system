@@ -6,6 +6,8 @@ const { computeProjectExecution } = require('../../utils/projectExecution');
 // a hard dependency on load order - mirrors journalEntryModel.js's existing convention for the
 // same reason.
 const ChartOfAccount = require('../accounting/chartOfAccountModel');
+// Registers 'ProjectManager' for the projectManager populate below, whatever the load order.
+require('./projectManagerModel');
 
 // One line of a Project's Average Cost structure (see docs section "Project - Average Cost").
 // References a real ChartOfAccount document (never just an account name/label) so the relationship
@@ -77,14 +79,15 @@ const projectSchema = new Schema(
       default: 0,
       min: 0,
     },
-    // Renamed from `executor` - see docs/entities/projects.md. A reference to an existing staff
-    // User rather than duplicating name/contact info on the Project document, consistent with how
-    // PurchaseOrder/Expense reference `createdBy: ref User` instead of embedding staff details.
+    // Renamed from `executor` - see docs/entities/projects.md. A reference to an admin-managed
+    // Project Manager (models/project/projectManagerModel.js). Earlier projects referenced a staff
+    // User; those managers are imported with the same _id (projectManagerService.js#
+    // importLegacyProjectManagers), so the stored ids never change.
     // See contractValue above - not `required` at the schema level for the same reason (enforced
     // for real user-submitted projects by createProjectValidators.js instead).
     projectManager: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: 'ProjectManager',
       default: null,
     },
     startDate: {
@@ -269,7 +272,7 @@ projectSchema.pre('validate', async function (next) {
 
 projectSchema.pre(/^find/, function (next) {
   this.where({ isDeleted: { $ne: true } })
-    .populate({ path: 'projectManager', select: 'name email role' })
+    .populate({ path: 'projectManager', select: 'name email phone isActive' })
     .populate({ path: 'customer', select: 'name email phone type customerNumber' })
     .populate({ path: 'createdBy', select: 'name' })
     .populate({ path: 'contract.uploadedBy', select: 'name' })

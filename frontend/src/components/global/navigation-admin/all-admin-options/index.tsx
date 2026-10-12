@@ -102,7 +102,14 @@ export default function AllAdminOptions({
     },
     // Sector management is admin-only (see the RoleGuard around its route in App.tsx).
     ...(user && isAdmin(user.role)
-      ? [{ to: `/${paths.admin}/${paths.sectors}`, label: translations.pages.sectors, Icon: outlineIcons.Building }]
+      ? [
+          { to: `/${paths.admin}/${paths.sectors}`, label: translations.pages.sectors, Icon: outlineIcons.Building },
+          {
+            to: `/${paths.admin}/${paths.projectManagers}`,
+            label: translations.pages.projectManagers,
+            Icon: outlineIcons.Users,
+          },
+        ]
       : []),
     // Administrator controls (see the RoleGuard around their routes in App.tsx).
     ...(user && isAdmin(user.role)

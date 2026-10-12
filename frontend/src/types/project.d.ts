@@ -30,7 +30,8 @@ export interface Project {
   // contractValue - display only, never recalculated here.
   remainingMoney?: number;
   executedAmount?: number;
-  projectManager?: { _id: string; name: string; email?: string; role?: string };
+  // An admin-managed Project Manager (Admin -> Project Managers).
+  projectManager?: { _id: string; name: string; email?: string | null; phone?: string | null; isActive?: boolean } | null;
   startDate?: string;
   deliveryDate?: string;
   // The NAME of an admin-managed Sector (Admin -> Sectors) - may be an inactive sector.

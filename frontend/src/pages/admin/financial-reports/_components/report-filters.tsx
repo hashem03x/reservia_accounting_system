@@ -172,8 +172,8 @@ export default function ReportFilters({
       )}
       {has("sector") && (
         <Select
-          label={translate("Sector", "السيكتور")}
-          placeholder={translate("All sectors", "كل السيكتورات")}
+          label={translate("Sector", "القسم")}
+          placeholder={translate("All sectors", "كل الأقسام")}
           value={values.sector || null}
           onChange={(v) => set("sector", v || "")}
           data={[
@@ -181,7 +181,7 @@ export default function ReportFilters({
               value: s.name,
               label: s.isActive === false ? `${s.name} (${translate("inactive", "غير نشط")})` : s.name,
             })),
-            { value: "__none__", label: translate("No sector", "بدون سيكتور") },
+            { value: "__none__", label: translate("No sector", "بدون قسم") },
           ]}
           searchable
           clearable
@@ -216,7 +216,10 @@ export default function ReportFilters({
           placeholder={translate("All accounts", "كل الحسابات")}
           value={values.account || null}
           onChange={(v) => set("account", v || "")}
-          data={expenseAccounts.map((a) => ({ value: a._id, label: `${a.code} - ${a.name}` }))}
+          data={expenseAccounts.map((a) => ({
+            value: a._id,
+            label: `${a.code} - ${(language === "ar-EG" && a.nameAr) || a.name}`,
+          }))}
           searchable
           clearable
         />

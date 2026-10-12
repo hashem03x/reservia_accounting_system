@@ -49,7 +49,7 @@ export default function SectorModal({
     <Modal
       opened={opened}
       onClose={() => !loading && close()}
-      title={isEdit ? translate("Edit Sector", "تعديل القطاع") : translate("Create Sector", "إنشاء قطاع")}
+      title={isEdit ? translate("Edit Sector", "تعديل القسم") : translate("Create Sector", "إنشاء قسم")}
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {error && <ErrorAlert error={error} />}
@@ -66,7 +66,7 @@ export default function SectorModal({
           label={translate("Active", "نشط")}
           description={translate(
             "Inactive sectors stay on existing projects but cannot be selected for a project.",
-            "القطاعات غير النشطة تبقى على المشاريع الحالية لكن لا يمكن اختيارها لمشروع.",
+            "الأقسام غير النشطة تبقى على المشاريع الحالية لكن لا يمكن اختيارها لمشروع.",
           )}
           checked={isActive}
           onChange={(e) => setIsActive(e.currentTarget.checked)}

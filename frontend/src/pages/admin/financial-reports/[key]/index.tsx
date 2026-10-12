@@ -21,6 +21,7 @@ import ReportTable from "../_components/report-table";
 import DisclosureNoteModal from "../_components/disclosure-note-modal";
 import { printReport } from "../_components/print-report";
 import { formatMoney, todayUtc } from "../_components/format";
+import { filterLine } from "../_components/filter-labels";
 
 const defaultsFor = (entry: ReportCatalogEntry): FilterValues => {
   const today = todayUtc();
@@ -29,7 +30,8 @@ const defaultsFor = (entry: ReportCatalogEntry): FilterValues => {
     ...(entry.filters.includes("asOf") ? { asOf: today } : {}),
   };
 };
-const clean = (values: FilterValues) => Object.fromEntries(Object.entries(values).filter(([, v]) => v !== "" && v !== undefined && v !== null));
+const clean = (values: FilterValues) =>
+  Object.fromEntries(Object.entries(values).filter(([, v]) => v !== "" && v !== undefined && v !== null));
 
 export default function AccountingReport() {
   const { key } = useParams();
@@ -39,14 +41,25 @@ export default function AccountingReport() {
   const canEditNotes = useHasPermission(resources.reports, actions.create);
 
   // The catalog tells which filters this report has.
-  const { privateRequest: loadCatalog, data: catalog, setData: setCatalog, error: catalogError, setError: setCatalogError, loading: catalogLoading, setLoading: setCatalogLoading } = useDataHandler<ReportCatalog | null>({ initialData: null, initialLoading: true });
+  const {
+    privateRequest: loadCatalog,
+    data: catalog,
+    setData: setCatalog,
+    error: catalogError,
+    setError: setCatalogError,
+    loading: catalogLoading,
+    setLoading: setCatalogLoading,
+  } = useDataHandler<ReportCatalog | null>({ initialData: null, initialLoading: true });
   useEffect(() => {
     handleRequest(language, setCatalogLoading, setCatalogError, async () => {
       const res = await loadCatalog({ url: "accounting-reports", language });
       setCatalog(res.data);
     });
   }, []);
-  const entry = useMemo(() => catalog?.categories.flatMap((c) => c.reports).find((r) => r.key === key) || null, [catalog, key]);
+  const entry = useMemo(
+    () => catalog?.categories.flatMap((c) => c.reports).find((r) => r.key === key) || null,
+    [catalog, key],
+  );
 
   const [values, setValues] = useState<FilterValues>({});
   const [applied, setApplied] = useState<FilterValues | null>(null);
@@ -61,7 +74,15 @@ export default function AccountingReport() {
     setPage(Number(fromUrl.page) || 1);
   }, [entry?.key]);
 
-  const { privateRequest, loading, setLoading, error, setError, data: report, setData: setReport } = useDataHandler<ReportResult | null>({ initialData: null });
+  const {
+    privateRequest,
+    loading,
+    setLoading,
+    error,
+    setError,
+    data: report,
+    setData: setReport,
+  } = useDataHandler<ReportResult | null>({ initialData: null });
 
   function load() {
     if (!applied || !entry) return () => undefined;
@@ -72,7 +93,12 @@ export default function AccountingReport() {
       setLoading,
       setError,
       async () => {
-        const res = await privateRequest({ url: `accounting-reports/${entry.key}`, params: { ...clean(applied), page: String(page) }, signal: controller.signal, language });
+        const res = await privateRequest({
+          url: `accounting-reports/${entry.key}`,
+          params: { ...clean(applied), page: String(page) },
+          signal: controller.signal,
+          language,
+        });
         setReport(res.data);
       },
       canceled,
@@ -99,7 +125,13 @@ export default function AccountingReport() {
     setExporting(true);
     setActionError("");
     try {
-      await privateRequest({ url: `accounting-reports/${entry.key}/export`, params: { ...clean(applied), lang: isArabic ? "ar" : "en" }, download: true, filename: `${entry.key}.xlsx`, language });
+      await privateRequest({
+        url: `accounting-reports/${entry.key}/export`,
+        params: { ...clean(applied), lang: isArabic ? "ar" : "en" },
+        download: true,
+        filename: `${entry.key}.xlsx`,
+        language,
+      });
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -112,7 +144,7 @@ export default function AccountingReport() {
     ...(r.asOf ? [`${translate("As of", "في تاريخ")}: ${r.asOf}`] : []),
     ...Object.entries(r.filters)
       .filter(([k]) => !["from", "to", "asOf"].includes(k))
-      .map(([k, v]) => `${k}: ${v}`),
+      .map(([k, v]) => filterLine(k, String(v), translate)),
     `${translate("Generated", "تاريخ الإنشاء")}: ${r.generatedAt.replace("T", " ").slice(0, 16)} UTC`,
     `${translate("Currency", "العملة")}: ${r.currency}`,
   ];
@@ -120,8 +152,13 @@ export default function AccountingReport() {
     if (!entry || !applied) return;
     setActionError("");
     try {
-      const res = await privateRequest({ url: `accounting-reports/${entry.key}`, params: { ...clean(applied), all: "true" }, language });
-      if (!printReport(res.data, isArabic, filterLines(res.data))) setActionError(translate("Allow pop-ups for this site to print.", "اسمح بالنوافذ المنبثقة لهذا الموقع للطباعة."));
+      const res = await privateRequest({
+        url: `accounting-reports/${entry.key}`,
+        params: { ...clean(applied), all: "true" },
+        language,
+      });
+      if (!printReport(res.data, isArabic, filterLines(res.data)))
+        setActionError(translate("Allow pop-ups for this site to print.", "اسمح بالنوافذ المنبثقة لهذا الموقع للطباعة."));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     }
@@ -130,7 +167,11 @@ export default function AccountingReport() {
   // ---------------- disclosure notes (manual section)
   const [noteModalOpened, { open: openNoteModal, close: closeNoteModal }] = useDisclosure();
   const [editingNote, setEditingNote] = useState<DisclosureNote | null>(null);
-  const { privateRequest: notesRequest, data: notes, setData: setNotes } = useDataHandler<DisclosureNote[]>({ initialData: [] });
+  const {
+    privateRequest: notesRequest,
+    data: notes,
+    setData: setNotes,
+  } = useDataHandler<DisclosureNote[]>({ initialData: [] });
   useEffect(() => {
     if (entry?.key === "disclosure-notes") {
       notesRequest({ url: "accounting-reports/notes", language })
@@ -149,20 +190,37 @@ export default function AccountingReport() {
   }
 
   if (catalogLoading) return <LoadingSection message={translate("Loading...", "جاري التحميل...")} />;
-  if (catalogError) return <ErrorSection errorTitle={translate("Error loading reports", "خطأ في تحميل التقارير")} errorMessage={catalogError} />;
-  if (!entry) return <ErrorSection errorTitle={translate("Report not found", "التقرير غير موجود")} errorMessage={String(key)} />;
+  if (catalogError)
+    return (
+      <ErrorSection errorTitle={translate("Error loading reports", "خطأ في تحميل التقارير")} errorMessage={catalogError} />
+    );
+  if (!entry)
+    return <ErrorSection errorTitle={translate("Report not found", "التقرير غير موجود")} errorMessage={String(key)} />;
 
-  const summaryValue = (s: ReportResult["summary"][number]) => (s.value === null ? translate("n/a", "غير متاح") : s.type === "money" ? formatMoney(s.value) : s.type === "percent" ? `${s.value}%` : s.value.toLocaleString("en-US"));
+  const summaryValue = (s: ReportResult["summary"][number]) =>
+    s.value === null
+      ? translate("n/a", "غير متاح")
+      : s.type === "money"
+        ? formatMoney(s.value)
+        : s.type === "percent"
+          ? `${s.value}%`
+          : s.value.toLocaleString("en-US");
 
   return (
     <AdminLayoutBox
       header={{
         title,
-        subTitle: isArabic ? entry.title.en : entry.title.ar,
+        subTitle: catalog?.categories.find((c) => c.reports.some((r) => r.key === entry.key))?.title[isArabic ? "ar" : "en"],
         backLink: `/${paths.admin}/${paths.financialReports}`,
         sideElements: (
           <div className="flex flex-wrap gap-2">
-            <Button variant="light" color="green" leftSection={exporting ? <solidIcons.Spinner className="animate-spin" /> : <solidIcons.Download />} disabled={exporting || !report} onClick={handleExport}>
+            <Button
+              variant="light"
+              color="green"
+              leftSection={exporting ? <solidIcons.Spinner className="animate-spin" /> : <solidIcons.Download />}
+              disabled={exporting || !report}
+              onClick={handleExport}
+            >
               {translate("Export Excel", "تصدير Excel")}
             </Button>
             <Button variant="light" color="gray" disabled={!report} onClick={handlePrint}>
@@ -193,7 +251,11 @@ export default function AccountingReport() {
       {loading && !report ? (
         <LoadingSection message={translate("Preparing the report...", "جاري إعداد التقرير...")} />
       ) : error ? (
-        <ErrorSection errorTitle={translate("Error generating the report", "خطأ في إعداد التقرير")} errorMessage={error} button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }} />
+        <ErrorSection
+          errorTitle={translate("Error generating the report", "خطأ في إعداد التقرير")}
+          errorMessage={error}
+          button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }}
+        />
       ) : (
         report && (
           <div className={`flex flex-col gap-5 ${loading ? "opacity-60" : ""}`}>
@@ -208,7 +270,11 @@ export default function AccountingReport() {
                 {report.summary.map((s) => (
                   <div key={s.key} className="rounded-lg border border-gray-100 p-3">
                     <p className="text-xs text-gray-500">{isArabic ? s.label.ar : s.label.en}</p>
-                    <p className={`mt-1 text-base font-semibold tabular-nums ${typeof s.value === "number" && s.value < 0 && s.type === "money" ? "text-red-600" : ""}`}>{summaryValue(s)}</p>
+                    <p
+                      className={`mt-1 text-base font-semibold tabular-nums ${typeof s.value === "number" && s.value < 0 && s.type === "money" ? "text-red-600" : ""}`}
+                    >
+                      {summaryValue(s)}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -217,9 +283,16 @@ export default function AccountingReport() {
             {report.checks.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {report.checks.map((c, i) => (
-                  <Badge key={i} color={c.ok ? "green" : "red"} variant="light" size="lg" className="normal-case" title={c.detail || undefined}>
+                  <Badge
+                    key={i}
+                    color={c.ok ? "green" : "red"}
+                    variant="light"
+                    size="lg"
+                    className="normal-case"
+                    title={(isArabic ? (c.detailAr ?? c.detail) : c.detail) || undefined}
+                  >
                     {c.ok ? "✓" : "✗"} {isArabic ? c.label.ar : c.label.en}
-                    {!c.ok && c.detail ? ` (${c.detail})` : ""}
+                    {!c.ok && c.detail ? ` (${isArabic ? (c.detailAr ?? c.detail) : c.detail})` : ""}
                   </Badge>
                 ))}
               </div>
@@ -261,7 +334,12 @@ export default function AccountingReport() {
                             >
                               {translate("Edit", "تعديل")}
                             </Button>
-                            <Button size="compact-xs" variant="subtle" color="red" onClick={() => row._noteId && deleteNote(row._noteId)}>
+                            <Button
+                              size="compact-xs"
+                              variant="subtle"
+                              color="red"
+                              onClick={() => row._noteId && deleteNote(row._noteId)}
+                            >
                               {translate("Delete", "حذف")}
                             </Button>
                           </div>
