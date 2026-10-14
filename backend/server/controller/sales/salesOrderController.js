@@ -42,12 +42,12 @@ exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
 
     res.status(201).json({
       status: 'success',
-      message: 'Sales order created successfully',
+      message: 'Sales invoice created successfully',
       data: salesOrder,
     });
   } catch (error) {
-    console.error('Sales order creation rolled back due to an error:', error);
-    next(new ApiError(error.message || 'Failed to create Sales Order'));
+    console.error('Sales invoice creation rolled back due to an error:', error);
+    next(new ApiError(error.message || 'Failed to create Sales Invoice'));
   }
 });
 
@@ -62,7 +62,7 @@ exports.getSalesOrderByCode = asyncHandler(async (req, res, next) => {
   const doc = await SalesOrder.findOne({ code });
 
   if (!doc) {
-    return next(new ApiError('No sales order found with that code', 404));
+    return next(new ApiError('No sales invoice found with that code', 404));
   }
 
   res.status(200).json({
@@ -78,7 +78,7 @@ exports.payShippingCost = asyncHandler(async (req, res, next) => {
   const salesOrder = await SalesOrder.findByIdAndUpdate(orderId, { $set: { shippingCostPaid: true } }, { new: true });
 
   if (!salesOrder) {
-    return next(new ApiError('No sales order found with that ID', 404));
+    return next(new ApiError('No sales invoice found with that ID', 404));
   }
 
   res.status(200).json({
@@ -97,10 +97,10 @@ exports.cancelOrder = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const salesOrder = await SalesOrder.findById(id);
   if (!salesOrder) {
-    return next(new ApiError(`Sales order not found with id ${id}`, 404));
+    return next(new ApiError(`Sales invoice not found with id ${id}`, 404));
   }
   if (salesOrder.orderStatus === 'canceled') {
-    return next(new ApiError('Order is already canceled', 400));
+    return next(new ApiError('Invoice is already canceled', 400));
   }
 
   // An order that consumed an Advanced Payment must restore it on cancellation (docs section
@@ -149,7 +149,7 @@ exports.confirmCodOrder = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const salesOrder = await SalesOrder.findById(id);
   if (!salesOrder) {
-    return next(new ApiError(`Sales order not found with id ${id}`, 404));
+    return next(new ApiError(`Sales invoice not found with id ${id}`, 404));
   }
   if (!salesOrder.isCodOrder) {
     return next(new ApiError('Order is not a COD order', 400));
@@ -170,7 +170,7 @@ exports.confirmCodOrder = asyncHandler(async (req, res, next) => {
 exports.updateOrderToDelivered = asyncHandler(async (req, res, next) => {
   const salesOrder = await SalesOrder.findById(req.params.id);
   if (!salesOrder) {
-    return next(new ApiError(`There is no sales order with id ${req.params.id}`, 404));
+    return next(new ApiError(`There is no sales invoice with id ${req.params.id}`, 404));
   }
 
   if (salesOrder.orderStatus === 'delivered') {
@@ -198,7 +198,7 @@ exports.updateOrderToDelivered = asyncHandler(async (req, res, next) => {
 exports.returnSalesOrderItemAdmin = asyncHandler(async (req, res, next) => {
   const { salesOrderId } = req.params;
   const order = await SalesOrder.findById(salesOrderId).lean();
-  if (!order) return next(new ApiError(`Sales order not found with id ${salesOrderId}`, 404));
+  if (!order) return next(new ApiError(`Sales invoice not found with id ${salesOrderId}`, 404));
   const items = order.items.filter(i => i.quantityToBeReturned > 0).map(i => ({ productId: String(i.product?._id || i.product), quantity: i.quantityToBeReturned }));
   if (!items.length) return next(new ApiError('No items are waiting to be returned on this order.', 400));
 

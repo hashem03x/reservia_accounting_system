@@ -63,7 +63,7 @@ async function lineStates(po, session) {
  */
 async function allocatePurchaseOrderToProject(purchaseOrderId, { userId = null, session } = {}) {
   const po = await PurchaseOrder.findById(purchaseOrderId).session(session || null);
-  if (!po) throw new ApiError('Purchase Order not found', 404);
+  if (!po) throw new ApiError('Purchase Invoice not found', 404);
   const { lines, toWip } = await lineStates(po, session);
   const stockLines = lines.filter(l => l.stock);
   if (!po.project || stockLines.length === 0) {
@@ -165,7 +165,7 @@ async function releaseAllocationForReturn(po, productId, quantity, { userId = nu
 /** Per line: ordered, received, returned, allocated, unallocated - with the allocation records. */
 async function allocationState(purchaseOrderId, session) {
   const po = await PurchaseOrder.findById(purchaseOrderId).session(session || null);
-  if (!po) throw new ApiError('Purchase Order not found', 404);
+  if (!po) throw new ApiError('Purchase Invoice not found', 404);
   const { lines, toWip } = await lineStates(po, session);
   return {
     status: po.projectAllocation?.status || null,

@@ -32,7 +32,7 @@ const emptyOrderItem: OrderItemInput = {
 export default function NewPurchaseOrder() {
   const { language, translate, translations } = useLanguage();
 
-  const title = translate("New Purchase Order", "طلب مشتريات جديد");
+  const title = translate("New Purchase Invoice", "فاتورة مشتريات جديدة");
 
   useDocumentTitle(`${title} | ${translations.adminPanel}`);
 
@@ -88,7 +88,7 @@ export default function NewPurchaseOrder() {
       }
 
       if (!project) {
-        setError(translate("A project is required to create a Purchase Order.", "يجب اختيار مشروع لإنشاء طلب مشتريات."));
+        setError(translate("A project is required to create a Purchase Invoice.", "يجب اختيار مشروع لإنشاء فاتورة مشتريات."));
         return;
       }
 

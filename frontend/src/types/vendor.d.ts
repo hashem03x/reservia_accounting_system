@@ -1,4 +1,4 @@
-import { BankInfo, BusinessDocument, TaxInfo } from "@/types/document";
+import { BankInfo, BusinessDocument, PaymentInfo, TaxInfo } from "@/types/document";
 
 export type VendorType = "current" | "equity";
 
@@ -24,6 +24,7 @@ export type Vendor = {
   };
   taxInfo?: TaxInfo;
   bankInfo?: BankInfo;
+  paymentInfo?: PaymentInfo;
   documents: BusinessDocument[];
   // How payments to this vendor appear in the Cash Flow Statement; null = by the counterpart account
   // (operating). E.g. "Supplier - Finance Activities" = financing.

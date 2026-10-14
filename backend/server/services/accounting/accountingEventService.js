@@ -376,7 +376,7 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
     // Fail loudly rather than silently posting project-less WIP (docs section "Do not silently
     // continue if the source document has no Project").
     if (!projectId) {
-      throw new ApiError('Project is required for this automatic Journal Entry (Purchase Order service cost posting).', 400);
+      throw new ApiError('Project is required for this automatic Journal Entry (Purchase Invoice service cost posting).', 400);
     }
     const serviceProducts = [...new Set(serviceItems.map(productIdOf))].map(id => productById.get(id));
     pucByProductId = await resolveServicePucAccounts(serviceProducts, session);

@@ -114,7 +114,7 @@ export default function PurchaseOrders() {
             {canICreatePurchaseOrders && (
               <Link to={`${paths.new}`}>
                 <Button variant="light" color="teal" leftSection={<solidIcons.Plus />}>
-                  {translate("New Purchase Order", "طلب مشتريات جديد")}
+                  {translate("New Purchase Invoice", "فاتورة مشتريات جديدة")}
                 </Button>
               </Link>
             )}

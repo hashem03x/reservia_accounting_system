@@ -17,7 +17,7 @@ exports.createPurchasePayment = async (req, res, next) => {
 
   try {
     const purchaseOrder = await PO.findById(purchaseOrderId).session(session);
-    if (!purchaseOrder) return next(new ApiError('Purchase order not found', 404));
+    if (!purchaseOrder) return next(new ApiError('Purchase invoice not found', 404));
 
     const vendorId = purchaseOrder.vendorId._id;
     // Project is mandatory for every Purchase Order (purchaseOrder.js's `isNew` backstop) - always
@@ -94,7 +94,7 @@ exports.createSalesPayment = async (req, res, next) => {
 
   try {
     const salesOrder = await salesOrderModel.findById(salesOrderId).session(session);
-    if (!salesOrder) return next(new ApiError('Sales order not found', 404));
+    if (!salesOrder) return next(new ApiError('Sales invoice not found', 404));
 
     const customerId = salesOrder.customer._id;
 

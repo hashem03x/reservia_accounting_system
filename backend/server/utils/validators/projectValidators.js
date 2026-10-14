@@ -87,19 +87,10 @@ const deliveryNotBeforeStart = check('deliveryDate').custom((value, { req }) => 
 // existing convention for other derived fields (Project.remainingMoney, Project.projectNumber).
 
 const createProjectValidators = [
-  check('projectNumber')
-    .notEmpty()
-    .withMessage('Project number is required')
-    .isString()
-    .trim()
-    .isLength({ max: 50 })
-    .withMessage('Project number cannot exceed 50 characters')
-    .custom(value =>
-      Project.findOne({ projectNumber: value }).then(project => {
-        if (project) return Promise.reject(new Error('Project number already exists.'));
-      })
-    ),
-
+  // `projectNumber` is no longer client-supplied (docs section "Automatic Project ID Generation") -
+  // it is always server-generated via projectNumberService.js#getNextProjectNumber, so there is
+  // nothing left to validate here. Any `projectNumber` sent in the request body is simply ignored
+  // by the controller.
   check('name').optional().isString().trim().isLength({ max: 150 }),
   check('description').optional().isString().trim().isLength({ max: 1000 }),
 

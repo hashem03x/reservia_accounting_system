@@ -32,7 +32,7 @@ type SortOrderOption = SortOrder;
 export default function PurchaseOrdersReport() {
   const { language, translate, translations } = useLanguage();
 
-  const title = translate("Purchase Orders Report", "تقرير طلبات الشراء");
+  const title = translate("Purchase Invoices Report", "تقرير فواتير المشتريات");
 
   useDocumentTitle(title);
 

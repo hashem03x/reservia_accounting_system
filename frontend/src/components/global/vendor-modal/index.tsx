@@ -3,6 +3,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { Vendor, VendorType } from "@/types/vendor";
+import { PaymentMode, WalletProvider } from "@/types/document";
 import vendorTypes, { vendorTypesArray } from "@/utils/constants/vendor-types";
 import { Button, Select, TextInput } from "@mantine/core";
 import Modal from "@/components/ui/modal";
@@ -33,11 +34,30 @@ export default function VendorModal({
   const [commercialRegistrationNumber, setCommercialRegistrationNumber] = useState(
     vendorToUpdate?.taxInfo?.commercialRegistrationNumber || "",
   );
-  const [bankName, setBankName] = useState(vendorToUpdate?.bankInfo?.bankName || "");
-  const [branch, setBranch] = useState(vendorToUpdate?.bankInfo?.branch || "");
-  const [bankAccountNumber, setBankAccountNumber] = useState(vendorToUpdate?.bankInfo?.accountNumber || "");
-  const [bankIbanNumber, setBankIbanNumber] = useState(vendorToUpdate?.bankInfo?.iban || "");
-  const [swiftCode, setSwiftCode] = useState(vendorToUpdate?.bankInfo?.swiftCode || "");
+  // Payment Information (docs section "Vendor Payment Information") - replaces the old
+  // free-standing Bank Info section below with a single mode selector. Writes to the new
+  // `paymentInfo` field only - the legacy `bankInfo` field is never touched by this form anymore,
+  // but stays intact in the database (see scripts/migrateVendorPaymentInfo.js).
+  const [paymentMode, setPaymentMode] = useState<PaymentMode | "">(vendorToUpdate?.paymentInfo?.mode || "");
+  const [instapayIdentifier, setInstapayIdentifier] = useState(vendorToUpdate?.paymentInfo?.instapay?.identifier || "");
+  const [walletProvider, setWalletProvider] = useState<WalletProvider | "">(vendorToUpdate?.paymentInfo?.wallet?.provider || "");
+  const [walletIdentifier, setWalletIdentifier] = useState(vendorToUpdate?.paymentInfo?.wallet?.identifier || "");
+  const [bankName, setBankName] = useState(vendorToUpdate?.paymentInfo?.bank?.bankName || "");
+  const [bankAccountHolderName, setBankAccountHolderName] = useState(vendorToUpdate?.paymentInfo?.bank?.accountHolderName || "");
+  const [bankAccountNumber, setBankAccountNumber] = useState(vendorToUpdate?.paymentInfo?.bank?.accountNumber || "");
+  const [bankIbanNumber, setBankIbanNumber] = useState(vendorToUpdate?.paymentInfo?.bank?.iban || "");
+  const [swiftCode, setSwiftCode] = useState(vendorToUpdate?.paymentInfo?.bank?.swiftCode || "");
+
+  // Mirrors the backend's conditional validator (vendorValidators.js#paymentInfoValidators) -
+  // whichever mode is selected, its required sub-fields must be filled before submitting.
+  const paymentInfoIncomplete =
+    paymentMode === "instapay"
+      ? !instapayIdentifier
+      : paymentMode === "wallet"
+        ? !walletProvider || !walletIdentifier
+        : paymentMode === "bank"
+          ? !bankName || !bankAccountNumber
+          : false;
 
   const ibanError =
     bankIbanNumber && !isValidEgyptianIban(bankIbanNumber)
@@ -46,6 +66,11 @@ export default function VendorModal({
           'يجب أن يبدأ رقم الآيبان بـ "EG" ويتكون من 29 حرفًا بالضبط (حروف وأرقام فقط).',
         )
       : undefined;
+
+  const emailError =
+    email && !/\S+@\S+\.\S+/.test(email)
+      ? translate("Enter a valid email address.", "أدخل بريدًا إلكترونيًا صحيحًا.")
+      : undefined;
   const [city, setCity] = useState(vendorToUpdate?.address?.city || "");
   const [street, setStreet] = useState(vendorToUpdate?.address?.street || "");
   const [postalCode, setPostalCode] = useState(vendorToUpdate?.address?.postalCode || "");
@@ -53,6 +78,11 @@ export default function VendorModal({
   // See customer-modal/index.tsx's identical pattern: holds the persisted record after a create so
   // the Documents section (which needs a real _id) becomes usable without closing the modal.
   const [savedVendor, setSavedVendor] = useState<Vendor | undefined>(vendorToUpdate);
+
+  // Email is mandatory for a NEW vendor (docs section "Mandatory Vendor and Customer Contact
+  // Information") - an existing vendor missing one (created before this rule existed) is never
+  // blocked from saving an unrelated change just because its email is empty.
+  const isNewVendor = !savedVendor;
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
@@ -79,13 +109,23 @@ export default function VendorModal({
             taxRegistrationNumber: taxRegistrationNumber || undefined,
             commercialRegistrationNumber: commercialRegistrationNumber || undefined,
           },
-          bankInfo: {
-            bankName: bankName || undefined,
-            branch: branch || undefined,
-            accountNumber: bankAccountNumber || undefined,
-            iban: bankIbanNumber || undefined,
-            swiftCode: swiftCode || undefined,
-          },
+          paymentInfo: paymentMode
+            ? {
+                mode: paymentMode,
+                instapay: paymentMode === "instapay" ? { identifier: instapayIdentifier || undefined } : undefined,
+                wallet: paymentMode === "wallet" ? { provider: walletProvider || undefined, identifier: walletIdentifier || undefined } : undefined,
+                bank:
+                  paymentMode === "bank"
+                    ? {
+                        bankName: bankName || undefined,
+                        accountHolderName: bankAccountHolderName || undefined,
+                        accountNumber: bankAccountNumber || undefined,
+                        iban: bankIbanNumber || undefined,
+                        swiftCode: swiftCode || undefined,
+                      }
+                    : undefined,
+              }
+            : undefined,
         }, // I send them as undefined instead of empty string to avoid a backend issue.
       });
 
@@ -112,11 +152,15 @@ export default function VendorModal({
       setPostalCode(vendorToUpdate?.address?.postalCode || "");
       setTaxRegistrationNumber(vendorToUpdate?.taxInfo?.taxRegistrationNumber || "");
       setCommercialRegistrationNumber(vendorToUpdate?.taxInfo?.commercialRegistrationNumber || "");
-      setBankName(vendorToUpdate?.bankInfo?.bankName || "");
-      setBranch(vendorToUpdate?.bankInfo?.branch || "");
-      setBankAccountNumber(vendorToUpdate?.bankInfo?.accountNumber || "");
-      setBankIbanNumber(vendorToUpdate?.bankInfo?.iban || "");
-      setSwiftCode(vendorToUpdate?.bankInfo?.swiftCode || "");
+      setPaymentMode(vendorToUpdate?.paymentInfo?.mode || "");
+      setInstapayIdentifier(vendorToUpdate?.paymentInfo?.instapay?.identifier || "");
+      setWalletProvider(vendorToUpdate?.paymentInfo?.wallet?.provider || "");
+      setWalletIdentifier(vendorToUpdate?.paymentInfo?.wallet?.identifier || "");
+      setBankName(vendorToUpdate?.paymentInfo?.bank?.bankName || "");
+      setBankAccountHolderName(vendorToUpdate?.paymentInfo?.bank?.accountHolderName || "");
+      setBankAccountNumber(vendorToUpdate?.paymentInfo?.bank?.accountNumber || "");
+      setBankIbanNumber(vendorToUpdate?.paymentInfo?.bank?.iban || "");
+      setSwiftCode(vendorToUpdate?.paymentInfo?.bank?.swiftCode || "");
       setSavedVendor(vendorToUpdate);
       setError("");
     }, 250);
@@ -138,11 +182,15 @@ export default function VendorModal({
       (postalCode || undefined) !== savedVendor.address?.postalCode ||
       (taxRegistrationNumber || undefined) !== savedVendor.taxInfo?.taxRegistrationNumber ||
       (commercialRegistrationNumber || undefined) !== savedVendor.taxInfo?.commercialRegistrationNumber ||
-      (bankName || undefined) !== savedVendor.bankInfo?.bankName ||
-      (branch || undefined) !== savedVendor.bankInfo?.branch ||
-      (bankAccountNumber || undefined) !== savedVendor.bankInfo?.accountNumber ||
-      (bankIbanNumber || undefined) !== savedVendor.bankInfo?.iban ||
-      (swiftCode || undefined) !== savedVendor.bankInfo?.swiftCode
+      (paymentMode || undefined) !== (savedVendor.paymentInfo?.mode || undefined) ||
+      (instapayIdentifier || undefined) !== savedVendor.paymentInfo?.instapay?.identifier ||
+      (walletProvider || undefined) !== (savedVendor.paymentInfo?.wallet?.provider || undefined) ||
+      (walletIdentifier || undefined) !== savedVendor.paymentInfo?.wallet?.identifier ||
+      (bankName || undefined) !== savedVendor.paymentInfo?.bank?.bankName ||
+      (bankAccountHolderName || undefined) !== savedVendor.paymentInfo?.bank?.accountHolderName ||
+      (bankAccountNumber || undefined) !== savedVendor.paymentInfo?.bank?.accountNumber ||
+      (bankIbanNumber || undefined) !== savedVendor.paymentInfo?.bank?.iban ||
+      (swiftCode || undefined) !== savedVendor.paymentInfo?.bank?.swiftCode
     : true;
 
   return (
@@ -202,8 +250,10 @@ export default function VendorModal({
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            label={translate("Email (Optional)", "البريد الإلكتروني (اختياري)")}
+            label={isNewVendor ? translate("Email", "البريد الإلكتروني") : translate("Email (Optional)", "البريد الإلكتروني (اختياري)")}
             placeholder={translate("Enter Email", "أدخل البريد الإلكتروني")}
+            required={isNewVendor}
+            error={emailError}
           />
         </section>
 
@@ -257,41 +307,99 @@ export default function VendorModal({
           </div>
         </section>
 
+        {/* Payment Information (docs section "Vendor Payment Information") - exactly one mode at
+            a time; only that mode's fields are shown. This is the vendor's OWN preferred payout
+            method - never the company's Chart-of-Accounts cash/bank account used to record an
+            actual payment (that selection happens separately, on the Payment form itself). */}
         <section className="flex flex-col gap-2">
-          <h4>{translate("Bank Info (Optional)", "البيانات البنكية (اختياري)")}</h4>
-          <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+          <h4>{translate("Payment Information (Optional)", "معلومات الدفع (اختياري)")}</h4>
+          <Select
+            value={paymentMode || null}
+            onChange={(value) => setPaymentMode((value as PaymentMode) || "")}
+            data={[
+              { value: "instapay", label: translate("Instapay", "إنستاباي") },
+              { value: "wallet", label: translate("Wallet", "محفظة إلكترونية") },
+              { value: "bank", label: translate("Bank Details", "بيانات بنكية") },
+            ]}
+            label={translate("Payment Mode", "طريقة الدفع")}
+            placeholder={translate("Select payment mode", "اختر طريقة الدفع")}
+            clearable
+          />
+
+          {paymentMode === "instapay" && (
             <TextInput
-              value={bankName}
-              onChange={(e) => setBankName(e.target.value)}
-              label={translate("Bank name", "إسم البنك")}
-              placeholder={translate("Enter Bank Name", "ادخل اسم البنك")}
+              value={instapayIdentifier}
+              onChange={(e) => setInstapayIdentifier(e.target.value)}
+              label={translate("Instapay Identifier", "معرف إنستاباي")}
+              placeholder={translate("Mobile number, username or IPA", "رقم الهاتف أو اسم المستخدم أو IPA")}
+              required
             />
-            <TextInput
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
-              label={translate("Branch", "الفرع")}
-              placeholder={translate("Enter Branch", "ادخل الفرع")}
-            />
-            <TextInput
-              value={bankAccountNumber}
-              onChange={(e) => setBankAccountNumber(e.target.value)}
-              label={translate("Account Number", "رقم الحساب")}
-              placeholder={translate("Enter Account Number", "أدخل رقم الحساب")}
-            />
-            <TextInput
-              value={bankIbanNumber}
-              onChange={(e) => setBankIbanNumber(e.target.value)}
-              label={translate("IBAN", "رقم الآيبان (IBAN)")}
-              placeholder={translate("EGxxxxxxxxxxxxxxxxxxxxxxxxxxx", "EGxxxxxxxxxxxxxxxxxxxxxxxxxxx")}
-              error={ibanError}
-            />
-            <TextInput
-              value={swiftCode}
-              onChange={(e) => setSwiftCode(e.target.value.toUpperCase())}
-              label={translate("SWIFT Code", "رمز السويفت (SWIFT)")}
-              placeholder={translate("Enter SWIFT Code", "أدخل رمز السويفت")}
-            />
-          </div>
+          )}
+
+          {paymentMode === "wallet" && (
+            <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+              <Select
+                value={walletProvider || null}
+                onChange={(value) => setWalletProvider((value as WalletProvider) || "")}
+                data={[
+                  { value: "vodafone_cash", label: translate("Vodafone Cash", "فودافون كاش") },
+                  { value: "orange_cash", label: translate("Orange Cash", "أورنج كاش") },
+                  { value: "etisalat_cash", label: translate("Etisalat Cash", "اتصالات كاش") },
+                  { value: "we_pay", label: translate("WE Pay", "وي باي") },
+                  { value: "fawry", label: translate("Fawry", "فوري") },
+                  { value: "other", label: translate("Other", "أخرى") },
+                ]}
+                label={translate("Wallet Provider", "مزود المحفظة")}
+                placeholder={translate("Select provider", "اختر المزود")}
+                required
+              />
+              <TextInput
+                value={walletIdentifier}
+                onChange={(e) => setWalletIdentifier(e.target.value)}
+                label={translate("Wallet Number", "رقم المحفظة")}
+                placeholder={translate("Enter wallet phone number", "أدخل رقم المحفظة")}
+                required
+              />
+            </div>
+          )}
+
+          {paymentMode === "bank" && (
+            <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+              <TextInput
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                label={translate("Bank Name", "إسم البنك")}
+                placeholder={translate("Enter Bank Name", "ادخل اسم البنك")}
+                required
+              />
+              <TextInput
+                value={bankAccountHolderName}
+                onChange={(e) => setBankAccountHolderName(e.target.value)}
+                label={translate("Account Holder Name", "اسم صاحب الحساب")}
+                placeholder={translate("Enter Account Holder Name", "أدخل اسم صاحب الحساب")}
+              />
+              <TextInput
+                value={bankAccountNumber}
+                onChange={(e) => setBankAccountNumber(e.target.value)}
+                label={translate("Account Number", "رقم الحساب")}
+                placeholder={translate("Enter Account Number", "أدخل رقم الحساب")}
+                required
+              />
+              <TextInput
+                value={bankIbanNumber}
+                onChange={(e) => setBankIbanNumber(e.target.value)}
+                label={translate("IBAN", "رقم الآيبان (IBAN)")}
+                placeholder={translate("EGxxxxxxxxxxxxxxxxxxxxxxxxxxx", "EGxxxxxxxxxxxxxxxxxxxxxxxxxxx")}
+                error={ibanError}
+              />
+              <TextInput
+                value={swiftCode}
+                onChange={(e) => setSwiftCode(e.target.value.toUpperCase())}
+                label={translate("SWIFT Code", "رمز السويفت (SWIFT)")}
+                placeholder={translate("Enter SWIFT Code", "أدخل رمز السويفت")}
+              />
+            </div>
+          )}
         </section>
 
         <BusinessDocumentsSection
@@ -314,7 +422,9 @@ export default function VendorModal({
           <Button
             type="submit"
             loading={loading}
-            disabled={!name || !type || !phone || !dataChanged || !!ibanError}
+            disabled={
+              !name || !type || !phone || (isNewVendor && !email) || !dataChanged || !!ibanError || !!emailError || paymentInfoIncomplete
+            }
             fullWidth
           >
             {savedVendor ? translate("Save", "حفظ") : title}

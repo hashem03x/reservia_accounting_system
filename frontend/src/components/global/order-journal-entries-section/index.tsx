@@ -10,6 +10,7 @@ import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/compone
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import paths from "@/utils/constants/paths";
+import { displayModuleLabel } from "@/utils/helpers/accounting-labels";
 
 const statusColors: Record<string, string> = { draft: "yellow", posted: "green", reversed: "gray" };
 
@@ -104,7 +105,7 @@ export default function OrderJournalEntriesSection({
               <Table.Td className="max-w-[320px] truncate" title={entry.description || ""}>
                 {entry.description || "-"}
               </Table.Td>
-              <Table.Td className="whitespace-nowrap">{entry.module || "-"}</Table.Td>
+              <Table.Td className="whitespace-nowrap">{displayModuleLabel(entry.module, translate)}</Table.Td>
               <Table.Td className="whitespace-nowrap">{entry.project?.projectNumber || "-"}</Table.Td>
               <Table.Td className="whitespace-nowrap text-right tabular-nums">{(entry.totalDebit || 0).toLocaleString()}</Table.Td>
               <Table.Td className="whitespace-nowrap text-right tabular-nums">{(entry.totalCredit || 0).toLocaleString()}</Table.Td>

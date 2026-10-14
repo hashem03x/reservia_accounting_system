@@ -3,7 +3,7 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { PaymentMethods } = require('../appConstant');
 
 const createReturnValidate = [
-  body('salesOrderId').notEmpty().withMessage('Sales Order ID is required').isMongoId().withMessage('Sales Order ID must be a mongoID'),
+  body('salesOrderId').notEmpty().withMessage('Sales Invoice ID is required').isMongoId().withMessage('Sales Invoice ID must be a mongoID'),
 
   body('warehouseId').isMongoId().withMessage('Warehouse ID must be a mongoID').notEmpty().withMessage('Warehouse ID is required'),
 
@@ -19,7 +19,7 @@ const createReturnValidate = [
 ];
 
 const returnAllItemsValidate = [
-  body('salesOrderId').notEmpty().withMessage('Sales Order ID is required').isMongoId().withMessage('Sales Order ID must be a mongoID'),
+  body('salesOrderId').notEmpty().withMessage('Sales Invoice ID is required').isMongoId().withMessage('Sales Invoice ID must be a mongoID'),
 
   body('warehouseId').isMongoId().withMessage('Warehouse ID must be a mongoID').notEmpty().withMessage('Warehouse ID is required'),
 

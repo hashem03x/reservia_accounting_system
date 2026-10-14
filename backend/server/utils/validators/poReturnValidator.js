@@ -7,8 +7,8 @@ const { PaymentMethods } = require('../appConstant');
 const createReturnValidate = [
     // Validate purchase order exists and is in valid state for return
     body('purchaseOrderId')
-        .notEmpty().withMessage('Purchase Order ID is required')
-        .isMongoId().withMessage('Purchase Order ID must be a mongoID'),
+        .notEmpty().withMessage('Purchase Invoice ID is required')
+        .isMongoId().withMessage('Purchase Invoice ID must be a mongoID'),
 
     body('warehouseId')
         .isMongoId().withMessage('Warehouse ID must be a mongoID')

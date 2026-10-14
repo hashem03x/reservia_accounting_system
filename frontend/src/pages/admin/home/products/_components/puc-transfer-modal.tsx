@@ -216,8 +216,8 @@ export default function PucTransferModal({
           {overValue && (
             <p className="mt-1 text-xs text-red-600">
               {translate(
-                `Only ${money(options!.materialsInventoryBalance)} of materials cost is in Materials Inventory. Stock bought on a project's Purchase Order is already in that project's PUC - transfer it from that project.`,
-                `قيمة مخزون المواد ${money(options!.materialsInventoryBalance)} فقط. المخزون المشترى على أمر شراء مشروع موجود بالفعل في مشروعات تحت التنفيذ لذلك المشروع - حوّله من ذلك المشروع.`,
+                `Only ${money(options!.materialsInventoryBalance)} of materials cost is in Materials Inventory. Stock bought on a project's Purchase Invoice is already in that project's PUC - transfer it from that project.`,
+                `قيمة مخزون المواد ${money(options!.materialsInventoryBalance)} فقط. المخزون المشترى على فاتورة مشتريات مشروع موجود بالفعل في مشروعات تحت التنفيذ لذلك المشروع - حوّله من ذلك المشروع.`,
               )}
             </p>
           )}

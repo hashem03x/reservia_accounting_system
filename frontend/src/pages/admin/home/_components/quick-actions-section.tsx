@@ -26,12 +26,12 @@ export default function QuickActionsSection() {
   const actionsList = [
     canCreateSalesOrders && {
       to: `/${paths.admin}/${paths.home}/${paths.salesOrders}/${paths.new}`,
-      label: translate("New Sales Order", "طلب مبيعات جديد"),
+      label: translate("New Sales Invoice", "فاتورة مبيعات جديدة"),
       icon: outlineIcons.ShoppingCart,
     },
     canCreatePurchaseOrders && {
       to: `/${paths.admin}/${paths.home}/${paths.purchaseOrders}/${paths.new}`,
-      label: translate("New Purchase Order", "طلب شراء جديد"),
+      label: translate("New Purchase Invoice", "فاتورة مشتريات جديدة"),
       icon: outlineIcons.ShoppingBag,
     },
     canCreateProjects && {

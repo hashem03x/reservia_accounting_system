@@ -195,7 +195,7 @@ export default function SalesOrders() {
             {canICreateSalesOrders && (
               <Link to={`${paths.new}`}>
                 <Button variant="light" color="teal" leftSection={<solidIcons.Plus />}>
-                  {translate("New Sales Order", "طلب مبيعات جديد")}
+                  {translate("New Sales Invoice", "فاتورة مبيعات جديدة")}
                 </Button>
               </Link>
             )}
@@ -311,7 +311,7 @@ export default function SalesOrders() {
       {/* Content */}
       {!canIReadSalesOrders ? (
         <UnauthorizedSection
-          message={translate("You don't have permission to read sales orders", "ليس لديك إذن لقراءة طلبات المبيعات")}
+          message={translate("You don't have permission to read sales invoices", "ليس لديك إذن لقراءة فواتير المبيعات")}
         />
       ) : loading ? (
         <LoadingSection message={translate("Loading orders...", "جاري تحميل الطلبات...")} />

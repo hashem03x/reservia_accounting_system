@@ -163,7 +163,7 @@ export default function AdvancedPaymentDetail() {
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>{translate("Sales Order", "طلب البيع")}</Table.Th>
+                <Table.Th>{translate("Sales Invoice", "فاتورة مبيعات")}</Table.Th>
                 <Table.Th>{translate("Amount Consumed", "المبلغ المستهلك")}</Table.Th>
                 <Table.Th>{translate("Date", "التاريخ")}</Table.Th>
                 <Table.Th>{translate("Status", "الحالة")}</Table.Th>

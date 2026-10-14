@@ -19,15 +19,15 @@ const resources: LocalizedEntity<Resource> = {
   purchaseOrders: {
     value: "purchaseOrders",
     label: {
-      en: "Purchase Orders",
-      ar: "طلبات الشراء",
+      en: "Purchase Invoices",
+      ar: "فواتير المشتريات",
     },
   },
   salesOrders: {
     value: "salesOrders",
     label: {
-      en: "Sales Orders",
-      ar: "طلبات البيع",
+      en: "Sales Invoices",
+      ar: "فواتير المبيعات",
     },
   },
   customers: {

@@ -8,6 +8,7 @@ const { destroyDocument } = require('../../middleware/documentUploadMiddleware')
 const { sendStoredDocument } = require('../documentController');
 const { decodeUploadName } = require('../../utils/uploadFileName');
 const { recalculateRemainingMoney, recalculateExecutedPercentage } = require('../../services/project/projectAccountingService');
+const { getNextProjectNumber } = require('../../services/project/projectNumberService');
 const { logAccountingEvent } = require('../../utils/accountingLogger');
 
 // Creating a project ONLY creates the Project document - it deliberately does NOT create any
@@ -22,9 +23,16 @@ const createProject = asyncHandler(async (req, res, next) => {
   // (docs section "Project Executed % Calculation"), see projectAccountingService.js#
   // recalculateExecutedPercentage. A brand-new project has no Sales Orders yet, so it stays at the
   // schema's own default of 0 until one is created.
-  const { projectNumber, name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines } = req.body;
+  //
+  // `projectNumber` is no longer accepted from the client at all (docs section "Automatic Project
+  // ID Generation") - it is always server-generated via the atomic Counter-based
+  // projectNumberService.js, the same mechanism journalEntryNumberService.js uses, so concurrent
+  // creates can never collide. Historical projects keep whatever number they already have; this
+  // only changes how a NEW project's number is populated.
+  const { name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines } = req.body;
 
   try {
+    const projectNumber = await getNextProjectNumber();
     const project = await Project.create({
       projectNumber,
       name,

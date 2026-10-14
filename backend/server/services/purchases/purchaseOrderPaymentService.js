@@ -23,9 +23,9 @@ const EPS = 0.005;
 const statusOf = (paid, total) => (paid <= EPS ? 'unpaid' : paid < total - EPS ? 'partially_paid' : paid > total + EPS ? 'overpaid' : 'paid');
 
 async function purchaseOrderPayments(purchaseOrderId) {
-  if (!mongoose.Types.ObjectId.isValid(String(purchaseOrderId))) throw new ApiError('Invalid purchase order id', 400);
+  if (!mongoose.Types.ObjectId.isValid(String(purchaseOrderId))) throw new ApiError('Invalid purchase invoice id', 400);
   const po = await PurchaseOrder.findById(purchaseOrderId).lean();
-  if (!po) throw new ApiError('Purchase Order not found', 404);
+  if (!po) throw new ApiError('Purchase Invoice not found', 404);
   const payments = await Payment.find({ purchaseOrderId: po._id }).sort({ createdAt: 1 }).lean();
   const [paymentEntries, advanceEntry] = await Promise.all([
     JournalEntry.collection.find({ sourceType: 'PAYMENT', sourceId: { $in: payments.map(p => p._id) } }, { projection: { entryNumber: 1, status: 1, sourceId: 1, accountingAction: 1, reversedByEntry: 1 } }).toArray(),

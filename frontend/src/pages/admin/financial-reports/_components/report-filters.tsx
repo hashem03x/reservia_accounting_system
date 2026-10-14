@@ -391,9 +391,9 @@ export default function ReportFilters({
           value={values.source || null}
           onChange={(v) => set("source", v || "")}
           data={options([
-            ["Purchase Order", "Purchase Order", "أمر شراء"],
+            ["Purchase Order", "Purchase Invoice", "فاتورة مشتريات"],
             ["Inventory", "PUC Transfer", "تحويل مشروعات تحت التنفيذ"],
-            ["Sales Order", "Sales Order", "أمر بيع"],
+            ["Sales Order", "Sales Invoice", "فاتورة مبيعات"],
             ["Project", "Project", "مشروع"],
             ["Manual", "Manual entry", "قيد يدوي"],
             ["Reversal", "Reversal", "قيد عكسي"],
@@ -440,8 +440,8 @@ export default function ReportFilters({
           value={values.source || null}
           onChange={(v) => set("source", v || "")}
           data={options([
-            ["SO", "Sales Order", "أمر بيع"],
-            ["PO", "Purchase Order", "أمر شراء"],
+            ["SO", "Sales Invoice", "فاتورة مبيعات"],
+            ["PO", "Purchase Invoice", "فاتورة مشتريات"],
             ["EXPENSE", "Expense", "مصروف"],
             ["FIXED_ASSET", "Fixed Asset", "أصل ثابت"],
             ["MANUAL", "Manual journal entry", "قيد يدوي"],
