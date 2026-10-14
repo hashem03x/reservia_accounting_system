@@ -24,7 +24,7 @@ const createPurchaseOrderValidate = [
     // Required") - fast pre-check; the model's own pre('save') hook (purchaseOrder.js), scoped to
     // `isNew`, is the real backstop. Scoped to creation only - there is no Purchase Order update
     // endpoint, so this never applies to a historical order being re-saved for an unrelated reason.
-    body('project').notEmpty().withMessage('A project is required to create a Purchase Order').isMongoId().withMessage('Project ID must be a mongoID').custom(async value => {
+    body('project').notEmpty().withMessage('A project is required to create a Purchase Invoice').isMongoId().withMessage('Project ID must be a mongoID').custom(async value => {
         const exists = await Project.exists({ _id: value });
         if (!exists) throw new Error('Project does not exist');
         return true;

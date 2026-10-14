@@ -31,7 +31,7 @@ exports.returnSalesOrderItem = asyncHandler(async (req, res) => {
 exports.returnAllSalesOrderItems = asyncHandler(async (req, res, next) => {
   const { salesOrderId, warehouseId } = req.body;
   const order = await SalesOrderModel.findById(salesOrderId).lean();
-  if (!order) return next(new ApiError('Sales order not found', 404));
+  if (!order) return next(new ApiError('Sales invoice not found', 404));
   const items = order.items
     .map(i => ({ productId: String(i.product?._id || i.product), quantity: (i.starterQuantity || 0) - (i.returnedQuantity || 0) }))
     .filter(i => i.quantity > 0);

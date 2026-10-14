@@ -17,6 +17,7 @@ import ErrorAlert from "@/components/ui/error-alert";
 import paths from "@/utils/constants/paths";
 import { JournalEntry, JournalLine } from "@/types/journal-entry";
 import { groupJournalLines } from "@/utils/helpers/journal-lines";
+import { displayModuleLabel } from "@/utils/helpers/accounting-labels";
 import ReverseJournalEntryModal from "../_components/reverse-journal-entry-modal";
 import AttachmentsPanel from "@/components/global/attachments/attachments-panel";
 
@@ -162,7 +163,7 @@ export default function JournalEntryDetail() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <InfoCard label={translate("Date", "التاريخ")} value={formatDate(entry.date, language)} />
         <InfoCard label={translate("Source", "المصدر")} value={entry.source} />
-        <InfoCard label={translate("Module", "الوحدة")} value={entry.module || "-"} />
+        <InfoCard label={translate("Module", "الوحدة")} value={displayModuleLabel(entry.module, translate)} />
         <InfoCard label={translate("Project", "المشروع")} value={entry.project?.projectNumber || "-"} />
         <InfoCard label={translate("Reference", "المرجع")} value={entry.reference || "-"} />
         {sourceOrder && (
@@ -180,12 +181,12 @@ export default function JournalEntryDetail() {
               >
                 {sourceOrderIsSalesOrder
                   ? translate(
-                      `Sales Order ${sourceOrder.code || sourceOrder._id} → View Sales Order`,
-                      `طلب بيع ${sourceOrder.code || sourceOrder._id} ← عرض طلب البيع`,
+                      `Sales Invoice ${sourceOrder.code || sourceOrder._id} → View Sales Invoice`,
+                      `فاتورة مبيعات ${sourceOrder.code || sourceOrder._id} ← عرض فاتورة المبيعات`,
                     )
                   : translate(
-                      `Purchase Order ${sourceOrder.code || sourceOrder._id} → View Purchase Order`,
-                      `طلب شراء ${sourceOrder.code || sourceOrder._id} ← عرض طلب الشراء`,
+                      `Purchase Invoice ${sourceOrder.code || sourceOrder._id} → View Purchase Invoice`,
+                      `فاتورة مشتريات ${sourceOrder.code || sourceOrder._id} ← عرض فاتورة المشتريات`,
                     )}
               </button>
             }

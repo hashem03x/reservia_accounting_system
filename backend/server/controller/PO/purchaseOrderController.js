@@ -137,7 +137,7 @@ exports.createPO = asyncHandler(async (req, res, next) => {
   } catch (error) {
     await session.abortTransaction();
     console.error('Transaction rolled back due to an error:', error);
-    next(new ApiError(error.message || 'Failed to create Purchase Order'));
+    next(new ApiError(error.message || 'Failed to create Purchase Invoice'));
   } finally {
     session.endSession();
   }
@@ -161,21 +161,21 @@ async function inTransaction(work) {
 // GET /purchaseOrder/:id/project-allocation - per line: ordered, received, returned, allocated to
 // the project and still unallocated, with the allocation records and the order's WIP entry.
 exports.getProjectAllocation = asyncHandler(async (req, res, next) => {
-  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(new ApiError('Invalid purchase order id', 400));
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(new ApiError('Invalid purchase invoice id', 400));
   res.status(200).json({ status: 'success', data: await allocationState(req.params.id) });
 });
 
 // POST /purchaseOrder/:id/project-allocation - allocates whatever received quantity is still
 // unallocated (an order created before automatic allocation, or a retry). Idempotent.
 exports.allocateToProject = asyncHandler(async (req, res, next) => {
-  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(new ApiError('Invalid purchase order id', 400));
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(new ApiError('Invalid purchase invoice id', 400));
   const state = await inTransaction(session => allocatePurchaseOrderToProject(req.params.id, { userId: req.user._id, session }));
   res.status(200).json({ status: 'success', data: state });
 });
 
 // GET /purchaseOrder/:id/payments - the order's payment summary and history (purchaseOrderPaymentService).
 exports.getPurchaseOrderPayments = asyncHandler(async (req, res, next) => {
-  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(new ApiError('Invalid purchase order id', 400));
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(new ApiError('Invalid purchase invoice id', 400));
   res.status(200).json({ status: 'success', data: await purchaseOrderPayments(req.params.id) });
 });
 
@@ -188,7 +188,7 @@ exports.getPOByCode = asyncHandler(async (req, res, next) => {
   const doc = await PO.findOne({ code });
 
   if (!doc) {
-    return next(new ApiError('No purchase order found with that code', 404));
+    return next(new ApiError('No purchase invoice found with that code', 404));
   }
 
   res.status(200).json({

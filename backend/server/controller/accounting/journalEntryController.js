@@ -123,7 +123,7 @@ const getJournalEntriesForSalesOrder = asyncHandler(async (req, res) => {
     ],
   }).sort({ entryNumber: 1 });
 
-  res.status(200).json(apiResponse('Sales order journal entries retrieved successfully', true, entries));
+  res.status(200).json(apiResponse('Sales invoice journal entries retrieved successfully', true, entries));
 });
 
 // GET /journal-entries/purchase-order/:purchaseOrderId - mirrors getJournalEntriesForSalesOrder
@@ -143,7 +143,7 @@ const getJournalEntriesForPurchaseOrder = asyncHandler(async (req, res) => {
     ],
   }).sort({ entryNumber: 1 });
 
-  res.status(200).json(apiResponse('Purchase order journal entries retrieved successfully', true, entries));
+  res.status(200).json(apiResponse('Purchase invoice journal entries retrieved successfully', true, entries));
 });
 
 // GET /journal-entries/advanced-payment/:advancedPaymentId - every Journal Entry that belongs to
@@ -282,7 +282,7 @@ const reverseJournalEntry = asyncHandler(async (req, res, next) => {
     return next(new ApiError('Part of this entry was already reversed by a return, so it cannot be reversed in full.', 400));
   }
   if (['PROJECT_REVENUE_RECOGNITION', 'PROJECT_COST_RECOGNITION'].includes(original.accountingAction)) {
-    return next(new ApiError("Revenue and cost recognition entries follow the project's executed percentage and cannot be reversed by hand. Cancel or return the Sales Order (or correct the project), which posts the reversal.", 400));
+    return next(new ApiError("Revenue and cost recognition entries follow the project's executed percentage and cannot be reversed by hand. Cancel or return the Sales Invoice (or correct the project), which posts the reversal.", 400));
   }
 
   const { reversalDate, reference } = req.body;

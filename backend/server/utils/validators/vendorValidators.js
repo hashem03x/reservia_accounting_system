@@ -2,7 +2,52 @@ const { check } = require('express-validator');
 
 const Vendor = require('../../models/vendor/vendor');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
-const { EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX } = require('../../models/shared/businessPartnerSchemas');
+const { EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX, PaymentModes, WalletProviders } = require('../../models/shared/businessPartnerSchemas');
+const { isValidPhone } = require('./phoneValidator');
+
+// Vendor "Payment Information" (docs section "Vendor Payment Information") - optional business
+// data (mirrors taxAndBankInfoValidators below), but WHEN a `mode` is selected, exactly that
+// mode's required sub-fields must be present - never a half-filled section. Shared by create and
+// update since the rule is identical either way (unlike contact.email/contact.phone, nothing here
+// becomes unconditionally mandatory at create time).
+const paymentInfoValidators = [
+    check('paymentInfo.mode')
+        .optional({ nullable: true })
+        .isIn(PaymentModes)
+        .withMessage(`Payment mode must be one of: ${PaymentModes.join(', ')}`),
+    check('paymentInfo.instapay.identifier').optional().isString().trim().isLength({ max: 100 }),
+    check('paymentInfo.wallet.provider')
+        .optional({ nullable: true })
+        .isIn(WalletProviders)
+        .withMessage(`Wallet provider must be one of: ${WalletProviders.join(', ')}`),
+    check('paymentInfo.wallet.identifier').optional().isString().trim().isLength({ max: 100 }),
+    check('paymentInfo.bank.bankName').optional().isString().trim().isLength({ max: 100 }),
+    check('paymentInfo.bank.accountHolderName').optional().isString().trim().isLength({ max: 100 }),
+    check('paymentInfo.bank.accountNumber').optional().isString().trim().isLength({ max: 50 }),
+    check('paymentInfo.bank.iban')
+        .optional({ nullable: true, checkFalsy: true })
+        .isString().trim().toUpperCase()
+        .matches(EGYPTIAN_IBAN_REGEX)
+        .withMessage('IBAN must be a valid Egyptian IBAN: start with "EG", be exactly 29 characters long, and contain only letters and numbers.'),
+    check('paymentInfo.bank.swiftCode')
+        .optional({ nullable: true, checkFalsy: true })
+        .isString().trim().toUpperCase()
+        .matches(SWIFT_CODE_REGEX)
+        .withMessage('SWIFT code must be a valid 8 or 11 character SWIFT/BIC code.'),
+    check('paymentInfo').custom((value) => {
+        if (!value || !value.mode) return true;
+        if (value.mode === 'instapay' && !value.instapay?.identifier) {
+            throw new Error('Instapay identifier is required when payment mode is Instapay.');
+        }
+        if (value.mode === 'wallet' && (!value.wallet?.provider || !value.wallet?.identifier)) {
+            throw new Error('Wallet provider and identifier are both required when payment mode is Wallet.');
+        }
+        if (value.mode === 'bank' && (!value.bank?.bankName || !value.bank?.accountNumber)) {
+            throw new Error('Bank name and account number are both required when payment mode is Bank Details.');
+        }
+        return true;
+    }),
+];
 
 // Shared by create/update - tax/bank info is optional business data; only shape/length is
 // checked when provided (mirrors customerValidator.js's identical shared block).
@@ -33,27 +78,27 @@ const taxAndBankInfoValidators = [
 // CREATE: Validate required fields for creating a new vendor
 const createVendorValidators = [
     ...taxAndBankInfoValidators,
+    ...paymentInfoValidators,
 
     check('name')
         .notEmpty().withMessage('Name is required')
         .isLength({ min: 2, max: 50 }).withMessage('Name must be between 2 and 50 characters')
         .matches(/^[a-zA-Z\s\u0600-\u06FF\-\u2013]+$/).withMessage('Name must only contain letters, spaces and hyphens'),
 
+     // Phone and email are both mandatory for every NEW vendor (docs section "Mandatory Vendor
+     // and Customer Contact Information") - an existing vendor missing one is never retroactively
+     // forced to backfill it (see updateVendorValidators below, which keeps both optional).
      check('contact.phone')
-          .optional()
-    //    .notEmpty().withMessage('Phone number is required')
-       .matches(/^(?:\+20|0020|20)?(011|012|010|015)[0-9]{8}$/).withMessage('Invalid phone number format'),
+          .trim()
+          .notEmpty().withMessage('Phone number is required')
+          .custom(val => isValidPhone(val)).withMessage('Phone number must be a valid Egyptian or international phone number.'),
 
      check('contact.email')
-     .optional()
-        // .op().withMessage('Email is required')
+        .trim()
+        .notEmpty().withMessage('Email is required')
         .isEmail().withMessage('Please provide a valid email address')
         .normalizeEmail()
         .custom((value) => {
-            if (!value) {
-                req.body.contact.email = undefined;
-                return true;
-            }
             return Vendor.findOne({
                 'contact.email': value
             }).then((vendor) => {
@@ -111,9 +156,17 @@ const createVendorValidators = [
 // UPDATE: Make validators optional since any field may be updated
 const updateVendorValidators = [
     check('name').optional().notEmpty().withMessage('Name cannot be empty'),
-    check('email').optional().isEmail().withMessage('Please provide a valid email'),
-    check('phone').optional({ nullable: true }).isMobilePhone().withMessage('Please provide a valid phone number'),
+    // Fixed: these used to check top-level `email`/`phone`, which never matches the actual
+    // request shape (`contact.email`/`contact.phone` - see createVendorValidators above and
+    // vendorController.js), making this check dead code. Format-only when present - never forces
+    // an existing vendor missing contact info to backfill it just to edit something else.
+    check('contact.email').optional().trim().isEmail().withMessage('Please provide a valid email'),
+    check('contact.phone')
+        .optional({ nullable: true })
+        .trim()
+        .custom(val => isValidPhone(val)).withMessage('Phone number must be a valid Egyptian or international phone number.'),
     ...taxAndBankInfoValidators,
+    ...paymentInfoValidators,
     check('cashFlowActivity')
         .optional({ nullable: true })
         .isIn(['operating', 'investing', 'financing']).withMessage('Cash flow activity must be operating, investing or financing'),

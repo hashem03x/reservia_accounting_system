@@ -1,6 +1,7 @@
 const Vendor = require('../../../models/vendor/vendor');
 const ApiError = require('../../apiError');
 const parseCsv = require('../../parseCsv');
+const { isValidPhone } = require('../phoneValidator');
 
 const validateVendor = async vendor => {
   const errors = [];
@@ -25,11 +26,8 @@ const validateVendor = async vendor => {
   // Validate phone
   if (!vendor['contact.phone']) {
     errors.push('Phone number is required');
-  } else {
-    const phoneRegex = /^(\+20|0)?1[0-9]{9}$/;
-    if (!phoneRegex.test(vendor['contact.phone'])) {
-      errors.push('Invalid Egyptian phone number format');
-    }
+  } else if (!isValidPhone(vendor['contact.phone'])) {
+    errors.push('Invalid Egyptian or international phone number format');
   }
 
   // Validate type
@@ -94,4 +92,4 @@ const importVendorsValidator = async (req, res, next) => {
   }
 };
 
-module.exports = { importVendorsValidator };
+module.exports = { importVendorsValidator, validateVendor };

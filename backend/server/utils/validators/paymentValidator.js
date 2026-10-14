@@ -45,9 +45,9 @@ exports.createPurchasePaymentValidator = [
 
     check('purchaseOrderId')
         .notEmpty()
-        .withMessage('Purchase order ID is required')
+        .withMessage('Purchase Invoice ID is required')
         .isMongoId()
-        .withMessage('Invalid purchase order ID'),
+        .withMessage('Invalid purchase invoice ID'),
 
     check('amountPaid')
         .notEmpty()
@@ -78,9 +78,9 @@ exports.createSalesPaymentValidator = [
 
     check('salesOrderId')
         .notEmpty()
-        .withMessage('Sales order ID is required')
+        .withMessage('Sales Invoice ID is required')
         .isMongoId()
-        .withMessage('Invalid purchase order ID'),
+        .withMessage('Invalid sales invoice ID'),
 
     check('amountPaid')
         .notEmpty()

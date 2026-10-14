@@ -1,6 +1,9 @@
 const User = require('../../../models/userModel');
 const ApiError = require('../../apiError');
 const parseCsv = require('../../parseCsv');
+const { isValidPhone } = require('../phoneValidator');
+
+const EMAIL_REGEX = /\S+@\S+\.\S+/;
 
 const validateCustomer = async customer => {
   const errors = [];
@@ -13,11 +16,17 @@ const validateCustomer = async customer => {
   // Validate phone
   if (!customer.phone) {
     errors.push('Phone number is required');
-  } else {
-    const phoneRegex = /^(\+20|0)?1[0-9]{9}$/;
-    if (!phoneRegex.test(customer.phone)) {
-      errors.push('Invalid Egyptian phone number format');
-    }
+  } else if (!isValidPhone(customer.phone)) {
+    errors.push('Invalid Egyptian or international phone number format');
+  }
+
+  // Email is mandatory for every imported customer, same as a manually-created one (docs section
+  // "Mandatory Vendor and Customer Contact Information" - import validation must follow the same
+  // rules as the manual create form, never a looser subset).
+  if (!customer.email) {
+    errors.push('Email is required');
+  } else if (!EMAIL_REGEX.test(customer.email)) {
+    errors.push('Invalid email address format');
   }
 
   // Validate balance if provided
@@ -70,4 +79,4 @@ const importCustomerValidator = async (req, res, next) => {
   }
 };
 
-module.exports = { importCustomerValidator };
+module.exports = { importCustomerValidator, validateCustomer };

@@ -53,6 +53,60 @@ const bankInfoSchema = new Schema(
   { _id: false }
 );
 
+// Vendor "Payment Information" (docs section "Vendor Payment Information") - a structured
+// alternative to the old free-standing `bankInfo` section below, letting a vendor's preferred
+// payout method be Instapay, a mobile Wallet, or Bank Details, with exactly one `mode` selected at
+// a time. Deliberately ADDITIVE and separate from `bankInfoSchema` above - `bankInfo` is never
+// deleted/renamed; existing vendors keep it, and a one-time migration script
+// (scripts/migrateVendorPaymentInfo.js) copies it into `paymentInfo.bank` for display continuity.
+// This is the vendor's OWN preferred receiving method - never to be confused with the company's
+// Chart-of-Accounts cash/bank account used to actually RECORD a payment (Payment.paymentAccount) -
+// that posting logic is completely untouched by this field.
+const PaymentModes = ['instapay', 'wallet', 'bank'];
+
+// Real, well-known Egyptian mobile wallet providers - stored as a stable internal identifier
+// (never a free-text description), matching DOCUMENT_TYPES' identical convention above. 'other' is
+// the deliberate escape hatch for a provider not in this list, rather than rejecting the vendor
+// entirely.
+const WalletProviders = ['vodafone_cash', 'orange_cash', 'etisalat_cash', 'we_pay', 'fawry', 'other'];
+
+const paymentInfoSchema = new Schema(
+  {
+    mode: { type: String, enum: [...PaymentModes, null], default: null },
+    instapay: {
+      identifier: { type: String, trim: true }, // Instapay username/mobile/IPA - whatever the vendor registered with.
+    },
+    wallet: {
+      provider: { type: String, enum: [...WalletProviders, null], default: null },
+      identifier: { type: String, trim: true }, // The wallet's phone number/account identifier.
+    },
+    bank: {
+      bankName: { type: String, trim: true },
+      accountHolderName: { type: String, trim: true },
+      accountNumber: { type: String, trim: true },
+      iban: {
+        type: String,
+        trim: true,
+        uppercase: true,
+        validate: {
+          validator: v => !v || EGYPTIAN_IBAN_REGEX.test(v),
+          message: props => `"${props.value}" is not a valid Egyptian IBAN - it must start with "EG", be exactly 29 characters long, and contain only letters and numbers.`,
+        },
+      },
+      swiftCode: {
+        type: String,
+        trim: true,
+        uppercase: true,
+        validate: {
+          validator: v => !v || SWIFT_CODE_REGEX.test(v),
+          message: props => `"${props.value}" is not a valid SWIFT/BIC code.`,
+        },
+      },
+    },
+  },
+  { _id: false }
+);
+
 // Stable, bilingual-agnostic internal identifiers - the Arabic/English display label lives only in
 // the frontend's localized constants map, never in the database (see task requirement: "Do NOT use
 // Arabic strings as database enum values").
@@ -74,4 +128,14 @@ const businessDocumentSchema = new Schema({
   uploadedAt: { type: Date, default: Date.now },
 });
 
-module.exports = { taxInfoSchema, bankInfoSchema, businessDocumentSchema, DOCUMENT_TYPES, EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX };
+module.exports = {
+  taxInfoSchema,
+  bankInfoSchema,
+  paymentInfoSchema,
+  PaymentModes,
+  WalletProviders,
+  businessDocumentSchema,
+  DOCUMENT_TYPES,
+  EGYPTIAN_IBAN_REGEX,
+  SWIFT_CODE_REGEX,
+};

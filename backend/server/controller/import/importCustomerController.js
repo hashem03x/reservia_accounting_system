@@ -8,6 +8,7 @@ const transformCustomerData = async customer => {
   const userData = {
     name: customer.name,
     phone: customer.phone,
+    email: customer.email,
     type: 'offline', // Default to offline
     role: 'user',
     balance: customer.balance ? Number(customer.balance) : 0,

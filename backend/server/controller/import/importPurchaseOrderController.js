@@ -74,7 +74,7 @@ exports.importPurchaseOrder = catchAsync(async (req, res, next) => {
 
   // Check if there are any purchase orders to process
   if (!req.validatedPurchaseOrders || req.validatedPurchaseOrders.length === 0) {
-    return next(new ApiError('No valid purchase orders found in the file', 400));
+    return next(new ApiError('No valid purchase invoices found in the file', 400));
   }
 
   // First, validate all data before starting the import
@@ -265,7 +265,7 @@ exports.importPurchaseOrder = catchAsync(async (req, res, next) => {
       console.error('Error deleting uploaded file:', error);
     }
 
-    return next(new ApiError('Failed to import any purchase orders: ' + JSON.stringify(errors), 400));
+    return next(new ApiError('Failed to import any purchase invoices: ' + JSON.stringify(errors), 400));
   }
 
   // Clean up uploaded file

@@ -28,3 +28,15 @@ export type BankInfo = {
   iban?: string;
   swiftCode?: string;
 };
+
+export type PaymentMode = "instapay" | "wallet" | "bank";
+export type WalletProvider = "vodafone_cash" | "orange_cash" | "etisalat_cash" | "we_pay" | "fawry" | "other";
+
+// Vendor "Payment Information" (docs section "Vendor Payment Information") - additive, separate
+// from BankInfo above, which is never deleted/renamed. Exactly one `mode` at a time.
+export type PaymentInfo = {
+  mode?: PaymentMode | null;
+  instapay?: { identifier?: string };
+  wallet?: { provider?: WalletProvider | null; identifier?: string };
+  bank?: { bankName?: string; accountHolderName?: string; accountNumber?: string; iban?: string; swiftCode?: string };
+};

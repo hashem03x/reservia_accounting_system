@@ -68,20 +68,20 @@ export default function RecentPurchaseOrdersSection() {
 
   return (
     <SectionCard
-      title={translate("Recent Purchase Orders", "آخر طلبات الشراء")}
+      title={translate("Recent Purchase Invoices", "آخر فواتير المشتريات")}
       viewAllTo={`/${paths.admin}/${paths.home}/${paths.purchaseOrders}`}
       viewAllLabel={translate("View all", "عرض الكل")}
     >
       {loading ? (
-        <LoadingSection message={translate("Loading purchase orders...", "جاري تحميل طلبات الشراء...")} />
+        <LoadingSection message={translate("Loading purchase invoices...", "جاري تحميل فواتير المشتريات...")} />
       ) : error ? (
         <ErrorSection
-          errorTitle={translate("Error loading purchase orders", "خطأ في تحميل طلبات الشراء")}
+          errorTitle={translate("Error loading purchase invoices", "خطأ في تحميل فواتير المشتريات")}
           errorMessage={error}
           button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }}
         />
       ) : !data || data.data.length === 0 ? (
-        <EmptySection useDefaultImg message={translate("No purchase orders yet", "لا توجد طلبات شراء")} />
+        <EmptySection useDefaultImg message={translate("No purchase invoices yet", "لا توجد فواتير مشتريات")} />
       ) : (
         <DataTableContainer>
           <DataTable className="min-w-[560px]">

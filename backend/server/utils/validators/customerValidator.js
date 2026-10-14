@@ -2,6 +2,7 @@ const { body } = require('express-validator');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const User = require('../../models/userModel');
 const { EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX } = require('../../models/shared/businessPartnerSchemas');
+const { isValidPhone } = require('./phoneValidator');
 
 // Shared by create/update - every field is optional (tax/bank info is optional business data),
 // only their shape/length is checked when provided.
@@ -35,8 +36,11 @@ exports.createCustomerValidate = [
   ...taxAndBankInfoValidators,
 
   body('contact.phone')
+    .trim()
     .notEmpty()
     .withMessage('Phone number is required.')
+    .custom(val => isValidPhone(val))
+    .withMessage('Phone number must be a valid Egyptian or international phone number.')
     .custom(async (val, { req }) => {
       await User.findOne({ phone: val }).then(user => {
         if (user) {
@@ -45,8 +49,13 @@ exports.createCustomerValidate = [
       });
     }),
 
+  // Email is mandatory for every NEW customer (docs section "Mandatory Vendor and Customer
+  // Contact Information") - an existing customer missing one is never retroactively forced to
+  // backfill it (see updateCustomerValidate below, which keeps email optional).
   body('contact.email')
-    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('Email is required.')
     .isEmail()
     .withMessage('Invalid email address')
     .custom(async (val, { req }) => {
@@ -100,6 +109,9 @@ exports.updateCustomerValidate = [
   ...taxAndBankInfoValidators,
   body('contact.phone')
     .optional()
+    .trim()
+    .custom(val => isValidPhone(val))
+    .withMessage('Phone number must be a valid Egyptian or international phone number.')
     .custom(async (val, { req }) => {
       await User.findOne({ phone: val, _id: { $ne: req.params.id } }).then(user => {
         if (user) {

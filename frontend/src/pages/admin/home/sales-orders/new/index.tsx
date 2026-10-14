@@ -35,7 +35,7 @@ const emptyOrderItem: OrderItemInput = {
 export default function NewSalesOrder() {
   const { language, translate, translations } = useLanguage();
 
-  const title = translate("New Sales Order", "طلب مبيعات جديد");
+  const title = translate("New Sales Invoice", "فاتورة مبيعات جديدة");
 
   useDocumentTitle(`${title} | ${translations.adminPanel}`);
 
@@ -119,7 +119,7 @@ export default function NewSalesOrder() {
       }
 
       if (!project) {
-        setError(translate("A project is required to create a Sales Order.", "يجب اختيار مشروع لإنشاء طلب مبيعات."));
+        setError(translate("A project is required to create a Sales Invoice.", "يجب اختيار مشروع لإنشاء فاتورة مبيعات."));
         return;
       }
 
@@ -318,8 +318,8 @@ export default function NewSalesOrder() {
                     </span>
                     <span className="text-sm">
                       {translate(
-                        "Sales Order paid amount will be locked to this value.",
-                        "سيتم تثبيت المبلغ المدفوع لطلب البيع على هذه القيمة.",
+                        "Sales Invoice paid amount will be locked to this value.",
+                        "سيتم تثبيت المبلغ المدفوع لفاتورة المبيعات على هذه القيمة.",
                       )}
                     </span>
                   </div>

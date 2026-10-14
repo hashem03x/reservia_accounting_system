@@ -51,12 +51,22 @@ export default function CustomerModal({
         )
       : undefined;
 
+  const emailError =
+    email && !/\S+@\S+\.\S+/.test(email)
+      ? translate("Enter a valid email address.", "أدخل بريدًا إلكترونيًا صحيحًا.")
+      : undefined;
+
   // Once a customer is created (or when editing an existing one), this holds the persisted record
   // so the Customer Number + Documents section become available without closing the modal - a
   // brand-new customer has no _id yet, and document upload/customer-number display both need one.
   const [savedCustomer, setSavedCustomer] = useState<Customer | undefined>(customerToUpdate);
 
   const isOnlineCustomer = savedCustomer && isOnline(savedCustomer.type);
+  // Email is mandatory for a NEW customer (docs section "Mandatory Vendor and Customer Contact
+  // Information") - an existing customer missing one (created before this rule, or an online
+  // customer whose contact fields aren't editable here at all) is never blocked from saving an
+  // unrelated change just because its email is empty.
+  const isNewCustomer = !savedCustomer;
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
@@ -204,8 +214,10 @@ export default function CustomerModal({
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                label={translate("Email (Optional)", "البريد الإلكتروني (اختياري)")}
+                label={isNewCustomer ? translate("Email", "البريد الإلكتروني") : translate("Email (Optional)", "البريد الإلكتروني (اختياري)")}
                 placeholder={translate("Enter Email", "أدخل البريد الإلكتروني")}
+                required={isNewCustomer}
+                error={emailError}
               />
             </>
           )}
@@ -316,7 +328,12 @@ export default function CustomerModal({
           <Button onClick={handleClose} variant="light" color="dark" fullWidth>
             {savedCustomer ? translate("Close", "إغلاق") : translations.cancel}
           </Button>
-          <Button type="submit" loading={loading} disabled={!name || !phone || !dataChanged || !!ibanError} fullWidth>
+          <Button
+            type="submit"
+            loading={loading}
+            disabled={!name || !phone || (isNewCustomer && !email) || !dataChanged || !!ibanError || !!emailError}
+            fullWidth
+          >
             {savedCustomer ? translate("Save", "حفظ") : title}
           </Button>
         </div>

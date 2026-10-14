@@ -352,7 +352,7 @@ test('SalesOrder: creating a NEW order without a project is rejected (model back
         employee: manager._id,
         items: [{ product: product._id, unitPrice: 1000, starterQuantity: 1 }],
       }),
-    /A project is required to create a Sales Order/
+    /A project is required to create a Sales Invoice/
   );
 });
 
@@ -385,7 +385,7 @@ test('PurchaseOrder: creating a NEW order without a project is rejected (model b
         warehouseId: warehouse._id,
         items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
       }),
-    /A project is required to create a Purchase Order/
+    /A project is required to create a Purchase Invoice/
   );
 });
 

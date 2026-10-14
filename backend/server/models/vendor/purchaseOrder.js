@@ -1,5 +1,5 @@
 const { Schema, model } = require('mongoose');
-const { generatePurchaseOrderCode } = require('../../utils/helper');
+const { getNextPurchaseOrderCode } = require('../../services/shared/orderNumberService');
 const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 // Explicit requires (not just the string `ref:` names) - mirrors salesOrderModel.js's convention
 // for every model this schema's hooks look up via `this.model(...)` or populate.
@@ -146,9 +146,12 @@ const getPaymentStatus = (paidAmount, totalAmount) => {
 // Pre-save middleware
 purchaseOrderSchema.pre('save', async function (next) {
   try {
-    // Generate unique code for new purchase orders if not provided
+    // Generate unique code for new purchase orders if not provided - atomic Counter-based (see
+    // orderNumberService.js), never the old race-prone `countDocuments()+1`. `this.$session()`
+    // threads through the save's own transaction (if any), mirroring
+    // journalEntryNumberService.js's session-aware convention.
     if (this.isNew && !this.code) {
-      this.code = await generatePurchaseOrderCode();
+      this.code = await getNextPurchaseOrderCode(this.$session());
     }
 
     // Project is mandatory for every NEW Purchase Order (docs section "Purchase Orders - Project is
@@ -157,7 +160,7 @@ purchaseOrderSchema.pre('save', async function (next) {
     // so a historical order created before this rule existed stays valid when re-saved (e.g. a
     // Payment recording against it, see paymentModel.js).
     if (this.isNew && !this.project) {
-      throw new Error('A project is required to create a Purchase Order.');
+      throw new Error('A project is required to create a Purchase Invoice.');
     }
 
     // Backstop (the fast pre-check lives in poValidator.js) - never trust that `paymentAccount` is

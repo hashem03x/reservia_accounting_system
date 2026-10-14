@@ -1,7 +1,8 @@
 const mongooseI18n = require('mongoose-i18n-localize');
 const { Schema, model } = require('mongoose');
-const { taxInfoSchema, bankInfoSchema, businessDocumentSchema } = require('../shared/businessPartnerSchemas');
+const { taxInfoSchema, bankInfoSchema, paymentInfoSchema, businessDocumentSchema } = require('../shared/businessPartnerSchemas');
 const { getNextVendorNumber } = require('../../services/vendor/vendorNumberService');
+const { isValidPhone } = require('../../utils/validators/phoneValidator');
 
 const vendorSchema = new Schema(
   {
@@ -32,13 +33,14 @@ const vendorSchema = new Schema(
         trim: true,
         required: [true, 'Phone number is required'],
         validate: {
-          validator: function (v) {
-            return /^(\+20|0)?1[0-9]{9}$/.test(v);
-          },
-          message: props => `${props.value} is not a valid Egyptian phone number`,
+          // Accepts a valid Egyptian mobile OR a generic international number (docs section
+          // "Mandatory Vendor and Customer Contact Information") - shared with the
+          // express-validator layer (vendorValidators.js) and the CSV import validator so all
+          // three write paths (API create/update, bulk insertMany import) agree on exactly one
+          // rule.
+          validator: isValidPhone,
+          message: props => `${props.value} is not a valid Egyptian or international phone number`,
         },
-
-        // required: [true, 'Phone number is required']
       },
       email: {
         type: String,
@@ -100,6 +102,11 @@ const vendorSchema = new Schema(
     // makes existing frontend behavior actually persist, it isn't new UI surface.
     taxInfo: taxInfoSchema,
     bankInfo: bankInfoSchema,
+    // Structured "Payment Information" (docs section "Vendor Payment Information") - additive,
+    // separate from `bankInfo` above, which is never deleted/renamed. See
+    // scripts/migrateVendorPaymentInfo.js for the one-time, non-destructive copy of existing
+    // `bankInfo` into `paymentInfo.bank` for vendors that predate this field.
+    paymentInfo: paymentInfoSchema,
     documents: { type: [businessDocumentSchema], default: [] },
     // Cash Flow Statement classification of payments to this vendor (services/reports/
     // financialStatements.js#cashMovements). Null = by the counterpart account (operating for

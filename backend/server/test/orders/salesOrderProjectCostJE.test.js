@@ -286,7 +286,7 @@ test('a cost account without a PUC account is left out; the other lines are stil
 
 test('a Sales Order without a project is rejected and no journal entry is created', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
-  await assert.rejects(() => sell(100, { project: undefined }), /A project is required to create a Sales Order/);
+  await assert.rejects(() => sell(100, { project: undefined }), /A project is required to create a Sales Invoice/);
   assert.equal(await SalesOrder.countDocuments({}), 0);
   assert.equal(await JournalEntry.countDocuments({}), 0);
 });

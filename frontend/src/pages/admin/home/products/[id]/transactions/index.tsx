@@ -247,7 +247,7 @@ export default function ProductTransactions() {
         </section>
 
         {/* Purchase Orders */}
-        <TransactionSection title={translate("Purchase Orders", "أوامر الشراء")} emptyMessage={translate("No purchase transactions.", "لا توجد عمليات شراء.")} isEmpty={data.purchaseOrders.data.length === 0}>
+        <TransactionSection title={translate("Purchase Invoices", "فواتير المشتريات")} emptyMessage={translate("No purchase transactions.", "لا توجد عمليات شراء.")} isEmpty={data.purchaseOrders.data.length === 0}>
           <Table withColumnBorders verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
@@ -281,7 +281,7 @@ export default function ProductTransactions() {
         </TransactionSection>
 
         {/* Sales Orders */}
-        <TransactionSection title={translate("Sales Orders", "أوامر البيع")} emptyMessage={translate("No sales transactions.", "لا توجد عمليات بيع.")} isEmpty={data.salesOrders.data.length === 0}>
+        <TransactionSection title={translate("Sales Invoices", "فواتير المبيعات")} emptyMessage={translate("No sales transactions.", "لا توجد عمليات بيع.")} isEmpty={data.salesOrders.data.length === 0}>
           <Table withColumnBorders verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>

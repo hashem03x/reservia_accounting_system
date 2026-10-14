@@ -323,10 +323,10 @@ const fullyReturned = order => order.items.every(i => (i.returnedQuantity || 0) 
  */
 async function returnSalesOrder({ salesOrderId, items, warehouseId, refund, reason, date, idempotencyKey, userId, afterReturn }) {
   const input = cleanInput({ reason, date, idempotencyKey });
-  if (!isId(salesOrderId)) throw new ApiError('Invalid sales order id.', 400);
+  if (!isId(salesOrderId)) throw new ApiError('Invalid sales invoice id.', 400);
   return runOnce({ idempotencyKey: input.idempotencyKey, type: 'sales_return', target: { salesOrder: salesOrderId } }, async session => {
     const order = await SalesOrder.findById(salesOrderId).session(session);
-    if (!order) throw new ApiError('Sales order not found.', 404);
+    if (!order) throw new ApiError('Sales invoice not found.', 404);
     if (order.orderStatus === 'canceled') throw new ApiError('A cancelled order cannot be returned.', 400);
     await assertPeriodsOpen(input.date, session);
     const lines = returnLines(order, items, 'product');
@@ -471,10 +471,10 @@ function costAfterReturn(product, quantity, amount) {
  */
 async function returnPurchaseOrder({ purchaseOrderId, items, warehouseId, refund, reason, date, idempotencyKey, userId }) {
   const input = cleanInput({ reason, date, idempotencyKey });
-  if (!isId(purchaseOrderId)) throw new ApiError('Invalid purchase order id.', 400);
+  if (!isId(purchaseOrderId)) throw new ApiError('Invalid purchase invoice id.', 400);
   return runOnce({ idempotencyKey: input.idempotencyKey, type: 'purchase_return', target: { purchaseOrder: purchaseOrderId } }, async session => {
     const order = await PurchaseOrder.findById(purchaseOrderId).session(session);
-    if (!order) throw new ApiError('Purchase order not found.', 404);
+    if (!order) throw new ApiError('Purchase invoice not found.', 404);
     await assertPeriodsOpen(input.date, session);
     const lines = returnLines(order, items, 'productId');
     const products = new Map((await Product.find({ _id: { $in: lines.map(l => l.productId) } }).session(session)).map(p => [String(p._id), p]));

@@ -109,7 +109,7 @@ exports.exportSalesOrderReportExcel = asyncHandler(async (req, res, next) => {
     .sort(sortConfig);
 
   if (salesOrders.length === 0) {
-    return next(new ApiError('No sales orders found', 404));
+    return next(new ApiError('No sales invoices found', 404));
   }
 
   // Perpare headers

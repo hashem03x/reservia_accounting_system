@@ -1,38 +1,6 @@
-/**
- * Generate a unique 12-digit sales order code
- * Format: sequential number padded with leading zeros
- * Example: 000000000001, 000000000002, etc.
- */
-const generateSalesOrderCode = async () => {
-  const SalesOrder = require('../models/sales/salesOrderModel');
-
-  // Get the count of all sales orders
-  const count = await SalesOrder.countDocuments({});
-
-  // Generate sequence number (padded with zeros to 12 digits)
-  const nextNumber = count + 1;
-  const code = nextNumber.toString().padStart(12, '0');
-
-  return code;
-};
-
-/**
- * Generate a unique 12-digit purchase order code
- * Format: sequential number padded with leading zeros
- * Example: 000000000001, 000000000002, etc.
- */
-const generatePurchaseOrderCode = async () => {
-  const PurchaseOrder = require('../models/vendor/purchaseOrder');
-
-  // Get the count of all purchase orders
-  const count = await PurchaseOrder.countDocuments({});
-
-  // Generate sequence number (padded with zeros to 12 digits)
-  const nextNumber = count + 1;
-  const code = nextNumber.toString().padStart(12, '0');
-
-  return code;
-};
+// Order code generation moved to services/shared/orderNumberService.js (atomic Counter-based -
+// docs section "Order code fix"). The old `generateSalesOrderCode`/`generatePurchaseOrderCode`
+// here used `Model.countDocuments({}) + 1`, which is race-prone under concurrent creates.
 
 // =============================================================
 // Order helper functions
@@ -154,8 +122,6 @@ const deleteImage = async filename => {
 };
 
 module.exports = {
-  generateSalesOrderCode,
-  generatePurchaseOrderCode,
   calculateUnitPriceAfterDiscount,
   calculateStarterSubtotal,
   calculateSubtotal,

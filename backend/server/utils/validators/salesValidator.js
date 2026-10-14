@@ -71,7 +71,7 @@ const createCashierSalesOrderValidator = [
 	// applies to a historical order being re-saved for an unrelated reason (cancel/deliver/return).
 	body('project')
 		.notEmpty()
-		.withMessage('A project is required to create a Sales Order')
+		.withMessage('A project is required to create a Sales Invoice')
 		.isMongoId()
 		.withMessage('Project ID must be a mongoID')
 		.custom(async (value, { req }) => {

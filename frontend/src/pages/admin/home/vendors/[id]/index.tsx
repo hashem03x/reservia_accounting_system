@@ -255,40 +255,104 @@ export default function Vendor() {
               </section>
             )}
 
-            {/* Bank Info */}
-            {(vendor.bankInfo?.bankName ||
-              vendor.bankInfo?.branch ||
-              vendor.bankInfo?.accountNumber ||
-              vendor.bankInfo?.iban ||
-              vendor.bankInfo?.swiftCode) && (
+            {/* Payment Information (docs section "Vendor Payment Information") - shows the
+                current, structured paymentInfo once set. Falls back to the legacy bankInfo
+                display only for a vendor that predates this field and hasn't been migrated/edited
+                yet (scripts/migrateVendorPaymentInfo.js) - never shown alongside paymentInfo. */}
+            {vendor.paymentInfo?.mode ? (
               <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
-                <h4>{translate("Bank Info", "البيانات البنكية")}</h4>
-                {vendor.bankInfo?.bankName && (
-                  <p>
-                    {translate("Bank Name", "إسم البنك")}: {vendor.bankInfo.bankName}
-                  </p>
+                <h4>{translate("Payment Information", "معلومات الدفع")}</h4>
+                {vendor.paymentInfo.mode === "instapay" && (
+                  <>
+                    <p>{translate("Mode", "الطريقة")}: {translate("Instapay", "إنستاباي")}</p>
+                    {vendor.paymentInfo.instapay?.identifier && (
+                      <p>
+                        {translate("Instapay Identifier", "معرف إنستاباي")}: {vendor.paymentInfo.instapay.identifier}
+                      </p>
+                    )}
+                  </>
                 )}
-                {vendor.bankInfo?.branch && (
-                  <p>
-                    {translate("Branch", "الفرع")}: {vendor.bankInfo.branch}
-                  </p>
+                {vendor.paymentInfo.mode === "wallet" && (
+                  <>
+                    <p>{translate("Mode", "الطريقة")}: {translate("Wallet", "محفظة إلكترونية")}</p>
+                    {vendor.paymentInfo.wallet?.provider && (
+                      <p>
+                        {translate("Wallet Provider", "مزود المحفظة")}: {vendor.paymentInfo.wallet.provider}
+                      </p>
+                    )}
+                    {vendor.paymentInfo.wallet?.identifier && (
+                      <p>
+                        {translate("Wallet Number", "رقم المحفظة")}: {vendor.paymentInfo.wallet.identifier}
+                      </p>
+                    )}
+                  </>
                 )}
-                {vendor.bankInfo?.accountNumber && (
-                  <p>
-                    {translate("Account Number", "رقم الحساب")}: {vendor.bankInfo.accountNumber}
-                  </p>
-                )}
-                {vendor.bankInfo?.iban && (
-                  <p>
-                    {translate("IBAN", "رقم الآيبان (IBAN)")}: {vendor.bankInfo.iban}
-                  </p>
-                )}
-                {vendor.bankInfo?.swiftCode && (
-                  <p>
-                    {translate("SWIFT Code", "رمز السويفت (SWIFT)")}: {vendor.bankInfo.swiftCode}
-                  </p>
+                {vendor.paymentInfo.mode === "bank" && (
+                  <>
+                    <p>{translate("Mode", "الطريقة")}: {translate("Bank Details", "بيانات بنكية")}</p>
+                    {vendor.paymentInfo.bank?.bankName && (
+                      <p>
+                        {translate("Bank Name", "إسم البنك")}: {vendor.paymentInfo.bank.bankName}
+                      </p>
+                    )}
+                    {vendor.paymentInfo.bank?.accountHolderName && (
+                      <p>
+                        {translate("Account Holder Name", "اسم صاحب الحساب")}: {vendor.paymentInfo.bank.accountHolderName}
+                      </p>
+                    )}
+                    {vendor.paymentInfo.bank?.accountNumber && (
+                      <p>
+                        {translate("Account Number", "رقم الحساب")}: {vendor.paymentInfo.bank.accountNumber}
+                      </p>
+                    )}
+                    {vendor.paymentInfo.bank?.iban && (
+                      <p>
+                        {translate("IBAN", "رقم الآيبان (IBAN)")}: {vendor.paymentInfo.bank.iban}
+                      </p>
+                    )}
+                    {vendor.paymentInfo.bank?.swiftCode && (
+                      <p>
+                        {translate("SWIFT Code", "رمز السويفت (SWIFT)")}: {vendor.paymentInfo.bank.swiftCode}
+                      </p>
+                    )}
+                  </>
                 )}
               </section>
+            ) : (
+              (vendor.bankInfo?.bankName ||
+                vendor.bankInfo?.branch ||
+                vendor.bankInfo?.accountNumber ||
+                vendor.bankInfo?.iban ||
+                vendor.bankInfo?.swiftCode) && (
+                <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
+                  <h4>{translate("Bank Info", "البيانات البنكية")}</h4>
+                  {vendor.bankInfo?.bankName && (
+                    <p>
+                      {translate("Bank Name", "إسم البنك")}: {vendor.bankInfo.bankName}
+                    </p>
+                  )}
+                  {vendor.bankInfo?.branch && (
+                    <p>
+                      {translate("Branch", "الفرع")}: {vendor.bankInfo.branch}
+                    </p>
+                  )}
+                  {vendor.bankInfo?.accountNumber && (
+                    <p>
+                      {translate("Account Number", "رقم الحساب")}: {vendor.bankInfo.accountNumber}
+                    </p>
+                  )}
+                  {vendor.bankInfo?.iban && (
+                    <p>
+                      {translate("IBAN", "رقم الآيبان (IBAN)")}: {vendor.bankInfo.iban}
+                    </p>
+                  )}
+                  {vendor.bankInfo?.swiftCode && (
+                    <p>
+                      {translate("SWIFT Code", "رمز السويفت (SWIFT)")}: {vendor.bankInfo.swiftCode}
+                    </p>
+                  )}
+                </section>
+              )
             )}
 
             {/* Documents - manageable directly from here, not only from the edit modal */}

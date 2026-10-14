@@ -24,11 +24,11 @@ export default function Reports() {
         {renderReportLink(paths.customers, translate("Customers Report", "تقرير العملاء"))}
         {renderReportLink(
           `${paths.purchaseOrders}?sortBy=createdAt&sortOrder=desc`,
-          translate("Purchase Orders Report", "تقرير طلبات الشراء"),
+          translate("Purchase Invoices Report", "تقرير فواتير المشتريات"),
         )}
         {renderReportLink(
           `${paths.salesOrders}?sortBy=createdAt&sortOrder=desc`,
-          translate("Sales Orders Report", "تقرير طلبات البيع"),
+          translate("Sales Invoices Report", "تقرير فواتير المبيعات"),
         )}
         {renderReportLink(
           `${paths.products}?sortBy=createdAt&sortOrder=desc`,

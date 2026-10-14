@@ -19,6 +19,7 @@ import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import { displayModuleLabel } from "@/utils/helpers/accounting-labels";
 import CreateJournalEntryModal from "./_components/create-journal-entry-modal";
 
 const ITEMS_PER_PAGE = import.meta.env.VITE_ITEMS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
@@ -141,7 +142,7 @@ export default function JournalEntries() {
                       <Table.Tr key={entry._id} className="cursor-pointer text-gray-600" onClick={() => navigate(entry._id)}>
                         <Table.Td className="whitespace-nowrap">{formatDate(entry.date, language)}</Table.Td>
                         <Table.Td className="whitespace-nowrap font-medium text-gray-800">{entry.entryNumber}</Table.Td>
-                        <Table.Td className="whitespace-nowrap">{entry.module || "-"}</Table.Td>
+                        <Table.Td className="whitespace-nowrap">{displayModuleLabel(entry.module, translate)}</Table.Td>
                         <Table.Td className="whitespace-nowrap">{entry.project?.projectNumber || "-"}</Table.Td>
                         <Table.Td className="whitespace-nowrap">{entry.currency || "-"}</Table.Td>
                         <Table.Td className="whitespace-nowrap text-right tabular-nums">

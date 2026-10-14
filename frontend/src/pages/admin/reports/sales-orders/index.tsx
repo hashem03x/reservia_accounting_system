@@ -34,7 +34,7 @@ type SortOrderOption = SortOrder;
 export default function SalesOrdersReport() {
   const { language, translate, translations } = useLanguage();
 
-  const title = translate("Sales Orders Report", "تقرير طلبات البيع");
+  const title = translate("Sales Invoices Report", "تقرير فواتير المبيعات");
 
   useDocumentTitle(title);
 

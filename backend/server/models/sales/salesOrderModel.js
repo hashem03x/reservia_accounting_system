@@ -9,7 +9,7 @@ const {
   calculateRemainingAmount,
   getPaymentStatus,
 } = require('../../utils/helper');
-const { generateSalesOrderCode } = require('../../utils/helper');
+const { getNextSalesOrderCode } = require('../../services/shared/orderNumberService');
 const { SalesOrderPaymentMethods } = require('../../utils/appConstant');
 const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 const { computeOrderTotals } = require('../../utils/orderTotals');
@@ -139,9 +139,12 @@ const salesOrderSchema = mongoose.Schema(
 // Pre-save middleware
 salesOrderSchema.pre('save', async function (next) {
   try {
-    // Generate unique code for new sales orders if not provided
+    // Generate unique code for new sales orders if not provided - atomic Counter-based (see
+    // orderNumberService.js), never the old race-prone `countDocuments()+1`. `this.$session()`
+    // threads through the save's own transaction (if any), mirroring
+    // journalEntryNumberService.js's session-aware convention.
     if (this.isNew && !this.code) {
-      this.code = await generateSalesOrderCode();
+      this.code = await getNextSalesOrderCode(this.$session());
     }
 
     // Project is mandatory for every NEW Sales Order (docs section "Sales Orders - Project is
@@ -150,7 +153,7 @@ salesOrderSchema.pre('save', async function (next) {
     // so a historical order created before this rule existed can still be cancelled/delivered/
     // returned - every one of those re-saves the same document without a project.
     if (this.isNew && !this.project) {
-      throw new Error('A project is required to create a Sales Order.');
+      throw new Error('A project is required to create a Sales Invoice.');
     }
 
     // Backstop (the fast pre-check lives in salesValidator.js) - never trust that `paymentAccount`

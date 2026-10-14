@@ -26,7 +26,6 @@ export default function CreateProjectModal({
   const { translate, language } = useLanguage();
   const privateRequest = usePrivateRequest();
 
-  const [projectNumber, setProjectNumber] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [contractValue, setContractValue] = useState<string | number>("");
@@ -62,7 +61,6 @@ export default function CreateProjectModal({
         method: "POST",
         url: "projects",
         data: {
-          projectNumber,
           name,
           description,
           contractValue,
@@ -83,7 +81,6 @@ export default function CreateProjectModal({
   function handleClose() {
     close();
     setTimeout(() => {
-      setProjectNumber("");
       setName("");
       setDescription("");
       setContractValue("");
@@ -104,13 +101,8 @@ export default function CreateProjectModal({
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {error && <ErrorAlert error={error} />}
 
-        <TextInput
-          label={translate("Project Number", "رقم المشروع")}
-          placeholder={translate("Enter a unique project number", "أدخل رقم مشروع فريد")}
-          value={projectNumber}
-          onChange={(e) => setProjectNumber(e.target.value)}
-          required
-        />
+        {/* Project Number is auto-generated server-side (docs section "Automatic Project ID
+            Generation") - never typed by hand, shown on the project's details page once created. */}
 
         <TextInput
           label={translate("Project Name", "اسم المشروع")}

@@ -67,10 +67,10 @@ export const TOUR_STEPS: TourStep[] = [
     route: admin(paths.home, paths.purchaseOrders),
     target: "page-header",
     access: read("purchaseOrders"),
-    title: { en: "Purchase Orders", ar: "أوامر الشراء" },
+    title: { en: "Purchase Invoices", ar: "فواتير المشتريات" },
     body: {
-      en: "Each Purchase Order belongs to a project: materials and services go straight to that project's PUC (Projects Under Construction), and the vendor is credited.",
-      ar: "كل أمر شراء يتبع مشروعاً: المواد والخدمات تذهب مباشرة إلى مشروعات تحت التنفيذ لذلك المشروع، ويُقيد المورد دائناً.",
+      en: "Each Purchase Invoice belongs to a project: materials and services go straight to that project's PUC (Projects Under Construction), and the vendor is credited.",
+      ar: "كل فاتورة مشتريات تتبع مشروعاً: المواد والخدمات تذهب مباشرة إلى مشروعات تحت التنفيذ لذلك المشروع، ويُقيد المورد دائناً.",
     },
   },
   {
@@ -88,10 +88,10 @@ export const TOUR_STEPS: TourStep[] = [
     id: "sales-orders",
     route: admin(paths.home, paths.salesOrders),
     target: "page-header",
-    title: { en: "Sales Orders", ar: "أوامر البيع" },
+    title: { en: "Sales Invoices", ar: "فواتير المبيعات" },
     body: {
-      en: "A Sales Order recognizes the project's revenue (excluding VAT) and loads its costs from PUC by the executed percentage.",
-      ar: "أمر البيع يثبت إيراد المشروع (بدون ضريبة القيمة المضافة) ويحمّل تكاليفه من مشروعات تحت التنفيذ بنسبة التنفيذ.",
+      en: "A Sales Invoice recognizes the project's revenue (excluding VAT) and loads its costs from PUC by the executed percentage.",
+      ar: "فاتورة المبيعات تثبت إيراد المشروع (بدون ضريبة القيمة المضافة) وتحمّل تكاليفه من مشروعات تحت التنفيذ بنسبة التنفيذ.",
     },
   },
   {

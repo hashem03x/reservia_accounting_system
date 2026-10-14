@@ -106,7 +106,7 @@ exports.exportPurchaseOrderReportExcel = asyncHandler(async (req, res, next) => 
     .sort(sortConfig);
 
   if (purchaseOrders.length === 0) {
-    return next(new ApiError('No purchase orders found', 404));
+    return next(new ApiError('No purchase invoices found', 404));
   }
 
   // Perpare headers
