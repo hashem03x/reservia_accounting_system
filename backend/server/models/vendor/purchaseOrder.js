@@ -5,6 +5,7 @@ const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 // for every model this schema's hooks look up via `this.model(...)` or populate.
 require('../accounting/chartOfAccountModel');
 require('../payments/advancedPaymentModel');
+require('./vendor');
 const { computeOrderTotals } = require('../../utils/orderTotals');
 
 // const { createCanvas } = require('canvas');
@@ -89,6 +90,12 @@ const purchaseOrderSchema = new Schema(
     },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     notes: { type: String },
+    // Payment Terms (docs section "Payment Terms for Customers and Vendors") - mirrors
+    // SalesOrder.dueDate exactly: computed server-side at creation time from the vendor's CURRENT
+    // `paymentTerms`/`customPaymentDays`, then snapshotted permanently - a later change to the
+    // vendor's default terms never retroactively alters an already-created order's due date.
+    // `null` for every historical order created before this field existed.
+    dueDate: { type: Date, default: null },
   },
   {
     timestamps: true,
@@ -161,6 +168,18 @@ purchaseOrderSchema.pre('save', async function (next) {
     // Payment recording against it, see paymentModel.js).
     if (this.isNew && !this.project) {
       throw new Error('A project is required to create a Purchase Invoice.');
+    }
+
+    // Due date, from this vendor's CURRENT payment terms, snapshotted once at creation (docs
+    // section "Payment Terms for Customers and Vendors") - never recomputed on a later re-save,
+    // and never overwritten if the client already supplied one.
+    if (this.isNew && !this.dueDate && this.vendorId) {
+      const { calculateDueDate } = require('../../utils/helpers/dueDate'); // eslint-disable-line global-require
+      const Vendor = this.model('Vendor');
+      const vendor = await Vendor.findById(this.vendorId).select('paymentTerms customPaymentDays').session(this.$session());
+      if (vendor) {
+        this.dueDate = calculateDueDate(new Date(), vendor.paymentTerms, vendor.customPaymentDays);
+      }
     }
 
     // Backstop (the fast pre-check lives in poValidator.js) - never trust that `paymentAccount` is

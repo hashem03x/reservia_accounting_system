@@ -217,10 +217,7 @@ export default function Customer() {
               <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
                 <h4>{translate("Address", "العنوان")}</h4>
                 {customer.offlineAddress.street && <p>{customer.offlineAddress.street}</p>}
-                <p>
-                  {customer.offlineAddress.city && customer.offlineAddress.city}{" "}
-                  {customer.offlineAddress.postalCode && customer.offlineAddress.postalCode}
-                </p>
+                {customer.offlineAddress.city && <p>{customer.offlineAddress.city}</p>}
                 {customer.offlineAddress.country && <p>{customer.offlineAddress.country}</p>}
               </section>
             )}

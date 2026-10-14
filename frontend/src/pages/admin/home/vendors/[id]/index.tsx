@@ -230,9 +230,7 @@ export default function Vendor() {
               <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
                 <h4>{translate("Address", "العنوان")}</h4>
                 {vendor.address.street && <p>{vendor.address.street}</p>}
-                <p>
-                  {vendor.address.city && vendor.address.city} {vendor.address.postalCode && vendor.address.postalCode}
-                </p>
+                {vendor.address.city && <p>{vendor.address.city}</p>}
                 {vendor.address.country && <p>{vendor.address.country}</p>}
               </section>
             )}

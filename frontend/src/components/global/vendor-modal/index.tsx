@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
-import { Vendor, VendorType } from "@/types/vendor";
+import { PaymentTerms as VendorPaymentTerms, Vendor, VendorType } from "@/types/vendor";
 import { PaymentMode, WalletProvider } from "@/types/document";
 import vendorTypes, { vendorTypesArray } from "@/utils/constants/vendor-types";
-import { Button, Select, TextInput } from "@mantine/core";
+import { Button, NumberInput, Select, TextInput } from "@mantine/core";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
 import BusinessDocumentsSection from "@/components/global/business-documents-section";
@@ -48,6 +48,13 @@ export default function VendorModal({
   const [bankIbanNumber, setBankIbanNumber] = useState(vendorToUpdate?.paymentInfo?.bank?.iban || "");
   const [swiftCode, setSwiftCode] = useState(vendorToUpdate?.paymentInfo?.bank?.swiftCode || "");
 
+  // Payment Terms (docs section "Payment Terms for Customers and Vendors") - governs the due
+  // date calculated for this vendor's future Purchase Invoices. Defaults to the schema's own
+  // 'Net 30' for a brand-new vendor.
+  const [paymentTerms, setPaymentTerms] = useState<VendorPaymentTerms>(vendorToUpdate?.paymentTerms || "Net 30");
+  const [customPaymentDays, setCustomPaymentDays] = useState<string | number>(vendorToUpdate?.customPaymentDays ?? "");
+  const paymentTermsIncomplete = paymentTerms === "Custom" && (customPaymentDays === "" || customPaymentDays == null);
+
   // Mirrors the backend's conditional validator (vendorValidators.js#paymentInfoValidators) -
   // whichever mode is selected, its required sub-fields must be filled before submitting.
   const paymentInfoIncomplete =
@@ -73,7 +80,12 @@ export default function VendorModal({
       : undefined;
   const [city, setCity] = useState(vendorToUpdate?.address?.city || "");
   const [street, setStreet] = useState(vendorToUpdate?.address?.street || "");
-  const [postalCode, setPostalCode] = useState(vendorToUpdate?.address?.postalCode || "");
+  // Postal Code is no longer collected (docs section "Remove Postal Code") - this form has no
+  // input for it anymore. Kept as internal, never-edited state (initialized from any existing
+  // value) purely so an unrelated edit still resends it unchanged in `address` below - this
+  // controller applies the whole `address` object via `$set`, so omitting the field here would
+  // otherwise silently wipe a legacy vendor's already-stored postal code.
+  const [postalCode] = useState(vendorToUpdate?.address?.postalCode || "");
 
   // See customer-modal/index.tsx's identical pattern: holds the persisted record after a create so
   // the Documents section (which needs a real _id) becomes usable without closing the modal.
@@ -126,6 +138,8 @@ export default function VendorModal({
                     : undefined,
               }
             : undefined,
+          paymentTerms,
+          customPaymentDays: paymentTerms === "Custom" ? Number(customPaymentDays) : undefined,
         }, // I send them as undefined instead of empty string to avoid a backend issue.
       });
 
@@ -149,7 +163,6 @@ export default function VendorModal({
       setCountry(vendorToUpdate?.address?.country || "");
       setCity(vendorToUpdate?.address?.city || "");
       setStreet(vendorToUpdate?.address?.street || "");
-      setPostalCode(vendorToUpdate?.address?.postalCode || "");
       setTaxRegistrationNumber(vendorToUpdate?.taxInfo?.taxRegistrationNumber || "");
       setCommercialRegistrationNumber(vendorToUpdate?.taxInfo?.commercialRegistrationNumber || "");
       setPaymentMode(vendorToUpdate?.paymentInfo?.mode || "");
@@ -161,6 +174,8 @@ export default function VendorModal({
       setBankAccountNumber(vendorToUpdate?.paymentInfo?.bank?.accountNumber || "");
       setBankIbanNumber(vendorToUpdate?.paymentInfo?.bank?.iban || "");
       setSwiftCode(vendorToUpdate?.paymentInfo?.bank?.swiftCode || "");
+      setPaymentTerms(vendorToUpdate?.paymentTerms || "Net 30");
+      setCustomPaymentDays(vendorToUpdate?.customPaymentDays ?? "");
       setSavedVendor(vendorToUpdate);
       setError("");
     }, 250);
@@ -179,7 +194,6 @@ export default function VendorModal({
       (country || undefined) !== savedVendor.address?.country ||
       (city || undefined) !== savedVendor.address?.city ||
       (street || undefined) !== savedVendor.address?.street ||
-      (postalCode || undefined) !== savedVendor.address?.postalCode ||
       (taxRegistrationNumber || undefined) !== savedVendor.taxInfo?.taxRegistrationNumber ||
       (commercialRegistrationNumber || undefined) !== savedVendor.taxInfo?.commercialRegistrationNumber ||
       (paymentMode || undefined) !== (savedVendor.paymentInfo?.mode || undefined) ||
@@ -190,7 +204,9 @@ export default function VendorModal({
       (bankAccountHolderName || undefined) !== savedVendor.paymentInfo?.bank?.accountHolderName ||
       (bankAccountNumber || undefined) !== savedVendor.paymentInfo?.bank?.accountNumber ||
       (bankIbanNumber || undefined) !== savedVendor.paymentInfo?.bank?.iban ||
-      (swiftCode || undefined) !== savedVendor.paymentInfo?.bank?.swiftCode
+      (swiftCode || undefined) !== savedVendor.paymentInfo?.bank?.swiftCode ||
+      paymentTerms !== (savedVendor.paymentTerms || "Net 30") ||
+      (paymentTerms === "Custom" ? Number(customPaymentDays) : undefined) !== savedVendor.customPaymentDays
     : true;
 
   return (
@@ -255,6 +271,37 @@ export default function VendorModal({
             required={isNewVendor}
             error={emailError}
           />
+
+          {/* Payment Terms (docs section "Payment Terms for Customers and Vendors") - governs the
+              due date calculated for this vendor's future Purchase Invoices. */}
+          <div className="flex gap-2">
+            <Select
+              value={paymentTerms}
+              onChange={(value) => setPaymentTerms((value as VendorPaymentTerms) || "Net 30")}
+              data={[
+                { value: "Immediate", label: translate("Immediate", "فوري") },
+                { value: "Net 15", label: translate("Net 15", "صافي 15 يوم") },
+                { value: "Net 30", label: translate("Net 30", "صافي 30 يوم") },
+                { value: "Net 45", label: translate("Net 45", "صافي 45 يوم") },
+                { value: "Net 60", label: translate("Net 60", "صافي 60 يوم") },
+                { value: "Custom", label: translate("Custom", "مخصص") },
+              ]}
+              label={translate("Payment Terms", "شروط الدفع")}
+              allowDeselect={false}
+              flex={1}
+            />
+            {paymentTerms === "Custom" && (
+              <NumberInput
+                value={customPaymentDays}
+                onChange={setCustomPaymentDays}
+                label={translate("Custom Days", "عدد الأيام المخصصة")}
+                placeholder={translate("Enter number of days", "أدخل عدد الأيام")}
+                min={0}
+                required
+                flex={1}
+              />
+            )}
+          </div>
         </section>
 
         {/* Address */}
@@ -278,12 +325,6 @@ export default function VendorModal({
               onChange={(e) => setStreet(e.target.value)}
               label={translate("Street", "الشارع")}
               placeholder={translate("Enter Street", "أدخل الشارع")}
-            />
-            <TextInput
-              value={postalCode}
-              onChange={(e) => setPostalCode(e.target.value)}
-              label={translate("Postal Code", "الرمز البريدي")}
-              placeholder={translate("Enter Postal Code", "أدخل الرمز البريدي")}
             />
           </div>
         </section>
@@ -423,7 +464,15 @@ export default function VendorModal({
             type="submit"
             loading={loading}
             disabled={
-              !name || !type || !phone || (isNewVendor && !email) || !dataChanged || !!ibanError || !!emailError || paymentInfoIncomplete
+              !name ||
+              !type ||
+              !phone ||
+              (isNewVendor && !email) ||
+              !dataChanged ||
+              !!ibanError ||
+              !!emailError ||
+              paymentInfoIncomplete ||
+              paymentTermsIncomplete
             }
             fullWidth
           >

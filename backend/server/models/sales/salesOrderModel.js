@@ -16,6 +16,7 @@ const { computeOrderTotals } = require('../../utils/orderTotals');
 // Explicit require (not just the string `ref:` name) - mirrors journalEntryModel.js's convention
 // for every model this schema's hooks look up via `this.model(...)`.
 require('../accounting/chartOfAccountModel');
+require('../userModel');
 
 const salesOrderSchema = mongoose.Schema(
   {
@@ -124,6 +125,14 @@ const salesOrderSchema = mongoose.Schema(
     },
     couponDiscount: { type: Number, default: null },
     needsCancellation: { type: Boolean, default: false },
+    // Payment Terms (docs section "Payment Terms for Customers and Vendors") - computed server-
+    // side at creation time from the customer's CURRENT `paymentTerms`/`customPaymentDays`, then
+    // snapshotted here permanently. A later change to the customer's default terms can therefore
+    // never retroactively alter an already-created order's due date (see the pre('save') hook
+    // below, scoped to `isNew`). `null` for every historical order created before this field
+    // existed - never backfilled. An explicit client-supplied `dueDate` (if ever sent) is
+    // preserved as-is instead of being recomputed.
+    dueDate: { type: Date, default: null },
   },
   {
     timestamps: true,
@@ -154,6 +163,18 @@ salesOrderSchema.pre('save', async function (next) {
     // returned - every one of those re-saves the same document without a project.
     if (this.isNew && !this.project) {
       throw new Error('A project is required to create a Sales Invoice.');
+    }
+
+    // Due date, from this customer's CURRENT payment terms, snapshotted once at creation (docs
+    // section "Payment Terms for Customers and Vendors") - never recomputed on a later re-save
+    // (cancel/deliver/return), and never overwritten if the client already supplied one.
+    if (this.isNew && !this.dueDate && this.customer) {
+      const { calculateDueDate } = require('../../utils/helpers/dueDate'); // eslint-disable-line global-require
+      const User = this.model('User');
+      const customer = await User.findById(this.customer).select('paymentTerms customPaymentDays').session(this.$session());
+      if (customer) {
+        this.dueDate = calculateDueDate(new Date(), customer.paymentTerms, customer.customPaymentDays);
+      }
     }
 
     // Backstop (the fast pre-check lives in salesValidator.js) - never trust that `paymentAccount`
