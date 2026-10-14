@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const { moderatorPermission, userPermission, operatorPermission } = require('../utils/appConstant');
 const { taxInfoSchema, bankInfoSchema, businessDocumentSchema } = require('./shared/businessPartnerSchemas');
 const { getNextCustomerNumber } = require('../services/customer/customerNumberService');
+const { PaymentTerms } = require('../utils/paymentTerms');
 
 const userSchema = mongoose.Schema(
   {
@@ -89,6 +90,19 @@ const userSchema = mongoose.Schema(
     // with role 'user' (see docs/entities/customers.md). Never populated/meaningful for
     // staff roles (moderator/operator/admin).
     customerNumber: { type: Number, unique: true, sparse: true, immutable: true },
+    // Payment Terms (docs section "Payment Terms for Customers and Vendors") - governs the
+    // default due-date calculation for this customer's future Sales Invoices (see
+    // utils/helpers/dueDate.js). Mirrors Vendor.paymentTerms/customPaymentDays exactly (same
+    // values, same default) for consistency between the two entities.
+    paymentTerms: {
+      type: String,
+      default: 'Net 30',
+      enum: {
+        values: PaymentTerms,
+        message: '{VALUE} is not a valid payment term. Choose from "Immediate", "Net 15", "Net 30", "Net 45", "Net 60", "Custom"',
+      },
+    },
+    customPaymentDays: { type: Number, min: 0, default: null },
     taxInfo: taxInfoSchema,
     // The admin dashboard's guided tour, per user: offered on the first visit until it is finished
     // or dismissed; "Make a tour" in the sidebar restarts it at any time (PUT /users/me/tour).

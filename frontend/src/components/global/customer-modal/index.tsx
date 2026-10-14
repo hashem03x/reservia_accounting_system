@@ -32,7 +32,11 @@ export default function CustomerModal({
   const [country, setCountry] = useState(customerToUpdate?.offlineAddress?.country || "");
   const [city, setCity] = useState(customerToUpdate?.offlineAddress?.city || "");
   const [street, setStreet] = useState(customerToUpdate?.offlineAddress?.street || "");
-  const [postalCode, setPostalCode] = useState(customerToUpdate?.offlineAddress?.postalCode || "");
+  // Postal Code is no longer collected (docs section "Remove Postal Code") - this form has no
+  // input for it anymore. Kept as internal, never-edited state (initialized from any existing
+  // value) so an unrelated edit still resends it unchanged rather than relying on the
+  // controller's own field-by-field merge to preserve it.
+  const [postalCode] = useState(customerToUpdate?.offlineAddress?.postalCode || "");
   const [taxRegistrationNumber, setTaxRegistrationNumber] = useState(customerToUpdate?.taxInfo?.taxRegistrationNumber || "");
   const [commercialRegistrationNumber, setCommercialRegistrationNumber] = useState(
     customerToUpdate?.taxInfo?.commercialRegistrationNumber || "",
@@ -121,7 +125,6 @@ export default function CustomerModal({
       setCountry(customerToUpdate?.offlineAddress?.country || "");
       setCity(customerToUpdate?.offlineAddress?.city || "");
       setStreet(customerToUpdate?.offlineAddress?.street || "");
-      setPostalCode(customerToUpdate?.offlineAddress?.postalCode || "");
       setTaxRegistrationNumber(customerToUpdate?.taxInfo?.taxRegistrationNumber || "");
       setCommercialRegistrationNumber(customerToUpdate?.taxInfo?.commercialRegistrationNumber || "");
       setBankName(customerToUpdate?.bankInfo?.bankName || "");
@@ -147,7 +150,6 @@ export default function CustomerModal({
       (country || undefined) !== savedCustomer.offlineAddress?.country ||
       (city || undefined) !== savedCustomer.offlineAddress?.city ||
       (street || undefined) !== savedCustomer.offlineAddress?.street ||
-      (postalCode || undefined) !== savedCustomer.offlineAddress?.postalCode ||
       (taxRegistrationNumber || undefined) !== savedCustomer.taxInfo?.taxRegistrationNumber ||
       (commercialRegistrationNumber || undefined) !== savedCustomer.taxInfo?.commercialRegistrationNumber ||
       (bankName || undefined) !== savedCustomer.bankInfo?.bankName ||
@@ -244,12 +246,6 @@ export default function CustomerModal({
               onChange={(e) => setStreet(e.target.value)}
               label={translate("Street", "الشارع")}
               placeholder={translate("Enter Street", "أدخل الشارع")}
-            />
-            <TextInput
-              value={postalCode}
-              onChange={(e) => setPostalCode(e.target.value)}
-              label={translate("Postal Code", "الرمز البريدي")}
-              placeholder={translate("Enter Postal Code", "أدخل الرمز البريدي")}
             />
           </div>
         </section>

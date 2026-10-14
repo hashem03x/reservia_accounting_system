@@ -3,6 +3,7 @@ const { Schema, model } = require('mongoose');
 const { taxInfoSchema, bankInfoSchema, paymentInfoSchema, businessDocumentSchema } = require('../shared/businessPartnerSchemas');
 const { getNextVendorNumber } = require('../../services/vendor/vendorNumberService');
 const { isValidPhone } = require('../../utils/validators/phoneValidator');
+const { PaymentTerms } = require('../../utils/paymentTerms');
 
 const vendorSchema = new Schema(
   {
@@ -89,14 +90,21 @@ const vendorSchema = new Schema(
         // [/^[a-zA-Z0-9\s]+$/, 'Postal code must only contain letters, numbers, and spaces']
       },
     },
+    // Payment Terms (docs section "Payment Terms for Customers and Vendors") - governs the
+    // default due-date calculation for this vendor's future Purchase Invoices (see
+    // utils/helpers/dueDate.js). Widened ADDITIVELY from the original ['Net 15','Net 30','Net
+    // 45','Net 60'] - those four existing string values are preserved exactly so no historical
+    // vendor document needs migrating; 'Immediate' and 'Custom' are new options alongside them.
     paymentTerms: {
       type: String,
       default: 'Net 30',
       enum: {
-        values: ['Net 15', 'Net 30', 'Net 45', 'Net 60'],
-        message: '{VALUE} is not a valid payment term. Choose from "Net 15", "Net 30", "Net 45", "Net 60"',
+        values: PaymentTerms,
+        message: '{VALUE} is not a valid payment term. Choose from "Immediate", "Net 15", "Net 30", "Net 45", "Net 60", "Custom"',
       },
     },
+    // Only meaningful (and required by the validator layer) when paymentTerms === 'Custom'.
+    customPaymentDays: { type: Number, min: 0, default: null },
     // Note: the vendor form has sent a `bankInfo` object since before this field existed on the
     // schema - Mongoose silently dropped it on every save (strict mode). Adding the field now
     // makes existing frontend behavior actually persist, it isn't new UI surface.

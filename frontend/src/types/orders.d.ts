@@ -28,6 +28,11 @@ export interface OrderFinancials {
   // = totalAmount + vatAmount - withholdingTaxAmount - the ORDER TOTAL AMOUNT. Always read it through
   // utils/helpers/order-totals.ts#getOrderTotal (handles legacy orders without this field).
   grandTotal?: number;
+  // Payment Terms (docs section "Payment Terms for Customers and Vendors") - computed server-side
+  // at creation from the customer's/vendor's payment terms at that time, then snapshotted
+  // permanently (never recomputed on a later re-save). `null`/absent for a historical order
+  // created before this field existed - never backfilled.
+  dueDate?: string | null;
 }
 
 // =============================================================

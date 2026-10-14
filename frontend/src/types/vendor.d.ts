@@ -2,6 +2,9 @@ import { BankInfo, BusinessDocument, PaymentInfo, TaxInfo } from "@/types/docume
 
 export type VendorType = "current" | "equity";
 
+// Payment Terms (docs section "Payment Terms for Customers and Vendors").
+export type PaymentTerms = "Immediate" | "Net 15" | "Net 30" | "Net 45" | "Net 60" | "Custom";
+
 export type Vendor = {
   _id: string;
   // The vendor's own number - issued from 2000 upwards (2000, 2001, ...) for vendors created from now on; older
@@ -25,6 +28,8 @@ export type Vendor = {
   taxInfo?: TaxInfo;
   bankInfo?: BankInfo;
   paymentInfo?: PaymentInfo;
+  paymentTerms?: PaymentTerms;
+  customPaymentDays?: number | null;
   documents: BusinessDocument[];
   // How payments to this vendor appear in the Cash Flow Statement; null = by the counterpart account
   // (operating). E.g. "Supplier - Finance Activities" = financing.

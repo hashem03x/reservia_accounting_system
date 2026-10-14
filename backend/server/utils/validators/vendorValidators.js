@@ -4,6 +4,22 @@ const Vendor = require('../../models/vendor/vendor');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX, PaymentModes, WalletProviders } = require('../../models/shared/businessPartnerSchemas');
 const { isValidPhone } = require('./phoneValidator');
+const { PaymentTerms } = require('../paymentTerms');
+
+// Payment Terms (docs section "Payment Terms for Customers and Vendors") - optional (defaults to
+// 'Net 30' at the schema level if omitted entirely), but `customPaymentDays` is required exactly
+// when `paymentTerms === 'Custom'`. Shared by create/update - mirrored by customerValidator.js's
+// identical block for Customers.
+const paymentTermsValidators = [
+    check('paymentTerms').optional().isIn(PaymentTerms).withMessage(`Invalid payment term. Choose from ${PaymentTerms.map(t => `"${t}"`).join(', ')}`),
+    check('customPaymentDays').optional({ nullable: true }).isInt({ min: 0 }).withMessage('Custom payment days must be a non-negative integer'),
+    check('customPaymentDays').custom((value, { req }) => {
+        if (req.body.paymentTerms === 'Custom' && (value === undefined || value === null)) {
+            throw new Error('customPaymentDays is required when paymentTerms is "Custom".');
+        }
+        return true;
+    }),
+];
 
 // Vendor "Payment Information" (docs section "Vendor Payment Information") - optional business
 // data (mirrors taxAndBankInfoValidators below), but WHEN a `mode` is selected, exactly that
@@ -139,9 +155,7 @@ const createVendorValidators = [
         .optional()
         .matches(/^\d{5}(-\d{4})?$/).withMessage('Postal code must be valid (e.g., 12345 or 12345-6789)'),
 
-    check('paymentTerms')
-        .optional()
-        .isIn(['Net 15', 'Net 30', 'Net 45', 'Net 60']).withMessage('Invalid payment term. Choose from "Net 15", "Net 30", "Net 45", "Net 60"'),
+    ...paymentTermsValidators,
 
     check('isActive')
         .optional()
@@ -167,6 +181,7 @@ const updateVendorValidators = [
         .custom(val => isValidPhone(val)).withMessage('Phone number must be a valid Egyptian or international phone number.'),
     ...taxAndBankInfoValidators,
     ...paymentInfoValidators,
+    ...paymentTermsValidators,
     check('cashFlowActivity')
         .optional({ nullable: true })
         .isIn(['operating', 'investing', 'financing']).withMessage('Cash flow activity must be operating, investing or financing'),

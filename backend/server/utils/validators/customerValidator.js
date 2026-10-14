@@ -3,6 +3,21 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const User = require('../../models/userModel');
 const { EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX } = require('../../models/shared/businessPartnerSchemas');
 const { isValidPhone } = require('./phoneValidator');
+const { PaymentTerms } = require('../paymentTerms');
+
+// Payment Terms (docs section "Payment Terms for Customers and Vendors") - mirrors
+// vendorValidators.js's identical block exactly. Optional (defaults to 'Net 30' if omitted);
+// `customPaymentDays` is required exactly when `paymentTerms === 'Custom'`.
+const paymentTermsValidators = [
+  body('paymentTerms').optional().isIn(PaymentTerms).withMessage(`Invalid payment term. Choose from ${PaymentTerms.map(t => `"${t}"`).join(', ')}`),
+  body('customPaymentDays').optional({ nullable: true }).isInt({ min: 0 }).withMessage('Custom payment days must be a non-negative integer'),
+  body('customPaymentDays').custom((value, { req }) => {
+    if (req.body.paymentTerms === 'Custom' && (value === undefined || value === null)) {
+      throw new Error('customPaymentDays is required when paymentTerms is "Custom".');
+    }
+    return true;
+  }),
+];
 
 // Shared by create/update - every field is optional (tax/bank info is optional business data),
 // only their shape/length is checked when provided.
@@ -34,6 +49,7 @@ const taxAndBankInfoValidators = [
 exports.createCustomerValidate = [
   body('name').notEmpty().withMessage('Name is required'),
   ...taxAndBankInfoValidators,
+  ...paymentTermsValidators,
 
   body('contact.phone')
     .trim()
@@ -107,6 +123,7 @@ exports.createCustomerValidate = [
 exports.updateCustomerValidate = [
   body('name').optional(),
   ...taxAndBankInfoValidators,
+  ...paymentTermsValidators,
   body('contact.phone')
     .optional()
     .trim()
