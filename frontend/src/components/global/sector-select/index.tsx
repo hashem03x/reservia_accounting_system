@@ -16,11 +16,17 @@ export default function SectorSelect({
   onChange,
   savedValue = null,
   disabled,
+  required = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   savedValue?: string | null;
   disabled?: boolean;
+  // Required on project CREATE only (docs section "Automatic Project ID Generation" - the
+  // project number's prefix is derived from the sector) - the edit form keeps this false, since
+  // a project's sector can still be cleared/changed afterward without affecting its already-
+  // generated number.
+  required?: boolean;
 }) {
   const { translate } = useLanguage();
   const { sectors, loading, error } = useSectors({ activeOnly: true });
@@ -39,15 +45,19 @@ export default function SectorSelect({
       placeholder={
         loading
           ? translate("Loading sectors...", "جاري تحميل الأقسام...")
-          : translate("Select sector (optional)", "اختر القسم (اختياري)")
+          : required
+            ? translate("Select sector", "اختر القسم")
+            : translate("Select sector (optional)", "اختر القسم (اختياري)")
       }
       value={value || null}
       onChange={(v) => onChange(v || "")}
       data={data}
       error={error ? translate("Could not load sectors.", "تعذر تحميل الأقسام.") : undefined}
       disabled={disabled}
+      required={required}
+      withAsterisk={required}
       searchable
-      clearable
+      clearable={!required}
     />
   );
 }

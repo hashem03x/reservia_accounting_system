@@ -3,9 +3,9 @@ import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { isOnline } from "@/utils/constants/customer-types";
-import { Alert, Button, TextInput } from "@mantine/core";
+import { Alert, Button, NumberInput, Select, TextInput } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
-import { Customer } from "@/types/customer";
+import { Customer, PaymentTerms } from "@/types/customer";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
 import BusinessDocumentsSection from "@/components/global/business-documents-section";
@@ -37,6 +37,11 @@ export default function CustomerModal({
   // value) so an unrelated edit still resends it unchanged rather than relying on the
   // controller's own field-by-field merge to preserve it.
   const [postalCode] = useState(customerToUpdate?.offlineAddress?.postalCode || "");
+  // Payment Terms (docs section "Payment Terms for Customers and Vendors") - governs the due date
+  // calculated for this customer's future Sales Invoices. Defaults to the schema's own 'Net 30'.
+  const [paymentTerms, setPaymentTerms] = useState<PaymentTerms>(customerToUpdate?.paymentTerms || "Net 30");
+  const [customPaymentDays, setCustomPaymentDays] = useState<string | number>(customerToUpdate?.customPaymentDays ?? "");
+  const paymentTermsIncomplete = paymentTerms === "Custom" && (customPaymentDays === "" || customPaymentDays == null);
   const [taxRegistrationNumber, setTaxRegistrationNumber] = useState(customerToUpdate?.taxInfo?.taxRegistrationNumber || "");
   const [commercialRegistrationNumber, setCommercialRegistrationNumber] = useState(
     customerToUpdate?.taxInfo?.commercialRegistrationNumber || "",
@@ -99,6 +104,8 @@ export default function CustomerModal({
             iban: iban || undefined,
             swiftCode: swiftCode || undefined,
           },
+          paymentTerms,
+          customPaymentDays: paymentTerms === "Custom" ? Number(customPaymentDays) : undefined,
         }, // I send them as undefined instead of empty string to avoid a backend issue.
       });
 
@@ -132,6 +139,8 @@ export default function CustomerModal({
       setAccountNumber(customerToUpdate?.bankInfo?.accountNumber || "");
       setIban(customerToUpdate?.bankInfo?.iban || "");
       setSwiftCode(customerToUpdate?.bankInfo?.swiftCode || "");
+      setPaymentTerms(customerToUpdate?.paymentTerms || "Net 30");
+      setCustomPaymentDays(customerToUpdate?.customPaymentDays ?? "");
       setSavedCustomer(customerToUpdate);
       setError("");
     }, 250);
@@ -156,7 +165,9 @@ export default function CustomerModal({
       (branch || undefined) !== savedCustomer.bankInfo?.branch ||
       (accountNumber || undefined) !== savedCustomer.bankInfo?.accountNumber ||
       (iban || undefined) !== savedCustomer.bankInfo?.iban ||
-      (swiftCode || undefined) !== savedCustomer.bankInfo?.swiftCode
+      (swiftCode || undefined) !== savedCustomer.bankInfo?.swiftCode ||
+      paymentTerms !== (savedCustomer.paymentTerms || "Net 30") ||
+      (paymentTerms === "Custom" ? Number(customPaymentDays) : undefined) !== savedCustomer.customPaymentDays
     : true;
 
   return (
@@ -223,6 +234,37 @@ export default function CustomerModal({
               />
             </>
           )}
+
+          {/* Payment Terms (docs section "Payment Terms for Customers and Vendors") - governs the
+              due date calculated for this customer's future Sales Invoices. */}
+          <div className="flex gap-2">
+            <Select
+              value={paymentTerms}
+              onChange={(value) => setPaymentTerms((value as PaymentTerms) || "Net 30")}
+              data={[
+                { value: "Immediate", label: translate("Immediate", "فوري") },
+                { value: "Net 15", label: translate("Net 15", "صافي 15 يوم") },
+                { value: "Net 30", label: translate("Net 30", "صافي 30 يوم") },
+                { value: "Net 45", label: translate("Net 45", "صافي 45 يوم") },
+                { value: "Net 60", label: translate("Net 60", "صافي 60 يوم") },
+                { value: "Custom", label: translate("Custom", "مخصص") },
+              ]}
+              label={translate("Payment Terms", "شروط الدفع")}
+              allowDeselect={false}
+              flex={1}
+            />
+            {paymentTerms === "Custom" && (
+              <NumberInput
+                value={customPaymentDays}
+                onChange={setCustomPaymentDays}
+                label={translate("Custom Days", "عدد الأيام المخصصة")}
+                placeholder={translate("Enter number of days", "أدخل عدد الأيام")}
+                min={0}
+                required
+                flex={1}
+              />
+            )}
+          </div>
         </section>
 
         {/* Address */}
@@ -327,7 +369,15 @@ export default function CustomerModal({
           <Button
             type="submit"
             loading={loading}
-            disabled={!name || !phone || (isNewCustomer && !email) || !dataChanged || !!ibanError || !!emailError}
+            disabled={
+              !name ||
+              !phone ||
+              (isNewCustomer && !email) ||
+              !dataChanged ||
+              !!ibanError ||
+              !!emailError ||
+              paymentTermsIncomplete
+            }
             fullWidth
           >
             {savedCustomer ? translate("Save", "حفظ") : title}

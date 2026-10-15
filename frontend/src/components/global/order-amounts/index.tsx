@@ -2,6 +2,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import InfoItem from "@/components/ui/info-item";
 import { OrderFinancials } from "@/types/orders";
 import { getOrderSubtotal, getOrderTotal } from "@/utils/helpers/order-totals";
+import { formatDate } from "@/utils/helpers/date-formaters";
 
 /**
  * The money summary shared by the Sales Order and Purchase Order detail pages. "Order Total Amount"
@@ -10,7 +11,7 @@ import { getOrderSubtotal, getOrderTotal } from "@/utils/helpers/order-totals";
  * tax is actually non-zero - an order with no taxes never shows a tax line.
  */
 export default function OrderAmounts({ order }: { order: OrderFinancials & { totalAmount?: number | null } }) {
-  const { translate, translations } = useLanguage();
+  const { translate, translations, language } = useLanguage();
   const total = getOrderTotal(order);
   const subtotal = getOrderSubtotal(order);
   const vatAmount = order.vatAmount || 0;
@@ -30,6 +31,10 @@ export default function OrderAmounts({ order }: { order: OrderFinancials & { tot
           value={`(${order.withholdingTaxPercentage || 0}%) -${money(withholdingTaxAmount)}`}
         />
       )}
+      {/* Payment Terms (docs section "Payment Terms for Customers and Vendors") - computed once
+          at creation from the customer's/vendor's terms at that time, then snapshotted. Absent
+          for a historical order created before this field existed. */}
+      {order.dueDate && <InfoItem label={translate("Due Date", "تاريخ الاستحقاق")} value={formatDate(order.dueDate, language)} />}
     </>
   );
 }

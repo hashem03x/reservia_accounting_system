@@ -9,6 +9,7 @@ const { sendStoredDocument } = require('../documentController');
 const { decodeUploadName } = require('../../utils/uploadFileName');
 const { recalculateRemainingMoney, recalculateExecutedPercentage } = require('../../services/project/projectAccountingService');
 const { getNextProjectNumber } = require('../../services/project/projectNumberService');
+const { resolveProjectSector } = require('../../services/project/sectorService');
 const { logAccountingEvent } = require('../../utils/accountingLogger');
 
 // Creating a project ONLY creates the Project document - it deliberately does NOT create any
@@ -32,7 +33,17 @@ const createProject = asyncHandler(async (req, res, next) => {
   const { name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines } = req.body;
 
   try {
-    const projectNumber = await getNextProjectNumber();
+    // The project number's prefix is derived from the project's SECTOR (docs section "Automatic
+    // Project ID Generation" - sector-based numbering), so a sector is now required to create a
+    // project - validated & resolved to its canonical, real Sector name HERE (never trusted as a
+    // raw frontend string) before anything is generated or written. The fast pre-check lives in
+    // projectValidators.js; this is the real backstop.
+    if (!sector) {
+      return next(new ApiError('A sector is required to create a project.', 400));
+    }
+    const canonicalSector = await resolveProjectSector(sector);
+
+    const projectNumber = await getNextProjectNumber(canonicalSector);
     const project = await Project.create({
       projectNumber,
       name,
@@ -43,7 +54,7 @@ const createProject = asyncHandler(async (req, res, next) => {
       startDate,
       deliveryDate,
       status,
-      sector: sector || null,
+      sector: canonicalSector,
       customer: customer || null,
       averageCostLines: averageCostLines || [],
       createdBy: req.user._id,

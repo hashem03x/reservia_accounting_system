@@ -210,6 +210,14 @@ export default function Customer() {
                   {translate("Email", "البريد الإلكتروني")}: {customer.email}
                 </p>
               )}
+              {/* Payment Terms (docs section "Payment Terms for Customers and Vendors") -
+                  governs the due date calculated for this customer's future Sales Invoices. */}
+              <p>
+                {translate("Payment Terms", "شروط الدفع")}: {customer.paymentTerms || "Net 30"}
+                {customer.paymentTerms === "Custom" && customer.customPaymentDays != null
+                  ? ` (${customer.customPaymentDays} ${translate("days", "يوم")})`
+                  : ""}
+              </p>
             </section>
 
             {/* Address */}
