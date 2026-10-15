@@ -116,8 +116,14 @@ const createProjectValidators = [
 
   check('status').optional().isIn(ProjectStatuses),
 
+  // Required on create (docs section "Automatic Project ID Generation" - sector-based numbering):
+  // the project number's prefix is derived from the sector, so a project can no longer be created
+  // without one. Still optional on update (see updateProjectValidators below) - an existing
+  // project's sector can be cleared/changed without it ever affecting its already-generated
+  // number.
   check('sector')
-    .optional({ nullable: true })
+    .notEmpty()
+    .withMessage('Sector is required')
     .custom(async value => {
       await resolveProjectSector(value);
       return true;

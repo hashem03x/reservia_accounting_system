@@ -223,6 +223,14 @@ export default function Vendor() {
                   {translate("Email", "البريد الإلكتروني")}: {vendor.contact?.email}
                 </p>
               )}
+              {/* Payment Terms (docs section "Payment Terms for Customers and Vendors") -
+                  governs the due date calculated for this vendor's future Purchase Invoices. */}
+              <p>
+                {translate("Payment Terms", "شروط الدفع")}: {vendor.paymentTerms || "Net 30"}
+                {vendor.paymentTerms === "Custom" && vendor.customPaymentDays != null
+                  ? ` (${vendor.customPaymentDays} ${translate("days", "يوم")})`
+                  : ""}
+              </p>
             </section>
 
             {/* Address */}

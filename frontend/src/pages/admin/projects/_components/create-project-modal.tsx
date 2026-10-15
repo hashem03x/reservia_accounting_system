@@ -51,6 +51,12 @@ export default function CreateProjectModal({
         setError(translate("Customer is required.", "العميل مطلوب."));
         return;
       }
+      // Sector is now required (docs section "Automatic Project ID Generation" - the project
+      // number's prefix is derived from the sector).
+      if (!sector) {
+        setError(translate("Sector is required.", "القسم مطلوب."));
+        return;
+      }
 
       // Drop any Average Cost row the user added but never finished filling in (no account
       // selected yet) - partial rows aren't sent at all, rather than sent incomplete.
@@ -67,7 +73,7 @@ export default function CreateProjectModal({
           projectManager,
           startDate,
           deliveryDate,
-          sector: sector || undefined,
+          sector,
           customer: customer._id,
           averageCostLines: cleanedAverageCostLines,
         },
@@ -152,7 +158,7 @@ export default function CreateProjectModal({
           />
         </div>
 
-        <SectorSelect value={sector} onChange={setSector} />
+        <SectorSelect value={sector} onChange={setSector} required />
 
         <CustomerSearch
           customer={customer}
@@ -165,7 +171,7 @@ export default function CreateProjectModal({
 
         <AverageCostEditor lines={averageCostLines} setLines={setAverageCostLines} />
 
-        <Button type="submit" loading={loading} disabled={!!deliveryBeforeStartError || !customer} mt="md">
+        <Button type="submit" loading={loading} disabled={!!deliveryBeforeStartError || !customer || !sector} mt="md">
           {translate("Create Project", "إنشاء مشروع")}
         </Button>
       </form>
