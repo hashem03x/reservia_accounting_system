@@ -237,6 +237,7 @@ export function useAdminNavigation(): NavSection[] {
         title: nav.administration,
         items: [
           { key: "backup", to: admin(paths.backup), label: nav.backupRestore, Icon: navIcons.Backup, adminOnly: true },
+          { key: "users", to: admin(paths.users), label: nav.users, Icon: navIcons.Users, adminOnly: true },
         ],
       },
     ];

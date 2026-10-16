@@ -139,6 +139,7 @@ export default function LanguageProvider({ children }: { children: React.ReactNo
       assetsExpenses: translate("Assets & Expenses", "الأصول والمصروفات"),
       reports: translate("Reports", "التقارير"),
       dashboard: translate("Dashboard", "لوحة التحكم"),
+      users: translate("Users", "المستخدمين"),
       trialBalance: translate("Trial Balance", "ميزان المراجعة"),
       generalLedger: translate("General Ledger", "دفتر الأستاذ العام"),
       projectProfitAnalysis: translate("Project Profit Analysis", "تحليل ربح المشروعات"),

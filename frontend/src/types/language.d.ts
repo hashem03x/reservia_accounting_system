@@ -46,6 +46,7 @@ export interface LanguageContextProps {
       showSection: string;
       administration: string;
       backupRestore: string;
+      users:string;
     };
     pages: {
       home: string;
