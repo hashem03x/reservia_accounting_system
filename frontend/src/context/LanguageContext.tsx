@@ -51,6 +51,7 @@ export const LanguageContext = createContext<LanguageContextProps>({
       showSection: "",
       administration: "",
       backupRestore: "",
+      users:"",
     },
     pages: {
       home: "",
