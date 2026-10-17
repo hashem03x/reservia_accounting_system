@@ -1,4 +1,5 @@
 const multer = require('multer');
+const os = require('os');
 const ApiError = require('../utils/apiError');
 const path = require('path');
 
@@ -24,10 +25,16 @@ const multerOptions = () => {
   return upload;
 };
 
+// `os.tmpdir()` (not a relative `uploads/import` path) - on Vercel the deployed filesystem is
+// read-only outside `/tmp` (see backup.service.js's own identical constraint), so a relative path
+// would ENOENT on every request in production even though it works locally. Every CSV importer's
+// preview/commit pair already re-uploads and independently re-validates the file on each request
+// (docs section "Import Safety") rather than relying on a file surviving between requests, so a
+// per-request-ephemeral temp directory never breaks that contract.
 const uploadTempFile = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
-      cb(null, 'uploads/import');
+      cb(null, os.tmpdir());
     },
     filename: (req, file, cb) => {
       // Generate unique filename with original extension

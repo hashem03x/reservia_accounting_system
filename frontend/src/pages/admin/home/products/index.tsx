@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useDisclosure } from "@mantine/hooks";
 import { useDebounce } from "use-debounce";
 import { useLanguage } from "@/context/LanguageContext";
 import { useMainCategories } from "@/context/MainCategoriesContext";
@@ -21,7 +22,8 @@ import { formatDate } from "@/utils/helpers/date-formaters";
 import { Badge, Button, Select, Table, TextInput } from "@mantine/core";
 import { solidIcons, outlineIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
-import ImportButton from "@/components/global/import-button";
+import ImportWizardModal from "@/components/global/csv-import/import-wizard-modal";
+import DownloadSampleButton from "@/components/global/csv-import/download-sample-button";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import NoResultsSection from "@/components/ui/sections/no-results";
@@ -129,6 +131,7 @@ export default function Products() {
 
   const canICreateProducts = useRef(useHasPermission(resources.products, actions.create)).current; // Ref to avoid re-renders
   const canIUpdateProducts = useHasPermission(resources.products, actions.update);
+  const [importOpened, { open: openImport, close: closeImport }] = useDisclosure(false);
   const [pucProduct, setPucProduct] = useState<{ id: string; name: string } | null>(null);
   const isAdminRef = useRef(loggedInUser ? isAdmin(loggedInUser.role) : false); // Ref to avoid re-renders
   const AmIAdmin = loggedInUser && isAdminRef.current;
@@ -146,7 +149,10 @@ export default function Products() {
         sideElements: canICreateProducts && (
           <div className="flex items-center gap-2">
             <GlobalDiscount singleProduct={null} />
-            <ImportButton url="import/products" callback={handleLoadProducts} />
+            <DownloadSampleButton url="import/products/sample" filename="reservia-products-template.csv" />
+            <Button onClick={openImport} variant="light" color="grape" leftSection={<solidIcons.ArrowUp />}>
+              {translate("Import CSV", "استيراد CSV")}
+            </Button>
             <Link to={`${paths.new}`}>
               <Button variant="light" color="teal" leftSection={<solidIcons.Plus />}>
                 {translate("Add New Product", "إضافة منتج جديد")}
@@ -410,6 +416,15 @@ export default function Products() {
           onDone={() => handleLoadProducts()}
         />
       )}
+
+      <ImportWizardModal
+        opened={importOpened}
+        close={closeImport}
+        title={translate("Import Products from CSV", "استيراد المنتجات من CSV")}
+        previewUrl="import/products/preview"
+        commitUrl="import/products/commit"
+        onImported={handleLoadProducts}
+      />
     </AdminLayoutBox>
   );
 }
