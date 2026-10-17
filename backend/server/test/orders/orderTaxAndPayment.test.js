@@ -12,6 +12,7 @@ const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_te
 
 let SalesOrder;
 let PurchaseOrder;
+let Requisition;
 let Payment;
 let Product;
 let Warehouse;
@@ -40,6 +41,7 @@ before(async () => {
   Warehouse = require('../../models/inventory/warehouseModel');
   SalesOrder = require('../../models/sales/salesOrderModel');
   PurchaseOrder = require('../../models/vendor/purchaseOrder');
+  Requisition = require('../../models/vendor/requisitionModel');
   Payment = require('../../models/vendor/paymentModel');
   Product = require('../../models/inventory/productModel');
   Vendor = require('../../models/vendor/vendor');
@@ -58,6 +60,7 @@ beforeEach(async () => {
   await Promise.all([
     SalesOrder.deleteMany({}),
     PurchaseOrder.deleteMany({}),
+    Requisition.deleteMany({}),
     Payment.deleteMany({}),
     Product.deleteMany({}),
     Warehouse.deleteMany({}),
@@ -81,6 +84,13 @@ beforeEach(async () => {
   cashAccount = await ChartOfAccount.create({ code: `CASH-${Date.now()}`, name: 'Main Cash', type: 'asset', state: 'cash' });
   revenueAccount = await ChartOfAccount.create({ code: `REV-${Date.now()}`, name: 'Revenue', type: 'revenue' });
 });
+
+async function openRequisitionFor(vendorId, projectId, amount) {
+  const requisition = await Requisition.create({ vendorId, project: projectId, items: [{ description: 'x', quantity: 1, unitPrice: amount }] });
+  requisition.status = 'open';
+  await requisition.save();
+  return requisition;
+}
 
 // ===================== VAT / Withholding Tax =====================
 
@@ -119,10 +129,12 @@ test('SalesOrder: VAT + Withholding Tax (100,000 @ 14% VAT, 1% withholding) -> g
 });
 
 test('PurchaseOrder: VAT + Withholding Tax (250,000 @ 14% VAT, 3% withholding) -> grandTotal 277,500', async () => {
+  const requisition = await openRequisitionFor(vendor._id, project._id, 250000);
   const order = await PurchaseOrder.create({
     vendorId: vendor._id,
     warehouseId: warehouse._id,
     project: project._id,
+    requisition: requisition._id,
     vatPercentage: 14,
     withholdingTaxPercentage: 3,
     items: [{ productId: product._id, unitPrice: 250000, starterQuantity: 1 }],
@@ -205,22 +217,26 @@ test('SalesOrder: paymentMethod "account" with a non-Cash/Cash-Equivalent accoun
 });
 
 test('PurchaseOrder: paymentMethod "account" with an eligible Cash account succeeds, ineligible is rejected', async () => {
+  const requisitionA = await openRequisitionFor(vendor._id, project._id, 500);
   const order = await PurchaseOrder.create({
     vendorId: vendor._id,
     warehouseId: warehouse._id,
     project: project._id,
+    requisition: requisitionA._id,
     paymentMethod: 'account',
     paymentAccount: cashAccount._id,
     items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
   });
   assert.equal(order.paymentAccount._id.toString(), cashAccount._id.toString());
 
+  const requisitionB = await openRequisitionFor(vendor._id, project._id, 500);
   await assert.rejects(
     () =>
       PurchaseOrder.create({
         vendorId: vendor._id,
         warehouseId: warehouse._id,
         project: project._id,
+        requisition: requisitionB._id,
         paymentMethod: 'account',
         paymentAccount: revenueAccount._id,
         items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
@@ -230,10 +246,12 @@ test('PurchaseOrder: paymentMethod "account" with an eligible Cash account succe
 });
 
 test('PurchaseOrder: "advanced_payment" is now a valid paymentMethod (vendor-side Advanced Payment consumption)', async () => {
+  const requisition = await openRequisitionFor(vendor._id, project._id, 500);
   const order = await PurchaseOrder.create({
     vendorId: vendor._id,
     warehouseId: warehouse._id,
     project: project._id,
+    requisition: requisition._id,
     paymentMethod: 'advanced_payment',
     items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
   });
@@ -242,12 +260,14 @@ test('PurchaseOrder: "advanced_payment" is now a valid paymentMethod (vendor-sid
 });
 
 test('PurchaseOrder: paymentAccount cannot be set unless paymentMethod is "account"', async () => {
+  const requisition = await openRequisitionFor(vendor._id, project._id, 500);
   await assert.rejects(
     () =>
       PurchaseOrder.create({
         vendorId: vendor._id,
         warehouseId: warehouse._id,
         project: project._id,
+        requisition: requisition._id,
         paymentMethod: 'advanced_payment',
         paymentAccount: cashAccount._id,
         items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1 }],
@@ -257,12 +277,14 @@ test('PurchaseOrder: paymentAccount cannot be set unless paymentMethod is "accou
 });
 
 test('PurchaseOrder: advancedPayment cannot be set unless paymentMethod is "advanced_payment"', async () => {
+  const requisition = await openRequisitionFor(vendor._id, project._id, 500);
   await assert.rejects(
     () =>
       PurchaseOrder.create({
         vendorId: vendor._id,
         warehouseId: warehouse._id,
         project: project._id,
+        requisition: requisition._id,
         paymentMethod: 'account',
         paymentAccount: cashAccount._id,
         advancedPayment: new mongoose.Types.ObjectId(),
@@ -273,12 +295,14 @@ test('PurchaseOrder: advancedPayment cannot be set unless paymentMethod is "adva
 });
 
 test('PurchaseOrder: item costAccount must be a "cogs"-type account when set', async () => {
+  const requisition = await openRequisitionFor(vendor._id, project._id, 500);
   await assert.rejects(
     () =>
       PurchaseOrder.create({
         vendorId: vendor._id,
         warehouseId: warehouse._id,
         project: project._id,
+        requisition: requisition._id,
         items: [{ productId: product._id, unitPrice: 500, starterQuantity: 1, costAccount: cashAccount._id }],
       }),
     /not eligible as an item cost account/

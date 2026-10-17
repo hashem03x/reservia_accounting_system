@@ -11,7 +11,7 @@ const mongoose = require('mongoose');
 
 const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_test_po_service_lines';
 
-let Warehouse, PurchaseOrder, Product, Vendor, ChartOfAccount, Project, JournalEntry;
+let Warehouse, PurchaseOrder, Requisition, Product, Vendor, ChartOfAccount, Project, JournalEntry;
 let applyPurchaseToProducts, postPurchaseOrderJournalEntries;
 let transactionsSupported = true;
 let accounts, vendor, warehouse, project;
@@ -26,6 +26,7 @@ before(async () => {
   // Warehouse before Payment (see orderTaxAndPayment.test.js for the circular-require note).
   Warehouse = require('../../models/inventory/warehouseModel');
   PurchaseOrder = require('../../models/vendor/purchaseOrder');
+  Requisition = require('../../models/vendor/requisitionModel');
   require('../../models/vendor/paymentModel');
   Product = require('../../models/inventory/productModel');
   Vendor = require('../../models/vendor/vendor');
@@ -54,7 +55,7 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await Promise.all([PurchaseOrder.deleteMany({}), Product.deleteMany({}), Vendor.deleteMany({}), ChartOfAccount.deleteMany({}), Project.deleteMany({}), JournalEntry.deleteMany({}), Warehouse.deleteMany({})]);
+  await Promise.all([PurchaseOrder.deleteMany({}), Requisition.deleteMany({}), Product.deleteMany({}), Vendor.deleteMany({}), ChartOfAccount.deleteMany({}), Project.deleteMany({}), JournalEntry.deleteMany({}), Warehouse.deleteMany({})]);
   accounts = {};
   const codeToType = {
     [AutomaticJournalAccountCodes.materialsInventory]: 'asset',
@@ -84,6 +85,12 @@ const createProduct = (name, cost, quantity) =>
     subcategory: new mongoose.Types.ObjectId(),
     stock: [{ warehouse: warehouse._id, quantity }],
   });
+const openRequisitionFor = async (vendorId, projectId, amount, session) => {
+  const [requisition] = await Requisition.create([{ vendorId, project: projectId, items: [{ description: 'x', quantity: 1, unitPrice: amount }] }], { session });
+  requisition.status = 'open';
+  await requisition.save({ session });
+  return requisition;
+};
 const createService = (name, price, puc) =>
   Product.create({ type: 'service', title: { en: name, ar: `${name} ع` }, description: { en: 'd', ar: 'د' }, price, durationValue: 1, durationUnit: 'month', pucAccount: puc._id });
 
@@ -109,7 +116,8 @@ test('mixed PO (Product A, Service A, Product B, Service B): lines persist, tota
   let order;
   let entries;
   await session.withTransaction(async () => {
-    [order] = await PurchaseOrder.create([{ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, vatPercentage: 14, items }], { session });
+    const requisition = await openRequisitionFor(vendor._id, project._id, 2900, session);
+    [order] = await PurchaseOrder.create([{ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, requisition: requisition._id, vatPercentage: 14, items }], { session });
     await applyPurchaseToProducts(order, warehouse._id.toString(), session);
     entries = await postPurchaseOrderJournalEntries(order, session);
   });
@@ -164,7 +172,8 @@ test('a no-tax PO with only a Service: VAT/WHT stay 0 and no tax lines are poste
   let order;
   let entries;
   await session.withTransaction(async () => {
-    [order] = await PurchaseOrder.create([{ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, items: [{ productId: service._id, unitPrice: 750, starterQuantity: 2 }] }], { session });
+    const requisition = await openRequisitionFor(vendor._id, project._id, 1500, session);
+    [order] = await PurchaseOrder.create([{ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, requisition: requisition._id, items: [{ productId: service._id, unitPrice: 750, starterQuantity: 2 }] }], { session });
     await applyPurchaseToProducts(order, warehouse._id.toString(), session);
     entries = await postPurchaseOrderJournalEntries(order, session);
   });

@@ -85,6 +85,13 @@ export function useAdminNavigation(): NavSection[] {
             Icon: navIcons.SalesOrders,
           },
           {
+            key: "purchaseRequisitions",
+            to: admin(paths.home, paths.purchaseRequisitions),
+            label: pages.purchaseRequisitions,
+            Icon: navIcons.PurchaseRequisitions,
+            resource: resources.purchaseRequisitions,
+          },
+          {
             key: "purchaseOrders",
             to: admin(paths.home, paths.purchaseOrders),
             label: pages.purchaseOrders,

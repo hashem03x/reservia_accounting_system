@@ -52,6 +52,7 @@ export interface LanguageContextProps {
       home: string;
       vendors: string;
       purchaseOrders: string;
+      purchaseRequisitions: string;
       products: string;
       variants: string;
       salesOrders: string;

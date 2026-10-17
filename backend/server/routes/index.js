@@ -86,6 +86,11 @@ const mountRoutes = app => {
   // po route
   app.use('/api/v1/purchaseOrder', require('./po/poRoute'));
 
+  // Purchase Orders (user-facing name) - the new, purely operational pre-invoice document.
+  // Internally named "requisitions" to avoid colliding with the route above, which the UI now
+  // calls "Purchase Invoices" (see models/vendor/requisitionModel.js's header comment).
+  app.use('/api/v1/requisitions', require('./vendor/requisitionRoute'));
+
   // payment route
   app.use('/api/v1/payment', require('./po/paymentRoute'));
 

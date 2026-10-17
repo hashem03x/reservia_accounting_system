@@ -220,6 +220,7 @@ export const navIcons = {
   Sectors: Hi2.HiOutlineBuildingOffice2,
   SalesOrders: Hi2.HiOutlineShoppingCart,
   PurchaseOrders: Hi2.HiOutlineClipboardDocumentList,
+  PurchaseRequisitions: Hi2.HiOutlineClipboardDocumentCheck,
   Customers: Hi2.HiOutlineUsers,
   Vendors: Hi2.HiOutlineTruck,
   Products: Hi2.HiOutlineCube,

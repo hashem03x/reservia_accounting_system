@@ -35,6 +35,7 @@ export type Resource =
   | "vendors"
   | "products"
   | "purchaseOrders"
+  | "purchaseRequisitions"
   | "salesOrders"
   | "customers"
   | "expenses"

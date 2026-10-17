@@ -46,6 +46,9 @@ export type PurchaseOrder = OrderFinancials & {
   // The PO Supplier IS this Vendor; `vendorNumber` is its Sub Account on the PO's journal entries.
   vendor: { _id: string; name: string; vendorNumber?: number | null; contact?: { phone: string; email?: string } } | null;
   warehouseId: string;
+  // The Purchase Order this Invoice was created against (docs section "Link Purchase Invoices to
+  // Purchase Orders") - `null` only for a historical invoice created before this link existed.
+  requisition?: { _id: string; code: string; status: string; amount: number; invoicedAmount: number } | null;
   items: PurchaseOrderItem[];
   starterTotalAmount: number;
   // Pre-tax SUBTOTAL (legacy field name) - NOT the order amount; see grandTotal.

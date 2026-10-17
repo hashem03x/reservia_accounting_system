@@ -49,6 +49,11 @@ async function getNextOrderNumber(sequenceName, rangeMin, rangeMax, session) {
 
 const SALES_ORDER_SEQUENCE_NAME = 'salesOrderCode';
 const PURCHASE_ORDER_SEQUENCE_NAME = 'purchaseOrderCode';
+// The new, separate pre-invoice "Purchase Order" document (models/vendor/requisitionModel.js -
+// internally named Requisition to avoid colliding with the existing PurchaseOrder/Invoice model,
+// see that file's header comment) gets its own independent sequence - never shares a counter with
+// the Invoice codes above.
+const REQUISITION_SEQUENCE_NAME = 'requisitionCode';
 // 12-digit codes - keep the same practical range the old countDocuments()+1 implementation could
 // reach (well under 10^12), just atomic now.
 const RANGE_MIN = 1;
@@ -62,10 +67,16 @@ async function getNextPurchaseOrderCode(session) {
   return getNextOrderNumber(PURCHASE_ORDER_SEQUENCE_NAME, RANGE_MIN, RANGE_MAX, session);
 }
 
+async function getNextRequisitionCode(session) {
+  return getNextOrderNumber(REQUISITION_SEQUENCE_NAME, RANGE_MIN, RANGE_MAX, session);
+}
+
 module.exports = {
   getNextSalesOrderCode,
   getNextPurchaseOrderCode,
+  getNextRequisitionCode,
   formatOrderCode,
   SALES_ORDER_SEQUENCE_NAME,
   PURCHASE_ORDER_SEQUENCE_NAME,
+  REQUISITION_SEQUENCE_NAME,
 };

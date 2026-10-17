@@ -514,6 +514,20 @@ async function returnPurchaseOrder({ purchaseOrderId, items, warehouseId, refund
     // (the service side takes the exact remainder - the same split the receipt entries used).
     const delta = { net: round2(before.net - (order.totalAmount || 0)), vat: round2(before.vat - (order.vatAmount || 0)), wht: round2(before.wht - (order.withholdingTaxAmount || 0)) };
     const returnedTotal = round2(before.grandTotal - (order.grandTotal || 0));
+
+    // Recalculates the linked Purchase Order's progress correctly when a return reduces this
+    // invoice's amount (docs section "Recalculate progress correctly when a linked invoice is
+    // cancelled, reversed, or otherwise excluded") - decrements `invoicedAmount` by the same
+    // pre-tax amount just returned, guarded so it can never go negative. No-ops (and never throws)
+    // when this invoice predates Purchase Order linking (`order.requisition` is null).
+    if (order.requisition && delta.net > 0) {
+      const Requisition = require('../../models/vendor/requisitionModel'); // eslint-disable-line global-require
+      await Requisition.findOneAndUpdate(
+        { _id: order.requisition, $expr: { $gte: ['$invoicedAmount', delta.net] } },
+        { $inc: { invoicedAmount: -delta.net } },
+        { session }
+      );
+    }
     const physicalNet = round2(physical.reduce((s, l) => s + l.amount, 0));
     const share = delta.net > 0 ? physicalNet / round2(physicalNet + services.reduce((s, l) => s + l.amount, 0)) : 0;
     const part = {

@@ -165,10 +165,15 @@ test('SalesOrder: dueDate is computed at creation from the customer\'s CURRENT p
 });
 
 test('PurchaseOrder: dueDate is computed at creation from the vendor\'s CURRENT payment terms', async () => {
+  const Requisition = require('../../models/vendor/requisitionModel');
+  const requisition = await Requisition.create({ vendorId: vendor._id, project: project._id, items: [{ description: 'x', quantity: 1, unitPrice: 1000 }] });
+  requisition.status = 'open';
+  await requisition.save();
   const order = await PurchaseOrder.create({
     vendorId: vendor._id,
     warehouseId: warehouse._id,
     project: project._id,
+    requisition: requisition._id,
     items: [{ productId: product._id, unitPrice: 1000, starterQuantity: 1 }],
   });
   assert.ok(order.dueDate, 'dueDate must be set for a new order');

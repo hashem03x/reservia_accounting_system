@@ -6,6 +6,7 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const Vendor = require('../../models/vendor/vendor');
 const Warehouse = require('../../models/inventory/warehouseModel');
 const Project = require('../../models/project/projectModel');
+const Requisition = require('../../models/vendor/requisitionModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { vatAndWithholdingTaxValidators } = require('./taxValidators');
 const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
@@ -27,6 +28,16 @@ const createPurchaseOrderValidate = [
     body('project').notEmpty().withMessage('A project is required to create a Purchase Invoice').isMongoId().withMessage('Project ID must be a mongoID').custom(async value => {
         const exists = await Project.exists({ _id: value });
         if (!exists) throw new Error('Project does not exist');
+        return true;
+    }),
+
+    // Every new Purchase Invoice must reference an eligible Purchase Order (docs section "Link
+    // Purchase Invoices to Purchase Orders") - fast pre-check; the model's own pre('save') hook
+    // (purchaseOrder.js) is the real backstop (it also checks status/vendor/project match and does
+    // the atomic amount guard, none of which a request-shape-only validator can safely do).
+    body('requisition').notEmpty().withMessage('A Purchase Order is required to create a Purchase Invoice').isMongoId().withMessage('Purchase Order ID must be a mongoID').custom(async value => {
+        const exists = await Requisition.exists({ _id: value });
+        if (!exists) throw new Error('Purchase Order does not exist');
         return true;
     }),
 

@@ -12,6 +12,7 @@ const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_te
 let Project;
 let SalesOrder;
 let PurchaseOrder;
+let Requisition;
 let ChartOfAccount;
 let JournalEntry;
 let User;
@@ -30,6 +31,7 @@ before(async () => {
   Project = require('../../models/project/projectModel');
   SalesOrder = require('../../models/sales/salesOrderModel');
   PurchaseOrder = require('../../models/vendor/purchaseOrder');
+  Requisition = require('../../models/vendor/requisitionModel');
   ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
   JournalEntry = require('../../models/accounting/journalEntryModel');
   User = require('../../models/userModel');
@@ -52,6 +54,7 @@ beforeEach(async () => {
     Project.deleteMany({}),
     SalesOrder.deleteMany({}),
     PurchaseOrder.deleteMany({}),
+    Requisition.deleteMany({}),
     ChartOfAccount.deleteMany({}),
     JournalEntry.deleteMany({}),
     User.deleteMany({}),
@@ -64,6 +67,13 @@ beforeEach(async () => {
   customer = await User.create({ name: 'Dashboard Customer', email: `dash-customer-${Date.now()}@example.com`, role: 'user', type: 'online' });
   vendor = await Vendor.create({ name: 'Dashboard Vendor', contact: { phone: `010${Date.now()}`.slice(0, 11) } });
 });
+
+async function openRequisitionFor(vendorId, projectId, amount) {
+  const requisition = await Requisition.create({ vendorId, project: projectId, items: [{ description: 'x', quantity: 1, unitPrice: amount }] });
+  requisition.status = 'open';
+  await requisition.save();
+  return requisition;
+}
 
 function fakeSalesOrder(overrides = {}) {
   return {
@@ -156,10 +166,12 @@ test('purchases.total uses each Purchase Order\'s final Total Amount (incl. VAT,
   const warehouse = await Warehouse.create({ name: 'Dashboard VAT Warehouse', location: 'Cairo' });
 
   // 100,000 + 14% VAT (14,000) - 1% WHT (1,000) = 113,000
+  const requisition = await openRequisitionFor(vendor._id, project._id, 100000);
   await PurchaseOrder.create({
     vendorId: vendor._id,
     warehouseId: warehouse._id,
     project: project._id,
+    requisition: requisition._id,
     vatPercentage: 14,
     withholdingTaxPercentage: 1,
     items: [{ productId: new mongoose.Types.ObjectId(), unitPrice: 100000, starterQuantity: 1 }],
@@ -178,8 +190,10 @@ test('purchases.total sums every Purchase Order (no cancellation concept exists 
   });
   const warehouse = await Warehouse.create({ name: 'Dashboard Warehouse', location: 'Cairo' });
 
-  await PurchaseOrder.create({ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, items: [{ productId: new mongoose.Types.ObjectId(), unitPrice: 50000, starterQuantity: 1 }] });
-  await PurchaseOrder.create({ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, items: [{ productId: new mongoose.Types.ObjectId(), unitPrice: 25000, starterQuantity: 1 }] });
+  const requisitionA = await openRequisitionFor(vendor._id, project._id, 50000);
+  const requisitionB = await openRequisitionFor(vendor._id, project._id, 25000);
+  await PurchaseOrder.create({ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, requisition: requisitionA._id, items: [{ productId: new mongoose.Types.ObjectId(), unitPrice: 50000, starterQuantity: 1 }] });
+  await PurchaseOrder.create({ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, requisition: requisitionB._id, items: [{ productId: new mongoose.Types.ObjectId(), unitPrice: 25000, starterQuantity: 1 }] });
 
   const summary = await getDashboardSummaryData();
   assert.equal(summary.purchases.total, 75000);

@@ -139,6 +139,7 @@ function hasSamePermissions(permissions1: Permission[], permissions2: Permission
 const allPossiblePermissions: Record<Resource, Action[]> = {
   vendors: ["create", "read", "update"],
   purchaseOrders: ["create", "read", "update"],
+  purchaseRequisitions: ["create", "read", "update"],
   products: ["create", "read", "update"],
   salesOrders: ["create", "read", "update"],
   customers: ["create", "read", "update"],

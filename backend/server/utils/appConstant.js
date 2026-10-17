@@ -41,6 +41,10 @@ exports.Resources = {
   customers: 'customers',
   purchaseOrders: 'purchaseOrders',
   salesOrders: 'salesOrders',
+  // The new pre-invoice "Purchase Order" document (internally named Requisition to avoid
+  // colliding with the existing `purchaseOrders` resource above, which the UI now labels
+  // "Purchase Invoices" - see models/vendor/requisitionModel.js's header comment).
+  purchaseRequisitions: 'purchaseRequisitions',
   inventoryTransfers: 'inventoryTransfers',
   expenses: 'expenses',
   users: 'users',
@@ -80,6 +84,7 @@ exports.adminPermission = [
   { resource: 'customers', actions: ['create', 'delete', 'read', 'update'] },
   { resource: 'purchaseOrders', actions: ['create', 'read', 'update'] },
   { resource: 'salesOrders', actions: ['create', 'read', 'update'] },
+  { resource: 'purchaseRequisitions', actions: ['create', 'read', 'update'] },
   { resource: 'inventoryTransfers', actions: ['create', 'delete', 'read', 'update'] },
   { resource: 'expenses', actions: [] },
   { resource: 'users', actions: ['create', 'delete', 'read', 'update'] },
@@ -97,6 +102,7 @@ exports.adminPermission = [
 exports.moderatorPermission = [
   { resource: 'vendors', actions: ['create', 'read', 'update'] },
   { resource: 'purchaseOrders', actions: ['create', 'read', 'update'] },
+  { resource: 'purchaseRequisitions', actions: ['create', 'read', 'update'] },
   { resource: 'products', actions: ['create', 'read', 'update'] },
   { resource: 'salesOrders', actions: ['create', 'read', 'update'] },
   { resource: 'customers', actions: ['create', 'read', 'update'] },
@@ -125,6 +131,7 @@ exports.operatorPermission = [
   { resource: 'transactions', actions: ['read'] },
   { resource: 'purchaseOrders', actions: ['create', 'read', 'update'] },
   { resource: 'salesOrders', actions: ['create', 'read', 'update'] },
+  { resource: 'purchaseRequisitions', actions: ['create', 'read', 'update'] },
   { resource: 'databaseExport', actions: [] },
   { resource: 'projects', actions: ['read'] },
   { resource: 'accounts', actions: ['read'] },
@@ -161,6 +168,7 @@ exports.defaultPermissions = [
   { resource: 'customers', actions: ['read'] },
   { resource: 'purchaseOrders', actions: ['read'] },
   { resource: 'salesOrders', actions: ['read'] },
+  { resource: 'purchaseRequisitions', actions: ['read'] },
   { resource: 'expenses', actions: [] },
   { resource: 'inventories', actions: ['read'] },
   { resource: 'inventoryTransfers', actions: ['read'] },

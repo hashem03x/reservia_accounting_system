@@ -30,6 +30,9 @@ import AP_Vendor from "@/pages/admin/home/vendors/[id]";
 import AP_PurchaseOrders from "@/pages/admin/home/purchase-orders";
 import AP_PurchaseOrder from "@/pages/admin/home/purchase-orders/[id]";
 import AP_NewPurchaseOrder from "@/pages/admin/home/purchase-orders/new";
+import AP_PurchaseRequisitions from "@/pages/admin/home/purchase-requisitions";
+import AP_PurchaseRequisition from "@/pages/admin/home/purchase-requisitions/[id]";
+import AP_NewPurchaseRequisition from "@/pages/admin/home/purchase-requisitions/new";
 import AP_Products from "@/pages/admin/home/products";
 import AP_Product from "@/pages/admin/home/products/[id]";
 import AP_ProductTransactions from "@/pages/admin/home/products/[id]/transactions";
@@ -128,6 +131,13 @@ export default function App() {
                     <Route element={<ResourceGuard resource={resources.vendors} action={actions.read} />}>
                       <Route path={paths.vendors} element={<AP_Vendors />} />
                       <Route path={paths.vendors + "/:id"} element={<AP_Vendor />} />
+                    </Route>
+                    <Route element={<ResourceGuard resource={resources.purchaseRequisitions} action={actions.read} />}>
+                      <Route path={paths.purchaseRequisitions} element={<AP_PurchaseRequisitions />} />
+                      <Route path={paths.purchaseRequisitions + "/:id"} element={<AP_PurchaseRequisition />} />
+                      <Route element={<ResourceGuard resource={resources.purchaseRequisitions} action={actions.create} />}>
+                        <Route path={paths.purchaseRequisitions + "/" + paths.new} element={<AP_NewPurchaseRequisition />} />
+                      </Route>
                     </Route>
                     <Route element={<ResourceGuard resource={resources.purchaseOrders} action={actions.read} />}>
                       <Route path={paths.purchaseOrders} element={<AP_PurchaseOrders />} />

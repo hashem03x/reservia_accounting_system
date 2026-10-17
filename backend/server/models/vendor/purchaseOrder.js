@@ -6,6 +6,7 @@ const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 require('../accounting/chartOfAccountModel');
 require('../payments/advancedPaymentModel');
 require('./vendor');
+require('./requisitionModel');
 const { computeOrderTotals } = require('../../utils/orderTotals');
 
 // const { createCanvas } = require('canvas');
@@ -90,6 +91,12 @@ const purchaseOrderSchema = new Schema(
     },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     notes: { type: String },
+    // The "Purchase Order" (Requisition model - see requisitionModel.js's header comment for the
+    // naming) this Purchase Invoice was created against (docs section "Link Purchase Invoices to
+    // Purchase Orders") - required for every NEW invoice (enforced in the pre('save') hook below,
+    // scoped to `isNew`, same pattern as `project`). `null` forever for a historical invoice
+    // created before this link existed - never backfilled, never forced to re-save with one.
+    requisition: { type: Schema.Types.ObjectId, ref: 'Requisition', default: null },
     // Payment Terms (docs section "Payment Terms for Customers and Vendors") - mirrors
     // SalesOrder.dueDate exactly: computed server-side at creation time from the vendor's CURRENT
     // `paymentTerms`/`customPaymentDays`, then snapshotted permanently - a later change to the
@@ -170,6 +177,30 @@ purchaseOrderSchema.pre('save', async function (next) {
       throw new Error('A project is required to create a Purchase Invoice.');
     }
 
+    // Every NEW Purchase Invoice must reference an eligible Purchase Order (docs section "Link
+    // Purchase Invoices to Purchase Orders") - fast, specific pre-checks here (vendor/project
+    // match, status); the actual atomic amount guard runs further below, after this invoice's own
+    // totalAmount is computed. A historical invoice (not `isNew`) is never affected.
+    if (this.isNew) {
+      if (!this.requisition) {
+        throw new Error('A Purchase Order is required to create a Purchase Invoice.');
+      }
+      const Requisition = this.model('Requisition');
+      const requisition = await Requisition.findById(this.requisition).session(this.$session());
+      if (!requisition) throw new Error('The selected Purchase Order does not exist.');
+      if (requisition.status !== 'open') {
+        throw new Error('The selected Purchase Order is not open for invoicing (it is a draft or has been cancelled).');
+      }
+      const requisitionVendorId = (requisition.vendorId?._id || requisition.vendorId)?.toString();
+      if (requisitionVendorId !== (this.vendorId?._id || this.vendorId)?.toString()) {
+        throw new Error("This Purchase Invoice's vendor does not match its linked Purchase Order's vendor.");
+      }
+      const requisitionProjectId = (requisition.project?._id || requisition.project)?.toString();
+      if (requisitionProjectId !== (this.project?._id || this.project)?.toString()) {
+        throw new Error("This Purchase Invoice's project does not match its linked Purchase Order's project.");
+      }
+    }
+
     // Due date, from this vendor's CURRENT payment terms, snapshotted once at creation (docs
     // section "Payment Terms for Customers and Vendors") - never recomputed on a later re-save,
     // and never overwritten if the client already supplied one.
@@ -230,6 +261,33 @@ purchaseOrderSchema.pre('save', async function (next) {
 
     this.starterTotalAmount = calculateStarterTotalAmount(this.items);
     this.totalAmount = calculateTotalAmount(this.items);
+
+    // Atomically increments the linked Purchase Order's invoicedAmount - guarded so concurrent
+    // invoice creation can never jointly exceed the Purchase Order's amount (docs section "Prevent
+    // duplicate or concurrent invoice creation from exceeding the remaining PO balance"), the same
+    // `$expr`-guarded-update shape as every atomic counter in this codebase
+    // (services/shared/orderNumberService.js). Uses this invoice's pre-tax `totalAmount` (not
+    // `grandTotal`) since the Purchase Order's own `amount` has no VAT/withholding concept either
+    // (docs section "Use comparable pre-tax amounts... do not include taxes, withholding, or
+    // shipping"). Runs inside this save's own session, so it commits together with the invoice or
+    // not at all - never a second, separate write that could be committed alone.
+    if (this.isNew && this.requisition) {
+      const Requisition = this.model('Requisition');
+      const updated = await Requisition.findOneAndUpdate(
+        {
+          _id: this.requisition,
+          status: 'open',
+          $expr: { $lte: [{ $add: ['$invoicedAmount', this.totalAmount] }, '$amount'] },
+        },
+        { $inc: { invoicedAmount: this.totalAmount } },
+        { session: this.$session() }
+      );
+      if (!updated) {
+        throw new Error(
+          'This Purchase Invoice amount exceeds the remaining balance of its linked Purchase Order, or the Purchase Order is no longer open.'
+        );
+      }
+    }
 
     // Same canonical formula as SalesOrder (utils/orderTotals.js).
     const totals = computeOrderTotals({
@@ -297,6 +355,11 @@ purchaseOrderSchema.pre(/^find/, function () {
 
   this.populate({
     path: 'advancedPayment',
+  });
+
+  this.populate({
+    path: 'requisition',
+    select: 'code status amount invoicedAmount',
   });
 });
 

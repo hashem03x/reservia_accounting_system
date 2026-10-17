@@ -7,14 +7,16 @@ import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { Vendor } from "@/types/vendor";
 import { Project } from "@/types/project";
+import { Requisition } from "@/types/requisition";
 import paths from "@/utils/constants/paths";
-import { Button, Select } from "@mantine/core";
+import { Button, Select, TextInput } from "@mantine/core";
 import ErrorAlert from "@/components/ui/error-alert";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import { OrderItemInput } from "./types";
 import validation from "./_utils/validation";
 import noProductDetails from "./_utils/no-variant-details";
 import VendorWarehouseSection from "./_components/vendor-warehouse-section";
+import RequisitionSelect from "./_components/requisition-select";
 import OrderItemsSection from "./_components/order-items-section";
 import PaymentAccountSelect from "@/components/global/payment-account-select";
 import OrderTaxSection from "@/components/global/order-tax-section";
@@ -41,10 +43,19 @@ export default function NewPurchaseOrder() {
   const { data: warehouses } = useWarehouses();
   const defatulWarehouseId = warehouses.find((warehouse) => warehouse.isDefault)?._id || warehouses[0]?._id || "";
 
+  const [requisition, setRequisition] = useState<Requisition | null>(null);
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [warehouseId, setWarehouseId] = useState<string>(defatulWarehouseId);
   const [items, setItems] = useState<OrderItemInput[]>([emptyOrderItem]);
   const [project, setProject] = useState("");
+
+  // Selecting a Purchase Order sets and locks its vendor and project (docs section "Link Purchase
+  // Invoices to Purchase Orders") - the backend rejects a mismatch, so the UI never offers one.
+  useEffect(() => {
+    if (!requisition) return;
+    setVendor((requisition.vendorId as unknown as Vendor) || null);
+    setProject(requisition.project?._id || "");
+  }, [requisition]);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentAccount, setPaymentAccount] = useState("");
   const [vatPercentage, setVatPercentage] = useState<string | number>(0);
@@ -80,6 +91,11 @@ export default function NewPurchaseOrder() {
     handleRequest(language, setLoading, setError, async () => {
       const filteredItems = items.filter((item) => item.productData);
 
+      if (!requisition) {
+        setError(translate("A Purchase Order is required to create a Purchase Invoice.", "يجب اختيار أمر شراء لإنشاء فاتورة مشتريات."));
+        return;
+      }
+
       const validationError = validation({ vendor, warehouse: warehouseId, items: filteredItems }, language);
 
       if (validationError) {
@@ -104,6 +120,7 @@ export default function NewPurchaseOrder() {
         data: {
           warehouseId,
           vendorId: vendor?._id,
+          requisition: requisition._id,
           project: project || undefined,
           paymentMethod: paymentMethod || undefined,
           paymentAccount: paymentMethod === "account" ? paymentAccount : undefined,
@@ -145,7 +162,7 @@ export default function NewPurchaseOrder() {
             px="xl"
             radius="md"
             loading={loading}
-            disabled={!project || (paymentMethod === "account" && !paymentAccount)}
+            disabled={!requisition || !project || (paymentMethod === "account" && !paymentAccount)}
           >
             {translate("Save", "حفظ")}
           </Button>
@@ -175,27 +192,46 @@ export default function NewPurchaseOrder() {
 
       <hr />
 
+      {/* Required - selecting a Purchase Order sets and locks its vendor and project below (docs
+          section "Link Purchase Invoices to Purchase Orders"). */}
+      <RequisitionSelect requisition={requisition} setRequisition={setRequisition} />
+
+      <hr />
+
       <VendorWarehouseSection
         vendor={vendor}
         setVendor={setVendor}
         warehouseId={warehouseId}
         setWarehouseId={setWarehouseId}
+        locked={!!requisition}
       />
 
       <hr />
 
-      {/* Project (mandatory - docs section "Purchase Orders - Project is Required") */}
-      <Select
-        label={translate("Project", "المشروع")}
-        placeholder={translate("Select project", "اختر المشروع")}
-        value={project || null}
-        onChange={(v) => setProject(v || "")}
-        data={projects.map((p) => ({ value: p._id, label: `${p.projectNumber}${p.name ? ` - ${p.name}` : ""}` }))}
-        searchable
-        required
-        withAsterisk
-        style={{ maxWidth: 300 }}
-      />
+      {/* Project (mandatory - docs section "Purchase Orders - Project is Required") - locked to the
+          selected Purchase Order's project once one is chosen. */}
+      {requisition ? (
+        <TextInput
+          label={translate("Project", "المشروع")}
+          value={`${requisition.project?.projectNumber || ""}${requisition.project?.name ? ` - ${requisition.project.name}` : ""}`}
+          readOnly
+          description={translate("Set by the selected Purchase Order.", "محدد من أمر الشراء المختار.")}
+          style={{ maxWidth: 300 }}
+        />
+      ) : (
+        <Select
+          label={translate("Project", "المشروع")}
+          placeholder={translate("Select a Purchase Order first", "اختر أمر شراء أولاً")}
+          value={project || null}
+          onChange={(v) => setProject(v || "")}
+          data={projects.map((p) => ({ value: p._id, label: `${p.projectNumber}${p.name ? ` - ${p.name}` : ""}` }))}
+          searchable
+          required
+          withAsterisk
+          disabled
+          style={{ maxWidth: 300 }}
+        />
+      )}
 
       <hr />
 

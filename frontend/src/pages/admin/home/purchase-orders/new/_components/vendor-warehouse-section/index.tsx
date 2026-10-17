@@ -5,7 +5,7 @@ import useHasPermission from "@/hooks/useHasPermission";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
 import { Vendor } from "@/types/vendor";
-import { Button, Select } from "@mantine/core";
+import { Button, Select, TextInput } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import VendorSearch from "@/components/global/vendor-search";
 import VendorModal from "@/components/global/vendor-modal";
@@ -15,11 +15,16 @@ export default function VendorWarehouseSection({
   setVendor,
   warehouseId,
   setWarehouseId,
+  // Set once a Purchase Order is selected (docs section "Link Purchase Invoices to Purchase
+  // Orders") - the vendor is then that Purchase Order's own vendor, not independently choosable:
+  // the backend rejects a mismatch, so the UI never offers to create one.
+  locked = false,
 }: {
   vendor: Vendor | null;
   setVendor: React.Dispatch<React.SetStateAction<Vendor | null>>;
   warehouseId: string;
   setWarehouseId: React.Dispatch<React.SetStateAction<string>>;
+  locked?: boolean;
 }) {
   const { translate } = useLanguage();
 
@@ -35,13 +40,25 @@ export default function VendorWarehouseSection({
           supplier payable to (stamped server-side - see accountingEventService.js). */}
       <div className="flex flex-1 items-end gap-2">
         <div className="flex-1">
-          <VendorSearch
-            label={translate("Supplier (Vendor)", "المورد (البائع)")}
-            placeholder={translate("Select Vendor", "اختر البائع")}
-            vendor={vendor}
-            setVendor={setVendor}
-            withAsterisk
-          />
+          {locked ? (
+            <TextInput
+              label={translate("Supplier (Vendor)", "المورد (البائع)")}
+              value={vendor?.name || ""}
+              readOnly
+              description={translate(
+                "Set by the selected Purchase Order.",
+                "محدد من أمر الشراء المختار.",
+              )}
+            />
+          ) : (
+            <VendorSearch
+              label={translate("Supplier (Vendor)", "المورد (البائع)")}
+              placeholder={translate("Select Vendor", "اختر البائع")}
+              vendor={vendor}
+              setVendor={setVendor}
+              withAsterisk
+            />
+          )}
           {vendor && (
             <p className="mt-1 text-xs text-gray-500">
               {translate("Sub Account (Vendor No.)", "الحساب الفرعي (رقم البائع)")}:{" "}
@@ -49,7 +66,7 @@ export default function VendorWarehouseSection({
             </p>
           )}
         </div>
-        {canICreateVendors && !vendor && (
+        {!locked && canICreateVendors && !vendor && (
           <>
             <Button
               onClick={openVendorModal}

@@ -23,6 +23,16 @@ const resources: LocalizedEntity<Resource> = {
       ar: "فواتير المشتريات",
     },
   },
+  // Internally "Requisition" on the backend (the model name `PurchaseOrder` is already taken by
+  // the existing Purchase Invoice above) - this resource's on-screen label is "Purchase Orders",
+  // the new pre-invoice operational document (see backend requisitionModel.js's header comment).
+  purchaseRequisitions: {
+    value: "purchaseRequisitions",
+    label: {
+      en: "Purchase Orders",
+      ar: "أوامر الشراء",
+    },
+  },
   salesOrders: {
     value: "salesOrders",
     label: {

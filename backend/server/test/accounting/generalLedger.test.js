@@ -240,7 +240,14 @@ test('getGeneralLedgerLines: Sub Account resolves to the Customer Number for a S
 test('getGeneralLedgerLines: Sub Account resolves to the Vendor Number for a Purchase-Order-sourced entry (fallback path, pre-dating partyNumber)', async () => {
   const vendor = await Vendor.create({ name: 'GL Vendor', contact: { phone: `010${Date.now()}`.slice(0, 11) } });
   const warehouse = await Warehouse.create({ name: 'GL Warehouse', location: 'Cairo' });
-  const purchaseOrder = await PurchaseOrder.create({ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, items: [] });
+  // Every new Purchase Invoice now requires an open Purchase Order (requisitionModel.js) - this
+  // test only needs a real PurchaseOrder document to exist (as the JournalEntry's sourceId), so a
+  // minimal one-item Requisition is enough.
+  const Requisition = require('../../models/vendor/requisitionModel');
+  const requisition = await Requisition.create({ vendorId: vendor._id, project: project._id, items: [{ description: 'x', quantity: 1, unitPrice: 1 }] });
+  requisition.status = 'open';
+  await requisition.save();
+  const purchaseOrder = await PurchaseOrder.create({ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, requisition: requisition._id, items: [] });
 
   const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
   const suppliersAccount = await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.suppliers, name: 'Suppliers', type: 'liability' });
