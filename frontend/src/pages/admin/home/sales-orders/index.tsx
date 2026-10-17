@@ -32,6 +32,8 @@ import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import ScannerModal from "./_components/scanner-modal";
+import ImportWizardModal from "@/components/global/csv-import/import-wizard-modal";
+import DownloadSampleButton from "@/components/global/csv-import/download-sample-button";
 import UnauthorizedSection from "@/components/ui/sections/unauthorized";
 import { isCanceledOrder } from "@/utils/constants/order-statuses";
 import { getOrderTotal } from "@/utils/helpers/order-totals";
@@ -174,6 +176,7 @@ export default function SalesOrders() {
   ]);
 
   const [scannerOpened, { open: openScanner, close: closeScanner }] = useDisclosure();
+  const [importOpened, { open: openImport, close: closeImport }] = useDisclosure();
 
   return (
     <AdminLayoutBox
@@ -191,6 +194,11 @@ export default function SalesOrders() {
                 <ScannerModal opened={scannerOpened} close={closeScanner} />
               </>
             )}
+
+            <DownloadSampleButton url="import/sales-invoices/sample" filename="reservia-sales-invoices-template.csv" />
+            <Button onClick={openImport} variant="light" color="grape" leftSection={<solidIcons.ArrowUp />}>
+              {translate("Import CSV", "استيراد CSV")}
+            </Button>
 
             {canICreateSalesOrders && (
               <Link to={`${paths.new}`}>
@@ -431,6 +439,15 @@ export default function SalesOrders() {
           </>
         ))
       )}
+
+      <ImportWizardModal
+        opened={importOpened}
+        close={closeImport}
+        title={translate("Import Sales Invoices from CSV", "استيراد فواتير المبيعات من CSV")}
+        previewUrl="import/sales-invoices/preview"
+        commitUrl="import/sales-invoices/commit"
+        onImported={handleLoadSalesOrders}
+      />
     </AdminLayoutBox>
   );
 }

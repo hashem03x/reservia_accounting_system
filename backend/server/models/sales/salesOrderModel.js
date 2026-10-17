@@ -133,6 +133,14 @@ const salesOrderSchema = mongoose.Schema(
     // existed - never backfilled. An explicit client-supplied `dueDate` (if ever sent) is
     // preserved as-is instead of being recomputed.
     dueDate: { type: Date, default: null },
+    // The CSV's own grouping identifier for an invoice imported via the CSV Import System (docs
+    // section "Sales Invoice CSV Import") - absent for every manually-created invoice. Unique+
+    // sparse so re-submitting (or concurrently submitting) the same CSV file can never create a
+    // second invoice for the same InvoiceReference - the second attempt hits a real E11000 here.
+    // Deliberately no `default: null` - see requisitionModel.js's identical field for why an
+    // explicit null default would defeat `sparse` and incorrectly reject the second invoice ever
+    // created, imported or not.
+    importReference: { type: String, unique: true, sparse: true, trim: true },
   },
   {
     timestamps: true,
