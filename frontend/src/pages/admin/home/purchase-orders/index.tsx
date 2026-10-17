@@ -18,7 +18,6 @@ import { formatDate } from "@/utils/helpers/date-formaters";
 import { Button, Table } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
-import ImportButton from "@/components/global/import-button";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
@@ -109,7 +108,12 @@ export default function PurchaseOrders() {
               <ScannerModal opened={scannerOpened} close={closeScanner} />
             </>
 
-            <ImportButton url="import/purchase-orders" callback={handleLoadPurchaseOrders} />
+            {/* The "Import CSV" button that used to live here pointed at /api/v1/import/
+                purchase-orders, which this phase retargeted to the NEW "Purchase Order"
+                (Requisition) importer - that old route was already completely non-functional for
+                Purchase Invoices (every row required a `project`/`requisition` the old importer
+                never set). Phase 3 (Purchase Invoice CSV Import) adds the real importer and
+                button back here, pointed at its own dedicated route. */}
 
             {canICreatePurchaseOrders && (
               <Link to={`${paths.new}`}>

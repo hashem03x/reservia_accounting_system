@@ -243,6 +243,20 @@ test('Sample templates: every header has a matching example value (template and 
   assert.equal(vendorSchema.headers.length, vendorSchema.exampleRow.length);
 });
 
+// ===================== Formula-injection guard (Phase 2 hardening) =====================
+
+test('formulaGuard#sanitizeForCsv: a value starting with =, +, -, or @ is neutralized with a leading quote; everything else passes through', () => {
+  const { sanitizeForCsv } = require('../../utils/csvImport/formulaGuard');
+  assert.equal(sanitizeForCsv('=SUM(A1:A9)'), "'=SUM(A1:A9)");
+  assert.equal(sanitizeForCsv('+1234'), "'+1234");
+  assert.equal(sanitizeForCsv('-1234'), "'-1234");
+  assert.equal(sanitizeForCsv('@mention'), "'@mention");
+  assert.equal(sanitizeForCsv('A normal value'), 'A normal value');
+  assert.equal(sanitizeForCsv(''), '');
+  assert.equal(sanitizeForCsv(null), null);
+  assert.equal(sanitizeForCsv(42), '42');
+});
+
 test('Sample templates: the example row itself passes the schema\'s own validation', async () => {
   const customerRow = Object.fromEntries(customerSchema.headers.map((h, i) => [h, customerSchema.exampleRow[i]]));
   const { errors } = await customerSchema.validateRow(customerRow, { existingPhones: new Set(), existingEmails: new Set() });

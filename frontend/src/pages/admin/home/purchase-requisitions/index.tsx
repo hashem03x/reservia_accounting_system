@@ -12,8 +12,12 @@ import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
 import paths from "@/utils/constants/paths";
+import { useDisclosure } from "@mantine/hooks";
 import { Badge, Button, Select, Table } from "@mantine/core";
+import { solidIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
+import ImportWizardModal from "@/components/global/csv-import/import-wizard-modal";
+import DownloadSampleButton from "@/components/global/csv-import/download-sample-button";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
@@ -78,14 +82,22 @@ export default function PurchaseRequisitions() {
     return cancelRequest;
   }, [activePage, statusFilter]);
 
+  const [importOpened, { open: openImport, close: closeImport }] = useDisclosure(false);
+
   return (
     <AdminLayoutBox
       header={{
         title: translations.pages.purchaseRequisitions,
         sideElements: canCreate && (
-          <Button color="cyan" variant="light" onClick={() => navigate(paths.new)}>
-            {translate("New Purchase Order", "أمر شراء جديد")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <DownloadSampleButton url="import/purchase-orders/sample" filename="reservia-purchase-orders-template.csv" />
+            <Button onClick={openImport} variant="light" color="grape" leftSection={<solidIcons.ArrowUp />}>
+              {translate("Import CSV", "استيراد CSV")}
+            </Button>
+            <Button color="cyan" variant="light" onClick={() => navigate(paths.new)}>
+              {translate("New Purchase Order", "أمر شراء جديد")}
+            </Button>
+          </div>
         ),
       }}
     >
@@ -194,6 +206,15 @@ export default function PurchaseRequisitions() {
           </>
         ))
       )}
+
+      <ImportWizardModal
+        opened={importOpened}
+        close={closeImport}
+        title={translate("Import Purchase Orders from CSV", "استيراد أوامر الشراء من CSV")}
+        previewUrl="import/purchase-orders/preview"
+        commitUrl="import/purchase-orders/commit"
+        onImported={load}
+      />
     </AdminLayoutBox>
   );
 }

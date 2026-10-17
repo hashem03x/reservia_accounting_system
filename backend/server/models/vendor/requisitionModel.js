@@ -62,6 +62,19 @@ const requisitionSchema = new Schema(
     status: { type: String, enum: ['draft', 'open', 'cancelled'], default: 'draft' },
     invoicedAmount: { type: Number, default: 0, min: 0 },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    // The CSV's own grouping identifier for a Purchase Order imported via the CSV Import System
+    // (docs section "Purchase Order CSV Import") - absent for every manually-created Purchase
+    // Order (the create form never sets this). Unique+sparse so re-submitting (or concurrently
+    // submitting) the same CSV file can never create a second Purchase Order for the same
+    // POReference: the second attempt hits a real E11000 here, which
+    // services/csvImport/groupedCsvImportRunner.js already translates into a clean per-row error,
+    // rather than a new, independently-maintained idempotency mechanism.
+    // Deliberately NO `default: null` - Mongoose would then set the field to `null` on every
+    // document (never actually absent), which defeats `sparse` (a sparse index only skips a
+    // field that is genuinely MISSING, not one present with value `null`) and made the unique
+    // index reject the second Purchase Order ever created, imported or not. Leaving no default
+    // keeps the field truly absent unless an importer sets it.
+    importReference: { type: String, unique: true, sparse: true, trim: true },
   },
   {
     timestamps: true,
