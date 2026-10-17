@@ -51,8 +51,14 @@ export default function NewPurchaseOrder() {
 
   // Selecting a Purchase Order sets and locks its vendor and project (docs section "Link Purchase
   // Invoices to Purchase Orders") - the backend rejects a mismatch, so the UI never offers one.
+  // Clearing the selection resets both back - otherwise they'd keep showing the previous Purchase
+  // Order's vendor/project, unlocked, with no selection backing them.
   useEffect(() => {
-    if (!requisition) return;
+    if (!requisition) {
+      setVendor(null);
+      setProject("");
+      return;
+    }
     setVendor((requisition.vendorId as unknown as Vendor) || null);
     setProject(requisition.project?._id || "");
   }, [requisition]);
