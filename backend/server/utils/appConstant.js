@@ -45,6 +45,9 @@ exports.Resources = {
   // colliding with the existing `purchaseOrders` resource above, which the UI now labels
   // "Purchase Invoices" - see models/vendor/requisitionModel.js's header comment).
   purchaseRequisitions: 'purchaseRequisitions',
+  // Projected Cash Flow Forecasting (Phase 1 - read-only; Phase 2 adds payment-schedule
+  // management under this same resource, mirroring purchaseRequisitions' single-resource pattern).
+  cashFlowForecast: 'cashFlowForecast',
   inventoryTransfers: 'inventoryTransfers',
   expenses: 'expenses',
   users: 'users',
@@ -85,6 +88,7 @@ exports.adminPermission = [
   { resource: 'purchaseOrders', actions: ['create', 'read', 'update'] },
   { resource: 'salesOrders', actions: ['create', 'read', 'update'] },
   { resource: 'purchaseRequisitions', actions: ['create', 'read', 'update'] },
+  { resource: 'cashFlowForecast', actions: ['read'] },
   { resource: 'inventoryTransfers', actions: ['create', 'delete', 'read', 'update'] },
   { resource: 'expenses', actions: [] },
   { resource: 'users', actions: ['create', 'delete', 'read', 'update'] },
@@ -103,6 +107,7 @@ exports.moderatorPermission = [
   { resource: 'vendors', actions: ['create', 'read', 'update'] },
   { resource: 'purchaseOrders', actions: ['create', 'read', 'update'] },
   { resource: 'purchaseRequisitions', actions: ['create', 'read', 'update'] },
+  { resource: 'cashFlowForecast', actions: ['read'] },
   { resource: 'products', actions: ['create', 'read', 'update'] },
   { resource: 'salesOrders', actions: ['create', 'read', 'update'] },
   { resource: 'customers', actions: ['create', 'read', 'update'] },
@@ -132,6 +137,7 @@ exports.operatorPermission = [
   { resource: 'purchaseOrders', actions: ['create', 'read', 'update'] },
   { resource: 'salesOrders', actions: ['create', 'read', 'update'] },
   { resource: 'purchaseRequisitions', actions: ['create', 'read', 'update'] },
+  { resource: 'cashFlowForecast', actions: ['read'] },
   { resource: 'databaseExport', actions: [] },
   { resource: 'projects', actions: ['read'] },
   { resource: 'accounts', actions: ['read'] },
@@ -169,6 +175,7 @@ exports.defaultPermissions = [
   { resource: 'purchaseOrders', actions: ['read'] },
   { resource: 'salesOrders', actions: ['read'] },
   { resource: 'purchaseRequisitions', actions: ['read'] },
+  { resource: 'cashFlowForecast', actions: ['read'] },
   { resource: 'expenses', actions: [] },
   { resource: 'inventories', actions: ['read'] },
   { resource: 'inventoryTransfers', actions: ['read'] },

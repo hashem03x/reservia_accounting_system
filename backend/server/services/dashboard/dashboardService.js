@@ -6,6 +6,11 @@ const { getTrialBalance } = require('../accounting/generalLedgerService');
 const { CashEquivalentParentGroupName, AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
 const { ORDER_TOTAL_AMOUNT_EXPR } = require('../../utils/orderTotals');
 const { ACCOUNT_CODE_COLLATION, ACCOUNT_CODE_SORT } = require('../../utils/accountCodeSort');
+const { getConsolidatedForecast } = require('../cashflow/cashFlowForecastService');
+
+// How many days ahead the dashboard's forecast summary card looks - a fixed, short default (not
+// the full configurable horizon the dedicated Cash Flow Forecast page offers).
+const DASHBOARD_FORECAST_HORIZON_DAYS = 30;
 
 const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -118,6 +123,13 @@ async function getDashboardSummaryData() {
   const salesTotals = salesTotalsRaw[0] || { total: 0, count: 0 };
   const purchaseTotals = purchaseTotalsRaw[0] || { total: 0, count: 0 };
 
+  // Projected Cash Flow (docs section "Dashboard Integration") - a short, fixed-horizon summary
+  // of the same read-only forecast the dedicated Cash Flow Forecast page computes; this call
+  // never writes anything, same guarantee as every other figure in this function.
+  const today = new Date();
+  const horizonEnd = new Date(today.getTime() + DASHBOARD_FORECAST_HORIZON_DAYS * 24 * 60 * 60 * 1000);
+  const forecastData = await getConsolidatedForecast({ from: today, to: horizonEnd });
+
   return {
     projects: {
       activeCount: activeProjects.length,
@@ -130,6 +142,17 @@ async function getDashboardSummaryData() {
     receivables: { total: totalReceivables },
     payables: { total: totalPayables },
     salesTrend,
+    forecast: {
+      horizonDays: DASHBOARD_FORECAST_HORIZON_DAYS,
+      expectedReceipts: forecastData.totals.expectedReceipts,
+      expectedPayments: forecastData.totals.expectedPayments,
+      netProjected: forecastData.totals.netProjected,
+      openingBalance: forecastData.totals.openingBalance,
+      closingBalance: forecastData.totals.closingBalance,
+      overdueReceipts: forecastData.totals.overdueReceipts,
+      overduePayments: forecastData.totals.overduePayments,
+      shortfallProjectsCount: forecastData.shortfallProjects.length,
+    },
   };
 }
 

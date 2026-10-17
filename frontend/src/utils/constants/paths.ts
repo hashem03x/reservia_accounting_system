@@ -50,6 +50,7 @@ const paths = {
   expenseCategories: "expense-categories",
   incomeStatement: "income-statement",
   balanceSheet: "balance-sheet",
+  cashFlowForecast: "cash-flow-forecast",
 };
 
 export default paths;

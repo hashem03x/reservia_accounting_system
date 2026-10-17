@@ -164,4 +164,5 @@ const allPossiblePermissions: Record<Resource, Action[]> = {
   journalEntries: ["create", "read", "update"],
   advancedPayments: ["create", "read", "update", "delete"],
   shareholders: ["create", "read", "update"],
+  cashFlowForecast: ["read"],
 };

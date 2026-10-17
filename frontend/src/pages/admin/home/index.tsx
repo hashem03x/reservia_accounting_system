@@ -8,6 +8,7 @@ import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import KpiSection from "./_components/kpi-section";
 import SalesTrendChart from "./_components/sales-trend-chart";
 import CashPositionSection from "./_components/cash-position-section";
+import CashFlowForecastSection from "./_components/cash-flow-forecast-section";
 import ProjectExecutionSection from "./_components/project-execution-section";
 import RecentJournalEntriesSection from "./_components/recent-journal-entries-section";
 import RecentSalesOrdersSection from "./_components/recent-sales-orders-section";
@@ -83,6 +84,8 @@ export default function Home() {
           </div>
           <CashPositionSection summary={summary} loading={loading} error={error} onRetry={loadSummary} />
         </div>
+
+        <CashFlowForecastSection summary={summary} loading={loading} />
 
         <ProjectExecutionSection />
 

@@ -29,7 +29,9 @@ export function ChartPanel({ title, subtitle, loading, empty, emptyText, childre
   );
 }
 
-function useChartBase() {
+// Exported so other modules' own charts (e.g. the Projected Cash Flow forecast) can reuse the
+// exact same palette/options/RTL logic rather than duplicating it.
+export function useChartBase() {
   const { language } = useLanguage();
   const isArabic = language === "ar-EG";
   const scheme = useComputedColorScheme("light");

@@ -95,6 +95,39 @@ async function getTrialBalance() {
   }));
 }
 
+/**
+ * Same as getTrialBalance(), but only posted/reversed lines on or before `asOfDate` - used by the
+ * Projected Cash Flow forecast (services/cashflow/cashFlowForecastService.js) to derive an
+ * opening cash position as of the forecast's start date, rather than "right now". Deliberately a
+ * separate function (not an optional parameter on getTrialBalance) so every existing caller of
+ * getTrialBalance() - reports, the dashboard - is completely unaffected by this addition.
+ */
+async function getTrialBalanceAsOf(asOfDate) {
+  const rows = await JournalEntry.aggregate([
+    { $match: { status: { $in: LEDGER_STATUSES }, date: { $lte: asOfDate } } },
+    { $unwind: '$lines' },
+    { $group: { _id: '$lines.account', debit: { $sum: '$lines.debit' }, credit: { $sum: '$lines.credit' } } },
+    { $lookup: { from: 'chartofaccounts', localField: '_id', foreignField: '_id', as: 'account' } },
+    { $unwind: '$account' },
+    { $sort: { 'account.code': 1 } },
+    {
+      $project: {
+        _id: 0,
+        account: { _id: '$account._id', code: '$account.code', name: '$account.name', type: '$account.type' },
+        debit: 1,
+        credit: 1,
+      },
+    },
+  ]);
+
+  return sortByAccountCode(rows, row => row.account?.code).map(row => ({
+    ...row,
+    debit: round2(row.debit),
+    credit: round2(row.credit),
+    balance: round2(row.debit - row.credit),
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // General Ledger line view (docs section "Journal Entries / General Ledger table") - a flattened,
 // one-row-per-LINE view across every posted entry, each row carrying a running balance for ITS
@@ -390,4 +423,4 @@ async function getGeneralLedgerLines({ page = 1, limit = 50 } = {}) {
   };
 }
 
-module.exports = { getAccountBalance, getTrialBalance, getGeneralLedgerLines, resolveSubAccountsForEntries };
+module.exports = { getAccountBalance, getTrialBalance, getTrialBalanceAsOf, getGeneralLedgerLines, resolveSubAccountsForEntries };

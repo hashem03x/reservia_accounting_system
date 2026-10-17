@@ -239,6 +239,7 @@ export const navIcons = {
   TrialBalance: Hi2.HiOutlineScale,
   GeneralLedger: Hi2.HiOutlineDocumentText,
   ProjectProfit: Hi2.HiOutlineArrowTrendingUp,
+  CashFlowForecast: Hi2.HiOutlineChartBarSquare,
   Tour: Hi2.HiOutlineMap,
   Light: Hi2.HiOutlineSun,
   Dark: Hi2.HiOutlineMoon,

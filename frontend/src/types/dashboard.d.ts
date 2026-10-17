@@ -15,6 +15,21 @@ export interface DashboardSalesTrendPoint {
   total: number;
 }
 
+// Projected Cash Flow Forecasting (Phase 1) - a short, fixed-horizon summary of the same
+// read-only forecast the dedicated Cash Flow Forecast page computes (services/cashflow/
+// cashFlowForecastService.js). Purely additive to the dashboard; never written to.
+export interface DashboardForecastSummary {
+  horizonDays: number;
+  expectedReceipts: number;
+  expectedPayments: number;
+  netProjected: number;
+  openingBalance: number;
+  closingBalance: number;
+  overdueReceipts: number;
+  overduePayments: number;
+  shortfallProjectsCount: number;
+}
+
 export interface DashboardSummary {
   projects: {
     activeCount: number;
@@ -29,4 +44,5 @@ export interface DashboardSummary {
   receivables: { total: number };
   payables: { total: number };
   salesTrend: DashboardSalesTrendPoint[];
+  forecast: DashboardForecastSummary;
 }

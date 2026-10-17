@@ -91,6 +91,9 @@ const mountRoutes = app => {
   // calls "Purchase Invoices" (see models/vendor/requisitionModel.js's header comment).
   app.use('/api/v1/requisitions', require('./vendor/requisitionRoute'));
 
+  // Projected Cash Flow Forecasting (read-only Phase 1 - services/cashflow/cashFlowForecastService.js)
+  app.use('/api/v1/cash-flow-forecast', require('./cashflow/cashFlowForecastRoute'));
+
   // payment route
   app.use('/api/v1/payment', require('./po/paymentRoute'));
 

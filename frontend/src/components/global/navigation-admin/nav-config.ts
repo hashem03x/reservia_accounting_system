@@ -51,6 +51,13 @@ export function useAdminNavigation(): NavSection[] {
             Icon: navIcons.Analytics,
             resource: resources.analytics,
           },
+          {
+            key: "cashFlowForecast",
+            to: admin(paths.cashFlowForecast),
+            label: pages.cashFlowForecast,
+            Icon: navIcons.CashFlowForecast,
+            resource: resources.cashFlowForecast,
+          },
         ],
       },
       {

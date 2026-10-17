@@ -80,6 +80,8 @@ import AP_FixedAsset from "@/pages/admin/fixed-assets/[id]";
 import AP_FixedAssetsReport from "@/pages/admin/reports/fixed-assets";
 import AP_BalanceSheetReport from "@/pages/admin/reports/balance-sheet";
 import AP_Analytics from "@/pages/admin/analytics";
+import AP_CashFlowForecast from "@/pages/admin/cash-flow-forecast";
+import AP_ProjectCashFlowForecast from "@/pages/admin/cash-flow-forecast/[projectId]";
 import AP_Projects from "@/pages/admin/projects";
 import AP_Project from "@/pages/admin/projects/[id]";
 import AP_Sectors from "@/pages/admin/sectors";
@@ -234,6 +236,10 @@ export default function App() {
                   </Route>
                   <Route element={<ResourceGuard resource={resources.analytics} action={actions.read} />}>
                     <Route path={paths.analytics} element={<AP_Analytics />} />
+                  </Route>
+                  <Route element={<ResourceGuard resource={resources.cashFlowForecast} action={actions.read} />}>
+                    <Route path={paths.cashFlowForecast} element={<AP_CashFlowForecast />} />
+                    <Route path={paths.cashFlowForecast + "/:projectId"} element={<AP_ProjectCashFlowForecast />} />
                   </Route>
                   <Route element={<ResourceGuard resource={resources.projects} action={actions.read} />}>
                     <Route path={paths.projects} element={<AP_Projects />} />

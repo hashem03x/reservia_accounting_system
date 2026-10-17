@@ -194,6 +194,15 @@ const resources: LocalizedEntity<Resource> = {
       ar: "حقوق الملكية / المساهمون",
     },
   },
+  // Projected Cash Flow Forecasting (Phase 1, read-only). Covers both viewing the forecast and
+  // (Phase 2) managing payment schedules, mirroring purchaseRequisitions' single-resource pattern.
+  cashFlowForecast: {
+    value: "cashFlowForecast",
+    label: {
+      en: "Cash Flow Forecast",
+      ar: "التدفق النقدي المتوقع",
+    },
+  },
 };
 
 export default resources;
