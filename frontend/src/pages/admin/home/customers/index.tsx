@@ -25,7 +25,8 @@ import PaginationHandler from "@/components/ui/pagination-handler";
 import CustomerModal from "@/components/global/customer-modal";
 import NoResultsSection from "@/components/ui/sections/no-results";
 import { getCustomerTypeLabel } from "@/utils/constants/customer-types";
-import ImportButton from "@/components/global/import-button";
+import ImportWizardModal from "@/components/global/csv-import/import-wizard-modal";
+import DownloadSampleButton from "@/components/global/csv-import/download-sample-button";
 import UnauthorizedSection from "@/components/ui/sections/unauthorized";
 import AdminGaurd from "@/components/ui/admin-gaurd";
 
@@ -115,6 +116,7 @@ export default function Customers() {
   // ========== Handle Modals ==========
 
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
+  const [importOpened, { open: openImport, close: closeImport }] = useDisclosure(false);
 
   return (
     <AdminLayoutBox
@@ -123,7 +125,10 @@ export default function Customers() {
         title: translations.pages.customers,
         sideElements: canICreateCustomers && (
           <div className="flex items-center gap-2">
-            <ImportButton url="import/customers" callback={handleLoadCustomers} />
+            <DownloadSampleButton url="import/customers/sample" filename="reservia-customers-template.csv" />
+            <Button onClick={openImport} variant="light" color="grape" leftSection={<solidIcons.ArrowUp />}>
+              {translate("Import CSV", "استيراد CSV")}
+            </Button>
             <Button onClick={openModal} variant="light" color="teal" leftSection={<solidIcons.Plus />}>
               {translate("Add New Customer", "إضافة عميل جديد")}
             </Button>
@@ -261,6 +266,15 @@ export default function Customers() {
             return { ...prev, data: [response, ...prev.data] };
           });
         }}
+      />
+
+      <ImportWizardModal
+        opened={importOpened}
+        close={closeImport}
+        title={translate("Import Customers from CSV", "استيراد العملاء من CSV")}
+        previewUrl="import/customers/preview"
+        commitUrl="import/customers/commit"
+        onImported={handleLoadCustomers}
       />
     </AdminLayoutBox>
   );

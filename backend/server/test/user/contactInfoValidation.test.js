@@ -138,43 +138,39 @@ test('updateVendorValidators: a legacy vendor missing contact info can still be 
 // ===================== Shared phone helper =====================
 
 // ===================== Import validation =====================
+// (customerImportSchema.js/vendorImportSchema.js - replacing the previous insertMany-based
+// importCustomerValidator.js/importVendorsValidator.js, which never assigned a customerNumber and
+// dropped several real fields - see each schema file's header comment.)
 
-test('importCustomerValidator#validateCustomer: requires email (same rule as the manual create form)', async () => {
-  const { validateCustomer } = require('../../utils/validators/import/importCustomerValidator');
-  const errors = await validateCustomer({ name: 'Ahmed', phone: '01012345678' });
-  assert.ok(errors.includes('Email is required'));
+const emptyContext = { existingPhones: new Set(), existingEmails: new Set() };
+
+test('customerImportSchema#validateRow: requires email (same rule as the manual create form)', async () => {
+  const { validateRow } = require('../../utils/validators/import/customerImportSchema');
+  const { errors } = await validateRow({ Name: 'Ahmed', Phone: '01012345678' }, emptyContext);
+  assert.ok(errors.some(e => e.column === 'Email' && /required/i.test(e.message)));
 });
 
-test('importCustomerValidator#validateCustomer: a fully valid row has no errors', async () => {
-  const { validateCustomer } = require('../../utils/validators/import/importCustomerValidator');
-  const errors = await validateCustomer({ name: 'Ahmed', phone: '01012345678', email: 'ahmed@example.com' });
+test('customerImportSchema#validateRow: a fully valid row has no errors and produces a creatable value', async () => {
+  const { validateRow } = require('../../utils/validators/import/customerImportSchema');
+  const { errors, value } = await validateRow({ Name: 'Ahmed', Phone: '01012345678', Email: 'ahmed@example.com' }, emptyContext);
   assert.deepEqual(errors, []);
+  assert.equal(value.name, 'Ahmed');
+  assert.equal(value.phone, '01012345678');
+  assert.equal(value.email, 'ahmed@example.com');
 });
 
-test('importVendorsValidator#validateVendor: rejects an invalid phone using the shared helper (accepts international, not just Egyptian)', async () => {
-  const { validateVendor } = require('../../utils/validators/import/importVendorsValidator');
-  const invalid = await validateVendor({
-    name: 'Acme',
-    'contact.email': 'acme@example.com',
-    'contact.phone': '123',
-    type: 'current',
-    'address.street': 'x',
-    'address.city': 'x',
-    'address.state': 'x',
-    'address.country': 'x',
-  });
-  assert.ok(invalid.some(e => /Invalid Egyptian or international phone number format/.test(e)));
+test('vendorImportSchema#validateRow: rejects an invalid phone using the shared helper (accepts international, not just Egyptian)', async () => {
+  const { validateRow } = require('../../utils/validators/import/vendorImportSchema');
+  const { errors: invalid } = await validateRow(
+    { Name: 'Acme', Email: 'acme@example.com', Phone: '123', Type: 'current', Street: 'x', City: 'x', State: 'x', Country: 'x' },
+    emptyContext,
+  );
+  assert.ok(invalid.some(e => e.column === 'Phone' && /valid Egyptian or international phone number/.test(e.message)));
 
-  const international = await validateVendor({
-    name: 'Acme',
-    'contact.email': 'acme@example.com',
-    'contact.phone': '+442071838750',
-    type: 'current',
-    'address.street': 'x',
-    'address.city': 'x',
-    'address.state': 'x',
-    'address.country': 'x',
-  });
+  const { errors: international } = await validateRow(
+    { Name: 'Acme', Email: 'acme@example.com', Phone: '+442071838750', Type: 'current', Street: 'x', City: 'x', State: 'x', Country: 'x' },
+    emptyContext,
+  );
   assert.equal(international.length, 0, JSON.stringify(international));
 });
 

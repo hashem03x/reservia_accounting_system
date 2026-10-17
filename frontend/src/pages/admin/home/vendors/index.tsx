@@ -24,7 +24,8 @@ import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import VendorModal from "@/components/global/vendor-modal";
 import NoResultsSection from "@/components/ui/sections/no-results";
-import ImportButton from "@/components/global/import-button";
+import ImportWizardModal from "@/components/global/csv-import/import-wizard-modal";
+import DownloadSampleButton from "@/components/global/csv-import/download-sample-button";
 import AdminGaurd from "@/components/ui/admin-gaurd";
 
 const VENDORS_PER_PAGE = import.meta.env.VITE_VENDORS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
@@ -110,6 +111,7 @@ export default function Vendors() {
   // ========== Handle Modals ==========
 
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
+  const [importOpened, { open: openImport, close: closeImport }] = useDisclosure(false);
 
   return (
     <AdminLayoutBox
@@ -118,7 +120,10 @@ export default function Vendors() {
         title: translations.pages.vendors,
         sideElements: canICreateVendors && (
           <div className="flex items-center gap-2">
-            <ImportButton url="import/vendors" callback={handleLoadVendors} />
+            <DownloadSampleButton url="import/vendors/sample" filename="reservia-vendors-template.csv" />
+            <Button onClick={openImport} variant="light" color="grape" leftSection={<solidIcons.ArrowUp />}>
+              {translate("Import CSV", "استيراد CSV")}
+            </Button>
             <Button onClick={openModal} variant="light" color="teal" leftSection={<solidIcons.Plus />}>
               {translate("Add New Vendor", "إضافة بائع جديد")}
             </Button>
@@ -234,6 +239,15 @@ export default function Vendors() {
             return { ...prev, data: [response, ...prev.data] };
           });
         }}
+      />
+
+      <ImportWizardModal
+        opened={importOpened}
+        close={closeImport}
+        title={translate("Import Vendors from CSV", "استيراد الموردين من CSV")}
+        previewUrl="import/vendors/preview"
+        commitUrl="import/vendors/commit"
+        onImported={handleLoadVendors}
       />
     </AdminLayoutBox>
   );

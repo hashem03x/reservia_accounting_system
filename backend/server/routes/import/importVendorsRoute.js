@@ -1,21 +1,16 @@
 const { Router } = require('express');
 const { uploadTempFile } = require('../../middleware/uploadImageMiddleware');
-const { importVendors } = require('../../controller/import/importVendorsController');
-const { importVendorsValidator } = require('../../utils/validators/import/importVendorsValidator');
+const { previewVendors, commitVendors, sampleVendors } = require('../../controller/import/vendorImportController');
 const { checkUserPermissions } = require('../../middleware/hasPermission');
 const authController = require('../../controller/user/authController');
 const { Resources, Actions } = require('../../utils/appConstant');
-const userModel = require('../../models/userModel');
 
 const router = Router();
 
-router.post(
-  '/',
-  authController.protect,
-  checkUserPermissions({ resource: Resources.vendors, action: Actions.create }),
-  uploadTempFile('file'),
-  importVendorsValidator,
-  importVendors
-);
+router.use(authController.protect);
+
+router.get('/sample', checkUserPermissions({ resource: Resources.vendors, action: Actions.read }), sampleVendors);
+router.post('/preview', checkUserPermissions({ resource: Resources.vendors, action: Actions.create }), uploadTempFile('file'), previewVendors);
+router.post('/commit', checkUserPermissions({ resource: Resources.vendors, action: Actions.create }), uploadTempFile('file'), commitVendors);
 
 module.exports = router;
