@@ -24,6 +24,8 @@ import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import ScannerModal from "./_components/scanner-modal";
 import { getOrderTotal } from "@/utils/helpers/order-totals";
+import ImportWizardModal from "@/components/global/csv-import/import-wizard-modal";
+import DownloadSampleButton from "@/components/global/csv-import/download-sample-button";
 
 const PURCHASE_ORDERS_PER_PAGE = import.meta.env.VITE_PURCHASE_ORDERS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
 
@@ -92,6 +94,7 @@ export default function PurchaseOrders() {
   const canICreatePurchaseOrders = useHasPermission(resources.purchaseOrders, actions.create);
 
   const [scannerOpened, { open: openScanner, close: closeScanner }] = useDisclosure();
+  const [importOpened, { open: openImport, close: closeImport }] = useDisclosure();
 
   return (
     <AdminLayoutBox
@@ -108,12 +111,10 @@ export default function PurchaseOrders() {
               <ScannerModal opened={scannerOpened} close={closeScanner} />
             </>
 
-            {/* The "Import CSV" button that used to live here pointed at /api/v1/import/
-                purchase-orders, which this phase retargeted to the NEW "Purchase Order"
-                (Requisition) importer - that old route was already completely non-functional for
-                Purchase Invoices (every row required a `project`/`requisition` the old importer
-                never set). Phase 3 (Purchase Invoice CSV Import) adds the real importer and
-                button back here, pointed at its own dedicated route. */}
+            <DownloadSampleButton url="import/purchase-invoices/sample" filename="reservia-purchase-invoices-template.csv" />
+            <Button onClick={openImport} variant="light" color="grape" leftSection={<solidIcons.ArrowUp />}>
+              {translate("Import CSV", "استيراد CSV")}
+            </Button>
 
             {canICreatePurchaseOrders && (
               <Link to={`${paths.new}`}>
@@ -192,6 +193,15 @@ export default function PurchaseOrders() {
           </>
         ))
       )}
+
+      <ImportWizardModal
+        opened={importOpened}
+        close={closeImport}
+        title={translate("Import Purchase Invoices from CSV", "استيراد فواتير المشتريات من CSV")}
+        previewUrl="import/purchase-invoices/preview"
+        commitUrl="import/purchase-invoices/commit"
+        onImported={handleLoadPurchaseOrders}
+      />
     </AdminLayoutBox>
   );
 }

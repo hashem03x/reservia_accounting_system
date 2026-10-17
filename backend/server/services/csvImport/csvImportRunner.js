@@ -128,6 +128,12 @@ function friendlyWriteError(err) {
   if (err && err.name === 'ValidationError' && err.errors) {
     return Object.values(err.errors).map(e => e.message).join('; ');
   }
+  // `ApiError` (utils/apiError.js) sets `operational: true` specifically to mark "a safe,
+  // predictable, user-facing message" - see groupedCsvImportRunner.js's identical fix for why
+  // this matters once an importer delegates to a real controller that raises one of these.
+  if (err && err.operational && err.message) {
+    return err.message;
+  }
   return 'This row could not be created due to an unexpected error.';
 }
 

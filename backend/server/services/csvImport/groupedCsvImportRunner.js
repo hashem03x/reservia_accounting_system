@@ -118,6 +118,16 @@ function friendlyWriteError(err) {
   if (err && err.name === 'ValidationError' && err.errors) {
     return Object.values(err.errors).map(e => e.message).join('; ');
   }
+  // `ApiError` (utils/apiError.js) sets `operational: true` specifically to mark "a safe,
+  // predictable, user-facing message" - e.g. createPO's own catch block re-wraps a failed
+  // transaction (the atomic over-invoicing guard, a requisition/vendor/project mismatch) into
+  // `new ApiError(error.message, ...)` before it ever reaches here. Surfacing that message
+  // directly is what keeps an import-time failure as specific as the exact same failure would be
+  // through the manual UI, instead of collapsing every createGroup rejection into one generic
+  // sentence that hides WHY a group actually failed.
+  if (err && err.operational && err.message) {
+    return err.message;
+  }
   return 'This group could not be created due to an unexpected error.';
 }
 
