@@ -8,6 +8,7 @@ import { actionsArray } from "@/utils/constants/actions";
 import { solidIcons } from "@/components/icons";
 import { Alert, Button, Table } from "@mantine/core";
 import PermissionRow from "./permission-row";
+import { DataTableContainer } from "@/components/ui/data-table";
 
 export default function UserPermissions({
   user,
@@ -67,7 +68,7 @@ export default function UserPermissions({
         </p>
       </header>
 
-      <div className="overflow-x-auto">
+      <DataTableContainer>
         <Table verticalSpacing={8.5} highlightOnHover>
           <Table.Thead>
             <Table.Tr>
@@ -91,7 +92,7 @@ export default function UserPermissions({
             ))}
           </Table.Tbody>
         </Table>
-      </div>
+      </DataTableContainer>
 
       <Button
         onClick={savePermission}

@@ -8,6 +8,7 @@ import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
 import { DateTimePicker } from "@mantine/dates";
 import { Button, Select, Table, Group, Stack } from "@mantine/core";
+import { DataTableContainer } from "@/components/ui/data-table";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
@@ -312,7 +313,7 @@ export default function ProfitByProductReport() {
         ) : !data?.results ? (
           <EmptySection useDefaultImg message={translate("No Data Found", "لا توجد بيانات")} />
         ) : (
-          <div className="overflow-x-auto">
+          <DataTableContainer>
             <Table className="text-nowrap" verticalSpacing="xs" withColumnBorders>
               <Table.Thead className="bg-gray-100 text-gray-800">
                 <Table.Tr>
@@ -368,7 +369,7 @@ export default function ProfitByProductReport() {
                 </Table.Tr>
               </Table.Tbody>
             </Table>
-          </div>
+          </DataTableContainer>
         )}
       </Stack>
     </AdminLayoutBox>

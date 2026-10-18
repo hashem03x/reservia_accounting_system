@@ -18,6 +18,8 @@ import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
 import { Button, Select, Table } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
+import { DataTableContainer } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
@@ -220,7 +222,7 @@ export default function Transfers() {
         ) : (
           <>
             {/* Table */}
-            <div className="overflow-x-auto">
+            <DataTableContainer>
               <Table className="text-nowrap" verticalSpacing="xs" highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
@@ -235,7 +237,7 @@ export default function Transfers() {
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedTransfers.data.map((transfer) => (
-                    <Table.Tr
+                    <ClickableRow
                       key={transfer._id}
                       className="cursor-pointer text-gray-600"
                       onClick={() => navigate(`${transfer._id}`)}
@@ -251,11 +253,11 @@ export default function Transfers() {
                       </Table.Td>
                       <Table.Td>{formatDateAndTime(transfer.createdAt, language)}</Table.Td>
                       <Table.Td>{transfer.transferredBy?.name || ""}</Table.Td>
-                    </Table.Tr>
+                    </ClickableRow>
                   ))}
                 </Table.Tbody>
               </Table>
-            </div>
+            </DataTableContainer>
 
             {/* Pagination */}
             <PaginationHandler<Transfer>

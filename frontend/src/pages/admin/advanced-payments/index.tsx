@@ -19,6 +19,7 @@ import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import TruncatedText from "@/components/ui/truncated-text";
 import CreateAdvancedPaymentModal from "./_components/create-advanced-payment-modal";
 
@@ -199,7 +200,7 @@ export default function AdvancedPayments() {
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedPayments.data.map((payment) => (
-                    <Table.Tr key={payment._id} className="cursor-pointer" onClick={() => navigate(payment._id)}>
+                    <ClickableRow key={payment._id} className="cursor-pointer" onClick={() => navigate(payment._id)}>
                       <Table.Td className="whitespace-nowrap">
                         <Badge color={payment.type === "customer" ? "blue" : "grape"} variant="light">
                           {payment.type === "customer" ? translate("Customer", "عميل") : translate("Vendor", "بائع")}
@@ -236,7 +237,7 @@ export default function AdvancedPayments() {
                           {translate("View", "عرض")}
                         </Button>
                       </Table.Td>
-                    </Table.Tr>
+                    </ClickableRow>
                   ))}
                 </Table.Tbody>
               </DataTable>

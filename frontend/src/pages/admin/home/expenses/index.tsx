@@ -25,6 +25,7 @@ import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import UnauthorizedSection from "@/components/ui/sections/unauthorized";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import TruncatedText from "@/components/ui/truncated-text";
 import ExpenseModal from "./_components/expense-modal";
 import { expenseStatusColors, useExpenseStatusLabel } from "./_components/status";
@@ -175,7 +176,7 @@ export default function Expenses() {
                 <Table.Tbody>
                   {paginatedExpenses.data.map((expense) =>
                     expense.vendor ? (
-                      <Table.Tr key={expense._id} className="cursor-pointer" onClick={() => navigate(expense._id)}>
+                      <ClickableRow key={expense._id} className="cursor-pointer" onClick={() => navigate(expense._id)}>
                         <Table.Td className="whitespace-nowrap">
                           {formatDate(expense.date || expense.createdAt, language)}
                         </Table.Td>
@@ -218,7 +219,7 @@ export default function Expenses() {
                           </Badge>
                         </Table.Td>
                         <Table.Td className="whitespace-nowrap">{expense.createdBy?.name || ""}</Table.Td>
-                      </Table.Tr>
+                      </ClickableRow>
                     ) : (
                       // Expense recorded before the Expenses module (a category paid in cash at once).
                       <Table.Tr key={expense._id} className="text-gray-500">

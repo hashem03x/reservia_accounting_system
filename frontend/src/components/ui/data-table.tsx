@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { Table, TableProps } from "@mantine/core";
 
 // The shared table visual system - first established on the Chart of Accounts table (see
@@ -8,13 +8,77 @@ import { Table, TableProps } from "@mantine/core";
 // container and table-level presentation live here, so a future visual change to this one spot
 // applies everywhere consistently instead of needing to be repeated per page.
 
+// Horizontal-scroll UX: a wide table's native scrollbar sits at the bottom of the (possibly very
+// tall) scroll container, so a user must scroll all the way down the table before reaching it.
+// This renders a second, thin scrollbar directly ABOVE the table - reachable the instant the
+// table appears - kept in sync with the real one in both directions via scrollLeft mirroring. A
+// `syncing` ref (not state) breaks the mirror-feedback loop: each scroll handler sets the OTHER
+// element's scrollLeft, which would otherwise re-fire that element's own onScroll.
+function useSyncedHorizontalScroll() {
+  const topRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const syncing = useRef(false);
+  const [scrollWidth, setScrollWidth] = useState(0);
+  const [hasOverflow, setHasOverflow] = useState(false);
+
+  useEffect(() => {
+    const bottomEl = bottomRef.current;
+    if (!bottomEl) return;
+
+    const updateWidth = () => {
+      setScrollWidth(bottomEl.scrollWidth);
+      setHasOverflow(bottomEl.scrollWidth > bottomEl.clientWidth);
+    };
+    updateWidth();
+
+    const resizeObserver = new ResizeObserver(updateWidth);
+    resizeObserver.observe(bottomEl);
+    const mutationObserver = new MutationObserver(updateWidth);
+    mutationObserver.observe(bottomEl, { childList: true, subtree: true });
+
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, []);
+
+  function mirror(source: HTMLDivElement, target: HTMLDivElement) {
+    if (syncing.current) return;
+    syncing.current = true;
+    target.scrollLeft = source.scrollLeft;
+    syncing.current = false;
+  }
+
+  return {
+    topRef,
+    bottomRef,
+    scrollWidth,
+    hasOverflow,
+    onTopScroll: () => {
+      if (topRef.current && bottomRef.current) mirror(topRef.current, bottomRef.current);
+    },
+    onBottomScroll: () => {
+      if (topRef.current && bottomRef.current) mirror(bottomRef.current, topRef.current);
+    },
+  };
+}
+
 // The two-div scroll wrapper: horizontal overflow is contained to this card only (never the page
 // body), matching the convention already used throughout the app (e.g. the PO/SO payment history
 // tables) - see truncated-text.tsx's sibling usage on the Accounts page for why this matters.
 export function DataTableContainer({ children }: { children: ReactNode }) {
+  const { topRef, bottomRef, scrollWidth, hasOverflow, onTopScroll, onBottomScroll } = useSyncedHorizontalScroll();
+
   return (
     <div className="overflow-hidden rounded-lg border border-gray-100">
-      <div className="overflow-x-auto">{children}</div>
+      {hasOverflow && (
+        <div ref={topRef} onScroll={onTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: 14 }}>
+          <div style={{ width: scrollWidth, height: 1 }} />
+        </div>
+      )}
+      <div ref={bottomRef} onScroll={onBottomScroll} className="overflow-x-auto">
+        {children}
+      </div>
     </div>
   );
 }

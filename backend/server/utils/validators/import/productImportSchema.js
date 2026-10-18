@@ -1,6 +1,6 @@
 const Product = require('../../../models/inventory/productModel');
 const Category = require('../../../models/categoryModel');
-const SubCategory = require('../../../models/subCategoryModel');
+const Brand = require('../../../models/brandModel');
 const Warehouse = require('../../../models/inventory/warehouseModel');
 const ChartOfAccount = require('../../../models/accounting/chartOfAccountModel');
 const { isPucAccountEligible } = require('../../accountingConstants');
@@ -26,7 +26,9 @@ exports.headers = [
   'PriceAfterDiscount',
   'Cost',
   'CategoryName',
-  'SubcategoryName',
+  'BrandName',
+  'Model',
+  'Specifications',
   'SKU',
   'Barcode',
   'WarehouseName',
@@ -43,7 +45,7 @@ exports.requiredHeaders = ['TitleEn', 'TitleAr', 'DescriptionEn', 'DescriptionAr
 
 // Two example rows - one physical product, one service - so both supported `Type` values and
 // which columns apply to each are obvious from the template itself (docs section "Product CSV
-// Import" - "clear examples for both physical products and services"). CategoryName/SubcategoryName
+// Import" - "clear examples for both physical products and services"). CategoryName/BrandName
 // and PucAccountCode are illustrative values, not guaranteed to exist in every tenant's data - the
 // same convention the Purchase Order/Invoice sample templates already use for VendorNumber/
 // ProjectNumber (a sample row always demonstrates the expected FORMAT; the user supplies real
@@ -59,7 +61,9 @@ exports.exampleRows = [
     '',
     '90',
     'Electrical Materials',
-    'Cables & Wires',
+    'ACME',
+    'PX-200',
+    'Stainless steel, 2-inch inlet',
     'CAB-001',
     '',
     'Main Warehouse',
@@ -78,6 +82,8 @@ exports.exampleRows = [
     'خدمة تركيب كهربائي في الموقع',
     'service',
     '500',
+    '',
+    '',
     '',
     '',
     '',
@@ -127,7 +133,9 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
   const priceAfterDiscountRaw = (row.PriceAfterDiscount || '').trim();
   const costRaw = (row.Cost || '').trim();
   const categoryNameRaw = (row.CategoryName || '').trim();
-  const subcategoryNameRaw = (row.SubcategoryName || '').trim();
+  const brandNameRaw = (row.BrandName || '').trim();
+  const modelRaw = (row.Model || '').trim();
+  const specificationsRaw = (row.Specifications || '').trim();
   const sku = (row.SKU || '').trim();
   const barcode = (row.Barcode || '').trim();
   const warehouseNameRaw = (row.WarehouseName || '').trim();
@@ -209,7 +217,7 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
   }
 
   let category = null;
-  let subcategory = null;
+  let brand = null;
   let cost;
   let warehouse = null;
   let quantity;
@@ -223,7 +231,9 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
     // - reject any attempt to smuggle those in via the CSV instead of silently ignoring them.
     if (costRaw) errors.push({ column: 'Cost', value: row.Cost, message: 'Cost does not apply to a service - leave it blank.' });
     if (categoryNameRaw) errors.push({ column: 'CategoryName', value: row.CategoryName, message: 'CategoryName does not apply to a service - leave it blank.' });
-    if (subcategoryNameRaw) errors.push({ column: 'SubcategoryName', value: row.SubcategoryName, message: 'SubcategoryName does not apply to a service - leave it blank.' });
+    if (brandNameRaw) errors.push({ column: 'BrandName', value: row.BrandName, message: 'BrandName does not apply to a service - leave it blank.' });
+    if (modelRaw) errors.push({ column: 'Model', value: row.Model, message: 'Model does not apply to a service - leave it blank.' });
+    if (specificationsRaw) errors.push({ column: 'Specifications', value: row.Specifications, message: 'Specifications does not apply to a service - leave it blank.' });
     if (warehouseNameRaw || quantityRaw) {
       errors.push({ column: 'Quantity', value: row.Quantity, message: 'A service cannot have inventory stock - leave WarehouseName/Quantity blank.' });
     }
@@ -275,12 +285,12 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
       if (!category) errors.push({ column: 'CategoryName', value: row.CategoryName, message: `No category found named "${categoryNameRaw}".` });
     }
 
-    if (!subcategoryNameRaw) {
-      errors.push({ column: 'SubcategoryName', value: row.SubcategoryName, message: 'SubcategoryName is required for a product.' });
-    } else if (category) {
-      subcategory = await SubCategory.findOne({ 'name.en': subcategoryNameRaw, mainCategory: category._id });
-      if (!subcategory) {
-        errors.push({ column: 'SubcategoryName', value: row.SubcategoryName, message: `No subcategory found named "${subcategoryNameRaw}" under category "${categoryNameRaw}".` });
+    if (!brandNameRaw) {
+      errors.push({ column: 'BrandName', value: row.BrandName, message: 'BrandName is required for a product.' });
+    } else {
+      brand = await Brand.findOne({ 'name.en': brandNameRaw });
+      if (!brand) {
+        errors.push({ column: 'BrandName', value: row.BrandName, message: `No brand found named "${brandNameRaw}".` });
       }
     }
 
@@ -323,7 +333,9 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
         : {
             cost,
             category: category._id,
-            subcategory: subcategory._id,
+            brand: brand._id,
+            model: modelRaw || undefined,
+            specifications: specificationsRaw || undefined,
             stock: warehouse ? [{ warehouse: warehouse._id, quantity }] : [],
           }),
     },

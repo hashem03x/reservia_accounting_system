@@ -14,6 +14,7 @@ import actions from "@/utils/constants/actions";
 import paths from "@/utils/constants/paths";
 import SectionCard from "@/components/ui/section-card";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import TruncatedText from "@/components/ui/truncated-text";
 import EmptySection from "@/components/ui/sections/empty";
 import ErrorSection from "@/components/ui/sections/error";
@@ -97,7 +98,7 @@ export default function RecentPurchaseOrdersSection() {
             </Table.Thead>
             <Table.Tbody>
               {data.data.map((order) => (
-                <Table.Tr
+                <ClickableRow
                   key={order._id}
                   className="cursor-pointer"
                   onClick={() => navigate(`/${paths.admin}/${paths.home}/${paths.purchaseOrders}/${order._id}`)}
@@ -119,7 +120,7 @@ export default function RecentPurchaseOrdersSection() {
                     </Badge>
                   </Table.Td>
                   <Table.Td className="whitespace-nowrap">{formatDate(order.createdAt, language)}</Table.Td>
-                </Table.Tr>
+                </ClickableRow>
               ))}
             </Table.Tbody>
           </DataTable>

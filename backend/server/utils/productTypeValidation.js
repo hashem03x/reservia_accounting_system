@@ -9,7 +9,7 @@
 // `requirePucAccount`: a NEW service must name its PUC Account (Product.pucAccount - the account a
 // Purchase Order of this service posts to instead of Materials Inventory). Callers pass `false`
 // only where the field is genuinely optional (e.g. an update request that doesn't touch it).
-function validateProductTypeFields({ type = 'product', cost, category, subcategory, durationValue, durationUnit, pucAccount, requirePucAccount = false }) {
+function validateProductTypeFields({ type = 'product', cost, category, brand, durationValue, durationUnit, pucAccount, requirePucAccount = false }) {
   if (!['product', 'service'].includes(type)) {
     return 'type must be either "product" or "service"';
   }
@@ -31,7 +31,7 @@ function validateProductTypeFields({ type = 'product', cost, category, subcatego
   // type === 'product'
   if (cost === undefined || cost === null || cost === '') return 'Product cost is required';
   if (!category) return 'Category is required for a product';
-  if (!subcategory) return 'Subcategory is required for a product';
+  if (!brand) return 'Brand is required for a product';
   if (pucAccount) return 'Only a service can have a PUC account';
   return null;
 }

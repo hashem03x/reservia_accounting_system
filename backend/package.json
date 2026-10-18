@@ -23,6 +23,7 @@
     "db:report-missing-contact-info": "node server/scripts/reportMissingContactInfo.js",
     "db:migrate-vendor-payment-info": "node server/scripts/migrateVendorPaymentInfo.js",
     "db:backfill-erp-memberships": "node server/scripts/backfillErpSystemMemberships.js",
+    "db:migrate-subcategory-to-brand": "node server/scripts/migrateSubcategoryToBrand.js",
     "db:bootstrap-platform-admin": "node server/scripts/bootstrapPlatformAdmin.js",
     "start": "node server.js",
     "dev": "cross-env NODE_ENV=development nodemon server.js",

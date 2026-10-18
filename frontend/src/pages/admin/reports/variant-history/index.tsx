@@ -9,6 +9,7 @@ import { SortOrder } from "@/types/global";
 import { formatDate } from "@/utils/helpers/date-formaters";
 import { DateTimePicker } from "@mantine/dates";
 import { Button, Select, Table, Text } from "@mantine/core";
+import { DataTableContainer } from "@/components/ui/data-table";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
@@ -232,7 +233,7 @@ export default function VariantHistoryReport() {
           />
         </div>
 
-        <div className="overflow-x-auto">
+        <DataTableContainer>
           <Table>
             <Table.Thead>
               <Table.Tr>
@@ -259,7 +260,7 @@ export default function VariantHistoryReport() {
               ))}
             </Table.Tbody>
           </Table>
-        </div>
+        </DataTableContainer>
 
         <div className="mt-4">
           <Text size="lg" fw={500} mb={2}>{translate("Warehouse Stock Details", "تفاصيل المخزون في المستودعات")}</Text>

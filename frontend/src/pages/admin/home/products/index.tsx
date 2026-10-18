@@ -33,6 +33,8 @@ import { isAdmin } from "@/utils/constants/roles";
 import PucTransferModal from "./_components/puc-transfer-modal";
 import { useUser } from "@/context/UserContext";
 import GlobalDiscount from "./_components/global-discount";
+import { DataTableContainer } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 
 const PRODUCTS_PER_PAGE = import.meta.env.VITE_PRODUCTS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
 
@@ -281,7 +283,7 @@ export default function Products() {
         ) : (
           <>
             {/* Table */}
-            <div className="overflow-x-auto">
+            <DataTableContainer>
               <Table className="text-nowrap" verticalSpacing="sm" highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
@@ -310,7 +312,7 @@ export default function Products() {
                     const totalAmount = productIsService ? 0 : (product.cost || 0) * totalQuantity;
 
                     return (
-                      <Table.Tr
+                      <ClickableRow
                         key={product._id}
                         className="cursor-pointer text-gray-600"
                         onClick={() => navigate(product._id)}
@@ -391,12 +393,12 @@ export default function Products() {
                             : "-"}
                         </Table.Td>
                         <Table.Td>{formatDate(product.createdAt, language)}</Table.Td>
-                      </Table.Tr>
+                      </ClickableRow>
                     );
                   })}
                 </Table.Tbody>
               </Table>
-            </div>
+            </DataTableContainer>
 
             {/* Pagination */}
             <PaginationHandler<Product>

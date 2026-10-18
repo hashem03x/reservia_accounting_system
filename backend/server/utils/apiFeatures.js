@@ -76,6 +76,28 @@ class ApiFeatures {
               $options: 'i',
             },
           },
+          // Also matches a product's identification fields (Category -> Brand -> Model/Item
+          // Number hierarchy) - model/sku/barcode are plain strings, searchable directly without
+          // a $lookup; Category/Brand themselves are filtered by id via mainCategoryId/brands
+          // query params (see productController.js#createFilterObject), not free-text here.
+          {
+            model: {
+              $regex: this.queryString.keyword,
+              $options: 'i',
+            },
+          },
+          {
+            sku: {
+              $regex: this.queryString.keyword,
+              $options: 'i',
+            },
+          },
+          {
+            barcode: {
+              $regex: this.queryString.keyword,
+              $options: 'i',
+            },
+          },
         ];
       } else {
         query.$or = [

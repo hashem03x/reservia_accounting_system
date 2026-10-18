@@ -13,6 +13,7 @@ import actions from "@/utils/constants/actions";
 import paths from "@/utils/constants/paths";
 import SectionCard from "@/components/ui/section-card";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import TruncatedText from "@/components/ui/truncated-text";
 import EmptySection from "@/components/ui/sections/empty";
 import ErrorSection from "@/components/ui/sections/error";
@@ -94,7 +95,7 @@ export default function ProjectExecutionSection() {
             </Table.Thead>
             <Table.Tbody>
               {data.data.map((project) => (
-                <Table.Tr
+                <ClickableRow
                   key={project._id}
                   className="cursor-pointer"
                   onClick={() => navigate(`/${paths.admin}/${paths.projects}/${project._id}`)}
@@ -116,7 +117,7 @@ export default function ProjectExecutionSection() {
                       {project.status}
                     </Badge>
                   </Table.Td>
-                </Table.Tr>
+                </ClickableRow>
               ))}
             </Table.Tbody>
           </DataTable>

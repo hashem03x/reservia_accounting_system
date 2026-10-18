@@ -9,6 +9,7 @@ import { SortOrder } from "@/types/global";
 import { formatDate } from "@/utils/helpers/date-formaters";
 import { DateTimePicker } from "@mantine/dates";
 import { Button, Select, Table } from "@mantine/core";
+import { DataTableContainer } from "@/components/ui/data-table";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
@@ -207,7 +208,7 @@ export default function FixedAssetsReport() {
       ) : !data.assets.length ? (
         <EmptySection useDefaultImg message={translate("No Data Found", "لا توجد بيانات")} />
       ) : (
-        <div className="overflow-x-auto">
+        <DataTableContainer>
           <Table className="text-nowrap" verticalSpacing="xs" withColumnBorders>
             <Table.Thead className="bg-gray-100 text-gray-800">
               <Table.Tr>
@@ -250,7 +251,7 @@ export default function FixedAssetsReport() {
               </Table.Tr>
             </Table.Tbody>
           </Table>
-        </div>
+        </DataTableContainer>
       )}
     </AdminLayoutBox>
   );

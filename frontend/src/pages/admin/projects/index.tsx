@@ -21,6 +21,7 @@ import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import { outlineIcons } from "@/components/icons";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import TruncatedText from "@/components/ui/truncated-text";
 import CreateProjectModal from "./_components/create-project-modal";
 
@@ -134,7 +135,7 @@ export default function Projects() {
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedProjects.data.map((project) => (
-                    <Table.Tr key={project._id} className="cursor-pointer" onClick={() => navigate(project._id)}>
+                    <ClickableRow key={project._id} className="cursor-pointer" onClick={() => navigate(project._id)}>
                       <Table.Td className="whitespace-nowrap font-medium">{project.projectNumber}</Table.Td>
                       <Table.Td className="whitespace-nowrap">{project.sector || "-"}</Table.Td>
                       <Table.Td>
@@ -191,7 +192,7 @@ export default function Projects() {
                           {translate("View", "عرض")}
                         </Button>
                       </Table.Td>
-                    </Table.Tr>
+                    </ClickableRow>
                   ))}
                 </Table.Tbody>
               </DataTable>

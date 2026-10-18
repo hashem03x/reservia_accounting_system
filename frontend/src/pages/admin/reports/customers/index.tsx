@@ -11,6 +11,7 @@ import { sortOrdersArray } from "@/utils/constants/sort-order";
 import { customerTypesArray, getCustomerTypeLabel } from "@/utils/constants/customer-types";
 import { stringifyCustomerAddress } from "@/utils/helpers/stringify-address";
 import { Button, Select, Table } from "@mantine/core";
+import { DataTableContainer } from "@/components/ui/data-table";
 import { solidIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
@@ -174,7 +175,7 @@ export default function CustomersReport() {
       ) : (
         <>
           {/* Table */}
-          <div className="overflow-x-auto">
+          <DataTableContainer>
             <Table className="text-nowrap" verticalSpacing="xs" withColumnBorders>
               <Table.Thead className="bg-gray-100 text-gray-800">
                 <Table.Tr>
@@ -230,7 +231,7 @@ export default function CustomersReport() {
                 </Table.Tr>
               </Table.Tbody>
             </Table>
-          </div>
+          </DataTableContainer>
         </>
       )}
     </AdminLayoutBox>

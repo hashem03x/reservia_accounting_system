@@ -9,6 +9,7 @@ import handleRequest from "@/utils/helpers/handle-request";
 import paths from "@/utils/constants/paths";
 import { solidIcons } from "@/components/icons";
 import { Button, Select, Table, Text } from "@mantine/core";
+import { DataTableContainer } from "@/components/ui/data-table";
 import { DateTimePicker } from "@mantine/dates";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
@@ -401,7 +402,7 @@ export default function InventorySummaryReport() {
             </div>
           </div> */}
 
-          <div className="overflow-x-auto">
+          <DataTableContainer>
             <Table className="text-nowrap" verticalSpacing="xs" withColumnBorders>
               <Table.Thead>
                 <Table.Tr>
@@ -455,7 +456,7 @@ export default function InventorySummaryReport() {
                 </Table.Tr>
               </Table.Tbody>
             </Table>
-          </div>
+          </DataTableContainer>
         </div>
       )}
     </AdminLayoutBox>

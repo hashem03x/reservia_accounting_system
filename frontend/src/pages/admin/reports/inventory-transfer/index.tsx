@@ -9,6 +9,7 @@ import { sortOrdersArray } from "@/utils/constants/sort-order";
 import { formatDate } from "@/utils/helpers/date-formaters";
 import { DateTimePicker } from "@mantine/dates";
 import { Button, Select, Table, Text } from "@mantine/core";
+import { DataTableContainer } from "@/components/ui/data-table";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
@@ -211,7 +212,7 @@ export default function InventoryTransferReport() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <DataTableContainer>
               <Table className="text-nowrap" verticalSpacing="xs" withColumnBorders>
                 <Table.Thead className="bg-gray-100 text-gray-800">
                   <Table.Tr>
@@ -245,7 +246,7 @@ export default function InventoryTransferReport() {
                   </Table.Tr>
                 </Table.Tbody>
               </Table>
-            </div>
+            </DataTableContainer>
 
             {/* Warehouse Summary */}
             <div className="mt-4">

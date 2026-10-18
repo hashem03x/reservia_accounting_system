@@ -30,10 +30,14 @@ const productSchema = mongoose.Schema(
       ref: 'Category',
       required: [function () { return this.type !== 'service'; }, 'Category is required'],
     },
+    // Legacy identification field - the catalog hierarchy is now Category -> Brand -> Model/Item
+    // Number (see `brand` below, which replaces this as the required identifier). No longer
+    // required on new/updated products; kept on the schema only so existing products and
+    // historical reports/lookups that reference it keep working untouched. Migrated to `brand`
+    // by scripts/migrateSubcategoryToBrand.js where a reasonable match exists.
     subcategory: {
       type: mongoose.Schema.ObjectId,
       ref: 'SubCategory',
-      required: [function () { return this.type !== 'service'; }, 'Subcategory is required'],
     },
     // Integrated Energy spec (e.g. "100 kW") - optional so existing products created before this
     // field existed keep loading/saving fine.
@@ -84,7 +88,22 @@ const productSchema = mongoose.Schema(
 
     // Not used
     imageCover: { url: { type: String }, sortOrder: { type: Number, default: 0 }, publicId: { type: String } },
-    brand: { type: mongoose.Schema.ObjectId, ref: 'Brand' },
+    // Primary identification field under Category in the catalog hierarchy (Category -> Brand ->
+    // Model/Item Number/Specifications) - replaces `subcategory` above. Required for products
+    // (not services, same conditional pattern as cost/category) - enforced here AND at the
+    // request-validator layer (productValidator.js) for a clear 400 before any DB round-trip.
+    brand: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'Brand',
+      default: null,
+      required: [function () { return this.type !== 'service'; }, 'Brand is required'],
+    },
+    // Freeform model/specs identifier, part of the Category -> Brand -> Model/Item Number
+    // hierarchy. `itemNumber` is distinct from `sku`/`barcode` (which already exist and keep
+    // their existing uniqueness policy) - this is purely a descriptive manufacturer model
+    // reference, not a new identity/uniqueness key.
+    model: { type: String, trim: true },
+    specifications: { type: String, trim: true },
   },
   {
     timestamps: true,

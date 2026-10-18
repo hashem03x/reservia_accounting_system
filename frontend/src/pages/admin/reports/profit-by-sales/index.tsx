@@ -7,6 +7,7 @@ import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { DateTimePicker } from "@mantine/dates";
 import { Button, Group, Stack, Select, Table } from "@mantine/core";
+import { DataTableContainer } from "@/components/ui/data-table";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
@@ -210,7 +211,7 @@ export default function ProfitBySalesReport() {
         )}
 
         {!loading && !error && data?.data && data.data.length > 0 && (
-          <div className="overflow-x-auto">
+          <DataTableContainer>
             <Table className="text-nowrap" verticalSpacing="xs" withColumnBorders>
               <Table.Thead className="bg-gray-100 text-gray-800">
                 <Table.Tr>
@@ -272,7 +273,7 @@ export default function ProfitBySalesReport() {
                 </Table.Tr>
               </Table.Tbody>
             </Table>
-          </div>
+          </DataTableContainer>
         )}
       </Stack>
     </AdminLayoutBox>

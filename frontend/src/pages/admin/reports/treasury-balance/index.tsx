@@ -14,6 +14,7 @@ import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import paths from "@/utils/constants/paths";
 import { solidIcons } from "@/components/icons";
 import { Table } from "@mantine/core";
+import { DataTableContainer } from "@/components/ui/data-table";
 
 const URL = "reports/treasury-balance";
 const FILENAME = "treasury-balance-report.xlsx";
@@ -183,7 +184,7 @@ export default function TreasuryBalanceReport() {
   const renderWarehouseTreasury = (treasury: WarehouseTreasury) => (
     <Card key={treasury.warehouse} withBorder>
       <Title order={4} mb="md">{treasury.warehouse}</Title>
-      <div className="overflow-x-auto">
+      <DataTableContainer>
         <Table className="text-nowrap" verticalSpacing="xs" withColumnBorders>
           <Table.Thead className="bg-gray-100 text-gray-800">
             <Table.Tr>
@@ -214,7 +215,7 @@ export default function TreasuryBalanceReport() {
             </Table.Tr>
           </Table.Tbody>
         </Table>
-      </div>
+      </DataTableContainer>
     </Card>
   );
 

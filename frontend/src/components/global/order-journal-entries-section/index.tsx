@@ -7,6 +7,7 @@ import { formatDate } from "@/utils/helpers/date-formaters";
 import { JournalEntry } from "@/types/journal-entry";
 import { Badge, Table } from "@mantine/core";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import paths from "@/utils/constants/paths";
@@ -95,7 +96,7 @@ export default function OrderJournalEntriesSection({
         </Table.Thead>
         <Table.Tbody>
           {entries.map((entry) => (
-            <Table.Tr
+            <ClickableRow
               key={entry._id}
               className="cursor-pointer text-gray-600"
               onClick={() => navigate(`/${paths.admin}/${paths.journalEntries}/${entry._id}`)}
@@ -115,7 +116,7 @@ export default function OrderJournalEntriesSection({
                 </Badge>
               </Table.Td>
               <Table.Td className="whitespace-nowrap text-blue-600">{translate("View Entry →", "عرض القيد ←")}</Table.Td>
-            </Table.Tr>
+            </ClickableRow>
           ))}
         </Table.Tbody>
       </DataTable>

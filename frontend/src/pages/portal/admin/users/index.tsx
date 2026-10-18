@@ -17,6 +17,8 @@ import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import { rolesArray } from "@/utils/constants/roles";
+import { DataTableContainer } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 
 type PlatformUser = {
   _id: string;
@@ -95,7 +97,7 @@ export default function PlatformAdminUsers() {
         <EmptySection useDefaultImg message={translate("No Users Found", "لا يوجد مستخدمون")} />
       ) : (
         <>
-          <div className="overflow-x-auto">
+          <DataTableContainer>
             <Table className="text-nowrap" verticalSpacing="sm" highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
@@ -109,7 +111,7 @@ export default function PlatformAdminUsers() {
               </Table.Thead>
               <Table.Tbody>
                 {data.data.map(u => (
-                  <Table.Tr key={u._id} className="cursor-pointer text-gray-600" onClick={() => navigate(`${u._id}`)}>
+                  <ClickableRow key={u._id} className="cursor-pointer text-gray-600" onClick={() => navigate(`${u._id}`)}>
                     <Table.Td className="font-semibold text-gray-800">{u.name}</Table.Td>
                     <Table.Td>{u.email || "-"}</Table.Td>
                     <Table.Td>{u.role}</Table.Td>
@@ -129,11 +131,11 @@ export default function PlatformAdminUsers() {
                       </Badge>
                     </Table.Td>
                     <Table.Td>{u.platformAdmin ? <Badge size="sm" color="grape">{translate("Yes", "نعم")}</Badge> : "-"}</Table.Td>
-                  </Table.Tr>
+                  </ClickableRow>
                 ))}
               </Table.Tbody>
             </Table>
-          </div>
+          </DataTableContainer>
 
           {data.pagination.totalPages > 1 && (
             <div className="flex justify-center">

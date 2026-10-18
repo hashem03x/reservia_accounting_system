@@ -23,6 +23,7 @@ import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import TruncatedText from "@/components/ui/truncated-text";
 import { requisitionStatusColors, useRequisitionStatusLabel } from "./_components/status";
 
@@ -151,7 +152,7 @@ export default function PurchaseRequisitions() {
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedRequisitions.data.map((requisition) => (
-                    <Table.Tr key={requisition._id} className="cursor-pointer" onClick={() => navigate(requisition._id)}>
+                    <ClickableRow key={requisition._id} className="cursor-pointer" onClick={() => navigate(requisition._id)}>
                       <Table.Td className="whitespace-nowrap font-medium">{requisition.code}</Table.Td>
                       <Table.Td>
                         <TruncatedText
@@ -192,7 +193,7 @@ export default function PurchaseRequisitions() {
                           {translate("View", "عرض")}
                         </Button>
                       </Table.Td>
-                    </Table.Tr>
+                    </ClickableRow>
                   ))}
                 </Table.Tbody>
               </DataTable>

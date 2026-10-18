@@ -11,6 +11,7 @@ import { formatDate } from "@/utils/helpers/date-formaters";
 import paths from "@/utils/constants/paths";
 import SectionCard from "@/components/ui/section-card";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import TruncatedText from "@/components/ui/truncated-text";
 import EmptySection from "@/components/ui/sections/empty";
 import ErrorSection from "@/components/ui/sections/error";
@@ -91,7 +92,7 @@ export default function RecentSalesOrdersSection() {
             </Table.Thead>
             <Table.Tbody>
               {data.data.map((order) => (
-                <Table.Tr
+                <ClickableRow
                   key={order._id}
                   className="cursor-pointer"
                   onClick={() => navigate(`/${paths.admin}/${paths.home}/${paths.salesOrders}/${order._id}`)}
@@ -113,7 +114,7 @@ export default function RecentSalesOrdersSection() {
                     </Badge>
                   </Table.Td>
                   <Table.Td className="whitespace-nowrap">{formatDate(order.createdAt, language)}</Table.Td>
-                </Table.Tr>
+                </ClickableRow>
               ))}
             </Table.Tbody>
           </DataTable>

@@ -18,6 +18,8 @@ import { formatDate } from "@/utils/helpers/date-formaters";
 import { Button, Table } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
+import { DataTableContainer } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
@@ -143,7 +145,7 @@ export default function PurchaseOrders() {
         ) : (
           <>
             {/* Table */}
-            <div className="overflow-x-auto">
+            <DataTableContainer>
               <Table className="text-nowrap" verticalSpacing="sm" highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
@@ -163,7 +165,7 @@ export default function PurchaseOrders() {
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedPurchaseOrders.data.map((purchaseOrder) => (
-                    <Table.Tr
+                    <ClickableRow
                       key={purchaseOrder._id}
                       className="cursor-pointer text-gray-600"
                       onClick={() => navigate(purchaseOrder._id)}
@@ -178,11 +180,11 @@ export default function PurchaseOrders() {
                       <Table.Td>{purchaseOrder.remainingAmount.toFixed(2)}</Table.Td>
                       <Table.Td>{formatDate(purchaseOrder.createdAt, language)}</Table.Td>
                       <Table.Td>{purchaseOrder.createdBy?.name || ""}</Table.Td>
-                    </Table.Tr>
+                    </ClickableRow>
                   ))}
                 </Table.Tbody>
               </Table>
-            </div>
+            </DataTableContainer>
 
             {/* Pagination */}
             <PaginationHandler<PurchaseOrder>

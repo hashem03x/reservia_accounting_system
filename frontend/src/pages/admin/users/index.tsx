@@ -25,6 +25,8 @@ import LoadingSection from "@/components/ui/sections/loading";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import UserModal from "./_components/user-modal";
+import { DataTableContainer } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 
 const USERS_PER_PAGE = import.meta.env.VITE_USERS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
 
@@ -180,7 +182,7 @@ export default function Users() {
         ) : (
           <>
             {/* Table */}
-            <div className="overflow-x-auto">
+            <DataTableContainer>
               <Table className="text-nowrap" verticalSpacing="xs" highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
@@ -193,7 +195,7 @@ export default function Users() {
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedUsers.data.map((user) => (
-                    <Table.Tr
+                    <ClickableRow
                       key={user._id}
                       className="cursor-pointer text-gray-600"
                       onClick={() => navigate(`${user._id}`)}
@@ -203,11 +205,11 @@ export default function Users() {
                       <Table.Td>{user.email}</Table.Td>
                       <Table.Td>{getRoleLabel(user.role, language)}</Table.Td>
                       <Table.Td>{formatDate(user.createdAt, language)}</Table.Td>
-                    </Table.Tr>
+                    </ClickableRow>
                   ))}
                 </Table.Tbody>
               </Table>
-            </div>
+            </DataTableContainer>
 
             {/* Pagination */}
             <PaginationHandler<User> paginatedData={paginatedUsers} activePage={activePage} setActivePage={setActivePage} />

@@ -18,6 +18,8 @@ import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
 import { Button, Table, TextInput } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
+import { DataTableContainer } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
@@ -180,7 +182,7 @@ export default function Customers() {
         ) : (
           <>
             {/* Table */}
-            <div className="overflow-x-auto">
+            <DataTableContainer>
               <Table className="text-nowrap" verticalSpacing="xs" highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
@@ -199,7 +201,7 @@ export default function Customers() {
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedCustomers.data.map((customer) => (
-                    <Table.Tr
+                    <ClickableRow
                       key={customer._id}
                       className="cursor-pointer text-gray-600"
                       onClick={() => navigate(`${customer._id}`)}
@@ -217,11 +219,11 @@ export default function Customers() {
                         </Table.Td>
                       </AdminGaurd>
                       <Table.Td>{stringifyAddress(customer)}</Table.Td>
-                    </Table.Tr>
+                    </ClickableRow>
                   ))}
                 </Table.Tbody>
               </Table>
-            </div>
+            </DataTableContainer>
 
             {/* Pagination */}
             <PaginationHandler<Customer>

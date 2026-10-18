@@ -5,6 +5,7 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const Category = require('../../models/categoryModel');
 const Product = require('../../models/inventory/productModel')
 const SubCategory = require('../../models/subCategoryModel');
+const Brand = require('../../models/brandModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { validateProductTypeFields } = require('../productTypeValidation');
 const { isPucAccountEligible } = require('../accountingConstants');
@@ -17,7 +18,7 @@ function validateTypeSpecificFields(value, { req }) {
     type: req.body.type || 'product',
     cost: req.body.cost,
     category: req.body.category,
-    subcategory: req.body.subcategory,
+    brand: req.body.brand,
     durationValue: req.body.durationValue,
     durationUnit: req.body.durationUnit,
     pucAccount: req.body.pucAccount,
@@ -80,19 +81,30 @@ exports.createProductValidator = [
         if (!category) return Promise.reject(new Error(`No category for this id ${categoryId}`));
       });
     }),
+  // Legacy, optional - no longer the required identification field (see productModel.js#brand).
   check('subcategory')
     .optional()
-    // .withMessage('subcategories is required')
     .isMongoId()
     .withMessage('Invalid subcategory id formate')
-    // Check if subcategories ids exists in db
     .custom(async subcategoryId => {
       await SubCategory.findById(subcategoryId).then(category => {
         if (!category) return Promise.reject(new Error(`No subcategory for this id ${subcategoryId}`));
       });
     }),
 
-  check('brand').optional().isMongoId().withMessage('Invalid brand id formate'),
+  // Required for products (enforced by validateTypeSpecificFields above); optional here only so
+  // a service (which never has one) isn't forced through this check.
+  check('brand')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid brand id formate')
+    .custom(async brandId => {
+      await Brand.findById(brandId).then(brand => {
+        if (!brand) return Promise.reject(new Error(`No brand for this id ${brandId}`));
+      });
+    }),
+  check('model').optional().isString().trim(),
+  check('specifications').optional().isString().trim(),
   check('pucAccount').optional({ checkFalsy: true }).custom(validatePucAccountReference),
   check('capacity.value').optional({ nullable: true }).isNumeric().withMessage('Capacity value must be a number'),
   check('capacity.unit').optional({ nullable: true }).isString().withMessage('Capacity unit must be a string'),
@@ -165,6 +177,17 @@ exports.updateProductValidator = [
     }),
   check('capacity.value').optional({ nullable: true }).isNumeric().withMessage('Capacity value must be a number'),
   check('capacity.unit').optional({ nullable: true }).isString().withMessage('Capacity unit must be a string'),
+  check('brand')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid brand id formate')
+    .custom(async brandId => {
+      await Brand.findById(brandId).then(brand => {
+        if (!brand) return Promise.reject(new Error(`No brand for this id ${brandId}`));
+      });
+    }),
+  check('model').optional().isString().trim(),
+  check('specifications').optional().isString().trim(),
   validatorMiddleware,
 ];
 

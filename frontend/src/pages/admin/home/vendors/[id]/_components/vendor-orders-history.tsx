@@ -5,6 +5,7 @@ import { getPaymentStatusLabel } from "@/utils/constants/payment-statuses";
 import { formatDateAndTime } from "@/utils/helpers/date-formaters";
 import paths from "@/utils/constants/paths";
 import { Table } from "@mantine/core";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import { getOrderTotal } from "@/utils/helpers/order-totals";
 
 export default function VendorOrdersHistory({ orders }: { orders: PurchaseOrder[] }) {
@@ -27,7 +28,7 @@ export default function VendorOrdersHistory({ orders }: { orders: PurchaseOrder[
           </Table.Thead>
           <Table.Tbody>
             {orders.map((purchaseOrder) => (
-              <Table.Tr
+              <ClickableRow
                 key={purchaseOrder._id}
                 className="cursor-pointer text-gray-600"
                 onClick={() => navigate(`/${paths.admin}/${paths.home}/${paths.purchaseOrders}/${purchaseOrder._id}`)}
@@ -38,7 +39,7 @@ export default function VendorOrdersHistory({ orders }: { orders: PurchaseOrder[
                   {getOrderTotal(purchaseOrder).toFixed(2)} {translations.currency}
                 </Table.Td>
                 <Table.Td>{formatDateAndTime(purchaseOrder.createdAt, language)}</Table.Td>
-              </Table.Tr>
+              </ClickableRow>
             ))}
           </Table.Tbody>
         </Table>

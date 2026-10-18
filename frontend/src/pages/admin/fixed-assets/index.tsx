@@ -17,6 +17,7 @@ import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import TruncatedText from "@/components/ui/truncated-text";
 import CreateFixedAssetModal from "./_components/create-fixed-asset-modal";
 import RunDepreciationModal from "./_components/run-depreciation-modal";
@@ -148,7 +149,7 @@ export default function FixedAssets() {
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedAssets.data.map((asset) => (
-                    <Table.Tr key={asset._id} className="cursor-pointer" onClick={() => navigate(asset._id)}>
+                    <ClickableRow key={asset._id} className="cursor-pointer" onClick={() => navigate(asset._id)}>
                       <Table.Td className="whitespace-nowrap tabular-nums">{asset.assetCode || "-"}</Table.Td>
                       <Table.Td className="font-medium">
                         <TruncatedText text={asset.name} maxWidthClassName="max-w-[180px]" />
@@ -179,7 +180,7 @@ export default function FixedAssets() {
                           {statusLabel(asset.status || "active")}
                         </Badge>
                       </Table.Td>
-                    </Table.Tr>
+                    </ClickableRow>
                   ))}
                 </Table.Tbody>
               </DataTable>

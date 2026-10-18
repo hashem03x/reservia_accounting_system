@@ -168,12 +168,13 @@ exports.createProduct = factory.createOne(Product);
 exports.createFilterObject = asyncHandler(async (req, res, next) => {
   let filterObject = {};
 
-  const { mainCategoryId, subCategories, sizes, isDeleted, isAvailable } = req.query;
+  const { mainCategoryId, subCategories, brands, sizes, isDeleted, isAvailable } = req.query;
 
   const categoryFilter = mainCategoryId ? { category: mainCategoryId } : {};
 
   if (mainCategoryId) delete req.query.mainCategoryId;
 
+  // Legacy filter - kept for any caller still on the old Subcategory-based UI/reports.
   const subCategoryFilter = subCategories
     ? {
         subcategory: {
@@ -186,6 +187,20 @@ exports.createFilterObject = asyncHandler(async (req, res, next) => {
     : {};
 
   if (subCategories) delete req.query.subCategories;
+
+  // Brand filter - Category -> Brand is now the primary catalog hierarchy (see productModel.js).
+  const brandFilter = brands
+    ? {
+        brand: {
+          $in: brands
+            .split(',')
+            .map(brand => brand.trim())
+            .filter(brand => brand !== ''),
+        },
+      }
+    : {};
+
+  if (brands) delete req.query.brands;
 
   const sizeFilter = sizes
     ? {
@@ -209,6 +224,7 @@ exports.createFilterObject = asyncHandler(async (req, res, next) => {
   filterObject = {
     ...categoryFilter,
     ...subCategoryFilter,
+    ...brandFilter,
     ...sizeFilter,
     ...isDeletedFilter,
     ...isAvailableFilter,
@@ -449,7 +465,7 @@ exports.getProductHistoryByCode = asyncHandler(async (req, res, next) => {
   const page = Math.max(parseInt(req.query.page) || 1, 1);
   const limit = Math.max(parseInt(req.query.limit) || 10, 1);
 
-  const product = await Product.findOne({ barcode: code }).select('title sku barcode cost price priceAfterDiscount capacity category subcategory stock');
+  const product = await Product.findOne({ barcode: code }).select('title sku barcode cost price priceAfterDiscount capacity category subcategory brand model specifications stock');
   if (!product) {
     return next(new ApiError('Product not found with this code', 404));
   }
@@ -595,6 +611,9 @@ exports.getProductHistoryByCode = asyncHandler(async (req, res, next) => {
         capacity: product.capacity,
         category: product.category,
         subcategory: product.subcategory,
+        brand: product.brand,
+        model: product.model,
+        specifications: product.specifications,
         stock: product.stock,
         currentStock,
       },

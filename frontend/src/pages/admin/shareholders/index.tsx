@@ -17,6 +17,7 @@ import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import TruncatedText from "@/components/ui/truncated-text";
 import { PaginatedData } from "@/types/global";
 import { Shareholder } from "@/types/shareholder";
@@ -98,7 +99,7 @@ export default function Shareholders() {
                 </Table.Thead>
                 <Table.Tbody>
                   {data.data.map((shareholder) => (
-                    <Table.Tr key={shareholder._id} className="cursor-pointer" onClick={() => navigate(shareholder._id)}>
+                    <ClickableRow key={shareholder._id} className="cursor-pointer" onClick={() => navigate(shareholder._id)}>
                       <Table.Td className="whitespace-nowrap tabular-nums">{shareholder.shareholderNumber}</Table.Td>
                       <Table.Td className="font-medium">
                         <TruncatedText text={shareholder.name} maxWidthClassName="max-w-[220px]" />
@@ -111,7 +112,7 @@ export default function Shareholders() {
                           {shareholder.status === "active" ? translate("Active", "نشط") : translate("Inactive", "غير نشط")}
                         </Badge>
                       </Table.Td>
-                    </Table.Tr>
+                    </ClickableRow>
                   ))}
                 </Table.Tbody>
               </DataTable>

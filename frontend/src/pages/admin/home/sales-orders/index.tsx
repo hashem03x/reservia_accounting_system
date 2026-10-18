@@ -27,6 +27,8 @@ import { formatDate } from "@/utils/helpers/date-formaters";
 import { Badge, Button, Select, Table, TextInput, Tooltip } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
+import { DataTableContainer } from "@/components/ui/data-table";
+import { ClickableRow } from "@/components/ui/clickable-row";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
@@ -336,7 +338,7 @@ export default function SalesOrders() {
         ) : (
           <>
             {/* Table */}
-            <div className="overflow-x-auto">
+            <DataTableContainer>
               <Table className="text-nowrap" verticalSpacing="sm" highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
@@ -356,7 +358,7 @@ export default function SalesOrders() {
                   {paginatedSalesOrders.data.map((salesOrder) => {
                     const isThereAnyReturningRequest = salesOrder.items.some((item) => item.quantityToBeReturned > 0);
                     return (
-                      <Table.Tr
+                      <ClickableRow
                         key={salesOrder._id}
                         className="cursor-pointer text-gray-600"
                         onClick={() => navigate(salesOrder._id)}
@@ -423,12 +425,12 @@ export default function SalesOrders() {
                         <Table.Td>{salesOrder.remainingAmount.toFixed(2)}</Table.Td>
                         <Table.Td>{formatDate(salesOrder.createdAt, language)}</Table.Td>
                         <Table.Td>{salesOrder.createdBy?.name || ""}</Table.Td>
-                      </Table.Tr>
+                      </ClickableRow>
                     );
                   })}
                 </Table.Tbody>
               </Table>
-            </div>
+            </DataTableContainer>
 
             {/* Pagination */}
             <PaginationHandler<SalesOrder>
