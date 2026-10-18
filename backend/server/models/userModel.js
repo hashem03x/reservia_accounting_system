@@ -120,6 +120,29 @@ const userSchema = mongoose.Schema(
     mergedWith: { type: mongoose.Schema.ObjectId, ref: 'User' },
 
     emailVerified: { type: Boolean, default: false },
+
+    // Central Business Portal (docs section "Central Business Portal"). Platform-wide
+    // administrator - distinct from the ERP's own `role: 'admin'`/`isAdmin`, which only ever grant
+    // power WITHIN the ERP system. Never set by any user-facing create/update path - only by the
+    // dedicated platform-admin endpoints (middleware/requirePlatformAdmin.js) or the explicit
+    // scripts/bootstrapPlatformAdmin.js CLI script.
+    platformAdmin: { type: Boolean, default: false },
+    // Which of the five ecosystem systems (ERP/HR/CRM/COMMERCIAL/WEBSITE - see
+    // utils/systemsRegistry.js) this user may enter at all, and under what role. For ERP, `role`
+    // here is a mirror of the user's own top-level `role` field (admin/moderator/operator) - this
+    // array is purely a gate ("can this user enter ERP"), never a second permission vocabulary;
+    // the existing `role`/`permissions` fields remain the single source of truth for what an ERP
+    // user can actually do. Absent/empty by default - every existing user needs no entry, and
+    // `utils/systemAccess.js#hasActiveErpMembership` treats "no entry" as "no access", never as
+    // "grandfathered in" (see scripts/backfillErpSystemMemberships.js for how existing staff get
+    // their initial ERP entry).
+    systemMemberships: [
+      {
+        system: { type: String, required: true, enum: ['ERP', 'HR', 'CRM', 'COMMERCIAL', 'WEBSITE'] },
+        role: { type: String, required: true },
+        isActive: { type: Boolean, default: true },
+      },
+    ],
   },
   { timestamps: true }
 );

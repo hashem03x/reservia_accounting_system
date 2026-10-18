@@ -152,9 +152,13 @@ before(async () => {
   format = require('../../backup/backup.format');
   await Promise.all([User.init(), require('../../models/system/attachmentModel').init()]);
 
-  admin = await User.create({ name: 'Admin', email: `admin-${Date.now()}@example.com`, role: 'admin', type: 'online' });
-  reader = await User.create({ name: 'Reader', email: `reader-${Date.now()}@example.com`, role: 'operator', type: 'online' });
-  outsider = await User.create({ name: 'Outsider', email: `outsider-${Date.now()}@example.com`, role: 'operator', type: 'online' });
+  // Central Business Portal: every real HTTP call below goes through the full auth chain
+  // (authController.protect -> checkUserPermissions/allowedTo), which now also requires active
+  // ERP system membership (see utils/systemAccess.js) - each of these three real users needs one.
+  const erpMembership = role => [{ system: 'ERP', role, isActive: true }];
+  admin = await User.create({ name: 'Admin', email: `admin-${Date.now()}@example.com`, role: 'admin', type: 'online', systemMemberships: erpMembership('admin') });
+  reader = await User.create({ name: 'Reader', email: `reader-${Date.now()}@example.com`, role: 'operator', type: 'online', systemMemberships: erpMembership('operator') });
+  outsider = await User.create({ name: 'Outsider', email: `outsider-${Date.now()}@example.com`, role: 'operator', type: 'online', systemMemberships: erpMembership('operator') });
   // Raw updates: the model's save hook resets staff permissions to the role defaults.
   await coll('users').updateOne({ _id: reader._id }, { $set: { permissions: [{ resource: 'purchaseOrders', actions: ['read'] }] } });
   await coll('users').updateOne({ _id: outsider._id }, { $set: { permissions: [{ resource: 'salesOrders', actions: ['read', 'update'] }] } });

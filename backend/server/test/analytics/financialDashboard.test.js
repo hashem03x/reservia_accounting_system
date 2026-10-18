@@ -178,8 +178,11 @@ test('the endpoint is admin-only like the rest of Analytics', async () => {
   const authController = require('../../controller/user/authController');
   assert.equal(router.stack[0].handle, authController.protect);
   const allowed = user => new Promise(resolve => router.stack[1].handle({ user }, {}, err => resolve(err || null)));
-  assert.equal((await allowed({ role: 'user' }))?.statusCode, 403);
-  assert.equal(await allowed({ role: 'admin' }), null);
+  // Central Business Portal: allowedTo now also requires active ERP system membership (see
+  // utils/systemAccess.js) - exercises the SAME role check this test always covered, under that
+  // new precondition.
+  assert.equal((await allowed({ role: 'user', systemMemberships: [{ system: 'ERP', role: 'operator', isActive: true }] }))?.statusCode, 403);
+  assert.equal(await allowed({ role: 'admin', systemMemberships: [{ system: 'ERP', role: 'admin', isActive: true }] }), null);
   assert.ok(router.stack.some(l => l.route?.path === '/financial-dashboard'));
 });
 

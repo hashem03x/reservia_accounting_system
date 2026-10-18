@@ -13,6 +13,8 @@ export default function extractUserInfo(user: AuthResponse): UserState {
     permissions: user.data.permissions,
     addresses: user.data.addresses,
     wishlist: user.data.wishlist,
+    platformAdmin: user.data.platformAdmin,
+    isActive: user.data.isActive,
     createdAt: user.data.createdAt,
     updatedAt: user.data.updatedAt,
     accessToken: user.token || user.accessToken || "",

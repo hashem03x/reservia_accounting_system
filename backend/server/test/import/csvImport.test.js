@@ -134,14 +134,23 @@ test('Unauthorized import attempts: checkUserPermissions rejects a user without 
     captured = err;
   };
   const middleware = checkUserPermissions({ resource: Resources.customers, action: Actions.create });
+  // Central Business Portal (docs section "Central Business Portal"): checkUserPermissions now
+  // also requires active ERP system membership - every mock user below needs one to exercise the
+  // SAME resource/action logic this test always covered, now under that precondition.
+  const erpMembership = { system: 'ERP', role: 'operator', isActive: true };
 
-  middleware({ user: { role: 'operator', permissions: [] } }, {}, next);
+  middleware({ user: { role: 'operator', permissions: [], systemMemberships: [erpMembership] } }, {}, next);
   assert.ok(captured, 'a user with no matching permission must be rejected');
   assert.equal(captured.statusCode, 403);
 
   captured = null;
-  middleware({ user: { role: 'admin', permissions: [] } }, {}, next);
-  assert.ok(!captured, 'an admin must always bypass the resource/action check');
+  middleware({ user: { role: 'admin', permissions: [], systemMemberships: [{ ...erpMembership, role: 'admin' }] } }, {}, next);
+  assert.ok(!captured, 'an admin with active ERP membership must still always bypass the resource/action check');
+
+  captured = null;
+  middleware({ user: { role: 'admin', permissions: [], systemMemberships: [] } }, {}, next);
+  assert.ok(captured, 'an admin with NO active ERP membership must be rejected, even though role===admin would otherwise bypass everything');
+  assert.equal(captured.statusCode, 403);
 });
 
 // ===================== Customer import =====================

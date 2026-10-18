@@ -18,6 +18,7 @@ const colorSchemeManager = localStorageColorSchemeManager({ key: "reversia-color
 import RememberUser from "@/pages/routes/remeber-user.tsx";
 import LanguageProvider from "@/context/LanguageContext.tsx";
 import UserProvider from "@/context/UserContext.tsx";
+import SystemAccessProvider from "@/context/SystemAccessContext.tsx";
 import MainCategoriesProvider from "@/context/MainCategoriesContext.tsx";
 import SubCategoriesProvider from "@/context/SubcategoriesContext.tsx";
 import WarehousesProvider from "@/context/WarehousesContext.tsx";
@@ -31,17 +32,19 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
         <UserProvider>
           <RememberUser>
-            <MainCategoriesProvider>
-              <SubCategoriesProvider>
-                <GovernorateProvider>
-                  <AboutProvider>
-                    <WarehousesProvider>
-                      <App />
-                    </WarehousesProvider>
-                  </AboutProvider>
-                </GovernorateProvider>
-              </SubCategoriesProvider>
-            </MainCategoriesProvider>
+            <SystemAccessProvider>
+              <MainCategoriesProvider>
+                <SubCategoriesProvider>
+                  <GovernorateProvider>
+                    <AboutProvider>
+                      <WarehousesProvider>
+                        <App />
+                      </WarehousesProvider>
+                    </AboutProvider>
+                  </GovernorateProvider>
+                </SubCategoriesProvider>
+              </MainCategoriesProvider>
+            </SystemAccessProvider>
           </RememberUser>
         </UserProvider>
       </GoogleOAuthProvider>

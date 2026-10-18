@@ -127,6 +127,11 @@ const mountRoutes = app => {
   // Automated backup system (tar.gz; admin-only)
   app.use('/api/v1/admin/backup', backupRoutes);
 
+  // Central Business Portal: current-user identity/effective-access, and platform-wide
+  // administration (docs section "Central Business Portal").
+  app.use('/api/v1/me', require('./portal/portalRoute'));
+  app.use('/api/v1/admin/platform', require('./portal/platformAdminRoute'));
+
   app.all('/api/v1', (req, res) => {
     res.status(200).json({ message: 'App is running 🚀' });
   });

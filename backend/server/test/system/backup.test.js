@@ -261,8 +261,11 @@ test('only administrators reach the backup routes; the cron endpoint needs CRON_
   assert.deepEqual(routesBefore, ['/cron'], 'only the cron endpoint is outside the admin guard');
   const adminGuard = router.stack[protectIndex + 1].handle;
   const run = (guard, user) => new Promise(resolve => guard({ user }, {}, err => resolve(err ? err.statusCode : 'next')));
-  assert.equal(await run(adminGuard, { role: 'moderator', isAdmin: false }), 403);
-  assert.equal(await run(adminGuard, { role: 'admin', isAdmin: false }), 'next');
+  // Central Business Portal: allowedTo now also requires active ERP system membership (see
+  // utils/systemAccess.js) - both mock users below need one to exercise the SAME role check this
+  // test always covered, under that new precondition.
+  assert.equal(await run(adminGuard, { role: 'moderator', isAdmin: false, systemMemberships: [{ system: 'ERP', role: 'moderator', isActive: true }] }), 403);
+  assert.equal(await run(adminGuard, { role: 'admin', isAdmin: false, systemMemberships: [{ system: 'ERP', role: 'admin', isActive: true }] }), 'next');
 
   const { cronBackup } = require('../../backup/backup.controller');
   const call = headers => new Promise(resolve => cronBackup({ headers }, { status: () => ({ json: body => resolve({ ok: true, body }) }) }, err => resolve({ ok: false, status: err?.statusCode })));

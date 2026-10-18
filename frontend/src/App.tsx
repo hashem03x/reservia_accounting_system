@@ -12,6 +12,8 @@ import NotFound from "@/pages/routes/not-found";
 import AuthGaurd from "@/pages/routes/auth-gaurd";
 import RoleGuard from "@/pages/routes/role-guard";
 import ResourceGuard from "@/pages/routes/resource-guard";
+import SystemGuard from "@/pages/routes/system-guard";
+import PlatformAdminGuard from "@/pages/routes/platform-admin-guard";
 
 // Auth Pages
 import Login from "@/pages/outer/login";
@@ -21,6 +23,11 @@ import ResetPassword from "@/pages/outer/reset-password";
 
 // Account Page
 import Profile from "@/pages/inner/profile";
+
+// Central Business Portal
+import Portal from "@/pages/portal";
+import PlatformAdminUsers from "@/pages/portal/admin/users";
+import PlatformAdminUser from "@/pages/portal/admin/users/[id]";
 
 // Admin Panel Pages
 import Admin from "@/pages/admin";
@@ -107,8 +114,8 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           {/* Root: send straight into the app - AuthGaurd/RoleGuard below route it to
-              /login, /profile, or /admin depending on auth state and role. */}
-          <Route index element={<Navigate to={`/${paths.admin}`} replace />} />
+              /login, /profile, or /portal depending on auth state and role. */}
+          <Route index element={<Navigate to={`/${paths.portal}`} replace />} />
 
           {/* Auth Pages (require logged out) */}
           <Route element={<AuthGaurd requireLoggedIn={false} />}>
@@ -123,9 +130,27 @@ export default function App() {
             <Route path={paths.profile} element={<Profile />} />
           </Route>
 
+          {/* Central Business Portal (docs section "Central Business Portal") - the common entry
+              point for staff after login. Customers (role: user) are out of scope - same
+              RoleGuard allowlist the ERP admin tree already uses. */}
+          <Route element={<AuthGaurd requireLoggedIn={true} />}>
+            <Route element={<RoleGuard allowedRoles={[roles.admin.value, roles.moderator.value, roles.operator.value]} />}>
+              <Route path={paths.portal} element={<Portal />} />
+              <Route element={<PlatformAdminGuard />}>
+                <Route path={`${paths.portal}/${paths.platformAdmin}/${paths.users}`} element={<PlatformAdminUsers />} />
+                <Route path={`${paths.portal}/${paths.platformAdmin}/${paths.users}/:id`} element={<PlatformAdminUser />} />
+              </Route>
+            </Route>
+          </Route>
+
           {/* Admin Layout Pages (Pages that require user to be admin or moderator) */}
           <Route element={<AuthGaurd requireLoggedIn={true} />}>
             <Route element={<RoleGuard allowedRoles={[roles.admin.value, roles.moderator.value, roles.operator.value]} />}>
+              {/* Defense in depth: the backend is the real authority (checkUserPermissions/
+                  allowedTo now require active ERP membership on every request) - this additionally
+                  stops the route tree itself from rendering once membership is revoked, not just
+                  the Portal card. */}
+              <Route element={<SystemGuard systemId="ERP" />}>
               <Route element={<AdminLayout />}>
                 <Route path={paths.admin} element={<Admin />}>
                   <Route path={paths.home}>
@@ -274,6 +299,7 @@ export default function App() {
 
                 {/* Catch All Admin Routes */}
                 <Route path={paths.admin + "/*"} element={<NotFound />} />
+              </Route>
               </Route>
             </Route>
           </Route>

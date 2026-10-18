@@ -8,6 +8,7 @@ const User = require('../../models/userModel');
 const Role = require('../../models/userRoleModel');
 
 const ApiError = require('../../utils/apiError');
+const { hasActiveErpMembership } = require('../../utils/systemAccess');
 const sendMailer = require('../../utils/sendEmail');
 const { createToken, createRefreshToken } = require('../../utils/createToken');
 const { accessTokenCookieOptions, refreshTokenCookieOptions } = require('../../utils/cookieOptions');
@@ -54,6 +55,12 @@ exports.protect = asyncHandler(async (req, res, next) => {
     return next(new ApiError('The user that belongs to this token no longer exists', 401));
   }
 
+  // Central Business Portal: a deactivated account must never pass authentication, regardless of
+  // how valid its token still is - this was a pre-existing gap (isActive was never checked here).
+  if (user.isActive === false) {
+    return next(new ApiError('Your account has been deactivated. Contact your administrator.', 401));
+  }
+
   // Check if user change his password after token created
   if (user.passwordChangedAt) {
     const passChangedIimestamp = parseInt(user.passwordChangedAt.getTime() / 1000, 10);
@@ -72,6 +79,15 @@ exports.protect = asyncHandler(async (req, res, next) => {
 exports.allowedTo =
   (...roles) =>
   (req, res, next) => {
+    // Central Business Portal: every route this guards is an ERP-internal action - active ERP
+    // membership is required before even the isAdmin bypass below applies, so revoking a staff
+    // member's ERP access always takes effect immediately, including for isAdmin accounts
+    // (see utils/systemAccess.js#hasActiveErpMembership - the one shared implementation of
+    // "what counts as active ERP access", also used by checkUserPermissions and GET /me/systems).
+    if (!hasActiveErpMembership(req.user)) {
+      return next(new ApiError('You do not have access to the ERP system. Contact your administrator.', 403));
+    }
+
     // checks if user is admin  allowed to access any route
     if (req.user.isAdmin) return next();
 

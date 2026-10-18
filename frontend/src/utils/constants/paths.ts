@@ -51,6 +51,9 @@ const paths = {
   incomeStatement: "income-statement",
   balanceSheet: "balance-sheet",
   cashFlowForecast: "cash-flow-forecast",
+  // Central Business Portal
+  portal: "portal",
+  platformAdmin: "platform-admin",
 };
 
 export default paths;

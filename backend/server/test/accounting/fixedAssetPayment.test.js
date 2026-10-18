@@ -340,9 +340,13 @@ test('payment routes: read needs the read permission, recording needs create; bo
   assert.ok(layer, 'GET/POST /fixed-assets/:id/payments');
   const call = (handler, user) => new Promise(resolve => handler({ user }, {}, err => resolve(err || null)));
   const [getLayer, postLayer] = [layer.route.stack.find(s => s.method === 'get'), layer.route.stack.find(s => s.method === 'post')];
-  const readOnly = { role: 'user', permissions: [{ resource: 'expenses', actions: ['read'] }] };
+  // Central Business Portal: checkUserPermissions now also requires active ERP system membership
+  // (see utils/systemAccess.js) - every mock user below needs one to exercise the SAME
+  // resource/action logic this test always covered, under that new precondition.
+  const erp = [{ system: 'ERP', role: 'operator', isActive: true }];
+  const readOnly = { role: 'user', permissions: [{ resource: 'expenses', actions: ['read'] }], systemMemberships: erp };
   assert.equal(await call(getLayer.handle, readOnly), null);
   assert.equal((await call(postLayer.handle, readOnly))?.statusCode, 403, 'read-only users cannot post payments');
-  assert.equal((await call(getLayer.handle, { role: 'user', permissions: [] }))?.statusCode, 403);
-  assert.equal(await call(postLayer.handle, { role: 'user', permissions: [{ resource: 'expenses', actions: ['read', 'create'] }] }), null);
+  assert.equal((await call(getLayer.handle, { role: 'user', permissions: [], systemMemberships: erp }))?.statusCode, 403);
+  assert.equal(await call(postLayer.handle, { role: 'user', permissions: [{ resource: 'expenses', actions: ['read', 'create'] }], systemMemberships: erp }), null);
 });

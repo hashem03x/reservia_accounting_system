@@ -417,9 +417,13 @@ test('Report routes require sign-in and the reports permission', async () => {
     new Promise(resolve => {
       permission({ user }, {}, err => resolve(err || null));
     });
-  assert.equal((await call({ role: 'user', permissions: [] }))?.statusCode, 403);
-  assert.equal(await call({ role: 'user', permissions: [{ resource: 'reports', actions: ['read'] }] }), null);
-  assert.equal(await call({ role: 'admin', permissions: [] }), null);
+  // Central Business Portal: checkUserPermissions now also requires active ERP system membership
+  // (see utils/systemAccess.js) - every mock user below needs one to exercise the SAME
+  // resource/action logic this test always covered, under that new precondition.
+  const erp = [{ system: 'ERP', role: 'operator', isActive: true }];
+  assert.equal((await call({ role: 'user', permissions: [], systemMemberships: erp }))?.statusCode, 403);
+  assert.equal(await call({ role: 'user', permissions: [{ resource: 'reports', actions: ['read'] }], systemMemberships: erp }), null);
+  assert.equal(await call({ role: 'admin', permissions: [], systemMemberships: [{ system: 'ERP', role: 'admin', isActive: true }] }), null);
 
   // No fixed route may shadow a report (e.g. a notes route named like the "disclosure-notes" report).
   const { REPORTS } = require('../../services/reports/reportRegistry');

@@ -144,8 +144,11 @@ test('only admins can change the list; reading it needs the Projects read permis
     new Promise(resolve => {
       guard({ user }, {}, err => resolve(err ? err.statusCode : 'next'));
     });
-  const moderator = { role: 'moderator', isAdmin: false };
-  const admin = { role: 'admin', isAdmin: false };
+  // Central Business Portal: allowedTo now also requires active ERP system membership (see
+  // utils/systemAccess.js) - both mock users below need one to exercise the SAME role check this
+  // test always covered, under that new precondition.
+  const moderator = { role: 'moderator', isAdmin: false, systemMemberships: [{ system: 'ERP', role: 'moderator', isActive: true }] };
+  const admin = { role: 'admin', isAdmin: false, systemMemberships: [{ system: 'ERP', role: 'admin', isActive: true }] };
   for (const [path, method] of [['/', 'post'], ['/:id', 'patch'], ['/:id', 'delete'], ['/legacy', 'get'], ['/legacy/import', 'post']]) {
     assert.equal(await run(firstGuard(path, method), moderator), 403, `${method} ${path} refuses a non-admin`);
     assert.equal(await run(firstGuard(path, method), admin), 'next', `${method} ${path} lets an admin through`);

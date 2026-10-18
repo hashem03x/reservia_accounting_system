@@ -38,4 +38,7 @@ export default function AuthGaurd({ requireLoggedIn }: { requireLoggedIn: boolea
 }
 
 const WebsiteCustomerDistination = `/${paths.profile}`;
-const SystemWorkerDistination = `/${paths.admin}`;
+// Central Business Portal: a successful login now lands staff on the Portal, not directly on the
+// ERP dashboard (docs section "Authentication and Login Flow" - "Redirect the user to the Central
+// Business Portal instead of automatically opening the ERP dashboard").
+const SystemWorkerDistination = `/${paths.portal}`;

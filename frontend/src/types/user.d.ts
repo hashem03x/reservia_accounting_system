@@ -10,6 +10,10 @@ export type User = {
   wishlist: string[]; // array of product ids
   // The admin dashboard's guided tour - when it was finished / dismissed (PUT users/me/tour).
   tour?: { completedAt?: string | null; dismissedAt?: string | null } | null;
+  // Central Business Portal (docs section "Central Business Portal") - platform-wide
+  // administrator, distinct from ERP's own `role`/`isAdmin`. Only ever set by the backend.
+  platformAdmin?: boolean;
+  isActive?: boolean;
   createdAt: Date;
   updatedAt: Date;
 };

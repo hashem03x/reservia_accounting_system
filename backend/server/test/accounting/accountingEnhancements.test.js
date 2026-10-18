@@ -493,11 +493,15 @@ test('route protection: periods and categories are admin-only to change; PUC tra
   assert.equal(periods.stack[0].handle, authController.protect);
   const closeLayer = periods.stack.find(l => l.route?.path === '/:period/close');
   const call = (handler, user) => new Promise(resolve => handler({ user }, {}, err => resolve(err || null)));
-  assert.equal((await call(closeLayer.route.stack[0].handle, { role: 'moderator' }))?.statusCode, 403);
-  assert.equal(await call(closeLayer.route.stack[0].handle, { role: 'admin' }), null);
+  // Central Business Portal: checkUserPermissions/allowedTo now also require active ERP system
+  // membership (see utils/systemAccess.js) - every mock user below needs one to exercise the SAME
+  // role/resource/action logic this test always covered, under that new precondition.
+  const erp = { system: 'ERP', role: 'moderator', isActive: true };
+  assert.equal((await call(closeLayer.route.stack[0].handle, { role: 'moderator', systemMemberships: [erp] }))?.statusCode, 403);
+  assert.equal(await call(closeLayer.route.stack[0].handle, { role: 'admin', systemMemberships: [{ ...erp, role: 'admin' }] }), null);
 
   const puc = require('../../routes/inventory/pucTransferRoute');
   const post = puc.stack.find(l => l.route?.path === '/product/:productId').route.stack.find(s => s.method === 'post');
-  assert.equal((await call(post.handle, { role: 'user', permissions: [{ resource: 'products', actions: ['read'] }] }))?.statusCode, 403);
-  assert.equal(await call(post.handle, { role: 'user', permissions: [{ resource: 'products', actions: ['read', 'update'] }] }), null);
+  assert.equal((await call(post.handle, { role: 'user', permissions: [{ resource: 'products', actions: ['read'] }], systemMemberships: [erp] }))?.statusCode, 403);
+  assert.equal(await call(post.handle, { role: 'user', permissions: [{ resource: 'products', actions: ['read', 'update'] }], systemMemberships: [erp] }), null);
 });

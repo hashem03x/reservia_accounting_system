@@ -22,6 +22,8 @@
     "db:seed-order-number-counters": "node server/scripts/seedOrderNumberCounters.js",
     "db:report-missing-contact-info": "node server/scripts/reportMissingContactInfo.js",
     "db:migrate-vendor-payment-info": "node server/scripts/migrateVendorPaymentInfo.js",
+    "db:backfill-erp-memberships": "node server/scripts/backfillErpSystemMemberships.js",
+    "db:bootstrap-platform-admin": "node server/scripts/bootstrapPlatformAdmin.js",
     "start": "node server.js",
     "dev": "cross-env NODE_ENV=development nodemon server.js",
     "staging": "cross-env NODE_ENV=staging nodemon server.js",
