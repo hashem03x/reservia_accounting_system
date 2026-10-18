@@ -21,6 +21,7 @@ import UserProvider from "@/context/UserContext.tsx";
 import SystemAccessProvider from "@/context/SystemAccessContext.tsx";
 import MainCategoriesProvider from "@/context/MainCategoriesContext.tsx";
 import SubCategoriesProvider from "@/context/SubcategoriesContext.tsx";
+import BrandsProvider from "@/context/BrandsContext.tsx";
 import WarehousesProvider from "@/context/WarehousesContext.tsx";
 import GovernorateProvider from "@/context/GovernorateContext.tsx";
 import AboutProvider from "@/context/AboutContext.tsx";
@@ -35,13 +36,15 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <SystemAccessProvider>
               <MainCategoriesProvider>
                 <SubCategoriesProvider>
-                  <GovernorateProvider>
-                    <AboutProvider>
-                      <WarehousesProvider>
-                        <App />
-                      </WarehousesProvider>
-                    </AboutProvider>
-                  </GovernorateProvider>
+                  <BrandsProvider>
+                    <GovernorateProvider>
+                      <AboutProvider>
+                        <WarehousesProvider>
+                          <App />
+                        </WarehousesProvider>
+                      </AboutProvider>
+                    </GovernorateProvider>
+                  </BrandsProvider>
                 </SubCategoriesProvider>
               </MainCategoriesProvider>
             </SystemAccessProvider>

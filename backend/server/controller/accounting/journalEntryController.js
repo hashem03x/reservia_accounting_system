@@ -2,6 +2,8 @@ const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const factory = require('../handlersFactory');
 const JournalEntry = require('../../models/accounting/journalEntryModel');
+const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
+const Project = require('../../models/project/projectModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { getNextJournalEntryNumber } = require('../../services/accounting/journalEntryNumberService');
@@ -12,8 +14,9 @@ const { lineRules } = require('../../services/accounting/journalLinePartyService
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
 
 const createJournalEntry = asyncHandler(async (req, res) => {
-  // `project` is guaranteed present and valid by createJournalEntryValidators (RULE 2) by the time
-  // this handler runs - never silently defaulted to null here.
+  // `project` is guaranteed either present-and-valid, or absent-and-the-user-is-authorized for a
+  // "General" entry (journalEntries:createGeneral) by createJournalEntryValidators (RULE 2) by the
+  // time this handler runs - never silently defaulted to null here.
   const { date, description, reference, project, lines } = req.body;
 
   const entryNumber = await getNextJournalEntryNumber();
@@ -21,7 +24,7 @@ const createJournalEntry = asyncHandler(async (req, res) => {
   // (POST /:id/post). Any `status` sent in the body is ignored. The balance check (RULE 1) is
   // enforced unconditionally for every status by the model's own pre('save') hook - drafts are not
   // exempt.
-  const entry = await JournalEntry.create({
+  const entry = new JournalEntry({
     entryNumber,
     date,
     description,
@@ -34,6 +37,12 @@ const createJournalEntry = asyncHandler(async (req, res) => {
     status: 'draft',
     createdBy: req.user._id,
   });
+  // Journal Entry Project / General selection: the validator already verified the user holds
+  // journalEntries:createGeneral when `project` is absent - signal that to the model's own
+  // backstop (journalEntryModel.js) via $locals, never persisted, never settable from the request
+  // body itself.
+  if (!project) entry.$locals.generalEntryAuthorized = true;
+  await entry.save();
 
   logAccountingEvent('JOURNAL_ENTRY_CREATED', { journalEntryId: entry._id, entryNumber: entry.entryNumber, requestId: req.id });
 
@@ -61,11 +70,127 @@ function withEntryListFields(entries) {
 }
 
 const listJournalEntries = factory.getAll(JournalEntry, 'JournalEntry', ' ', false, withEntryListFields);
+
 // Journal entries are listed by Entry Number, ascending (numeric - entryNumber is a Number), unless
 // the caller asks for another order. Entry numbers are unique, so the order is stable across pages
 // and filters.
+//
+// Only these fields may be sorted on - apiFeatures.sort() otherwise passes `req.query.sort`
+// straight into Mongoose's `.sort()` with no validation at all (any client-supplied field name is
+// accepted as-is), which is unsafe and can silently sort by a meaningless/non-indexed field. An
+// unlisted/unknown field falls back to the default rather than erroring - this is a list view, not
+// a page that should break over a bad query param.
+const SORTABLE_FIELDS = ['entryNumber', 'date', 'totalDebit', 'totalCredit'];
+function sanitizeSort(rawSort) {
+  if (!rawSort) return 'entryNumber';
+  const fields = rawSort
+    .split(',')
+    .map(f => f.trim())
+    .filter(f => SORTABLE_FIELDS.includes(f.startsWith('-') ? f.slice(1) : f));
+  return fields.length > 0 ? fields.join(',') : 'entryNumber';
+}
+
+// Builds `req.filterObject` from named, whitelisted query params - the same
+// "resolve human-readable filters into a safe Mongo filter object, then delete the raw query
+// params" convention already used by productController.js#createFilterObject. Deleting each
+// consumed param from `req.query` is required, not cosmetic: apiFeatures.filter() merges
+// `req.query` straight into the Mongo filter with no field whitelist of its own, so leaving e.g.
+// `dateFrom` in `req.query` would add a literal `{ dateFrom: '...' }` clause that matches zero
+// documents (no document has a field by that name) and silently empties every result.
+const createJournalEntryFilterObject = asyncHandler(async (req, res, next) => {
+  const filter = {};
+  const { entryNumber, dateFrom, dateTo, accountNumber, accountName, subAccount, projectNumber, description, debitMin, debitMax, creditMin, creditMax, status, isReversal } = req.query;
+
+  if (entryNumber) {
+    filter.entryNumber = Number(entryNumber);
+    delete req.query.entryNumber;
+  }
+
+  if (dateFrom || dateTo) {
+    filter.date = {};
+    if (dateFrom) filter.date.$gte = new Date(dateFrom);
+    if (dateTo) filter.date.$lte = new Date(dateTo);
+    delete req.query.dateFrom;
+    delete req.query.dateTo;
+  }
+
+  if (accountNumber) {
+    const account = await ChartOfAccount.findOne({ code: accountNumber }).select('_id');
+    // An unknown account number must return zero rows, not every row (omitting the filter would).
+    filter['lines.account'] = account ? account._id : null;
+    delete req.query.accountNumber;
+  }
+
+  if (accountName) {
+    const accounts = await ChartOfAccount.find({ name: { $regex: accountName, $options: 'i' } }).select('_id');
+    filter['lines.account'] = { $in: accounts.map(a => a._id) };
+    delete req.query.accountName;
+  }
+
+  if (subAccount) {
+    filter['lines.partyNumber'] = Number(subAccount);
+    delete req.query.subAccount;
+  }
+
+  if (projectNumber) {
+    if (['general', 'none', 'null'].includes(projectNumber.toLowerCase())) {
+      filter.project = null;
+    } else {
+      const project = await Project.findOne({ projectNumber }).select('_id');
+      filter.project = project ? project._id : null;
+    }
+    delete req.query.projectNumber;
+  }
+
+  if (description) {
+    filter.description = { $regex: description, $options: 'i' };
+    delete req.query.description;
+  }
+
+  if (debitMin || debitMax) {
+    filter.totalDebit = {};
+    if (debitMin) filter.totalDebit.$gte = Number(debitMin);
+    if (debitMax) filter.totalDebit.$lte = Number(debitMax);
+    delete req.query.debitMin;
+    delete req.query.debitMax;
+  }
+
+  if (creditMin || creditMax) {
+    filter.totalCredit = {};
+    if (creditMin) filter.totalCredit.$gte = Number(creditMin);
+    if (creditMax) filter.totalCredit.$lte = Number(creditMax);
+    delete req.query.creditMin;
+    delete req.query.creditMax;
+  }
+
+  if (status) {
+    filter.status = status;
+    delete req.query.status;
+  }
+
+  if (isReversal !== undefined) {
+    filter.reversalOfEntry = isReversal === 'true' ? { $ne: null } : null;
+    delete req.query.isReversal;
+  }
+
+  // Defense in depth: apiFeatures.filter() (utils/apiFeatures.js) merges whatever is left in
+  // req.query straight into the Mongo filter with NO field whitelist of its own - any leftover,
+  // unrecognized param (a typo, an old bookmarked URL, a stale frontend build) would add a
+  // literal `{ thatParam: '...' }` clause that matches zero real documents (no JournalEntry has a
+  // field by that name) and silently empties the entire list. Every param this endpoint actually
+  // supports has already been deleted above; anything still present is not a real filter this
+  // endpoint recognizes, so it is stripped here rather than passed through.
+  const ALLOWED_PASSTHROUGH = ['limit', 'page', 'fields', 'sort', 'keyword', 'lang'];
+  Object.keys(req.query).forEach(key => {
+    if (!ALLOWED_PASSTHROUGH.includes(key)) delete req.query[key];
+  });
+
+  req.filterObject = filter;
+  next();
+});
+
 const getJournalEntries = (req, res, next) => {
-  if (!req.query.sort) req.query.sort = 'entryNumber';
+  req.query.sort = sanitizeSort(req.query.sort);
   return listJournalEntries(req, res, next);
 };
 
@@ -366,6 +491,7 @@ const getGeneralLedger = asyncHandler(async (req, res) => {
 module.exports = {
   createJournalEntry,
   getJournalEntries,
+  createJournalEntryFilterObject,
   getJournalLineRules,
   getJournalEntry,
   getJournalEntriesForProject,

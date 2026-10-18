@@ -7,6 +7,7 @@ const { Resources, Actions } = require('../../utils/appConstant');
 const {
   createJournalEntry,
   getJournalEntries,
+  createJournalEntryFilterObject,
   getJournalLineRules,
   getJournalEntry,
   getJournalEntriesForProject,
@@ -34,7 +35,7 @@ router.get('/advanced-payment/:advancedPaymentId', checkUserPermissions({ resour
 
 router
   .route('/')
-  .get(checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), getJournalEntries)
+  .get(checkUserPermissions({ resource: Resources.journalEntries, action: Actions.read }), createJournalEntryFilterObject, getJournalEntries)
   .post(checkUserPermissions({ resource: Resources.journalEntries, action: Actions.create }), createJournalEntryValidators, createJournalEntry);
 
 router

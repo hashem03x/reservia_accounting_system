@@ -2,7 +2,7 @@ const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const apiResponse = require('../../utils/apiResponse');
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
-const { recordPucTransfer, transferOptions, listTransfers } = require('../../services/inventory/pucTransferService');
+const { recordPucTransfer, transferOptions, listTransfers, listProjectInventory } = require('../../services/inventory/pucTransferService');
 
 async function inTransaction(work) {
   const session = await mongoose.startSession();
@@ -26,6 +26,13 @@ exports.getPucTransferOptions = asyncHandler(async (req, res) => {
 // GET /puc-transfers/product/:productId - the product's transfers, newest first.
 exports.getProductPucTransfers = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('PUC transfers retrieved successfully', true, await listTransfers(req.params.productId)));
+});
+
+// GET /puc-transfers/project/:projectId - the project-oriented inventory view (docs section
+// "Inventory / Warehouses - Detailed PUC and Raw Materials Per Project").
+exports.getProjectInventory = asyncHandler(async (req, res) => {
+  const { category, brand, product, page, limit } = req.query;
+  res.status(200).json(apiResponse('Project inventory retrieved successfully', true, await listProjectInventory(req.params.projectId, { category, brand, product, page, limit })));
 });
 
 // POST /puc-transfers/product/:productId - stock, transfer record and journal entry in one transaction.

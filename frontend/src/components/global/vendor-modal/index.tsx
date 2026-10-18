@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
-import { PaymentTerms as VendorPaymentTerms, Vendor, VendorType } from "@/types/vendor";
+import { PaymentTerms as VendorPaymentTerms, PaymentTermsConfig, Vendor, VendorType } from "@/types/vendor";
 import { PaymentMode, WalletProvider } from "@/types/document";
 import vendorTypes, { vendorTypesArray } from "@/utils/constants/vendor-types";
 import { Button, NumberInput, Select, TextInput } from "@mantine/core";
@@ -10,6 +10,7 @@ import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
 import BusinessDocumentsSection from "@/components/global/business-documents-section";
 import { isValidEgyptianIban } from "@/utils/helpers/validate-bank-info";
+import PaymentTermsConfigSection, { validatePaymentTermsConfigClientSide } from "./payment-terms-config-section";
 
 export default function VendorModal({
   opened,
@@ -54,6 +55,12 @@ export default function VendorModal({
   const [paymentTerms, setPaymentTerms] = useState<VendorPaymentTerms>(vendorToUpdate?.paymentTerms || "Net 30");
   const [customPaymentDays, setCustomPaymentDays] = useState<string | number>(vendorToUpdate?.customPaymentDays ?? "");
   const paymentTermsIncomplete = paymentTerms === "Custom" && (customPaymentDays === "" || customPaymentDays == null);
+
+  // Vendor Payment Terms - Lump Sum and Installments (docs section "Vendor Payment Terms") -
+  // additive, separate from paymentTerms/customPaymentDays above (never replaces them).
+  const defaultPaymentTermsConfig: PaymentTermsConfig = { kind: "lump_sum", lumpSum: { timing: "immediate", durationDays: 0 } };
+  const [paymentTermsConfig, setPaymentTermsConfig] = useState<PaymentTermsConfig>(vendorToUpdate?.paymentTermsConfig || defaultPaymentTermsConfig);
+  const paymentTermsConfigError = validatePaymentTermsConfigClientSide(paymentTermsConfig, translate);
 
   // Mirrors the backend's conditional validator (vendorValidators.js#paymentInfoValidators) -
   // whichever mode is selected, its required sub-fields must be filled before submitting.
@@ -140,6 +147,7 @@ export default function VendorModal({
             : undefined,
           paymentTerms,
           customPaymentDays: paymentTerms === "Custom" ? Number(customPaymentDays) : undefined,
+          paymentTermsConfig,
         }, // I send them as undefined instead of empty string to avoid a backend issue.
       });
 
@@ -176,6 +184,7 @@ export default function VendorModal({
       setSwiftCode(vendorToUpdate?.paymentInfo?.bank?.swiftCode || "");
       setPaymentTerms(vendorToUpdate?.paymentTerms || "Net 30");
       setCustomPaymentDays(vendorToUpdate?.customPaymentDays ?? "");
+      setPaymentTermsConfig(vendorToUpdate?.paymentTermsConfig || defaultPaymentTermsConfig);
       setSavedVendor(vendorToUpdate);
       setError("");
     }, 250);
@@ -206,7 +215,8 @@ export default function VendorModal({
       (bankIbanNumber || undefined) !== savedVendor.paymentInfo?.bank?.iban ||
       (swiftCode || undefined) !== savedVendor.paymentInfo?.bank?.swiftCode ||
       paymentTerms !== (savedVendor.paymentTerms || "Net 30") ||
-      (paymentTerms === "Custom" ? Number(customPaymentDays) : undefined) !== savedVendor.customPaymentDays
+      (paymentTerms === "Custom" ? Number(customPaymentDays) : undefined) !== savedVendor.customPaymentDays ||
+      JSON.stringify(paymentTermsConfig) !== JSON.stringify(savedVendor.paymentTermsConfig || defaultPaymentTermsConfig)
     : true;
 
   return (
@@ -303,6 +313,8 @@ export default function VendorModal({
             )}
           </div>
         </section>
+
+        <PaymentTermsConfigSection value={paymentTermsConfig} onChange={setPaymentTermsConfig} />
 
         {/* Address */}
         <section className="flex flex-col gap-2">
@@ -472,7 +484,8 @@ export default function VendorModal({
               !!ibanError ||
               !!emailError ||
               paymentInfoIncomplete ||
-              paymentTermsIncomplete
+              paymentTermsIncomplete ||
+              !!paymentTermsConfigError
             }
             fullWidth
           >

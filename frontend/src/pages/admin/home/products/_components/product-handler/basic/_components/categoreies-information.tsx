@@ -1,19 +1,19 @@
 import { useLanguage } from "@/context/LanguageContext";
 import { useMainCategories } from "@/context/MainCategoriesContext";
-import useCategoryHelpers from "@/hooks/useCategoryHelpers";
-import { Select } from "@mantine/core";
+import { useBrands } from "@/context/BrandsContext";
+import { Select, TextInput } from "@mantine/core";
 import { useProduct } from "../../context";
 
+// Catalog hierarchy: Category -> Brand -> Model/Item Number/Specifications. Brand replaces the
+// legacy Subcategory as the required identification field under Category - flat (not scoped to
+// one category), unlike the old Subcategory selector this replaces.
 export default function CategoriesInformation() {
   const { translate } = useLanguage();
 
-  const { category, setCategory, subcategory, setSubcategory, readOnly } = useProduct();
+  const { category, setCategory, brand, setBrand, model, setModel, specifications, setSpecifications, readOnly } = useProduct();
 
   const { data: mainCategories } = useMainCategories();
-  const { getSubcategoriesByMainCategoryId } = useCategoryHelpers();
-
-  // Subcategories options depend on the selected main category
-  const subcategories = category ? getSubcategoriesByMainCategoryId(category) : [];
+  const { data: brands } = useBrands();
 
   return (
     <div className="product-details-box h-full">
@@ -25,10 +25,7 @@ export default function CategoriesInformation() {
         label={translate("Main Category", "الفئة الرئيسية")}
         placeholder={translate("Main Category", "الفئة الرئيسية")}
         value={category}
-        onChange={(value) => {
-          setCategory(value);
-          setSubcategory(null);
-        }}
+        onChange={(value) => setCategory(value)}
         data={mainCategories.map((mainCategory) => ({
           label: translate(mainCategory.name.en, mainCategory.name.ar),
           value: mainCategory._id,
@@ -38,14 +35,28 @@ export default function CategoriesInformation() {
       <Select
         withAsterisk
         searchable
-        label={translate("Subcategory", "الفئة الفرعية")}
-        placeholder={translate("Subcategory", "الفئة الفرعية")}
-        value={subcategory}
-        onChange={(value) => setSubcategory(value)}
-        data={subcategories.map((subCategory) => ({
-          label: translate(subCategory.name.en, subCategory.name.ar),
-          value: subCategory._id,
+        label={translate("Brand", "الماركة")}
+        placeholder={translate("Brand", "الماركة")}
+        value={brand}
+        onChange={(value) => setBrand(value)}
+        data={brands.map((b) => ({
+          label: translate(b.name.en, b.name.ar),
+          value: b._id,
         }))}
+        readOnly={readOnly}
+      />
+      <TextInput
+        label={translate("Model", "الموديل")}
+        placeholder={translate("Model", "الموديل")}
+        value={model}
+        onChange={(e) => setModel(e.currentTarget.value)}
+        readOnly={readOnly}
+      />
+      <TextInput
+        label={translate("Specifications", "المواصفات")}
+        placeholder={translate("Specifications", "المواصفات")}
+        value={specifications}
+        onChange={(e) => setSpecifications(e.currentTarget.value)}
         readOnly={readOnly}
       />
     </div>

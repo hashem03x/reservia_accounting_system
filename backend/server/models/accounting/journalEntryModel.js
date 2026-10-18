@@ -225,7 +225,13 @@ journalEntrySchema.pre('save', async function (next) {
     //   - The Fixed Asset purchase auto-entry (source 'fixed_asset_purchase', see
     //     fixedAssetController.js#createFixedAsset) - an unrelated existing feature with no
     //     concept of a project at all; retrofitting it to require one is out of scope here.
-    if (this.isNew && !this.reversalOfEntry && this.source === 'manual' && !this.project) {
+    //   - A "General" entry explicitly authorized by journalEntryValidators.js#projectRequired
+    //     (journalEntries:createGeneral permission - adminPermission only). The controller signals
+    //     this via `$locals` (Mongoose's own non-persisted, non-schema per-document runtime state -
+    //     never written to the database, never settable from a request body), so this backstop
+    //     still unconditionally blocks a null-project manual entry created any other way (e.g. a
+    //     future direct model call that never went through the validator).
+    if (this.isNew && !this.reversalOfEntry && this.source === 'manual' && !this.project && !this.$locals.generalEntryAuthorized) {
       throw new Error('Project is required when creating a journal entry.');
     }
     // Every entry always has a Module value to display (docs section "Module field") - automatic

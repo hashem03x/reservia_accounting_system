@@ -52,6 +52,7 @@ import AP_Customer from "@/pages/admin/home/customers/[id]";
 import AP_Expenses from "@/pages/admin/home/expenses";
 import AP_Expense from "@/pages/admin/home/expenses/[id]";
 import AP_Warehouses from "@/pages/admin/home/warehouses";
+import AP_ProjectInventory from "@/pages/admin/home/project-inventory";
 import AP_Transfers from "@/pages/admin/home/transfers";
 import AP_Transfer from "@/pages/admin/home/transfers/[id]";
 import AP_Reports from "@/pages/admin/reports";
@@ -199,6 +200,9 @@ export default function App() {
 
                     <Route element={<ResourceGuard resource={resources.warehouses} action={actions.read} />}>
                       <Route path={paths.warehouses} element={<AP_Warehouses />} />
+                    </Route>
+                    <Route element={<ResourceGuard resource={resources.projects} action={actions.read} />}>
+                      <Route path={paths.projectInventory} element={<AP_ProjectInventory />} />
                     </Route>
                     <Route element={<ResourceGuard resource={resources.transfers} action={actions.read} />}>
                       <Route path={paths.transfers} element={<AP_Transfers />} />

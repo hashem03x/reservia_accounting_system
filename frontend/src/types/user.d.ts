@@ -67,6 +67,14 @@ export type Resource =
 
 export type Action = "create" | "read" | "update" | "delete";
 
+// "createGeneral" (Journal Entry Project / General selection - admin-only, see appConstant.js on
+// the backend) is additive and deliberately NOT part of `Action`/`actionsArray` above - unlike
+// create/read/update/delete, it is not a per-user, per-resource toggle exposed in the permissions
+// editor (pages/admin/users/[id]/_components/user-permissions.tsx); it only ever comes from
+// adminPermission, and only makes sense for the journalEntries resource. Checked via
+// useHasPermission's loosened action type (see that hook) rather than widening `Action` globally.
+export type GeneralAction = Action | "createGeneral";
+
 export type Permission = {
   resource: Resource;
   actions: Action[];

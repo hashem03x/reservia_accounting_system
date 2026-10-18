@@ -1,11 +1,11 @@
 import { useUser } from "@/context/UserContext";
 import { LocalizedLabel } from "@/types/global";
-import { Action, Resource, User } from "@/types/user";
+import { Action, GeneralAction, Resource, User } from "@/types/user";
 import { isAdmin, isCustomer } from "@/utils/constants/roles";
 
 export default function useHasPermission(
   resource: Resource | LocalizedLabel<Resource>,
-  action: Action | LocalizedLabel<Action>,
+  action: GeneralAction | LocalizedLabel<Action>,
 ): boolean {
   const { user } = useUser();
   return hasPermission(user, resource, action);
@@ -15,7 +15,7 @@ export default function useHasPermission(
 export function hasPermission(
   user: Pick<User, "role" | "permissions"> | null | undefined,
   resource: Resource | LocalizedLabel<Resource>,
-  action: Action | LocalizedLabel<Action>,
+  action: GeneralAction | LocalizedLabel<Action>,
 ): boolean {
   if (!user) return false;
 
@@ -30,7 +30,10 @@ export function hasPermission(
   const requiredPermission = user.permissions.find((permission) => permission.resource === resourceValue);
   if (!requiredPermission) return false;
 
-  if (requiredPermission.actions.includes(actionValue)) return true;
+  // `actionValue` may be "createGeneral" (see GeneralAction) - not part of the statically-typed
+  // Action[] shape, but a perfectly real string the backend's permissions array can contain
+  // (adminPermission - appConstant.js). A plain runtime string comparison either way.
+  if (requiredPermission.actions.includes(actionValue as Action)) return true;
 
   return false;
 }

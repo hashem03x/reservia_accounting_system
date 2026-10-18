@@ -6,9 +6,9 @@ const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_te
 
 let Product;
 let Category;
-let SubCategory;
+let Brand;
 let category;
-let subcategory;
+let brand;
 
 before(async () => {
   await mongoose.connect(DB_URI);
@@ -16,7 +16,7 @@ before(async () => {
 
   Product = require('../models/inventory/productModel');
   Category = require('../models/categoryModel');
-  SubCategory = require('../models/subCategoryModel');
+  Brand = require('../models/brandModel');
 });
 
 after(async () => {
@@ -27,23 +27,23 @@ after(async () => {
 beforeEach(async () => {
   await Product.deleteMany({});
   await Category.deleteMany({});
-  await SubCategory.deleteMany({});
+  await Brand.deleteMany({});
   category = await Category.create({ name: { en: 'Cat', ar: 'فئة' } });
-  subcategory = await SubCategory.create({ name: { en: 'Sub', ar: 'فئة فرعية' }, mainCategory: category._id });
+  brand = await Brand.create({ name: { en: 'Brand', ar: 'ماركة' } });
 });
 
-test('a product requires cost/category/subcategory at the schema level', async () => {
+test('a product requires cost/category/brand at the schema level', async () => {
   const product = new Product({
     type: 'product',
     title: { en: 'Shirt', ar: 'قميص' },
     description: { en: 'desc', ar: 'وصف' },
     price: 100,
-    // cost/category/subcategory intentionally omitted
+    // cost/category/brand intentionally omitted
   });
   await assert.rejects(() => product.validate());
 });
 
-test('a service does NOT require cost/category/subcategory, but does require a positive durationValue', async () => {
+test('a service does NOT require cost/category/brand, but does require a positive durationValue', async () => {
   const service = new Product({
     type: 'service',
     title: { en: 'Maintenance', ar: 'صيانة' },
@@ -52,7 +52,7 @@ test('a service does NOT require cost/category/subcategory, but does require a p
     durationValue: 12,
     durationUnit: 'month',
   });
-  await service.validate(); // Must not throw despite no cost/category/subcategory.
+  await service.validate(); // Must not throw despite no cost/category/brand.
   assert.equal(service.cost, undefined);
 
   const invalidService = new Product({
@@ -91,7 +91,7 @@ test('a service can never be saved with stock attached (model-level guard)', asy
   await assert.rejects(() => service.save(), /cannot have inventory stock/i);
 });
 
-test('a regular product still saves normally with cost/category/subcategory (existing behavior preserved)', async () => {
+test('a regular product still saves normally with cost/category/brand (existing behavior preserved)', async () => {
   const product = await Product.create({
     type: 'product',
     title: { en: 'Jeans', ar: 'جينز' },
@@ -99,7 +99,7 @@ test('a regular product still saves normally with cost/category/subcategory (exi
     cost: 80,
     price: 150,
     category: category._id,
-    subcategory: subcategory._id,
+    brand: brand._id,
   });
   assert.equal(product.type, 'product');
   assert.equal(product.cost, 80);

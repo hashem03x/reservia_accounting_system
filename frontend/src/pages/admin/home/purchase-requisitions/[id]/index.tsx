@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
 import useHasPermission from "@/hooks/useHasPermission";
+import usePrivateRequest from "@/hooks/usePrivateRequest";
 import handleRequest from "@/utils/helpers/handle-request";
 import { formatDate } from "@/utils/helpers/date-formaters";
 import resources from "@/utils/constants/resources";
@@ -19,7 +21,9 @@ import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import ErrorAlert from "@/components/ui/error-alert";
 import VendorSearch from "@/components/global/vendor-search";
-import { outlineIcons } from "@/components/icons";
+import ProductSearchModal from "@/components/global/variant-search-modal";
+import { getPurchaseUnitPrice } from "@/utils/helpers/purchase-unit-price";
+import { outlineIcons, solidIcons } from "@/components/icons";
 import { requisitionStatusColors, useRequisitionStatusLabel } from "../_components/status";
 
 export default function PurchaseRequisitionDetail() {
@@ -226,7 +230,7 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
   const [vendor, setVendor] = useState<Vendor | null>((requisition.vendorId as unknown as Vendor) || null);
   const [project, setProject] = useState(requisition.project?._id || "");
   const [items, setItems] = useState<RequisitionItemInput[]>(
-    requisition.items.map((item) => ({ description: item.description, quantity: item.quantity, unit: item.unit || "", unitPrice: item.unitPrice })),
+    requisition.items.map((item) => ({ product: item.product?._id || null, description: item.description, quantity: item.quantity, unit: item.unit || "", unitPrice: item.unitPrice })),
   );
   const [notes, setNotes] = useState(requisition.notes || "");
 
@@ -246,12 +250,39 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
   function addItem() {
-    setItems((prev) => [...prev, { description: "", quantity: 1, unit: "", unitPrice: 0 }]);
+    setItems((prev) => [...prev, { product: null, description: "", quantity: 1, unit: "", unitPrice: 0 }]);
   }
   function removeItem(index: number) {
     setItems((prev) => prev.filter((_, i) => i !== index));
   }
   const lineTotal = (item: RequisitionItemInput) => (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
+
+  // Searchable product selector (title/category/brand) - same component used by the Purchase/Sales
+  // Invoice item rows and the create form (purchase-requisitions/new/index.tsx).
+  const privateProductRequest = usePrivateRequest();
+  const [searchModalOpened, { open: openSearchModal, close: closeSearchModal }] = useDisclosure();
+  const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
+
+  function openProductSearch(index: number) {
+    setActiveItemIndex(index);
+    openSearchModal();
+  }
+
+  async function handleProductSelected(barcode: string) {
+    if (activeItemIndex === null) return;
+    const index = activeItemIndex;
+    try {
+      const response = await privateProductRequest({ url: `products/code/${barcode}`, language });
+      const product = response.data;
+      updateItem(index, {
+        product: product._id,
+        description: translate(product.title.en, product.title.ar),
+        unitPrice: getPurchaseUnitPrice(product),
+      });
+    } catch {
+      // Leave the row's existing description editable rather than blocking the user.
+    }
+  }
 
   async function handleSave() {
     handleRequest(language, setLoading, setError, async () => {
@@ -263,6 +294,7 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
           vendorId: vendor?._id,
           project,
           items: items.map((item) => ({
+            product: item.product || undefined,
             description: item.description,
             quantity: Number(item.quantity) || 0,
             unit: item.unit || undefined,
@@ -326,9 +358,14 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
           <TextInput
             label={translate("Description", "الوصف")}
             value={item.description}
-            onChange={(e) => updateItem(index, { description: e.target.value })}
+            onChange={(e) => updateItem(index, { description: e.target.value, product: null })}
             required
             className="sm:col-span-2"
+            rightSection={
+              <Button onClick={() => openProductSearch(index)} variant="transparent" size="xs" px={5} title={translate("Select from catalog", "اختر من الكتالوج")}>
+                <solidIcons.Search size={16} />
+              </Button>
+            }
           />
           <NumberInput
             label={translate("Quantity", "الكمية")}
@@ -361,6 +398,16 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
           </div>
         </div>
       ))}
+
+      <ProductSearchModal
+        opened={searchModalOpened}
+        close={closeSearchModal}
+        mode="purchase"
+        onSelect={(barcode) => {
+          handleProductSelected(barcode);
+          closeSearchModal();
+        }}
+      />
 
       <Textarea label={translate("Notes", "ملاحظات")} value={notes} onChange={(e) => setNotes(e.target.value)} autosize minRows={2} />
 

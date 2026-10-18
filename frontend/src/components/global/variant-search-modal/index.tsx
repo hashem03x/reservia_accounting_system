@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { useLanguage } from "@/context/LanguageContext";
 import { useMainCategories } from "@/context/MainCategoriesContext";
-import useCategoryHelpers from "@/hooks/useCategoryHelpers";
+import { useBrands } from "@/context/BrandsContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import { Product } from "@/types/product";
 import handleRequest from "@/utils/helpers/handle-request";
@@ -32,14 +32,14 @@ export default function ProductSearchModal({
   const { translate, translations, language } = useLanguage();
 
   const { data: mainCategories } = useMainCategories();
-  const { getSubcategoriesByMainCategoryId } = useCategoryHelpers();
+  const { data: brands } = useBrands();
 
   const [products, setProducts] = useState<Product[]>([]);
 
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword] = useDebounce(keyword, 350);
   const [mainCategoryFilter, setMainCategoryFilter] = useState<string>("");
-  const [subcategoryFilter, setSubcategoryFilter] = useState<string>("");
+  const [brandFilter, setBrandFilter] = useState<string>("");
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({
     initialData: null,
@@ -58,7 +58,7 @@ export default function ProductSearchModal({
           page: 1,
           keyword: debouncedKeyword,
           ...(mainCategoryFilter ? { mainCategoryId: mainCategoryFilter } : {}),
-          ...(subcategoryFilter ? { subCategories: subcategoryFilter } : {}),
+          ...(brandFilter ? { brands: brandFilter } : {}),
         },
         signal: controller.signal,
         language,
@@ -79,7 +79,7 @@ export default function ProductSearchModal({
   useEffect(() => {
     const cancelRequest = handleLoadProducts(); // This will send the request and return the function to cancel it.
     return cancelRequest; // This will be called when the component unmounts.
-  }, [debouncedKeyword, mainCategoryFilter, subcategoryFilter]);
+  }, [debouncedKeyword, mainCategoryFilter, brandFilter]);
 
   function handleClose() {
     close();
@@ -106,10 +106,7 @@ export default function ProductSearchModal({
           {/* Main Category */}
           <Select
             value={mainCategoryFilter}
-            onChange={(value) => {
-              setMainCategoryFilter(value as string);
-              setSubcategoryFilter("");
-            }}
+            onChange={(value) => setMainCategoryFilter(value as string)}
             label={translate("Main Category", "الفئة الرئيسية")}
             data={[
               { value: "", label: translate("All", "الكل") },
@@ -123,26 +120,22 @@ export default function ProductSearchModal({
             rightSection={mainCategoryFilter ? <solidIcons.Check color="green" size={12} /> : null}
           />
 
-          {/* Subcategory */}
-          {mainCategoryFilter && (
-            <Select
-              value={subcategoryFilter}
-              onChange={(value) => setSubcategoryFilter(value as string)}
-              label={translate("Subcategory", "الفئة الفرعية")}
-              data={[
-                { value: "", label: translate("All", "الكل") },
-                ...(mainCategoryFilter
-                  ? getSubcategoriesByMainCategoryId(mainCategoryFilter).map((subcategory) => ({
-                      value: subcategory._id,
-                      label: translate(subcategory.name.en, subcategory.name.ar),
-                    }))
-                  : []),
-              ]}
-              className="w-32"
-              allowDeselect={false}
-              rightSection={subcategoryFilter ? <solidIcons.Check color="green" size={12} /> : null}
-            />
-          )}
+          {/* Brand - flat (not scoped to a category), unlike the legacy Subcategory filter this replaces */}
+          <Select
+            value={brandFilter}
+            onChange={(value) => setBrandFilter(value as string)}
+            label={translate("Brand", "الماركة")}
+            data={[
+              { value: "", label: translate("All", "الكل") },
+              ...brands.map((b) => ({
+                value: b._id,
+                label: translate(b.name.en, b.name.ar),
+              })),
+            ]}
+            className="w-32"
+            allowDeselect={false}
+            rightSection={brandFilter ? <solidIcons.Check color="green" size={12} /> : null}
+          />
         </div>
 
         <div className="flex h-72 flex-col overflow-y-auto">

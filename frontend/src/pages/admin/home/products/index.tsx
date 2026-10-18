@@ -3,6 +3,7 @@ import { useDisclosure } from "@mantine/hooks";
 import { useDebounce } from "use-debounce";
 import { useLanguage } from "@/context/LanguageContext";
 import { useMainCategories } from "@/context/MainCategoriesContext";
+import { useBrands } from "@/context/BrandsContext";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useCategoryHelpers from "@/hooks/useCategoryHelpers";
@@ -50,7 +51,8 @@ export default function Products() {
   const { user: loggedInUser } = useUser();
 
   const { data: mainCategories } = useMainCategories();
-  const { getSubcategoriesByMainCategoryId, getSubcategoryNameById, getMainCategoryNameById } = useCategoryHelpers();
+  const { data: brands } = useBrands();
+  const { getBrandNameById, getMainCategoryNameById } = useCategoryHelpers();
 
   // URL search params for filters
   const [searchParams, setSearchParams] = useSearchParams();
@@ -60,7 +62,7 @@ export default function Products() {
   const [keyword, setKeyword] = useState(searchParams.get("keyword") || "");
   const [debouncedKeyword] = useDebounce(keyword, 350);
   const [mainCategoryFilter, setMainCategoryFilter] = useState(searchParams.get("mainCategoryId") || "");
-  const [subcategoryFilter, setSubcategoryFilter] = useState(searchParams.get("subCategories") || "");
+  const [brandFilter, setBrandFilter] = useState(searchParams.get("brands") || "");
 
   const [showFilters, setShowFilters] = useState(false);
 
@@ -68,14 +70,14 @@ export default function Products() {
     page: activePage.toString(),
     ...(debouncedKeyword ? { keyword: debouncedKeyword } : {}),
     ...(mainCategoryFilter ? { mainCategoryId: mainCategoryFilter } : {}),
-    ...(subcategoryFilter ? { subCategories: subcategoryFilter } : {}),
+    ...(brandFilter ? { brands: brandFilter } : {}),
   };
 
   // Track the previous filters and check if they have changed to reset the active page to 1.
   const { filtersChanged, updatePreviousFilters } = useHandlePreviousFilters({
     debouncedKeyword,
     mainCategoryFilter,
-    subcategoryFilter,
+    brandFilter,
   });
 
   const {
@@ -116,7 +118,7 @@ export default function Products() {
     setSearchParams(params, { replace: true });
 
     // If the filters have changed, reset the active page to 1.
-    const newFilters = { debouncedKeyword, mainCategoryFilter, subcategoryFilter };
+    const newFilters = { debouncedKeyword, mainCategoryFilter, brandFilter };
     if (filtersChanged(newFilters)) {
       updatePreviousFilters(newFilters);
       if (activePage !== 1) {
@@ -129,7 +131,7 @@ export default function Products() {
 
     const cancelRequest = handleLoadProducts(); // This will send the request and return the function to cancel it.
     return cancelRequest; // This will be called when the component unmounts.
-  }, [activePage, debouncedKeyword, mainCategoryFilter, subcategoryFilter]);
+  }, [activePage, debouncedKeyword, mainCategoryFilter, brandFilter]);
 
   const canICreateProducts = useRef(useHasPermission(resources.products, actions.create)).current; // Ref to avoid re-renders
   const canIUpdateProducts = useHasPermission(resources.products, actions.update);
@@ -183,14 +185,14 @@ export default function Products() {
         </div>
 
         {/* Clear All Filters */}
-        {(debouncedKeyword || mainCategoryFilter || subcategoryFilter) && (
+        {(debouncedKeyword || mainCategoryFilter || brandFilter) && (
           <Button
             color="red"
             variant="light"
             onClick={() => {
               setKeyword("");
               setMainCategoryFilter("");
-              setSubcategoryFilter("");
+              setBrandFilter("");
             }}
             title={translate("Clear All Filters", "مسح جميع الفلاتر")}
           >
@@ -209,7 +211,7 @@ export default function Products() {
           </Button>
 
           {/* Highlight the filter button if any filter is active */}
-          {mainCategoryFilter || subcategoryFilter ? (
+          {mainCategoryFilter || brandFilter ? (
             <span
               className={`absolute -top-[6px] ${translate("-right-[6px]", "-left-[6px]")} h-[15px] w-[15px] rounded-full bg-blue-500`}
             ></span>
@@ -236,25 +238,21 @@ export default function Products() {
             rightSection={mainCategoryFilter ? <solidIcons.Check color="green" size={12} /> : null}
           />
 
-          {/* Subcategory */}
-          {mainCategoryFilter && (
-            <Select
-              value={subcategoryFilter}
-              onChange={(value) => setSubcategoryFilter(value as string)}
-              label={translate("Subcategory", "الفئة الفرعية")}
-              data={[
-                { value: "", label: translate(noFilterLabel.en, noFilterLabel.ar) },
-                ...(mainCategoryFilter
-                  ? getSubcategoriesByMainCategoryId(mainCategoryFilter).map((subcategory) => ({
-                      value: subcategory._id,
-                      label: translate(subcategory.name.en, subcategory.name.ar),
-                    }))
-                  : []),
-              ]}
-              allowDeselect={false}
-              rightSection={subcategoryFilter ? <solidIcons.Check color="green" size={12} /> : null}
-            />
-          )}
+          {/* Brand - flat (not scoped to a category), unlike the legacy Subcategory filter this replaces */}
+          <Select
+            value={brandFilter}
+            onChange={(value) => setBrandFilter(value as string)}
+            label={translate("Brand", "الماركة")}
+            data={[
+              { value: "", label: translate(noFilterLabel.en, noFilterLabel.ar) },
+              ...brands.map((b) => ({
+                value: b._id,
+                label: translate(b.name.en, b.name.ar),
+              })),
+            ]}
+            allowDeselect={false}
+            rightSection={brandFilter ? <solidIcons.Check color="green" size={12} /> : null}
+          />
         </div>
       )}
 
@@ -296,7 +294,7 @@ export default function Products() {
                     {renderIfAdmin(<Table.Th>{translate("Total Cost", "التكلفة الكلية")}</Table.Th>)}
                     <Table.Th>{translate("Sold", "المباع")}</Table.Th>
                     <Table.Th>{translate("Category", "الفئة")}</Table.Th>
-                    <Table.Th>{translate("Subcategory", "الفئة الفرعية")}</Table.Th>
+                    <Table.Th>{translate("Brand", "الماركة")}</Table.Th>
                     <Table.Th>{translate("Capacity", "السعة")}</Table.Th>
                     <Table.Th>{translate("Created On", "أنشئ في")}</Table.Th>
                   </Table.Tr>
@@ -386,7 +384,7 @@ export default function Products() {
                         )}
                         <Table.Td>{product.totalSold}</Table.Td>
                         <Table.Td>{productIsService ? "-" : getMainCategoryNameById(product.category || "")}</Table.Td>
-                        <Table.Td>{productIsService ? "-" : getSubcategoryNameById(product.subcategory || "")}</Table.Td>
+                        <Table.Td>{productIsService ? "-" : getBrandNameById(product.brand || "")}</Table.Td>
                         <Table.Td>
                           {product.capacity?.value != null && product.capacity?.unit
                             ? `${product.capacity.value} ${product.capacity.unit}`

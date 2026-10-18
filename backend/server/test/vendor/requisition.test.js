@@ -9,7 +9,7 @@ const mongoose = require('mongoose');
 
 const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_test_requisition';
 
-let Requisition, Vendor, Project, User, JournalEntry;
+let Requisition, Vendor, Project, User, JournalEntry, Product, Category, Brand;
 let requisitionController;
 
 function callHandler(handler, req) {
@@ -39,7 +39,9 @@ before(async () => {
   // Requisition's own pre(/^find/) hook populates `items.product` (ref: 'Product') - must be
   // registered before any find/save triggers that populate, same convention as every other model
   // file in this codebase that populates a ref it doesn't otherwise require.
-  require('../../models/inventory/productModel');
+  Product = require('../../models/inventory/productModel');
+  Category = require('../../models/categoryModel');
+  Brand = require('../../models/brandModel');
   requisitionController = require('../../controller/vendor/requisitionController');
   await Promise.all([Requisition.init(), Vendor.init(), Project.init(), JournalEntry.init()]);
 });
@@ -168,6 +170,40 @@ test('cancelRequisition: rejects cancelling once ANY amount has been invoiced', 
   await callHandler(requisitionController.openRequisition, { params: { id } });
   await Requisition.findByIdAndUpdate(id, { $inc: { invoicedAmount: 1 } }); // simulate a linked invoice
   await assert.rejects(() => callHandler(requisitionController.cancelRequisition, { params: { id } }), /already been partially or fully invoiced/);
+});
+
+// ===================== Catalog product selection (docs section "Purchase Orders - Select
+// Products From the Catalog") =====================
+
+test('createRequisition: a line item can reference a real catalog Product; it is stored and populated back', async () => {
+  const category = await Category.create({ name: { en: 'Materials', ar: 'مواد' } });
+  const brand = await Brand.create({ name: { en: 'ACME', ar: 'أكمي' } });
+  const product = await Product.create({
+    type: 'product',
+    title: { en: 'Steel Bar', ar: 'قضيب حديد' },
+    description: { en: 'd', ar: 'د' },
+    price: 100,
+    cost: 80,
+    category: category._id,
+    brand: brand._id,
+  });
+
+  const res = await callHandler(requisitionController.createRequisition, {
+    body: baseBody({ items: [{ description: 'Steel bars', quantity: 10, unitPrice: 100, product: String(product._id) }] }),
+    user: manager,
+  });
+  assert.equal(res.status, 201);
+  const storedProduct = res.body.data.items[0].product;
+  assert.equal(String(storedProduct?._id || storedProduct), String(product._id));
+
+  const reloaded = await Requisition.findById(res.body.data._id);
+  assert.equal(String(reloaded.items[0].product._id), String(product._id), 'the product reference must survive a reload (populated by the pre(/^find/) hook)');
+});
+
+test('createRequisition: items without a product reference still work - the description stays the canonical, required field', async () => {
+  const res = await callHandler(requisitionController.createRequisition, { body: baseBody(), user: manager });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.data.items[0].product, null);
 });
 
 test('updateRequisition: a draft can be edited (items recomputed); an open one cannot', async () => {

@@ -14,6 +14,7 @@ const paths = {
   salesOrders: "sales-orders",
   expenses: "expenses",
   warehouses: "warehouses",
+  projectInventory: "project-inventory",
   transfers: "transfers",
   reports: "reports",
   cash: "cash",

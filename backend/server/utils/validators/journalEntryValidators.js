@@ -1,6 +1,9 @@
 const { check } = require('express-validator');
+const mongoose = require('mongoose');
 const Project = require('../../models/project/projectModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
+const { userHasPermission } = require('../../middleware/hasPermission');
+const { Resources, Actions } = require('../appConstant');
 
 // Mirrors journalEntryModel.js's own `round2` - kept in sync deliberately rather than imported,
 // since the model doesn't export it; this is only ever used for this fast pre-check, the model's
@@ -49,16 +52,26 @@ const lineValidators = (prefix = 'lines.*') => [
 // RULE 2 fast pre-check: project is mandatory for a manually-created journal entry (this is the
 // create endpoint the Journal Entries form submits to - reversal/fixed-asset-purchase auto-entries
 // never go through this validator, see journalEntryModel.js's identical exemption comment).
-const projectRequired = check('project')
-  .notEmpty()
-  .withMessage('Project is required when creating a journal entry.')
-  .isMongoId()
-  .withMessage('Invalid project id')
-  .custom(value =>
-    Project.findById(value).then(project => {
+//
+// Journal Entry Project / General selection (docs section "Journal Entry Project Selection -
+// Project or General"): a request with NO project is only accepted for a user who holds the
+// journalEntries:createGeneral permission (adminPermission only - see appConstant.js) - checked
+// here, on the BACKEND, never inferred from frontend visibility alone. `req.user` is already
+// populated by `authController.protect`, which always runs before this validator chain on the
+// mounted route (journalEntryRoute.js).
+const projectRequired = check('project').custom((value, { req }) => {
+  if (value) {
+    if (!mongoose.Types.ObjectId.isValid(value)) throw new Error('Invalid project id');
+    return Project.findById(value).then(project => {
       if (!project) return Promise.reject(new Error('The selected project does not exist.'));
-    })
-  );
+    });
+  }
+
+  if (!userHasPermission(req.user, Resources.journalEntries, Actions.createGeneral)) {
+    throw new Error('Project is required when creating a journal entry.');
+  }
+  return true;
+});
 
 const createJournalEntryValidators = [
   check('date').optional().isISO8601().withMessage('Invalid date'),

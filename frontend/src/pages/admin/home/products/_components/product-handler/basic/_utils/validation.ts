@@ -15,7 +15,7 @@ export default function validation(
     price,
     priceAfterDiscount,
     category,
-    subcategory,
+    brand,
     capacity,
     durationValue,
     durationUnit,
@@ -30,7 +30,7 @@ export default function validation(
     price: string | number;
     priceAfterDiscount: string | number;
     category: string | null;
-    subcategory: string | null;
+    brand: string | null;
     capacity: ProductCapacityInput;
     durationValue: string | number;
     durationUnit: DurationUnit;
@@ -72,8 +72,8 @@ export default function validation(
     if (!cost) return translate(language, "Please specify a cost for the product.", "يرجى تحديد تكلفة للمنتج.");
     if (!category)
       return translate(language, "Please specify a the main category for the product.", "يرجى تحديد الفئة الرئيسية للمنتج.");
-    if (!subcategory)
-      return translate(language, "Please specify a subcategory for the product.", "يرجى تحديد الفئة الفرعية للمنتج.");
+    if (!brand)
+      return translate(language, "Please specify a brand for the product.", "يرجى تحديد الماركة للمنتج.");
   }
 
   // Capacity is optional - only validate it when the user has actually entered one of its parts.

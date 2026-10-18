@@ -33,7 +33,7 @@ const report = (key: string) => `${admin(paths.financialReports)}/${key}`;
 
 /** The sections and items the signed-in user may open, in display order (empty sections dropped). */
 export function useAdminNavigation(): NavSection[] {
-  const { translations } = useLanguage();
+  const { translations, translate } = useLanguage();
   const { user } = useUser();
   const { nav, pages } = translations;
 
@@ -132,6 +132,13 @@ export function useAdminNavigation(): NavSection[] {
             label: pages.warehouses,
             Icon: navIcons.Warehouses,
             resource: resources.warehouses,
+          },
+          {
+            key: "projectInventory",
+            to: admin(paths.home, paths.projectInventory),
+            label: translate("Project Inventory", "مخزون المشاريع"),
+            Icon: navIcons.Warehouses,
+            resource: resources.projects,
           },
           {
             key: "transfers",
@@ -265,7 +272,7 @@ export function useAdminNavigation(): NavSection[] {
         items: s.items.filter(canSee).map(({ key, to, label, Icon }) => ({ key, to, label, Icon })),
       }))
       .filter((s) => s.items.length > 0);
-  }, [nav, pages, user]);
+  }, [nav, pages, user, translate]);
 }
 
 /**

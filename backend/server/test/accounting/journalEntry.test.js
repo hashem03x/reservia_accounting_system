@@ -346,6 +346,82 @@ test('createJournalEntryValidators: RULE 1 and RULE 2 fast pre-checks', async ()
   assert.equal(valid.isEmpty(), true, 'a request with a valid project and balanced lines must pass validation');
 });
 
+test('createJournalEntryValidators: a "General" (no-project) entry is accepted only for a user holding journalEntries:createGeneral, never inferred from the frontend alone', async () => {
+  const { validationResult } = require('express-validator');
+  const { createJournalEntryValidators } = require('../../utils/validators/journalEntryValidators');
+
+  async function runValidatorsAs(user, body) {
+    const req = { body, params: {}, query: {}, user };
+    for (const middleware of createJournalEntryValidators) {
+      if (typeof middleware.run === 'function') await middleware.run(req);
+    }
+    return validationResult(req);
+  }
+
+  const balancedLines = [
+    { account: cash._id.toString(), description: 'General line', debit: 100, credit: 0 },
+    { account: revenue._id.toString(), description: 'General line', debit: 0, credit: 100 },
+  ];
+
+  // An ERP admin (adminPermission grants journalEntries:createGeneral - see appConstant.js).
+  const adminResult = await runValidatorsAs({ role: 'admin', permissions: [] }, { lines: balancedLines });
+  assert.equal(adminResult.isEmpty(), true, 'an admin must be allowed to create a General (no-project) entry');
+
+  // A moderator with the ordinary journalEntries create/read permissions but NOT createGeneral.
+  const moderatorResult = await runValidatorsAs(
+    { role: 'moderator', permissions: [{ resource: 'journalEntries', actions: ['create', 'read'] }] },
+    { lines: balancedLines },
+  );
+  assert.equal(moderatorResult.isEmpty(), false, 'a moderator without createGeneral must still be required to pick a project');
+  assert.ok(moderatorResult.array().some(e => /Project is required/.test(e.msg)));
+
+  // A user explicitly granted the createGeneral permission directly (not via the admin bypass) -
+  // proves the check reads the permissions array, not just role === 'admin'.
+  const grantedResult = await runValidatorsAs(
+    { role: 'operator', permissions: [{ resource: 'journalEntries', actions: ['read', 'createGeneral'] }] },
+    { lines: balancedLines },
+  );
+  assert.equal(grantedResult.isEmpty(), true, 'a user explicitly granted journalEntries:createGeneral must be allowed to create a General entry');
+
+  // No req.user at all (should never happen behind `protect`, but must still fail closed).
+  const noUserResult = await runValidatorsAs(undefined, { lines: balancedLines });
+  assert.equal(noUserResult.isEmpty(), false, 'with no authenticated user at all, a no-project entry must be rejected, never silently allowed');
+});
+
+test('journalEntryModel: a new manual entry with no project is rejected UNLESS $locals.generalEntryAuthorized is set (the validator-controlled backstop)', async () => {
+  const unauthorized = new JournalEntry({
+    entryNumber: await getNextJournalEntryNumber(),
+    date: new Date('2026-05-01'),
+    description: 'Unauthorized general attempt',
+    source: 'manual',
+    status: 'draft',
+    lines: [
+      { account: cash._id, description: 'x', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'x', debit: 0, credit: 100 },
+    ],
+  });
+  await assert.rejects(() => unauthorized.save(), /Project is required/);
+
+  const authorized = new JournalEntry({
+    entryNumber: await getNextJournalEntryNumber(),
+    date: new Date('2026-05-01'),
+    description: 'Authorized general entry',
+    source: 'manual',
+    status: 'draft',
+    lines: [
+      { account: cash._id, description: 'x', debit: 100, credit: 0 },
+      { account: revenue._id, description: 'x', debit: 0, credit: 100 },
+    ],
+  });
+  authorized.$locals.generalEntryAuthorized = true;
+  await authorized.save();
+  assert.equal(authorized.project, null, 'a General entry is stored with a plain null project reference');
+
+  const reloaded = await JournalEntry.findById(authorized._id);
+  assert.equal(reloaded.project, null);
+  assert.equal(reloaded.lines[0].project, null, 'a General entry\'s lines are never given a fabricated project either');
+});
+
 // Regression for journalEntryController.js#reverseJournalEntry's in-transaction re-check: two
 // concurrent requests could both read `reversedByEntry: null` before either writes (the classic
 // TOCTOU race). Mirrors the controller's actual guard - re-fetching the original INSIDE the

@@ -14,6 +14,46 @@ export interface PucTransferOptions {
   sourceProjectQuantity?: number;
 }
 
+// Project-oriented inventory view (backend: services/inventory/pucTransferService.js#listProjectInventory).
+export interface ProjectInventoryRow {
+  _id: string;
+  product: {
+    _id: string;
+    title: { en: string; ar: string };
+    category: string | null;
+    brand: string | null;
+    model: string | null;
+    sku: string | null;
+    classification: "product" | "service";
+  } | null;
+  sourceType: "purchase-order" | "warehouse" | "project" | "purchase-return";
+  quantity: number;
+  unitCost: number;
+  amount: number;
+  purchaseOrder: {
+    _id: string;
+    code: string;
+    date: string;
+    vendor: { _id: string; name: string; vendorNumber?: number | null } | null;
+  } | null;
+  warehouse: { _id: string; name: string } | null;
+  date: string;
+}
+
+export interface ProjectInventoryResult {
+  project: { _id: string; projectNumber: string; name: string | null };
+  summary: {
+    totalQuantityPurchased: number;
+    totalQuantityReturned: number;
+    netQuantity: number;
+    totalAmount: number;
+    quantityUsed: number | null;
+    quantityRemaining: number | null;
+  };
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  data: ProjectInventoryRow[];
+}
+
 export interface PucTransfer {
   _id: string;
   quantity: number;

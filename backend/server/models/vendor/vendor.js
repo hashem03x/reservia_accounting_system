@@ -4,6 +4,7 @@ const { taxInfoSchema, bankInfoSchema, paymentInfoSchema, businessDocumentSchema
 const { getNextVendorNumber } = require('../../services/vendor/vendorNumberService');
 const { isValidPhone } = require('../../utils/validators/phoneValidator');
 const { PaymentTerms } = require('../../utils/paymentTerms');
+const { validatePaymentTermsConfig } = require('../../utils/paymentTermsConfig');
 
 const vendorSchema = new Schema(
   {
@@ -105,6 +106,32 @@ const vendorSchema = new Schema(
     },
     // Only meaningful (and required by the validator layer) when paymentTerms === 'Custom'.
     customPaymentDays: { type: Number, min: 0, default: null },
+    // Vendor Payment Terms - Lump Sum and Installments (docs section "Vendor Payment Terms").
+    // Deliberately ADDITIVE and separate from paymentTerms/customPaymentDays above (never
+    // replaces or migrates them) - those two remain the legacy flat due-date calculation
+    // (utils/helpers/dueDate.js) every existing vendor already has and every existing Purchase
+    // Invoice's `dueDate` still comes from. This richer config is what
+    // utils/helpers/paymentSchedule.js reads to build a full multi-installment schedule, snapshotted
+    // onto a Purchase Invoice at creation time - see purchaseOrder.js#paymentSchedule. A vendor
+    // with no explicit config here behaves exactly as before (defaults to an immediate lump sum,
+    // i.e. no change in behavior for any existing vendor).
+    paymentTermsConfig: {
+      kind: { type: String, enum: ['lump_sum', 'installments'], default: 'lump_sum' },
+      lumpSum: {
+        timing: { type: String, enum: ['immediate', 'deferred'], default: 'immediate' },
+        durationDays: { type: Number, min: 0, default: 0 },
+      },
+      installments: {
+        type: [
+          {
+            _id: false,
+            durationDays: { type: Number, min: 0, required: true },
+            percentage: { type: Number, min: 0, max: 100, required: true },
+          },
+        ],
+        default: [],
+      },
+    },
     // Note: the vendor form has sent a `bankInfo` object since before this field existed on the
     // schema - Mongoose silently dropped it on every save (strict mode). Adding the field now
     // makes existing frontend behavior actually persist, it isn't new UI surface.
@@ -142,6 +169,17 @@ const vendorSchema = new Schema(
 vendorSchema.pre('save', async function (next) {
   if (!this.isNew) return next();
   this.vendorNumber = await getNextVendorNumber();
+  next();
+});
+
+// Backstop for paymentTermsConfig (the request validator - vendorValidators.js - is only the fast
+// pre-check): only re-validates when the field actually changed, same convention as
+// productModel.js#pucAccount's backstop, so a legacy vendor being re-saved for an unrelated reason
+// is never re-validated against a rule it predates.
+vendorSchema.pre('save', function (next) {
+  if (!this.isModified('paymentTermsConfig')) return next();
+  const error = validatePaymentTermsConfig(this.paymentTermsConfig?.toObject ? this.paymentTermsConfig.toObject() : this.paymentTermsConfig);
+  if (error) return next(new Error(error));
   next();
 });
 

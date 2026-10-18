@@ -4,7 +4,7 @@ const authController = require('../../controller/user/authController');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { checkUserPermissions } = require('../../middleware/hasPermission');
 const { Resources, Actions } = require('../../utils/appConstant');
-const { getPucTransferOptions, getProductPucTransfers, createPucTransfer } = require('../../controller/inventory/pucTransferController');
+const { getPucTransferOptions, getProductPucTransfers, createPucTransfer, getProjectInventory } = require('../../controller/inventory/pucTransferController');
 
 const router = express.Router();
 
@@ -25,6 +25,14 @@ const createValidators = [
   check('requestKey').optional({ nullable: true }).isString().trim().isLength({ min: 8, max: 100 }).withMessage('Invalid request key'),
   validatorMiddleware,
 ];
+
+router.get(
+  '/project/:projectId',
+  checkUserPermissions({ resource: Resources.projects, action: Actions.read }),
+  check('projectId').isMongoId().withMessage('Invalid project id'),
+  validatorMiddleware,
+  getProjectInventory
+);
 
 router.get('/product/:productId/options', checkUserPermissions({ resource: Resources.products, action: Actions.read }), productId, validatorMiddleware, getPucTransferOptions);
 router

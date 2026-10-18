@@ -89,14 +89,19 @@ const productSchema = mongoose.Schema(
     // Not used
     imageCover: { url: { type: String }, sortOrder: { type: Number, default: 0 }, publicId: { type: String } },
     // Primary identification field under Category in the catalog hierarchy (Category -> Brand ->
-    // Model/Item Number/Specifications) - replaces `subcategory` above. Required for products
-    // (not services, same conditional pattern as cost/category) - enforced here AND at the
-    // request-validator layer (productValidator.js) for a clear 400 before any DB round-trip.
+    // Model/Item Number/Specifications) - replaces `subcategory` above as the field the request
+    // validator (productValidator.js/productTypeValidation.js) requires for a NEW product created
+    // through the API. Deliberately NOT required at the schema level (unlike `category`/`cost`
+    // above) - the same reasoning as `pucAccount` below: a huge amount of existing/internal
+    // Product creation (migration scripts, CSV import fixtures, accounting/PO/reversal test
+    // suites, and any legacy document already in the database) sets `category`/`subcategory` but
+    // has no `brand` yet, and a hard schema requirement would break every one of those existing
+    // call sites instead of just the one real create-a-new-product-via-the-UI path that actually
+    // needs enforcing.
     brand: {
       type: mongoose.Schema.ObjectId,
       ref: 'Brand',
       default: null,
-      required: [function () { return this.type !== 'service'; }, 'Brand is required'],
     },
     // Freeform model/specs identifier, part of the Category -> Brand -> Model/Item Number
     // hierarchy. `itemNumber` is distinct from `sku`/`barcode` (which already exist and keep

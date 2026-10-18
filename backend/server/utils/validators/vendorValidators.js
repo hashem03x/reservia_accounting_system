@@ -5,6 +5,7 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX, PaymentModes, WalletProviders } = require('../../models/shared/businessPartnerSchemas');
 const { isValidPhone } = require('./phoneValidator');
 const { PaymentTerms } = require('../paymentTerms');
+const { validatePaymentTermsConfig } = require('../paymentTermsConfig');
 
 // Payment Terms (docs section "Payment Terms for Customers and Vendors") - optional (defaults to
 // 'Net 30' at the schema level if omitted entirely), but `customPaymentDays` is required exactly
@@ -17,6 +18,19 @@ const paymentTermsValidators = [
         if (req.body.paymentTerms === 'Custom' && (value === undefined || value === null)) {
             throw new Error('customPaymentDays is required when paymentTerms is "Custom".');
         }
+        return true;
+    }),
+];
+
+// Vendor Payment Terms - Lump Sum and Installments (docs section "Vendor Payment Terms").
+// Optional (a vendor with none keeps the implicit immediate-lump-sum default - see vendor.js's
+// schema default), but when sent, it must be a complete, internally-consistent configuration -
+// rejected with the SAME rule the Mongoose model's own backstop enforces
+// (utils/paymentTermsConfig.js is the single shared source of truth for both layers).
+const paymentTermsConfigValidators = [
+    check('paymentTermsConfig').custom((value) => {
+        const error = validatePaymentTermsConfig(value);
+        if (error) throw new Error(error);
         return true;
     }),
 ];
@@ -156,6 +170,7 @@ const createVendorValidators = [
         .matches(/^\d{5}(-\d{4})?$/).withMessage('Postal code must be valid (e.g., 12345 or 12345-6789)'),
 
     ...paymentTermsValidators,
+    ...paymentTermsConfigValidators,
 
     check('isActive')
         .optional()
@@ -182,6 +197,7 @@ const updateVendorValidators = [
     ...taxAndBankInfoValidators,
     ...paymentInfoValidators,
     ...paymentTermsValidators,
+    ...paymentTermsConfigValidators,
     check('cashFlowActivity')
         .optional({ nullable: true })
         .isIn(['operating', 'investing', 'financing']).withMessage('Cash flow activity must be operating, investing or financing'),

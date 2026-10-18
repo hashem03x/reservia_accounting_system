@@ -30,6 +30,7 @@ export type Vendor = {
   paymentInfo?: PaymentInfo;
   paymentTerms?: PaymentTerms;
   customPaymentDays?: number | null;
+  paymentTermsConfig?: PaymentTermsConfig;
   documents: BusinessDocument[];
   // How payments to this vendor appear in the Cash Flow Statement; null = by the counterpart account
   // (operating). E.g. "Supplier - Finance Activities" = financing.
@@ -37,3 +38,15 @@ export type Vendor = {
 };
 
 export type CashFlowActivity = "operating" | "investing" | "financing";
+
+// Vendor Payment Terms - Lump Sum and Installments (docs section "Vendor Payment Terms").
+// Additive and separate from the legacy `paymentTerms`/`customPaymentDays` above - those keep
+// governing the existing single `dueDate`; this richer config drives the snapshotted
+// `paymentSchedule` on a Purchase Invoice (see backend utils/helpers/paymentSchedule.js).
+export type PaymentTermsInstallment = { durationDays: number | string; percentage: number | string };
+
+export type PaymentTermsConfig = {
+  kind: "lump_sum" | "installments";
+  lumpSum?: { timing: "immediate" | "deferred"; durationDays?: number };
+  installments?: PaymentTermsInstallment[];
+};

@@ -2,10 +2,12 @@ import { Subcategory } from "@/types/categories";
 import { useLanguage } from "@/context/LanguageContext";
 import { useMainCategories } from "@/context/MainCategoriesContext";
 import { useSubcategories } from "@/context/SubcategoriesContext";
+import { useBrands } from "@/context/BrandsContext";
 
 export default function useCategoryHelpers() {
   const { data: mainCategories } = useMainCategories();
   const { data: subcategories } = useSubcategories();
+  const { data: brands } = useBrands();
   const { translate } = useLanguage();
 
   function getMainCategoryById(mainCategoryId: string) {
@@ -44,6 +46,14 @@ export default function useCategoryHelpers() {
     return translate(subcategory.name.en, subcategory.name.ar);
   }
 
+  // Brand replaces Subcategory as a product's primary identification field under Category - flat
+  // (no mainCategory scoping), unlike getSubcategoriesByMainCategoryId above.
+  function getBrandNameById(brandId: string): string {
+    const brand = brands?.find((b) => b._id === brandId);
+    if (!brand) return "";
+    return translate(brand.name.en, brand.name.ar);
+  }
+
   return {
     getMainCategoryById,
     getSubcategoriesByMainCategoryId,
@@ -51,5 +61,6 @@ export default function useCategoryHelpers() {
     getSubcategoryNameOfProduct,
     getMainCategoryNameById,
     getSubcategoryNameById,
+    getBrandNameById,
   };
 }

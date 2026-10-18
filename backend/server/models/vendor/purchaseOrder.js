@@ -103,6 +103,26 @@ const purchaseOrderSchema = new Schema(
     // vendor's default terms never retroactively alters an already-created order's due date.
     // `null` for every historical order created before this field existed.
     dueDate: { type: Date, default: null },
+    // Vendor Payment Terms - Lump Sum and Installments (docs section "Vendor Payment Terms").
+    // Snapshotted ONCE at creation from the vendor's CURRENT `paymentTermsConfig` (see
+    // utils/helpers/paymentSchedule.js), exactly like `dueDate` above - a later change to the
+    // vendor's default terms never retroactively rewrites an already-created invoice's schedule.
+    // Purely informational/projected (see utils/helpers/paymentSchedule.js's header comment) -
+    // never marks anything as paid; actual payments still go through the existing
+    // paidAmount/remainingAmount fields and the Payment model exclusively. Empty for every
+    // historical invoice created before this field existed.
+    paymentSchedule: {
+      type: [
+        {
+          _id: false,
+          durationDays: { type: Number },
+          dueDate: { type: Date },
+          percentage: { type: Number },
+          amount: { type: Number },
+        },
+      ],
+      default: [],
+    },
     // The CSV's own grouping identifier for an invoice imported via the CSV Import System (docs
     // section "Purchase Invoice CSV Import") - absent for every manually-created invoice (the
     // create form never sets this). Unique+sparse so re-submitting (or concurrently submitting)
@@ -306,6 +326,18 @@ purchaseOrderSchema.pre('save', async function (next) {
     this.vatAmount = totals.vatAmount;
     this.withholdingTaxAmount = totals.withholdingTaxAmount;
     this.grandTotal = totals.total;
+
+    // Payment Terms - Lump Sum and Installments: snapshot the schedule from the vendor's CURRENT
+    // paymentTermsConfig, using this invoice's own grandTotal (just computed above) - never
+    // recomputed on a later re-save, and never overwritten if somehow already set.
+    if (this.isNew && this.vendorId && (!this.paymentSchedule || this.paymentSchedule.length === 0)) {
+      const { buildPaymentSchedule } = require('../../utils/helpers/paymentSchedule'); // eslint-disable-line global-require
+      const Vendor = this.model('Vendor');
+      const scheduleVendor = await Vendor.findById(this.vendorId).select('paymentTermsConfig').session(this.$session());
+      if (scheduleVendor) {
+        this.paymentSchedule = buildPaymentSchedule(scheduleVendor.paymentTermsConfig, new Date(), this.grandTotal);
+      }
+    }
 
     this.remainingAmount = calculateRemainingAmount(this.grandTotal, this.paidAmount);
     this.paymentStatus = getPaymentStatus(this.paidAmount, this.grandTotal);

@@ -74,6 +74,11 @@ exports.Actions = {
   create: 'create',
   update: 'update',
   delete: 'delete',
+  // Journal Entry Project / General selection (docs section "Journal Entry Project Selection -
+  // Project or General"): creating a manual Journal Entry with NO project ("General") is a
+  // separate, more sensitive action than ordinary journalEntries:create, gated to only the role(s)
+  // explicitly granted it below (adminPermission only) - see journalEntryValidators.js#projectRequired.
+  createGeneral: 'createGeneral',
 };
 
 exports.adminPermission = [
@@ -99,7 +104,7 @@ exports.adminPermission = [
   { resource: 'governorates', actions: ['create', 'delete', 'read', 'update'] },
   { resource: 'projects', actions: ['create', 'delete', 'read', 'update'] },
   { resource: 'accounts', actions: ['create', 'delete', 'read', 'update'] },
-  { resource: 'journalEntries', actions: ['create', 'read', 'update'] },
+  { resource: 'journalEntries', actions: ['create', 'read', 'update', 'createGeneral'] },
   { resource: 'advancedPayments', actions: ['create', 'delete', 'read', 'update'] },
 ];
 

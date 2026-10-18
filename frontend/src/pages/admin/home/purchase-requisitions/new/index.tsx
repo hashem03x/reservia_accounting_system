@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
+import usePrivateRequest from "@/hooks/usePrivateRequest";
 import handleRequest from "@/utils/helpers/handle-request";
 import { Vendor } from "@/types/vendor";
 import { Project } from "@/types/project";
@@ -12,9 +14,11 @@ import { Button, NumberInput, Select, Textarea, TextInput } from "@mantine/core"
 import ErrorAlert from "@/components/ui/error-alert";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import VendorSearch from "@/components/global/vendor-search";
-import { outlineIcons } from "@/components/icons";
+import ProductSearchModal from "@/components/global/variant-search-modal";
+import { getPurchaseUnitPrice } from "@/utils/helpers/purchase-unit-price";
+import { outlineIcons, solidIcons } from "@/components/icons";
 
-const emptyItem: RequisitionItemInput = { description: "", quantity: 1, unit: "", unitPrice: 0 };
+const emptyItem: RequisitionItemInput = { product: null, description: "", quantity: 1, unit: "", unitPrice: 0 };
 
 export default function NewPurchaseRequisition() {
   const { language, translate, translations } = useLanguage();
@@ -49,6 +53,35 @@ export default function NewPurchaseRequisition() {
     setItems((prev) => prev.filter((_, i) => i !== index));
   }
 
+  // Searchable product selector (title/category/brand - see components/global/variant-search-modal),
+  // the same component already used by the Purchase/Sales Invoice item rows. One modal instance,
+  // reused for whichever row's "select product" button was last clicked, tracked by index.
+  const productPrivateRequest = usePrivateRequest();
+  const [searchModalOpened, { open: openSearchModal, close: closeSearchModal }] = useDisclosure();
+  const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
+
+  function openProductSearch(index: number) {
+    setActiveItemIndex(index);
+    openSearchModal();
+  }
+
+  async function handleProductSelected(barcode: string) {
+    if (activeItemIndex === null) return;
+    const index = activeItemIndex;
+    try {
+      const response = await productPrivateRequest({ url: `products/code/${barcode}`, language });
+      const product = response.data;
+      updateItem(index, {
+        product: product._id,
+        description: translate(product.title.en, product.title.ar),
+        unitPrice: getPurchaseUnitPrice(product),
+      });
+    } catch {
+      // The product search modal already only lists real products - a lookup failure here is
+      // unexpected; leave the row's existing description editable rather than blocking the user.
+    }
+  }
+
   const lineTotal = (item: RequisitionItemInput) => (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
   const amount = items.reduce((sum, item) => sum + lineTotal(item), 0);
 
@@ -77,6 +110,7 @@ export default function NewPurchaseRequisition() {
           vendorId: vendor._id,
           project,
           items: items.map((item) => ({
+            product: item.product || undefined,
             description: item.description,
             quantity: Number(item.quantity) || 0,
             unit: item.unit || undefined,
@@ -162,9 +196,14 @@ export default function NewPurchaseRequisition() {
             <TextInput
               label={translate("Description", "الوصف")}
               value={item.description}
-              onChange={(e) => updateItem(index, { description: e.target.value })}
+              onChange={(e) => updateItem(index, { description: e.target.value, product: null })}
               required
               className="sm:col-span-2"
+              rightSection={
+                <Button onClick={() => openProductSearch(index)} variant="transparent" size="xs" px={5} title={translate("Select from catalog", "اختر من الكتالوج")}>
+                  <solidIcons.Search size={16} />
+                </Button>
+              }
             />
             <NumberInput
               label={translate("Quantity", "الكمية")}
@@ -198,6 +237,16 @@ export default function NewPurchaseRequisition() {
           </div>
         ))}
       </div>
+
+      <ProductSearchModal
+        opened={searchModalOpened}
+        close={closeSearchModal}
+        mode="purchase"
+        onSelect={(barcode) => {
+          handleProductSelected(barcode);
+          closeSearchModal();
+        }}
+      />
 
       <hr />
 

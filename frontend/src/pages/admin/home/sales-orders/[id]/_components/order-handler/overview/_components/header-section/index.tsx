@@ -9,7 +9,6 @@ import PrintInvoice from "./_components/print-invoice";
 import PrintReceipt from "./_components/print-receipt";
 import InfoItem from "@/components/ui/info-item";
 import OrderAmounts from "@/components/global/order-amounts";
-import { getOrderTotal } from "@/utils/helpers/order-totals";
 import OrderStatus from "@/components/global/order-status";
 import { isDeliveredOrder, isPendingOrder } from "@/utils/constants/order-statuses";
 import { useDisclosure } from "@mantine/hooks";
@@ -19,6 +18,10 @@ export default function HeaderSection() {
   const { translate, language, translations } = useLanguage();
   const { order, orderPaymentStatusElement } = useOrder();
 
+  // Order Status/delivery tracking only has real meaning for an order created with shipping (the
+  // model defaults a shipping-less order's status straight to 'delivered' at creation - see
+  // salesOrderModel.js). Kept exactly as before - this is about when the Order Status/"Mark as
+  // Delivered" block is shown, independent of removing the Shipping Cost AMOUNT display below.
   const isThereShippingCost = order.shippingCost > 0;
 
   const [deliveryModalOpened, { open: openDeliveryModal, close: closeDeliveryModal }] = useDisclosure();
@@ -33,15 +36,8 @@ export default function HeaderSection() {
         {order.project && (
           <InfoItem label={translate("Project", "المشروع")} value={order.project.projectNumber || "-"} />
         )}
-        {order.paymentMethod === "account" && order.paymentAccount && (
-          <InfoItem
-            label={translate("Payment Account", "حساب الدفع")}
-            value={`${order.paymentAccount.code} - ${order.paymentAccount.name}`}
-          />
-        )}
-        {order.paymentMethod === "advanced_payment" && (
-          <InfoItem label={translate("Payment Account", "حساب الدفع")} value={translate("Advanced Payment", "دفعة مقدمة")} />
-        )}
+        {/* Cash-on-Delivery vs Prepaid (order.isCodOrder) - a distinct field/concept from the
+            removed paymentMethod ('account'/'advanced_payment'), kept as-is. */}
         <InfoItem
           label={translate("Payment Method", "طريقة الدفع")}
           value={
@@ -62,20 +58,6 @@ export default function HeaderSection() {
         )}
         {isThereShippingCost && (
           <>
-            <div className="flex items-center gap-1.5">
-              <InfoItem
-                label={translate("Shipping Cost", "تكلفة الشحن")}
-                value={`${order.shippingCost.toFixed(2)} ${translations.currency}`}
-              />
-              <span className="text-gray-800">-</span>
-              <span className="text-sm font-medium text-gray-600">
-                ({order.shippingCostPaid ? translate("Paid", "مدفوع") : translate("Not Paid", "غير مدفوع")})
-              </span>
-            </div>
-            <InfoItem
-              label={translate("Total Amount incl. Shipping", "الإجمالي شامل الشحن")}
-              value={`${(getOrderTotal(order) + (order.shippingCost || 0)).toFixed(2)} ${translations.currency}`}
-            />
             <div className="flex items-center gap-2">
               <InfoItem label={translate("Order Status", "حالة الطلب")} value={<OrderStatus order={order} />} />
               {isPendingOrder(order.orderStatus) && (

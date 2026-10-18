@@ -225,4 +225,83 @@ async function recordPucTransfer(productId, input, userId, session) {
   return { transfer, journalEntry: entry, duplicate: false };
 }
 
-module.exports = { recordPucTransfer, transferOptions, listTransfers, projectQuantity };
+// Project-oriented inventory view (docs section "Inventory / Warehouses - Detailed PUC and Raw
+// Materials Per Project"). PucTransfer is already the authoritative, one-row-per-event ledger of
+// "a quantity of a product was allocated to this project's PUC" - a Purchase Invoice's own
+// received quantity is allocated here automatically (sourceType 'purchase-order', see
+// poProjectAllocationService.js), so reading THIS collection (not re-deriving from PurchaseOrder
+// line items separately) is what avoids double-counting a Purchase Order/Invoice and its
+// resulting inventory movement as two separate purchases. Rows are returned individually
+// (never netted) so a purchase-return release is visible as its own, clearly-labeled line rather
+// than silently reducing a purchase row - the same "never hide a return" rule the rest of the
+// accounting layer already follows.
+//
+// Quantity "used/consumed" and "remaining" are NOT tracked anywhere in this codebase (no
+// consumption-recording workflow exists for PUC materials) - deliberately omitted here rather
+// than fabricated; only purchased/allocated/returned quantities, which ARE backed by real
+// persisted records, are returned.
+async function listProjectInventory(projectId, { category, brand, product, page = 1, limit = 50 } = {}) {
+  if (!mongoose.Types.ObjectId.isValid(String(projectId))) throw new ApiError('Invalid project id', 400);
+  const project = await Project.findById(projectId).select('projectNumber name').lean();
+  if (!project) throw new ApiError('Project not found', 404);
+
+  const match = { project: new mongoose.Types.ObjectId(String(projectId)) };
+  if (product) {
+    if (!mongoose.Types.ObjectId.isValid(String(product))) throw new ApiError('Invalid product id', 400);
+    match.product = new mongoose.Types.ObjectId(String(product));
+  }
+
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.max(parseInt(limit, 10) || 50, 1);
+
+  let query = PucTransfer.find(match)
+    .populate({ path: 'product', select: 'title category brand model sku type' })
+    .populate({ path: 'purchaseOrder', select: 'code createdAt vendorId', populate: { path: 'vendorId', select: 'name vendorNumber' } })
+    .populate({ path: 'warehouse', select: 'name' })
+    .sort({ date: -1, createdAt: -1 });
+
+  // Category/Brand filter by the populated Product's own fields - filtered in-memory after
+  // population rather than a separate Product pre-query, since this list is already scoped to
+  // one project (never the whole catalog) and therefore small enough to filter this way safely.
+  let rows = await query.lean();
+  if (category) rows = rows.filter(r => String(r.product?.category || '') === String(category));
+  if (brand) rows = rows.filter(r => String(r.product?.brand || '') === String(brand));
+
+  const total = rows.length;
+  const totalQuantityPurchased = round2(rows.filter(r => r.sourceType !== 'purchase-return').reduce((sum, r) => sum + r.quantity, 0));
+  const totalQuantityReturned = round2(rows.filter(r => r.sourceType === 'purchase-return').reduce((sum, r) => sum + r.quantity, 0));
+  const totalAmount = round2(rows.reduce((sum, r) => sum + (r.sourceType === 'purchase-return' ? -r.amount : r.amount), 0));
+
+  const paged = rows.slice((pageNum - 1) * limitNum, pageNum * limitNum);
+
+  return {
+    project: { _id: project._id, projectNumber: project.projectNumber, name: project.name || null },
+    summary: {
+      totalQuantityPurchased,
+      totalQuantityReturned,
+      netQuantity: round2(totalQuantityPurchased - totalQuantityReturned),
+      totalAmount,
+      // Explicit, documented limitation - see header comment above.
+      quantityUsed: null,
+      quantityRemaining: null,
+    },
+    pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.max(Math.ceil(total / limitNum), 1) },
+    data: paged.map(r => ({
+      _id: r._id,
+      product: r.product
+        ? { _id: r.product._id, title: r.product.title, category: r.product.category || null, brand: r.product.brand || null, model: r.product.model || null, sku: r.product.sku || null, classification: r.product.type }
+        : null,
+      sourceType: r.sourceType,
+      quantity: r.quantity,
+      unitCost: r.unitCost,
+      amount: r.amount,
+      purchaseOrder: r.purchaseOrder
+        ? { _id: r.purchaseOrder._id, code: r.purchaseOrder.code, date: r.purchaseOrder.createdAt, vendor: r.purchaseOrder.vendorId ? { _id: r.purchaseOrder.vendorId._id, name: r.purchaseOrder.vendorId.name, vendorNumber: r.purchaseOrder.vendorId.vendorNumber } : null }
+        : null,
+      warehouse: r.warehouse ? { _id: r.warehouse._id, name: r.warehouse.name } : null,
+      date: r.date,
+    })),
+  };
+}
+
+module.exports = { recordPucTransfer, transferOptions, listTransfers, projectQuantity, listProjectInventory };

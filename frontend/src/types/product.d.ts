@@ -9,7 +9,13 @@ export type Product = {
   // Product-only fields - absent/meaningless when type === "service".
   cost?: number;
   category?: string;
+  // Legacy identification field - kept for reading historical products; no longer set by the
+  // product form (see `brand` below).
   subcategory?: string;
+  // Catalog hierarchy: Category -> Brand -> Model/Item Number/Specifications.
+  brand?: string;
+  model?: string;
+  specifications?: string;
   // A Product is the sellable/stock-tracked item itself now - there is no separate Variant (see
   // docs/entities/products.md). `stock`/`sku`/`barcode` are absent/meaningless for a service.
   sku?: string;

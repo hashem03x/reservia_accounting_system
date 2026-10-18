@@ -12,6 +12,8 @@ import { outlineIcons } from "@/components/icons";
 import AttachmentPicker from "@/components/global/attachments/attachment-picker";
 import useAttachmentUpload, { uploadPendingAttachments } from "@/components/global/attachments/use-attachment-upload";
 import { notifyError } from "@/utils/helpers/notifiers";
+import useHasPermission from "@/hooks/useHasPermission";
+import resources from "@/utils/constants/resources";
 
 type ProjectOption = { _id: string; projectNumber: string };
 type PartyOption = { number: number; name: string };
@@ -38,6 +40,15 @@ export default function CreateJournalEntryModal({
 }) {
   const { translate, language } = useLanguage();
   const privateRequest = usePrivateRequest();
+
+  // Journal Entry Project / General selection (docs section "Journal Entry Project Selection -
+  // Project or General"): the user must EXPLICITLY choose between a specific project and "General
+  // (No Project)" - never an empty/placeholder dropdown value standing in for "general" without
+  // explaining it. "General" is only ever offered to a user the backend would actually accept it
+  // from (journalEntries:createGeneral) - hiding it from everyone else is a UX nicety, not the
+  // real authorization boundary, which the backend enforces independently on the request itself.
+  const canCreateGeneral = useHasPermission(resources.journalEntries, "createGeneral");
+  const [entryKind, setEntryKind] = useState<"project" | "general">("project");
 
   const [date, setDate] = useState("");
   const [description, setDescription] = useState("");
@@ -121,8 +132,8 @@ export default function CreateJournalEntryModal({
   const missingDescription = lines.some((l) => !l.description?.trim());
   const missingSubAccount = lines.some((l) => l.account && requiredPartyType(l.account) && l.partyNumber == null);
   // UX-only - the backend independently enforces every one of these rules on the request itself.
-  const canSubmit = isBalanced && !!entryProject && !missingDescription && !missingSubAccount;
-  const entryProjectNumber = projects.find((p) => p._id === entryProject)?.projectNumber || "";
+  const canSubmit = isBalanced && (entryKind === "general" || !!entryProject) && !missingDescription && !missingSubAccount;
+  const entryProjectNumber = entryKind === "general" ? translate("General", "عام") : projects.find((p) => p._id === entryProject)?.projectNumber || "";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -136,11 +147,11 @@ export default function CreateJournalEntryModal({
           date: date || undefined,
           description,
           reference,
-          project: entryProject,
+          project: entryKind === "general" ? undefined : entryProject,
           lines: lines.map((l) => ({
             ...l,
             subAccount: l.subAccount || undefined,
-            project: entryProject || undefined,
+            project: entryKind === "general" ? undefined : entryProject || undefined,
             partyType: l.partyNumber != null ? l.partyType : undefined,
             partyNumber: l.partyNumber ?? undefined,
           })),
@@ -168,6 +179,7 @@ export default function CreateJournalEntryModal({
       setDescription("");
       setReference("");
       setEntryProject("");
+      setEntryKind("project");
       setLines([{ ...emptyLine }, { ...emptyLine }]);
       setAttachmentFiles([]);
       setError("");
@@ -213,20 +225,41 @@ export default function CreateJournalEntryModal({
           onChange={(e) => setDescription(e.target.value)}
         />
 
-        <Select
-          label={translate("Project", "المشروع")}
-          description={translate(
-            "Required - every journal entry and every one of its lines must reference a project.",
-            "مطلوب - يجب أن يرتبط كل قيد يومية وكل بنوده بمشروع.",
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Select
+            label={translate("Entry Type", "نوع القيد")}
+            description={translate(
+              "Every journal entry must explicitly be either project-related or General (no project).",
+              "يجب أن يكون كل قيد يومية مرتبطًا بمشروع بشكل واضح أو عامًا (بدون مشروع).",
+            )}
+            value={entryKind}
+            onChange={(v) => {
+              setEntryKind((v as "project" | "general") || "project");
+              if (v === "general") setEntryProject("");
+            }}
+            data={[
+              { value: "project", label: translate("Project-related", "مرتبط بمشروع") },
+              // Only offered to a user the backend would actually accept a General entry from
+              // (journalEntries:createGeneral) - never shown as a tempting option to everyone else.
+              ...(canCreateGeneral ? [{ value: "general", label: translate("General (No Project)", "عام (بدون مشروع)") }] : []),
+            ]}
+            allowDeselect={false}
+            required
+            withAsterisk
+          />
+          {entryKind === "project" && (
+            <Select
+              label={translate("Project", "المشروع")}
+              placeholder={translate("Select project", "اختر المشروع")}
+              value={entryProject || null}
+              onChange={(v) => setEntryProject(v || "")}
+              data={projects.map((p) => ({ value: p._id, label: p.projectNumber }))}
+              searchable
+              required
+              withAsterisk
+            />
           )}
-          placeholder={translate("Select project", "اختر المشروع")}
-          value={entryProject || null}
-          onChange={(v) => setEntryProject(v || "")}
-          data={projects.map((p) => ({ value: p._id, label: p.projectNumber }))}
-          searchable
-          required
-          withAsterisk
-        />
+        </div>
 
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">

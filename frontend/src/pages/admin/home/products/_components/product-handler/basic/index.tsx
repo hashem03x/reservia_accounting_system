@@ -36,7 +36,9 @@ export default function ProductBasicInfo() {
     priceAfterDiscount,
     isAvailable,
     category,
-    subcategory,
+    brand,
+    model,
+    specifications,
     capacity,
     setCapacity,
     sku,
@@ -73,7 +75,7 @@ export default function ProductBasicInfo() {
           price,
           priceAfterDiscount,
           category,
-          subcategory,
+          brand,
           capacity,
           durationValue,
           durationUnit,
@@ -98,7 +100,7 @@ export default function ProductBasicInfo() {
       formData.append("isAvailable", isAvailable.toString());
 
       if (productIsService) {
-        // A service has no cost/category/subcategory/stock - see docs/entities/products.md.
+        // A service has no cost/category/brand/stock - see docs/entities/products.md.
         formData.append("durationValue", durationValue.toString());
         formData.append("durationUnit", durationUnit);
         // The Service's PUC account - Purchase Orders post this service's cost to it.
@@ -106,7 +108,9 @@ export default function ProductBasicInfo() {
       } else {
         formData.append("cost", cost.toString());
         formData.append("category", category as string);
-        formData.append("subcategory", subcategory as string);
+        formData.append("brand", brand as string);
+        if (model) formData.append("model", model);
+        if (specifications) formData.append("specifications", specifications);
 
         if (sku) formData.append("sku", sku);
         if (barcode) formData.append("barcode", barcode);
@@ -167,7 +171,9 @@ export default function ProductBasicInfo() {
           pucAccount !== getPucAccountId(currentProduct)
         : cost !== currentProduct.cost ||
           category !== currentProduct.category ||
-          subcategory !== currentProduct.subcategory ||
+          brand !== (currentProduct.brand || null) ||
+          model !== (currentProduct.model || "") ||
+          specifications !== (currentProduct.specifications || "") ||
           sku !== (currentProduct.sku || "") ||
           barcode !== (currentProduct.barcode || "") ||
           stock.some((stockItem) => {
