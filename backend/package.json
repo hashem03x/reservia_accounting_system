@@ -26,6 +26,7 @@
     "db:migrate-subcategory-to-brand": "node server/scripts/migrateSubcategoryToBrand.js",
     "db:bootstrap-platform-admin": "node server/scripts/bootstrapPlatformAdmin.js",
     "db:repair-sub-accounts": "node server/scripts/repairUnassignedSubAccounts.js",
+    "db:seed-currencies": "node server/scripts/seedCurrencies.js",
     "start": "node server.js",
     "dev": "cross-env NODE_ENV=development nodemon server.js",
     "staging": "cross-env NODE_ENV=staging nodemon server.js",

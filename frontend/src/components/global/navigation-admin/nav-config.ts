@@ -195,6 +195,13 @@ export function useAdminNavigation(): NavSection[] {
             Icon: navIcons.AccountingPeriods,
             adminOnly: true,
           },
+          {
+            key: "currencyManagement",
+            to: admin(paths.currencyManagement),
+            label: pages.currencyManagement,
+            Icon: navIcons.CurrencyManagement,
+            resource: resources.currencyManagement,
+          },
         ],
       },
       {

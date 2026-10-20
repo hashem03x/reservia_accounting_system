@@ -16,10 +16,22 @@ const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 // a client-submitted `difference`/`totalDebit`/`totalCredit` field (docs section "Do not trust a
 // difference value sent from the frontend"). Applies unconditionally - there is no `status`
 // exception, including for `draft` (docs section "Very Important: Drafts Are NOT Exempt").
+//
+// Currency Management: a foreign-currency line's real EGP debit/credit is computed SERVER-SIDE
+// from transactionDebit/transactionCredit x the entry's rate (journalEntryCurrencyService.js) -
+// this request-body-only pre-check cannot know that rate yet (resolving it needs a DB lookup the
+// model's own RULE 1, running after that computation, is the real backstop for). So when any line
+// carries a transaction amount, this pre-check instead balances the TRANSACTION-currency amounts
+// directly: with every line forced to the same rate (also enforced by the model), transaction
+// balance and EGP balance are mathematically the same check.
 const linesAreBalanced = check('lines').custom(lines => {
   if (!Array.isArray(lines) || lines.length === 0) return true; // handled by the separate isArray({min:1}) check
-  const totalDebit = round2(lines.reduce((sum, l) => sum + (Number(l?.debit) || 0), 0));
-  const totalCredit = round2(lines.reduce((sum, l) => sum + (Number(l?.credit) || 0), 0));
+  const isTransactionLine = l => l?.transactionDebit != null || l?.transactionCredit != null;
+  const useTransactionAmounts = lines.some(isTransactionLine);
+  const debitField = useTransactionAmounts ? 'transactionDebit' : 'debit';
+  const creditField = useTransactionAmounts ? 'transactionCredit' : 'credit';
+  const totalDebit = round2(lines.reduce((sum, l) => sum + (Number(l?.[debitField]) || 0), 0));
+  const totalCredit = round2(lines.reduce((sum, l) => sum + (Number(l?.[creditField]) || 0), 0));
   if (totalDebit !== totalCredit) {
     throw new Error('Journal entry is not balanced. Total debit must equal total credit.');
   }
@@ -39,10 +51,22 @@ const lineValidators = (prefix = 'lines.*') => [
   check(`${prefix}.debit`).optional().isFloat({ min: 0 }).withMessage('Debit must be a non-negative number'),
   check(`${prefix}.credit`).optional().isFloat({ min: 0 }).withMessage('Credit must be a non-negative number'),
   check(`${prefix}.unearnedRevenue`).optional().isFloat({ min: 0 }).withMessage('Unearned revenue must be a non-negative number'),
+  // Currency Management: a foreign-currency line gives its amount as transactionDebit/
+  // transactionCredit (the EGP debit/credit are computed server-side from these, never trusted
+  // from the client) - see journalEntryCurrencyService.js.
+  check(`${prefix}.transactionDebit`).optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Transaction debit must be a non-negative number'),
+  check(`${prefix}.transactionCredit`).optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Transaction credit must be a non-negative number'),
   check(prefix).custom(line => {
-    const debit = Number(line?.debit) || 0;
-    const credit = Number(line?.credit) || 0;
-    if ((debit > 0) === (credit > 0)) {
+    const hasAmount = (debitField, creditField) => {
+      const debit = Number(line?.[debitField]) || 0;
+      const credit = Number(line?.[creditField]) || 0;
+      return (debit > 0) !== (credit > 0) ? (debit > 0 ? 'debit' : 'credit') : null;
+    };
+    // A transaction-currency amount, when given, is what actually determines this line's side -
+    // the plain debit/credit the client may also send for it is only ever a preview, recomputed
+    // server-side regardless (see journalEntryCurrencyService.js), so it is not re-validated here.
+    const side = line?.transactionDebit != null || line?.transactionCredit != null ? hasAmount('transactionDebit', 'transactionCredit') : hasAmount('debit', 'credit');
+    if (!side) {
       throw new Error('Each journal line must have either a debit or a credit amount, not both and not neither.');
     }
     return true;
@@ -73,11 +97,20 @@ const projectRequired = check('project').custom((value, { req }) => {
   return true;
 });
 
+// Currency Management: the entry-level currency selector/rate override - applied to every line by
+// journalEntryCurrencyService.js, which also validates the code actually exists and is active (a
+// DB lookup, not duplicated here).
+const currencyFields = [
+  check('currency').optional({ nullable: true }).isString().trim().isLength({ min: 3, max: 3 }).withMessage('Invalid currency code'),
+  check('exchangeRate').optional({ nullable: true }).isFloat({ gt: 0 }).withMessage('Exchange rate must be a number greater than zero'),
+];
+
 const createJournalEntryValidators = [
   check('date').optional().isISO8601().withMessage('Invalid date'),
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('reference').optional().isString().trim().isLength({ max: 100 }),
   projectRequired,
+  ...currencyFields,
   check('lines').isArray({ min: 1 }).withMessage('A journal entry needs at least one line'),
   linesAreBalanced,
   ...lineValidators(),
@@ -92,6 +125,7 @@ const updateJournalEntryValidators = [
   // Existing Journal Entries": the new mandatory rule applies to new creation, not to editing a
   // pre-existing entry that may predate it.
   check('project').optional({ nullable: true }).isMongoId().withMessage('Invalid project id'),
+  ...currencyFields,
   check('lines').optional().isArray({ min: 1 }).withMessage('A journal entry needs at least one line'),
   linesAreBalanced,
   ...lineValidators(),

@@ -26,6 +26,7 @@ const projectRoute = require('./project/projectRoute');
 const chartOfAccountRoute = require('./accounting/chartOfAccountRoute');
 const journalEntryRoute = require('./accounting/journalEntryRoute');
 const reversalRoute = require('./accounting/reversalRoute');
+const currencyRoute = require('./accounting/currencyRoute');
 
 const bahrianDatabaseHealthRoute = require('./databaseHealth');
 const databaseExportRoute = require('./databaseExportRoute');
@@ -66,6 +67,10 @@ const mountRoutes = app => {
   app.use('/api/v1/projects', projectRoute);
   app.use('/api/v1/accounts', chartOfAccountRoute);
   app.use('/api/v1/journal-entries', journalEntryRoute);
+  // Currency Management master data (multi-currency Journal Entries) - see currencyRoute.js's
+  // header comment for why this is a new `currencyManagement` permission resource rather than the
+  // pre-existing, unrelated `currencies` one.
+  app.use('/api/v1/currencies', currencyRoute);
   // Accounting reversals: returns, payment and settlement reversals (services/accounting/reversalService.js)
   app.use('/api/v1/reversals', reversalRoute);
   // PDF attachments of purchase orders, sales orders and journal entries (services/files/attachmentService.js)

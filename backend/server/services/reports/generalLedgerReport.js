@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const ApiError = require('../../utils/apiError');
 const C = require('./reportCommon');
+const { transactionAmountFromEgp } = require('../../utils/exchangeRate');
 
 const { round2, col, check, note, summaryItem, L } = C;
 
@@ -195,6 +196,14 @@ async function generalLedgerLines(query) {
       description: line.description || entry.description || null,
       currency: line.currency || 'EGP',
       exchangeRate: line.exchangeRate ?? (line.currency ? null : 1),
+      // Transaction-currency amount (docs section "Journal Entry amounts"): the real stored value
+      // for any line created through Currency Management, derived (debit/rate) for a legacy line
+      // that has a currency/rate but predates that field (e.g. the accounting CSV import, which
+      // already converts to EGP before storing debit/credit - see utils/exchangeRate.js). `null`
+      // for a plain EGP line, exactly like `currency`/`exchangeRate` already are.
+      transactionDebit: line.currency ? (line.transactionDebit ?? (line.debit ? transactionAmountFromEgp(line.debit, line.exchangeRate) : 0)) : null,
+      transactionCredit: line.currency ? (line.transactionCredit ?? (line.credit ? transactionAmountFromEgp(line.credit, line.exchangeRate) : 0)) : null,
+      // debit/credit are always the EGP (base-currency) amount - see journalEntryModel.js.
       debit: line.debit || 0,
       credit: line.credit || 0,
       balance,
@@ -278,10 +287,12 @@ async function generalLedgerLines(query) {
           col('sourceNumber', 'Document No.', 'رقم المستند'),
           col('description', 'Description', 'البيان'),
           col('currency', 'Currency', 'العملة'),
-          col('exchangeRate', 'Rate', 'سعر الصرف', 'number'),
-          col('debit', 'Debit', 'مدين', 'money'),
-          col('credit', 'Credit', 'دائن', 'money'),
-          col('balance', 'Running Balance', 'الرصيد الجاري', 'money'),
+          col('exchangeRate', 'Rate (EGP per unit)', 'سعر الصرف (جنيه لكل وحدة)', 'number'),
+          col('transactionDebit', 'Transaction Debit', 'مدين بعملة المعاملة', 'money'),
+          col('transactionCredit', 'Transaction Credit', 'دائن بعملة المعاملة', 'money'),
+          col('debit', 'Debit (EGP)', 'مدين (جنيه)', 'money'),
+          col('credit', 'Credit (EGP)', 'دائن (جنيه)', 'money'),
+          col('balance', 'Running Balance (EGP)', 'الرصيد الجاري (جنيه)', 'money'),
           col('status', 'Entry Status', 'حالة القيد', 'status'),
         ],
         rows: detail,

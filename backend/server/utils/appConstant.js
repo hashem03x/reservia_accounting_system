@@ -67,6 +67,11 @@ exports.Resources = {
   journalEntries: 'journalEntries',
   advancedPayments: 'advancedPayments',
   shareholders: 'shareholders',
+  // Currency Management master data (Currency Management / multi-currency Journal Entries) -
+  // deliberately a distinct resource from the frontend's pre-existing `currencies` constant, which
+  // was never wired to a backend permission - see routes/accounting/currencyRoute.js's header
+  // comment for why.
+  currencyManagement: 'currencyManagement',
 };
 
 exports.Actions = {
@@ -106,6 +111,7 @@ exports.adminPermission = [
   { resource: 'accounts', actions: ['create', 'delete', 'read', 'update'] },
   { resource: 'journalEntries', actions: ['create', 'read', 'update', 'createGeneral'] },
   { resource: 'advancedPayments', actions: ['create', 'delete', 'read', 'update'] },
+  { resource: 'currencyManagement', actions: ['create', 'delete', 'read', 'update'] },
 ];
 
 exports.moderatorPermission = [
@@ -134,6 +140,7 @@ exports.moderatorPermission = [
   { resource: 'accounts', actions: ['read'] },
   { resource: 'journalEntries', actions: ['create', 'read'] },
   { resource: 'advancedPayments', actions: ['create', 'read', 'update'] },
+  { resource: 'currencyManagement', actions: ['read'] },
 ];
 
 exports.operatorPermission = [
@@ -148,6 +155,7 @@ exports.operatorPermission = [
   { resource: 'accounts', actions: ['read'] },
   { resource: 'journalEntries', actions: ['read'] },
   { resource: 'advancedPayments', actions: ['read'] },
+  { resource: 'currencyManagement', actions: ['read'] },
 ];
 
 exports.userPermission = [

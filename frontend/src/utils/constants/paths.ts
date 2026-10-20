@@ -44,6 +44,7 @@ const paths = {
   backup: "backup",
   accounts: "accounts",
   journalEntries: "journal-entries",
+  currencyManagement: "currency-management",
   advancedPayments: "advanced-payments",
   shareholders: "shareholders",
   financialReports: "financial-reports",

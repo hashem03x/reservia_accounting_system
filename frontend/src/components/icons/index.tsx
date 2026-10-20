@@ -232,6 +232,7 @@ export const navIcons = {
   AdvancedPayments: Hi2.HiOutlineBanknotes,
   Shareholders: Hi2.HiOutlineChartPie,
   AccountingPeriods: Hi2.HiOutlineCalendarDays,
+  CurrencyManagement: Hi2.HiOutlineCurrencyDollar,
   Expenses: Hi2.HiOutlineReceiptPercent,
   ExpenseCategories: Hi2.HiOutlineFolder,
   FixedAssets: Hi2.HiOutlineCubeTransparent,

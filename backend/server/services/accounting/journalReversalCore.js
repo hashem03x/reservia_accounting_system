@@ -51,6 +51,15 @@ async function mirrorReverseEntry({ entryId, date, reference, reason, userId, se
             projectNumber: line.projectNumber,
             debit: line.credit,
             credit: line.debit,
+            // Currency Management: a reversal mirrors the original line's currency/rate verbatim,
+            // with transactionDebit/transactionCredit swapped the same way debit/credit are above
+            // (a line that WAS a transaction debit becomes a transaction credit in the mirror) -
+            // otherwise reversing a foreign-currency entry would silently lose its currency
+            // annotation even though the EGP debit/credit themselves are already correctly swapped.
+            currency: line.currency ?? null,
+            exchangeRate: line.exchangeRate ?? null,
+            transactionDebit: line.transactionCredit ?? null,
+            transactionCredit: line.transactionDebit ?? null,
             description: line.description,
             unearnedRevenue: 0,
           })),

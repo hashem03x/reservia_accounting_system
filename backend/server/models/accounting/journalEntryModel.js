@@ -40,14 +40,26 @@ const journalLineSchema = new Schema(
     // Denormalized so the Journal Entries UI table can render "Project Number" per line without a
     // populate - the project reference above remains the source of truth/relational key.
     projectNumber: { type: String, trim: true, default: null },
+    // debit/credit ALWAYS hold the EGP (base-currency) amount - every existing balance/report
+    // calculation (Trial Balance, Account Balance, Customer/Vendor/Project reports) sums these two
+    // fields directly, assuming a single reporting currency, and that assumption is never broken:
+    // introducing Currency Management/multi-currency Journal Entries did NOT change what these two
+    // fields mean, on purpose (see utils/exchangeRate.js's header comment for the full reasoning).
     debit: { type: Number, default: 0, min: 0 },
     credit: { type: Number, default: 0, min: 0 },
-    // Audit-trail only - debit/credit above always hold the local-currency amount (every existing
-    // balance/report calculation keeps assuming a single reporting currency). These two fields
-    // just preserve the original foreign-currency amount/rate when a line was imported from a
-    // multi-currency source, e.g. the CSV accounting import.
+    // `currency` + `exchangeRate` (EGP per 1 unit of that currency - the existing convention,
+    // predates Currency Management, see utils/exchangeRate.js) together with `transactionDebit`/
+    // `transactionCredit` below record the ORIGINAL transaction-currency amount this line's EGP
+    // debit/credit was converted from - null/null/null for an EGP-only line (the default, and every
+    // line created before this feature existed). `transactionDebit`/`transactionCredit` are the one
+    // genuinely NEW field this feature adds to this schema (docs section "Journal Entry amounts" -
+    // "if the existing system does not [separately track transaction-currency amounts], implement
+    // the required fields compatibly" - debit/credit could not safely be repurposed to hold a
+    // foreign amount without corrupting every existing EGP-denominated aggregate).
     currency: { type: String, trim: true, default: null },
     exchangeRate: { type: Number, default: null },
+    transactionDebit: { type: Number, default: null, min: 0 },
+    transactionCredit: { type: Number, default: null, min: 0 },
     description: { type: String, trim: true },
     // Populated only for lines that represent unearned/deferred revenue (e.g. the Cr line of the
     // automatic project-creation entry) - see projectAccountingService.js.
@@ -309,6 +321,42 @@ journalEntrySchema.pre('save', async function (next) {
       if (!this.reversalOfEntry && !historicalImport) {
         // eslint-disable-next-line global-require
         await require('../../services/accounting/journalLinePartyService').validateLineParties(this.lines, this.$session());
+      }
+
+      // Currency Management / multi-currency Journal Entries: a Journal Entry has exactly ONE
+      // currency and ONE exchange rate, carried by every line (mirrors how `project` is already
+      // stamped onto every line - RULE 3 below) - never a per-line pick. This is the real
+      // "accounting control" for a foreign-currency entry (docs section "Debit and credit
+      // validation"): with every line forced to the same rate, RULE 1's existing, unmodified
+      // debit/credit (EGP) balance check is ALSO, automatically, an EGP-equivalent balance check -
+      // no second, separate balance check is needed. Exempted the same way as the rules above:
+      // reversals mirror the original's values verbatim, and historicalImport covers legacy/CSV
+      // rows that may predate this rule and whose currency/rate were never meant to be uniform.
+      if (!this.reversalOfEntry && !historicalImport) {
+        const normalizedCurrency = line => line.currency || 'EGP';
+        const normalizedRate = line => (line.exchangeRate == null ? 1 : line.exchangeRate);
+        const entryCurrency = normalizedCurrency(this.lines[0]);
+        const entryRate = normalizedRate(this.lines[0]);
+        if (entryCurrency === 'EGP' && entryRate !== 1) {
+          throw new ApiError('EGP must always have an exchange rate of exactly 1.', 400);
+        }
+        this.lines.forEach((line, index) => {
+          if (normalizedCurrency(line) !== entryCurrency || normalizedRate(line) !== entryRate) {
+            throw new ApiError(`Journal line ${index + 1}: every line of a Journal Entry must use the same currency and exchange rate as the entry.`, 400);
+          }
+          // transactionDebit/transactionCredit, when present, must be exactly consistent with the
+          // stored EGP debit/credit at the line's own rate - computed server-side by
+          // journalEntryController.js, never trusted verbatim from the request body (the same
+          // "server always recomputes money math" rule as computeOrderTotals elsewhere in this
+          // app) - this is a defense-in-depth backstop against any OTHER write path setting them
+          // inconsistently, not the primary place this is computed.
+          if (line.transactionDebit != null && round2(line.transactionDebit * entryRate) !== round2(line.debit)) {
+            throw new ApiError(`Journal line ${index + 1}: the transaction-currency debit does not match the stored EGP debit at this line's exchange rate.`, 400);
+          }
+          if (line.transactionCredit != null && round2(line.transactionCredit * entryRate) !== round2(line.credit)) {
+            throw new ApiError(`Journal line ${index + 1}: the transaction-currency credit does not match the stored EGP credit at this line's exchange rate.`, 400);
+          }
+        });
       }
     }
 

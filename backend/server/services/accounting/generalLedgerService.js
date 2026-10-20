@@ -2,6 +2,7 @@ const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
 const { sortByAccountCode } = require('../../utils/accountCodeSort');
+const { transactionAmountFromEgp } = require('../../utils/exchangeRate');
 
 // Which control-account CODE a resolved Sub Account's party type corresponds to, for lines that
 // predate the per-line `partyNumber`/`partyType` fields (see journalLineSchema) and so must fall
@@ -400,6 +401,12 @@ async function getGeneralLedgerLines({ page = 1, limit = 50 } = {}) {
         projectNumber,
         currency: line.currency || null,
         rate: line.exchangeRate ?? 1,
+        // The transaction-currency amount (Currency Management) - the real stored value when
+        // present, derived (debit/rate) for a legacy line with a currency/rate but no stored
+        // transactionDebit/transactionCredit (e.g. the accounting CSV import) - see
+        // utils/exchangeRate.js. `null` for a plain EGP line.
+        transactionDebit: line.currency ? (line.transactionDebit ?? (line.debit ? transactionAmountFromEgp(line.debit, line.exchangeRate) : 0)) : null,
+        transactionCredit: line.currency ? (line.transactionCredit ?? (line.credit ? transactionAmountFromEgp(line.credit, line.exchangeRate) : 0)) : null,
         debit: line.debit || 0,
         credit: line.credit || 0,
         balanceDocumentCurrency: running.balance,
