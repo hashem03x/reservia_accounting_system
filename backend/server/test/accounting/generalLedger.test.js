@@ -75,6 +75,19 @@ async function postEntry(lines) {
   return JournalEntry.create({ entryNumber, status: 'posted', project: project._id, lines: projectLines(lines) });
 }
 
+// Simulates a genuinely historical JournalEntry created BEFORE the mandatory-sub-account rule
+// existed (journalEntryModel.js RULE 5) - `$locals.historicalImport` is the same, deliberate
+// escape hatch scripts/*.js remediation tooling uses (never settable from a request body), so
+// these fixtures can still create a control-account line with no partyNumber on purpose, exactly
+// what they're testing (the entry-wide fallback resolution for pre-existing data).
+async function createHistoricalEntry(data) {
+  const entryNumber = await getNextJournalEntryNumber();
+  const entry = new JournalEntry({ entryNumber, status: 'posted', ...data });
+  entry.$locals.historicalImport = true;
+  await entry.save();
+  return entry;
+}
+
 test('account balance = total debits - total credits, even when credits exceed debits (no account-type sign flip)', async () => {
   // Debit-heavy: 150,000 debit, 30,000 credit -> +120,000 (matches master-spec worked example).
   await postEntry([
@@ -215,10 +228,7 @@ test('getGeneralLedgerLines: Sub Account resolves to the Customer Number for a S
   const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
   const arProjectsAccount = await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.accountsReceivableProjects, name: 'Accounts Receivable (Projects)', type: 'asset' });
 
-  const entryNumber = await getNextJournalEntryNumber();
-  await JournalEntry.create({
-    entryNumber,
-    status: 'posted',
+  await createHistoricalEntry({
     source: 'automatic',
     sourceType: 'SO',
     sourceId: salesOrder._id,
@@ -252,10 +262,7 @@ test('getGeneralLedgerLines: Sub Account resolves to the Vendor Number for a Pur
   const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
   const suppliersAccount = await ChartOfAccount.create({ code: AutomaticJournalAccountCodes.suppliers, name: 'Suppliers', type: 'liability' });
 
-  const entryNumber = await getNextJournalEntryNumber();
-  await JournalEntry.create({
-    entryNumber,
-    status: 'posted',
+  await createHistoricalEntry({
     source: 'automatic',
     sourceType: 'PO',
     sourceId: purchaseOrder._id,
@@ -275,6 +282,11 @@ test('getGeneralLedgerLines: Sub Account resolves to the Vendor Number for a Pur
 
 test('getGeneralLedgerLines: a NEW-style entry with partyNumber/partyType stamped on a line never falls back to entry-wide resolution', async () => {
   const customer = await User.create({ name: 'GL Customer 2', email: `gl-customer2-${Date.now()}@example.com`, role: 'user', type: 'online' });
+  // A second, genuinely real customer whose number is deliberately stamped on the line instead of
+  // the Sales Order's own customer - proves the stamped field is authoritative and the fallback
+  // lookup is never consulted when it's present. (A fabricated, nonexistent number would now be
+  // rejected outright by journalEntryModel.js's mandatory-sub-account validation.)
+  const otherCustomer = await User.create({ name: 'GL Customer 2b', email: `gl-customer2b-${Date.now()}@example.com`, role: 'user', type: 'online' });
   const salesOrder = await SalesOrder.create({ customer: customer._id, orderSource: 'cashier', project: project._id, items: [] });
 
   const entryNumber = await getNextJournalEntryNumber();
@@ -288,15 +300,15 @@ test('getGeneralLedgerLines: a NEW-style entry with partyNumber/partyType stampe
     project: project._id,
     lines: projectLines([
       { account: cash._id, description: 'Test line', debit: 555, credit: 0 },
-      { account: receivable._id, description: 'Test line', debit: 0, credit: 555, partyNumber: 99999, partyType: 'customer' },
+      { account: receivable._id, description: 'Test line', debit: 0, credit: 555, partyNumber: otherCustomer.customerNumber, partyType: 'customer' },
     ]),
   });
 
   const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
   const creditRow = result.data.find(r => r.credit === 555);
-  // 99999 (the line's OWN stamped value), never the customer's real customerNumber - proves the
-  // stamped field is authoritative and the fallback lookup is never consulted when it's present.
-  assert.deepEqual(creditRow.subAccount, { type: 'customer', number: 99999 });
+  // otherCustomer.customerNumber (the line's OWN stamped value), never the Sales Order's own
+  // customer - proves the stamped field is authoritative.
+  assert.deepEqual(creditRow.subAccount, { type: 'customer', number: otherCustomer.customerNumber });
 });
 
 test('getGeneralLedgerLines: a manual entry (no sourceType/sourceId) has a null Sub Account, never fabricated', async () => {

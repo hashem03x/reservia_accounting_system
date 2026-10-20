@@ -497,7 +497,11 @@ async function postPurchaseOrderAdvanceAppliedJE(purchaseOrder, consumedAmount, 
     advancedPayment: purchaseOrder.advancedPayment || null,
     lines: [
       { account: suppliersId, debit: consumedAmount, credit: 0, project: projectId, partyNumber: vendorNumber, partyType: 'vendor' },
-      { account: advanceToSuppliersId, debit: 0, credit: consumedAmount, project: projectId },
+      // Advance to Suppliers is ALSO a vendor control account (VENDOR_CONTROL_CODES,
+      // journalLinePartyService.js) representing the SAME vendor as the Suppliers line above -
+      // stamped on both, never left "Unassigned" on this one (financial-integrity rule: no
+      // customer/vendor control-account line may have a missing sub-account).
+      { account: advanceToSuppliersId, debit: 0, credit: consumedAmount, project: projectId, partyNumber: vendorNumber, partyType: 'vendor' },
     ],
     session,
   });
@@ -616,7 +620,10 @@ async function postPaymentCustomerAdvanceAppliedJE(payment, consumedAmount, proj
         partyNumber: customerNumber,
         partyType: 'customer',
       },
-      { account: arProjectsId, debit: 0, credit: consumedAmount, project: projectId || null },
+      // Accounts Receivable - Projects is ALSO a customer control account
+      // (CUSTOMER_CONTROL_CODES, journalLinePartyService.js) representing the SAME customer as
+      // the line above - stamped on both, never left "Unassigned" on this one.
+      { account: arProjectsId, debit: 0, credit: consumedAmount, project: projectId || null, partyNumber: customerNumber, partyType: 'customer' },
     ],
     session,
   });
@@ -647,7 +654,8 @@ async function postPaymentVendorAdvanceAppliedJE(payment, consumedAmount, projec
     advancedPayment: payment.advancedPayment || null,
     lines: [
       { account: suppliersId, debit: consumedAmount, credit: 0, project: projectId || null, partyNumber: vendorNumber, partyType: 'vendor' },
-      { account: advanceToSuppliersId, debit: 0, credit: consumedAmount, project: projectId || null },
+      // Advance to Suppliers is ALSO a vendor control account, same vendor as the line above.
+      { account: advanceToSuppliersId, debit: 0, credit: consumedAmount, project: projectId || null, partyNumber: vendorNumber, partyType: 'vendor' },
     ],
     session,
   });
@@ -686,7 +694,8 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
         partyNumber: customerNumber,
         partyType: 'customer',
       },
-      { account: arProjectsId, debit: 0, credit: consumedAmount, project: projectId },
+      // Accounts Receivable - Projects is ALSO a customer control account, same customer as above.
+      { account: arProjectsId, debit: 0, credit: consumedAmount, project: projectId, partyNumber: customerNumber, partyType: 'customer' },
     ],
     session,
   });
@@ -697,13 +706,30 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
  * project's customer, or - for a project with no linked customer - the triggering Sales Order's
  * customer. Null when there is neither.
  */
-async function resolveProjectCustomerNumber(project, triggeredBySalesOrder, session) {
-  if (project.customer) return resolveCustomerNumber(project.customer, { required: false }, session);
+// `required` (default true): a NEW recognition (an increase - revenue/cost being recognized for
+// the first time at this percentage) must resolve a real customer - Accounts Receivable is a
+// customer control account, and per the financial-integrity requirement "no customer/vendor
+// control-account line may have a missing sub-account" this applies to it like any other.
+// Callers pass `required:false` only for a DECREASE (a Sales Order cancelled/returned, reversing
+// a slice recognized earlier, possibly before this rule existed) - a reversal must still be able
+// to undo whatever was posted historically, even for a legacy project that has no customer; it is
+// never a NEW line being created from nothing.
+async function resolveProjectCustomerNumber(project, triggeredBySalesOrder, session, { required = true } = {}) {
+  if (project.customer) return resolveCustomerNumber(project.customer, { required }, session);
   const orderId = triggeredBySalesOrder?._id || triggeredBySalesOrder;
-  if (!orderId) return null;
-  const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
-  const order = await SalesOrder.findById(orderId).select('customer').session(session || null).lean();
-  return resolveCustomerNumber(order?.customer, { required: false }, session);
+  let order = null;
+  if (orderId) {
+    const SalesOrder = require('../../models/sales/salesOrderModel'); // eslint-disable-line global-require
+    order = await SalesOrder.findById(orderId).select('customer').session(session || null).lean();
+  }
+  if (order?.customer) return resolveCustomerNumber(order.customer, { required }, session);
+  if (required) {
+    throw new ApiError(
+      `Cannot recognize revenue/cost for project ${project.projectNumber}: no customer is linked to this project (and the triggering Sales Order has none either). Assign a customer to the project before invoicing against it.`,
+      400
+    );
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -802,7 +828,7 @@ async function postProjectRevenueRecognitionJE(project, session, triggeredBySale
   // error (no Sub Account for this entry), but a PRESENT customer reference that fails to resolve
   // to a real, numbered Customer still fails safely (docs section "If the Vendor/Customer is
   // missing or does not have a valid number... fail safely").
-  const customerNumber = await resolveProjectCustomerNumber(project, triggeredBySalesOrder, session);
+  const customerNumber = await resolveProjectCustomerNumber(project, triggeredBySalesOrder, session, { required: !decrease });
   const [arProjectsId, revenueId] = await Promise.all([
     getAccountIdByCode(AutomaticJournalAccountCodes.accountsReceivableProjects, session),
     getAccountIdByCode(AutomaticJournalAccountCodes.revenue, session),
@@ -875,27 +901,65 @@ function findCorrespondingPucAccount(costAccount, pucAccounts) {
   return matches.length === 1 ? matches[0] : null;
 }
 
+// This project's live ledger balance (Dr - Cr, posted/reversed entries only) of one PUC account -
+// the real, physically-backed asset balance that purchases/transfers have actually moved into this
+// project's PUC so far, net of whatever cost recognition has already credited away. Used by
+// services/reports/projectPucConsistencyReport.js (a read-only diagnostic, never by the posting
+// below - see that file's header comment for why JV0011 itself stays uncapped). Deliberately NOT
+// imported from services/inventory/pucTransferService.js (which has an identical-purpose local
+// `ledgerBalance` helper) - that file already imports FROM this one (postAutomaticJournalEntry,
+// getAccountIdByCode), so importing back would create a circular require between the two modules.
+// A short, pure aggregate - duplicating the ~6 lines here is safer than risking load-order bugs.
+async function pucAccountBalance(pucAccountId, projectId, session) {
+  const [row] = await JournalEntry.aggregate([
+    { $match: { status: { $in: ['posted', 'reversed'] } } },
+    { $unwind: '$lines' },
+    { $match: { 'lines.account': new mongoose.Types.ObjectId(String(pucAccountId)), 'lines.project': new mongoose.Types.ObjectId(String(projectId)) } },
+    { $group: { _id: null, debit: { $sum: '$lines.debit' }, credit: { $sum: '$lines.credit' } } },
+  ]).session(session || null);
+  return round2((row?.debit || 0) - (row?.credit || 0));
+}
+
 /**
  * PROJECT_COST_RECOGNITION - JV0011 of "AUTOMATIC ENTERIES.xlsx" ("charge the project with its
  * costs at the executed share of the contract"). For EVERY line of the project's Average Cost
- * (averageCostLines: a cost account + its real cost):
+ * (averageCostLines: a cost account + its real budgeted cost):
  *
- *   amount = real cost × Executed % - the part already recognized (real cost × costRecognizedPercentage)
- *   Dr  the Average Cost line's own account          amount
- *   Cr  its corresponding PUC account                amount   (findCorrespondingPucAccount)
+ *   targetAmount  = budgeted cost × Executed %
+ *   desiredDelta  = targetAmount - line.recognizedAmount (the part already posted FOR THIS LINE -
+ *                   tracked per line, not as a single project-wide percentage, precisely so one
+ *                   cost category can lag behind another)
  *
- * all in ONE balanced entry, e.g. Raw Materials 250,000 and Labour 150,000 at 20% executed:
- * Dr Raw Materials 50,000 / Cr PUC - Raw Materials 50,000, Dr Labour 30,000 / Cr PUC - Labour 30,000.
- * The total recognized for a line is therefore always real cost × the project's Executed %.
- * Same rules as revenue recognition above: the tracker only moves up, and the posting runs in the
- * caller's session. Lines with no cost to post are left out; a line whose account has no
- * corresponding PUC account is left out and logged. No lines -> no entry (tracker untouched).
+ * On an increase (desiredDelta > 0), the amount actually posted is capped at this project's real,
+ * live ledger balance of the line's corresponding PUC account (pucAccountBalance) - cost can never
+ * be recognized (moved out of PUC) beyond what purchases have actually moved INTO that PUC account
+ * for this project ("Sales Invoices must consume inventory from the appropriate PUC account, not
+ * directly from a regular inventory account" - and never consume PUC inventory that was never
+ * really there). If the real PUC balance is insufficient, only the available part is recognized
+ * now and `recognizedAmount` advances by that lesser amount, not the full target - the shortfall
+ * is automatically picked up on a LATER call once more inventory is purchased into that PUC account
+ * (this function re-runs on every Sales Order create/cancel/return - projectAccountingService.js).
+ *
+ * On a decrease (desiredDelta < 0 - a Sales Order cancelled/returned), the line's recognized amount
+ * is restored (PUC debited, the cost account credited) by exactly that line's own shortfall, never
+ * capped - a reversal only ever gives back what THIS line already took, which can never exceed
+ * what it already took.
+ *
+ *   Dr  the Average Cost line's own account          |actualDelta| (increase - costAccount, decrease - pucAccount)
+ *   Cr  its corresponding PUC account                               (findCorrespondingPucAccount)
+ *
+ * all in ONE balanced entry, e.g. Raw Materials 250,000 and Labour 150,000 at 20% executed with
+ * enough real PUC balance for both: Dr Raw Materials 50,000 / Cr PUC - Raw Materials 50,000,
+ * Dr Labour 30,000 / Cr PUC - Labour 30,000. Lines with nothing to post are left out; a line whose
+ * account has no corresponding PUC account is left out and logged. No lines -> no entry (no
+ * line's recognizedAmount is touched).
  */
 async function postProjectCostRecognitionJE(project, session, triggeredBySalesOrder = null, date = new Date()) {
   const previousPct = project.costRecognizedPercentage || 0;
   const currentPct = project.executedPercentage || 0;
   if (currentPct === previousPct) return null;
-  // A decrease (Sales Order cancelled / returned) moves the slice back from cost of sales to PUC.
+  // Used only to label the entry (reversal reference) and the customer-required check below - the
+  // real per-line direction is decided independently, from each line's own desiredDelta sign.
   const decrease = currentPct < previousPct;
 
   const costLines = (project.averageCostLines || []).filter(line => (line.account?._id || line.account) && line.amount > 0);
@@ -911,21 +975,36 @@ async function postProjectCostRecognitionJE(project, session, triggeredBySalesOr
   const credits = [];
   for (const line of costLines) {
     const costAccount = costAccountsById.get(String(line.account?._id || line.account));
-    const amount = Math.abs(round2(round2((line.amount * currentPct) / 100) - round2((line.amount * previousPct) / 100)));
-    if (costAccount && amount > 0) {
-      const pucAccount = findCorrespondingPucAccount(costAccount, pucAccounts);
-      if (pucAccount) {
-        const [dr, cr] = decrease ? [pucAccount, costAccount] : [costAccount, pucAccount];
-        debits.push({ account: dr._id, debit: amount, credit: 0, project: project._id });
-        credits.push({ account: cr._id, debit: 0, credit: amount, project: project._id });
-      } else {
-        logAccountingEvent('project_cost_recognition_no_puc_account', { projectNumber: project.projectNumber, account: costAccount.code, amount });
-      }
+    if (!costAccount) continue; // eslint-disable-line no-continue
+
+    const targetAmount = round2((line.amount * currentPct) / 100);
+    const alreadyRecognized = line.recognizedAmount || 0;
+    const desiredDelta = round2(targetAmount - alreadyRecognized);
+    if (desiredDelta === 0) continue; // eslint-disable-line no-continue
+
+    const pucAccount = findCorrespondingPucAccount(costAccount, pucAccounts);
+    if (!pucAccount) {
+      logAccountingEvent('project_cost_recognition_no_puc_account', { projectNumber: project.projectNumber, account: costAccount.code, amount: Math.abs(desiredDelta) });
+      continue; // eslint-disable-line no-continue
     }
+
+    let actualDelta = desiredDelta;
+    if (desiredDelta > 0) {
+      // eslint-disable-next-line no-await-in-loop
+      const available = await pucAccountBalance(pucAccount._id, project._id, session);
+      actualDelta = round2(Math.max(0, Math.min(desiredDelta, available)));
+      if (actualDelta === 0) continue; // eslint-disable-line no-continue
+    }
+
+    line.recognizedAmount = round2(alreadyRecognized + actualDelta);
+    const amount = Math.abs(actualDelta);
+    const [dr, cr] = actualDelta > 0 ? [costAccount, pucAccount] : [pucAccount, costAccount];
+    debits.push({ account: dr._id, debit: amount, credit: 0, project: project._id });
+    credits.push({ account: cr._id, debit: 0, credit: amount, project: project._id });
   }
   if (debits.length === 0) return null;
 
-  const customerNumber = await resolveProjectCustomerNumber(project, triggeredBySalesOrder, session);
+  const customerNumber = await resolveProjectCustomerNumber(project, triggeredBySalesOrder, session, { required: !decrease });
   const entry = await postAutomaticJournalEntry({
     accountingAction: 'PROJECT_COST_RECOGNITION',
     sourceType: 'PROJECT',
@@ -968,6 +1047,7 @@ module.exports = {
   getAccountIdByCode,
   resolveVendorNumber,
   resolveCustomerNumber,
+  pucAccountBalance,
   postAutomaticJournalEntry,
   paymentJournalDescription,
   postAdvancedPaymentJournalEntry,

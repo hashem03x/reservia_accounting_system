@@ -12,6 +12,7 @@ const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstant
 const { getOrderTotalAmount } = require('../../utils/orderTotals');
 const C = require('./reportCommon');
 const { projectLedgerFigures, loadProjects, profitCells, profitColumns, profitTotals, profitNotes, NOT_LINKED } = require('./projectReports');
+const { summarizeUnassignedForAccounts } = require('../accounting/subAccountRepairService');
 
 const { round2, col, check, note, summaryItem, L } = C;
 
@@ -139,6 +140,14 @@ async function partyBalances(partyType, query) {
   const ledgerClosing = nat(controlBalances.get(String(control._id))?.debit || 0, controlBalances.get(String(control._id))?.credit || 0);
   const isCustomer = partyType === 'customer';
 
+  // The Unassigned row is never hidden or cosmetically removed - but it is never silently left
+  // unexplained either: the SAME deterministic resolver the historical repair script uses
+  // (services/accounting/subAccountRepairService.js, shared rather than re-implemented here) says
+  // how much of it is actually resolvable right now versus genuinely needs manual review. This is
+  // purely informational - it changes no row, total or reconciliation check above.
+  const hasUnassigned = rows.some(r => r.partyNumber == null && (r.opening || r.debit || r.credit || r.closing || r.advances));
+  const unassigned = hasUnassigned ? await summarizeUnassignedForAccounts({ accountIds: [control._id, ...(advance ? [advance._id] : [])], requiredType: partyType, end: period.end }) : null;
+
   return {
     period,
     summary: [
@@ -173,6 +182,14 @@ async function partyBalances(partyType, query) {
         `From the ledger: the ${control.code} ${control.name} control account lines carrying each ${isCustomer ? 'Customer' : 'Vendor'} Number (Sub Account) - every posted receivable/payable, payment, advance application and reversal. ${isCustomer ? 'Debit increases, credit decreases the receivable.' : 'Credit increases, debit decreases the payable.'} Advances are the ${advance ? `${advance.code} ${advance.name}` : 'advances'} account balance, shown separately; Net Position = balance − advances. Amounts are in the local currency.`,
         `من دفتر الأستاذ: سطور الحساب الرقابي ${control.code} التي تحمل رقم ${isCustomer ? 'العميل' : 'المورد'} (الحساب الفرعي) - كل المستحقات والمدفوعات وتطبيقات الدفعات المقدمة والقيود العكسية. الدفعات المقدمة هي رصيد حساب ${advance ? advance.code : 'الدفعات المقدمة'} وتظهر منفصلة؛ صافي المركز = الرصيد − الدفعات المقدمة. المبالغ بالعملة المحلية.`
       ),
+      ...(unassigned && (unassigned.resolvableAmount || unassigned.reviewAmount)
+        ? [
+            note(
+              `Of the Unassigned total: ${unassigned.resolvableAmount} (${unassigned.resolvableCount} line(s)) can be resolved automatically - run "npm run db:repair-sub-accounts" (report-only by default, --yes to apply). The remaining ${unassigned.reviewAmount} (${unassigned.reviewCount} line(s)) has no reliable evidence of a real ${isCustomer ? 'customer' : 'vendor'} and needs manual assignment.`,
+              `من إجمالي "غير محدد": ${unassigned.resolvableAmount} (${unassigned.resolvableCount} سطر) يمكن تصحيحه تلقائيًا - شغّل "npm run db:repair-sub-accounts" (للعرض فقط دون --yes، وبإضافة --yes للتطبيق). الباقي ${unassigned.reviewAmount} (${unassigned.reviewCount} سطر) لا يوجد له دليل موثوق على ${isCustomer ? 'عميل' : 'مورد'} حقيقي ويحتاج تحديدًا يدويًا.`
+            ),
+          ]
+        : []),
     ],
   };
 }
@@ -256,6 +273,10 @@ async function partyAging(partyType, query) {
   const ledgerBalance = round2(cfg.sign * ((ledger.get(String(control._id))?.debit || 0) - (ledger.get(String(control._id))?.credit || 0)));
   const isCustomer = partyType === 'customer';
 
+  // See partyBalances' identical annotation above - same shared resolver, purely informational.
+  const hasUnassigned = rows.some(r => r.partyNumber == null && (r.outstanding || r.unappliedCredits));
+  const unassigned = hasUnassigned ? await summarizeUnassignedForAccounts({ accountIds: [control._id], requiredType: partyType, end }) : null;
+
   return {
     asOf,
     summary: [summaryItem('outstanding', 'Outstanding', 'المستحق', totals.outstanding), summaryItem('overdue', 'Overdue (1+ days)', 'متأخر (يوم فأكثر)', round2(totals.outstanding - totals.notDue)), summaryItem('termDays', 'Credit terms (days)', 'مدة الائتمان (أيام)', termDays, 'number')],
@@ -282,6 +303,14 @@ async function partyAging(partyType, query) {
         `Limitation: Sales/Purchase Orders and journal entries store no due dates or invoice-level allocations. Each ${isCustomer ? 'receivable posting (debit)' : 'payable posting (credit)'} on the ${control.code} control account is treated as an open item dated by its entry; payments, advance applications, reversals and credits are applied to the oldest items first (FIFO). Due date = entry date + the credit terms entered above (default 0 days, i.e. due on posting).`,
         `قيد: لا تحتوي أوامر البيع والشراء ولا القيود على تواريخ استحقاق أو تخصيص على مستوى الفاتورة. كل ${isCustomer ? 'قيد مدين' : 'قيد دائن'} على الحساب الرقابي ${control.code} يُعامل كبند مفتوح بتاريخ قيده؛ وتُطبق المدفوعات وتطبيقات الدفعات المقدمة والقيود العكسية على أقدم البنود أولاً (الوارد أولاً يصرف أولاً). تاريخ الاستحقاق = تاريخ القيد + مدة الائتمان المحددة (افتراضياً 0 يوم أي مستحق عند الترحيل).`
       ),
+      ...(unassigned && (unassigned.resolvableAmount || unassigned.reviewAmount)
+        ? [
+            note(
+              `Of the Unassigned total: ${unassigned.resolvableAmount} (${unassigned.resolvableCount} line(s)) can be resolved automatically - run "npm run db:repair-sub-accounts" (report-only by default, --yes to apply). The remaining ${unassigned.reviewAmount} (${unassigned.reviewCount} line(s)) has no reliable evidence of a real ${isCustomer ? 'customer' : 'vendor'} and needs manual assignment.`,
+              `من إجمالي "غير محدد": ${unassigned.resolvableAmount} (${unassigned.resolvableCount} سطر) يمكن تصحيحه تلقائيًا - شغّل "npm run db:repair-sub-accounts" (للعرض فقط دون --yes، وبإضافة --yes للتطبيق). الباقي ${unassigned.reviewAmount} (${unassigned.reviewCount} سطر) لا يوجد له دليل موثوق على ${isCustomer ? 'عميل' : 'مورد'} حقيقي ويحتاج تحديدًا يدويًا.`
+            ),
+          ]
+        : []),
     ],
   };
 }

@@ -18,6 +18,15 @@ const averageCostLineSchema = new Schema(
   {
     account: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', required: [true, 'Cost account is required'] },
     amount: { type: Number, required: [true, 'Cost amount is required'], min: [0.01, 'Cost amount must be greater than 0'] },
+    // How much of THIS line's budgeted amount has actually been recognized (PROJECT_COST_RECOGNITION,
+    // JV0011 - accountingEventService.js) - tracked per line, not just as a single project-wide
+    // percentage, because each line's recognition is independently capped by that line's real PUC
+    // account balance for this project: one cost category can lag behind another if its materials
+    // haven't actually been purchased into PUC yet, even while the project's overall
+    // executedPercentage keeps climbing. Never accepted from a request body - only ever advanced by
+    // that posting itself, once it actually commits. Defaults to 0 for both a brand-new line and any
+    // pre-existing line saved before this field existed.
+    recognizedAmount: { type: Number, default: 0, min: 0 },
   },
   { _id: false }
 );
@@ -245,7 +254,13 @@ projectSchema.pre('validate', async function (next) {
 
   try {
     if (this.averageCostLines.length > 0) {
-      const accountIds = this.averageCostLines.map(line => line.account.toString());
+      // `line.account` may already be a POPULATED ChartOfAccount document here (not a raw
+      // ObjectId) - this hook re-runs whenever `averageCostLines` is modified in ANY way,
+      // including internally advancing `recognizedAmount` on an already-populated document
+      // fetched via Project.findById (which populates `averageCostLines.account` - see this
+      // schema's own pre(/^find/) hook below). `line.account.toString()` on a populated document
+      // does NOT return its hex id, so every reference below goes through `._id` first.
+      const accountIds = this.averageCostLines.map(line => (line.account?._id || line.account).toString());
       const uniqueIds = new Set(accountIds);
       if (uniqueIds.size !== accountIds.length) {
         throw new Error('Each account can only appear once in a project\'s Average Cost lines.');

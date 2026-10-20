@@ -22,6 +22,7 @@ let transactionsSupported = true;
 
 let accounts; // code -> ChartOfAccount doc, for every AutomaticJournalAccountCodes entry + the COGS accounts below
 let customer, vendor, project;
+let fundPuc;
 
 const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
 
@@ -96,6 +97,23 @@ beforeEach(async () => {
   }
 
   customer = await User.create({ name: 'Engine Test Customer', email: `engine-customer-${Date.now()}@example.com`, role: 'user', type: 'online' });
+  // JV0011 (PROJECT_COST_RECOGNITION) caps the amount it recognizes at this project's real, live
+  // PUC ledger balance (accountingEventService.js#pucAccountBalance) - tests that expect a
+  // specific recognized amount must first fund that PUC account with a real posting, exactly like
+  // a real Purchase Invoice's PO_INVENTORY_TO_WIP would. Mirrors the PUC_TRANSFER shape (Dr PUC /
+  // Cr Materials Inventory).
+  fundPuc = async (pucAccountId, projectId, amount) =>
+    accountingEventService.postAutomaticJournalEntry({
+      accountingAction: 'PUC_TRANSFER',
+      sourceType: 'PUC_TRANSFER_TEST_FUNDING',
+      sourceId: new mongoose.Types.ObjectId(),
+      description: 'Test PUC funding',
+      project: projectId,
+      lines: [
+        { account: pucAccountId, debit: amount, credit: 0, project: projectId },
+        { account: accounts[AutomaticJournalAccountCodes.materialsInventory]._id, debit: 0, credit: amount, project: projectId },
+      ],
+    });
   vendor = await Vendor.create({ name: 'Engine Test Vendor', contact: { phone: `010${Date.now()}`.slice(0, 11) } });
   project = await Project.create({
     projectNumber: `ENGINE-PRJ-${Date.now()}`,
@@ -112,7 +130,7 @@ test('postAutomaticJournalEntry is idempotent per (sourceType, sourceId, account
   const sourceId = new mongoose.Types.ObjectId();
   const lines = [
     { account: accounts[accounts.cashCode]._id, debit: 500, credit: 0 },
-    { account: accounts[AutomaticJournalAccountCodes.customerAdvancesPayable]._id, debit: 0, credit: 500 },
+    { account: accounts[AutomaticJournalAccountCodes.customerAdvancesPayable]._id, debit: 0, credit: 500, partyNumber: customer.customerNumber, partyType: 'customer' },
   ];
 
   const first = await accountingEventService.postAutomaticJournalEntry({
@@ -139,7 +157,7 @@ test('two DIFFERENT accounting actions for the SAME sourceId both post independe
   const sourceId = new mongoose.Types.ObjectId();
   const lineSet = kind => [
     { account: accounts[AutomaticJournalAccountCodes.materialsInventory]._id, debit: kind === 'a' ? 100 : 0, credit: kind === 'a' ? 0 : 100 },
-    { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, debit: kind === 'a' ? 0 : 100, credit: kind === 'a' ? 100 : 0 },
+    { account: accounts[AutomaticJournalAccountCodes.suppliers]._id, debit: kind === 'a' ? 0 : 100, credit: kind === 'a' ? 100 : 0, partyNumber: vendor.vendorNumber, partyType: 'vendor' },
   ];
 
   await accountingEventService.postAutomaticJournalEntry({
@@ -247,7 +265,10 @@ test('postPaymentCustomerAdvanceAppliedJE: posts Dr Customer Advances Payable / 
   assert.equal(arLine.credit, 7500);
   assert.equal(payableLine.partyNumber, customer.customerNumber, 'the Customer Number must be stamped on the control-account line itself, not just resolvable at read time');
   assert.equal(payableLine.partyType, 'customer');
-  assert.equal(arLine.partyNumber, null, 'the OTHER line of the same entry must never also carry the Sub Account');
+  // Accounts Receivable - Projects is ALSO a customer control account (same customer on both
+  // sides of this entry) - stamped too, never left "Unassigned" (financial-integrity rule).
+  assert.equal(arLine.partyNumber, customer.customerNumber);
+  assert.equal(arLine.partyType, 'customer');
 });
 
 test('postPaymentCustomerAdvanceAppliedJE: rejects when the payment has no resolvable customer', async () => {
@@ -277,7 +298,9 @@ test('postPaymentVendorAdvanceAppliedJE: posts Dr Suppliers / Cr Advance to Supp
   assert.equal(advanceLine.credit, 4000);
   assert.equal(suppliersLine.partyNumber, vendor.vendorNumber);
   assert.equal(suppliersLine.partyType, 'vendor');
-  assert.equal(advanceLine.partyNumber, null);
+  // Advance to Suppliers is ALSO a vendor control account (same vendor on both sides) - stamped too.
+  assert.equal(advanceLine.partyNumber, vendor.vendorNumber);
+  assert.equal(advanceLine.partyType, 'vendor');
 });
 
 test('postPaymentVendorAdvanceAppliedJE: rejects when the payment has no resolvable vendor', async () => {
@@ -774,6 +797,9 @@ test('postProjectExecutionRecognitionJEs: Average Cost lines on ANY COGS account
   await ChartOfAccount.updateOne({ _id: accounts[AutomaticJournalAccountCodes.wipRawMaterials]._id }, { $set: { name: 'PUC - Raw Materials' } });
   project.averageCostLines = COGS_CODES.map(code => ({ account: accounts[code]._id, amount: 100000 }));
   await project.save();
+  // Fund the PUC - Raw Materials account with real balance (JV0011 caps recognition at this
+  // project's real PUC ledger balance - see accountingEventService.js#postProjectCostRecognitionJE).
+  await fundPuc(accounts[AutomaticJournalAccountCodes.wipRawMaterials]._id, project._id, 10000);
 
   project.executedPercentage = 10;
   const entries = await accountingEventService.postProjectExecutionRecognitionJEs(project, null);
@@ -788,7 +814,11 @@ test('postProjectExecutionRecognitionJEs: Average Cost lines on ANY COGS account
   );
 });
 
-test('postProjectExecutionRecognitionJEs: revenue recognition no-ops the Sub Account (never throws) when the project has no customer at all', async () => {
+test('postProjectExecutionRecognitionJEs: revenue recognition REFUSES to post (never a missing Sub Account) when the project has no customer at all', async () => {
+  // Accounts Receivable (Projects) is a customer control account - financial-integrity rule:
+  // no customer/vendor control-account line may have a missing sub-account. A project with no
+  // customer (and no triggering Sales Order to fall back on) must be fixed by assigning a
+  // customer, never by posting a receivable with nobody to collect it from.
   const noCustomerProject = await Project.create({
     projectNumber: `ENGINE-NOCUST-${Date.now()}`,
     contractValue: 100000,
@@ -796,13 +826,11 @@ test('postProjectExecutionRecognitionJEs: revenue recognition no-ops the Sub Acc
     deliveryDate: new Date(Date.now() + 86400000),
     executedPercentage: 10,
   });
-  const entries = await accountingEventService.postProjectExecutionRecognitionJEs(noCustomerProject, null);
-  const revenueJE = entries.find(e => e.accountingAction === 'PROJECT_REVENUE_RECOGNITION');
-  assert.ok(revenueJE, 'a project with no customer must still get its revenue recognized - absence of a party is not an error for this flow');
-  const arId = accounts[AutomaticJournalAccountCodes.accountsReceivableProjects]._id.toString();
-  const arLine = revenueJE.lines.find(l => l.account.toString() === arId);
-  assert.equal(arLine.partyNumber, null);
-  assert.equal(arLine.partyType, null);
+  await assert.rejects(
+    () => accountingEventService.postProjectExecutionRecognitionJEs(noCustomerProject, null),
+    /no customer is linked to this project/,
+  );
+  assert.equal(await JournalEntry.countDocuments({ project: noCustomerProject._id }), 0, 'nothing is posted when the customer cannot be resolved');
 });
 
 test('postProjectExecutionRecognitionJEs: no-ops (returns no entries) when executedPercentage has not increased', async () => {

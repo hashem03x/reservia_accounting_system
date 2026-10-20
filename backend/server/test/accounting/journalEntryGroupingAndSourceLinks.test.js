@@ -263,6 +263,11 @@ test('getJournalEntriesForPurchaseOrder: combines the direct and via-Payment rel
 
 test('postProjectExecutionRecognitionJEs: threads an optional triggeredBySalesOrder id onto the PROJECT_REVENUE_RECOGNITION entry', async () => {
   const fakeSalesOrderId = new mongoose.Types.ObjectId();
+  // Accounts Receivable (Projects) is a customer control account - a real, resolvable customer
+  // is required to recognize revenue (financial-integrity rule: no missing sub-account).
+  const customer = await User.create({ name: 'Grouping Customer', email: `grouping-customer-${Date.now()}@example.com`, role: 'user', type: 'online' });
+  project.customer = customer._id;
+  await project.save();
   project.contractValue = 1000000;
   project.executedPercentage = 20;
 
@@ -276,6 +281,9 @@ test('postProjectExecutionRecognitionJEs: threads an optional triggeredBySalesOr
 });
 
 test('postProjectExecutionRecognitionJEs: triggeredBySalesOrder defaults to null (e.g. a contractValue-driven recalculation with no specific triggering order)', async () => {
+  const customer = await User.create({ name: 'Grouping Customer 2', email: `grouping-customer2-${Date.now()}@example.com`, role: 'user', type: 'online' });
+  project.customer = customer._id;
+  await project.save();
   project.contractValue = 1000000;
   project.executedPercentage = 20;
 

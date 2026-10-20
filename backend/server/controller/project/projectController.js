@@ -12,6 +12,21 @@ const { getNextProjectNumber } = require('../../services/project/projectNumberSe
 const { resolveProjectSector } = require('../../services/project/sectorService');
 const { logAccountingEvent } = require('../../utils/accountingLogger');
 
+// `averageCostLines[].recognizedAmount` (projectModel.js) is internal bookkeeping - only ever
+// advanced by accountingEventService.js#postProjectCostRecognitionJE once a posting actually
+// commits, never accepted from a request body (the same "never trust a client-submitted derived
+// value" rule as projectNumber/executedPercentage above). On create it always starts at 0; on
+// update (replace semantics) it is carried forward from the EXISTING line with the same account,
+// so editing a line's budgeted `amount` never erases how much of it has already been recognized.
+function sanitizeAverageCostLines(incomingLines, existingLines = []) {
+  const existingByAccount = new Map((existingLines || []).map(line => [String(line.account?._id || line.account), line.recognizedAmount || 0]));
+  return (incomingLines || []).map(line => ({
+    account: line.account,
+    amount: line.amount,
+    recognizedAmount: existingByAccount.get(String(line.account)) || 0,
+  }));
+}
+
 // Creating a project ONLY creates the Project document - it deliberately does NOT create any
 // journal entry (an earlier version of this app automatically posted a Dr Accounts Receivable /
 // Cr Unearned Revenue entry here; that automatic-accounting behavior was removed per a later
@@ -56,7 +71,7 @@ const createProject = asyncHandler(async (req, res, next) => {
       status,
       sector: canonicalSector,
       customer: customer || null,
-      averageCostLines: averageCostLines || [],
+      averageCostLines: sanitizeAverageCostLines(averageCostLines),
       createdBy: req.user._id,
     });
 
@@ -95,7 +110,7 @@ const updateProject = asyncHandler(async (req, res, next) => {
   if (customer !== undefined) project.customer = customer || null;
   // Replace semantics (matches journalEntryController.js's handling of `lines`) - the client always
   // sends the full intended set of Average Cost lines, not a delta.
-  if (averageCostLines !== undefined) project.averageCostLines = averageCostLines;
+  if (averageCostLines !== undefined) project.averageCostLines = sanitizeAverageCostLines(averageCostLines, project.averageCostLines);
 
   const contractValueChanged = contractValue !== undefined && contractValue !== project.contractValue;
   if (contractValue !== undefined) project.contractValue = contractValue;

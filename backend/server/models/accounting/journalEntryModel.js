@@ -283,9 +283,20 @@ journalEntrySchema.pre('save', async function (next) {
     // RULE 4: every line has a description. A manual entry's lines must each be described by the
     // user; a system-generated line without one takes its entry's description - the same explicit
     // rule the automatic engine applies (journalEntryProjectService / applyEntryDescriptionAndParty).
-    // RULE 5: a manual line's Sub Account (customer / vendor / shareholder number) must exist and fit
-    // its account - customer and vendor control accounts require one
-    // (services/accounting/journalLinePartyService.js). Historical imports are flagged explicitly.
+    // RULE 5: a line's Sub Account (customer / vendor / shareholder number) must exist and fit its
+    // account - customer and vendor control accounts require one
+    // (services/accounting/journalLinePartyService.js). Financial-integrity requirement: "no
+    // customer/vendor control-account line may have a missing or unassigned sub-account" - this is
+    // the ONE shared model-level boundary every write path (manual create/update, EVERY automatic
+    // posting function in accountingEventService.js, any future one added later) passes through,
+    // so no endpoint or generator can bypass it by forgetting to resolve a party itself. Two
+    // deliberate exemptions, same as the description rule above:
+    //   - reversals (`reversalOfEntry` set) mirror the ORIGINAL line's party verbatim
+    //     (journalReversalCore.js) - never a NEW line being created from nothing, so a historical
+    //     entry that predates this rule can still be reversed.
+    //   - `$locals.historicalImport` (scripts/*.js remediation/import tooling only - never settable
+    //     from a request body) - lets a controlled, explicit repair script touch a legacy document
+    //     without being blocked by the very rule it may be in the middle of fixing.
     if (this.isNew || this.isModified('lines')) {
       const isManual = this.source === 'manual' && !this.reversalOfEntry;
       const historicalImport = this.$locals?.historicalImport === true;
@@ -295,7 +306,7 @@ journalEntrySchema.pre('save', async function (next) {
         if (!this.description || !this.description.trim()) throw new ApiError(`Journal line ${index + 1}: a description is required.`, 400);
         line.description = this.description.trim();
       });
-      if (isManual && !historicalImport) {
+      if (!this.reversalOfEntry && !historicalImport) {
         // eslint-disable-next-line global-require
         await require('../../services/accounting/journalLinePartyService').validateLineParties(this.lines, this.$session());
       }

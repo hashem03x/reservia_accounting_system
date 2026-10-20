@@ -378,7 +378,7 @@ test('Executed %: defaults to 0 with no Sales Orders', async () => {
 });
 
 test('Executed %: a single Sales Order contributes its pre-tax totalAmount, not its VAT-inclusive grandTotal', async () => {
-  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-02', contractValue: 1000000 }));
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-02', contractValue: 1000000, customer: customer._id }));
 
   await SalesOrder.create(fakeSalesOrder({
     project: project._id,
@@ -394,7 +394,7 @@ test('Executed %: a single Sales Order contributes its pre-tax totalAmount, not 
 });
 
 test('Executed %: multiple Sales Orders for the SAME project are summed', async () => {
-  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-03', contractValue: 1000000 }));
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-03', contractValue: 1000000, customer: customer._id }));
 
   await SalesOrder.create(fakeSalesOrder({ project: project._id, items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 200000, starterQuantity: 1 }] }));
   await SalesOrder.create(fakeSalesOrder({ project: project._id, items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 100000, starterQuantity: 1 }] }));
@@ -407,8 +407,8 @@ test('Executed %: multiple Sales Orders for the SAME project are summed', async 
 });
 
 test('Executed %: a Sales Order for a DIFFERENT project never contributes', async () => {
-  const projectA = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-04A', contractValue: 1000000 }));
-  const projectB = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-04B', contractValue: 1000000 }));
+  const projectA = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-04A', contractValue: 1000000, customer: customer._id }));
+  const projectB = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-04B', contractValue: 1000000, customer: customer._id }));
 
   await SalesOrder.create(fakeSalesOrder({ project: projectB._id, items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 300000, starterQuantity: 1 }] }));
 
@@ -420,7 +420,7 @@ test('Executed %: a Sales Order for a DIFFERENT project never contributes', asyn
 });
 
 test('Executed %: a canceled Sales Order is excluded from the total', async () => {
-  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-05', contractValue: 1000000 }));
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-05', contractValue: 1000000, customer: customer._id }));
 
   const order = await SalesOrder.create(fakeSalesOrder({ project: project._id, items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 400000, starterQuantity: 1 }] }));
   await recalculateExecutedPercentage(project._id);
@@ -449,7 +449,7 @@ test('Executed %: contractValue of 0 never produces NaN/Infinity, falls back to 
 });
 
 test('Executed %: over-selling beyond the contract value clamps to 100%, never exceeds the schema\'s own max', async () => {
-  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-07', contractValue: 100000 }));
+  const project = await Project.create(baseProjectData({ projectNumber: 'PRJ-EXEC-07', contractValue: 100000, customer: customer._id }));
   await SalesOrder.create(fakeSalesOrder({ project: project._id, items: [{ product: new mongoose.Types.ObjectId(), unitPrice: 150000, starterQuantity: 1 }] }));
 
   await recalculateExecutedPercentage(project._id);

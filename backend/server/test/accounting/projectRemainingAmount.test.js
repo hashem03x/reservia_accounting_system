@@ -139,7 +139,9 @@ test('cancelling a Sales Order lowers Executed % and raises Remaining automatica
 });
 
 test('changing the Contract Value re-derives Remaining with the same rule', async () => {
-  const project = await createProject(1000000);
+  // The second recalculation (triggered by the contractValue change, below) has no triggering
+  // Sales Order to fall back on for the customer Sub Account - the project needs its own.
+  const project = await createProject(1000000, { customer: customer._id });
   const order = await createSalesOrder(project, 200000);
   await recalculateExecutedPercentage(project._id, null, order._id);
 

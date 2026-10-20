@@ -23,6 +23,23 @@ const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstant
 
 const idStr = ref => String(ref?._id || ref);
 
+// JV0011 (PROJECT_COST_RECOGNITION) caps the amount it recognizes at the project's real, live PUC
+// ledger balance (accountingEventService.js#pucAccountBalance) - fund it first, exactly like a
+// real Purchase Invoice's PO_INVENTORY_TO_WIP would (Dr PUC / Cr Materials Inventory).
+async function fundPuc(pucAccountId, projectId, amount) {
+  await accountingEventService.postAutomaticJournalEntry({
+    accountingAction: 'PUC_TRANSFER',
+    sourceType: 'PUC_TRANSFER_TEST_FUNDING',
+    sourceId: new mongoose.Types.ObjectId(),
+    description: 'Test PUC funding',
+    project: projectId,
+    lines: [
+      { account: pucAccountId, debit: amount, credit: 0, project: projectId },
+      { account: accounts[AutomaticJournalAccountCodes.materialsInventory]._id, debit: 0, credit: amount, project: projectId },
+    ],
+  });
+}
+
 // Every line carries the entry's project and the project's real Project Number.
 function assertProjectOnEveryLine(entry, expectedProject) {
   assert.equal(idStr(entry.project), idStr(expectedProject._id), 'parent entry project');
@@ -124,7 +141,7 @@ test('Case 1b - a client-supplied wrong projectNumber is replaced by the Project
     description: 'number',
     project: project._id,
     lines: [
-      { account: accounts[AutomaticJournalAccountCodes.advanceToSuppliers]._id, description: 'Test line', debit: 10, credit: 0, projectNumber: 'GUESSED' },
+      { account: accounts[AutomaticJournalAccountCodes.advanceToSuppliers]._id, description: 'Test line', debit: 10, credit: 0, projectNumber: 'GUESSED', partyNumber: vendor.vendorNumber, partyType: 'vendor' },
       { account: accounts.cash._id, description: 'Test line', debit: 0, credit: 10, projectNumber: 'GUESSED' },
     ],
   });
@@ -139,7 +156,7 @@ test('Case 2 - a genuinely non-project JE needs no Project and is still created'
     description: 'no project',
     lines: [
       { account: accounts.cash._id, description: 'Test line', debit: 75, credit: 0 },
-      { account: accounts[AutomaticJournalAccountCodes.customerAdvancesPayable]._id, description: 'Test line', debit: 0, credit: 75 },
+      { account: accounts[AutomaticJournalAccountCodes.customerAdvancesPayable]._id, description: 'Test line', debit: 0, credit: 75, partyNumber: customer.customerNumber, partyType: 'customer' },
     ],
   });
   assert.equal(entry.project, null);
@@ -288,6 +305,7 @@ test('a real Sales Order on a project whose Average Cost uses 50000004 Fuel & Lo
     { account: accounts.fuel._id, amount: 20000 },
   ];
   await project.save();
+  await fundPuc(accounts[AutomaticJournalAccountCodes.wipRawMaterials]._id, project._id, 10000);
 
   const service = await makeService(accounts[AutomaticJournalAccountCodes.wipEngineeringDesign]);
   const salesOrder = await SalesOrder.create({
@@ -315,7 +333,11 @@ test('a real Sales Order on a project whose Average Cost uses 50000004 Fuel & Lo
     ],
     '10% of the 100,000 Raw Materials Average Cost; Fuel & Logistics has no PUC account and is left out'
   );
-  assert.equal(await JournalEntry.countDocuments({ 'lines.account': accounts[AutomaticJournalAccountCodes.materialsInventory]._id }), 0, 'a Sales Order never touches Materials Inventory');
+  // Scoped to the Sales Order's OWN entries (not the whole collection) - the test's earlier
+  // fundPuc() call deliberately posts a Materials-Inventory-crediting entry itself, to fund the
+  // PUC account the Sales Order's own cost recognition is capped against (see
+  // accountingEventService.js#postProjectCostRecognitionJE).
+  assert.equal(entries.filter(e => e.lines.some(l => String(l.account._id || l.account) === String(accounts[AutomaticJournalAccountCodes.materialsInventory]._id))).length, 0, 'a Sales Order never touches Materials Inventory');
 });
 
 test('inherently project-related actions are refused without a project', async () => {
