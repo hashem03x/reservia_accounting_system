@@ -12,12 +12,20 @@ const { applyEntryProjectToLines } = require('../../services/accounting/journalE
 const { mirrorReverseEntry } = require('../../services/accounting/journalReversalCore');
 const { lineRules } = require('../../services/accounting/journalLinePartyService');
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
+const { resolveEntryCurrency } = require('../../services/accounting/currencyService');
+const { applyCurrencyToLines, storedLinesAsInput } = require('../../services/accounting/journalEntryCurrencyService');
 
 const createJournalEntry = asyncHandler(async (req, res) => {
   // `project` is guaranteed either present-and-valid, or absent-and-the-user-is-authorized for a
   // "General" entry (journalEntries:createGeneral) by createJournalEntryValidators (RULE 2) by the
   // time this handler runs - never silently defaulted to null here.
-  const { date, description, reference, project, lines } = req.body;
+  const { date, description, reference, project, lines, currency, exchangeRate } = req.body;
+
+  // Transaction currency + applied rate, resolved and validated server-side (an omitted rate gets
+  // the currency's rate effective on the entry date). Line amounts in the request are in that
+  // currency and are converted to EGP here - see journalEntryCurrencyService.js.
+  const entryCurrency = await resolveEntryCurrency({ currency, exchangeRate, date: date || new Date() });
+  const convertedLines = applyCurrencyToLines(lines || [], entryCurrency);
 
   const entryNumber = await getNextJournalEntryNumber();
   // Manual journal entries always start as a draft - posting is a separate, explicit action
@@ -32,7 +40,9 @@ const createJournalEntry = asyncHandler(async (req, res) => {
     project,
     // Every line gets the entry's Project and that Project's real Project Number (a client-typed
     // projectNumber is never trusted) - see journalEntryProjectService.js.
-    lines: await applyEntryProjectToLines({ project, lines: lines || [] }),
+    lines: await applyEntryProjectToLines({ project, lines: convertedLines }),
+    currency: entryCurrency.code,
+    currencyUnitsPerBase: entryCurrency.unitsPerBase,
     source: 'manual',
     status: 'draft',
     createdBy: req.user._id,
@@ -56,14 +66,19 @@ const createJournalEntry = asyncHandler(async (req, res) => {
 // Ledger view (services/accounting/generalLedgerService.js). `currency`/`rate` are read off the
 // first line that actually carries them (most entries are single-currency; a manual entry with no
 // currency recorded falls back to null so the frontend can show the local-currency default).
+//
+// Currency Manager: an entry recorded in a foreign transaction currency (entry.currency !== EGP)
+// reports that currency and its APPLIED rate. `rate` keeps its existing meaning - EGP per 1 unit
+// of the currency (the import convention) - i.e. 1 / currencyUnitsPerBase for such an entry.
 function withEntryListFields(entries) {
   return entries.map(entry => {
     const withCurrency = entry.lines.find(line => line.currency);
     const plain = typeof entry.toObject === 'function' ? entry.toObject() : entry;
+    const foreignEntry = entry.currency && entry.currency !== 'EGP';
     return {
       ...plain,
-      currency: withCurrency?.currency || null,
-      rate: withCurrency?.exchangeRate || null,
+      currency: foreignEntry ? entry.currency : withCurrency?.currency || null,
+      rate: foreignEntry ? 1 / entry.currencyUnitsPerBase : withCurrency?.exchangeRate || null,
       difference: Math.round(((entry.totalDebit || 0) - (entry.totalCredit || 0)) * 100) / 100,
     };
   });
@@ -321,15 +336,35 @@ const updateJournalEntry = asyncHandler(async (req, res, next) => {
     return next(new ApiError('Only draft journal entries can be edited. Posted entries require a reversal.', 400));
   }
 
-  const { date, description, reference, project, lines } = req.body;
+  const { date, description, reference, project, lines, currency, exchangeRate } = req.body;
   if (date !== undefined) entry.date = date;
   if (description !== undefined) entry.description = description;
   if (reference !== undefined) entry.reference = reference;
   if (project !== undefined) entry.project = project || null;
+
+  // Currency: re-resolved (and the lines re-converted) when the currency, rate or lines change. The
+  // entry's own current currency stays selectable even if it was deactivated since. A request that
+  // changes the currency without a rate gets the new currency's rate for the entry date; one that
+  // only re-sends lines keeps the entry's applied rate (never silently re-priced at today's rate).
+  const currencyChanged = currency !== undefined || exchangeRate !== undefined;
+  let convertedLines;
+  if (currencyChanged || lines !== undefined) {
+    const sameCurrency = currency === undefined || String(currency || 'EGP').trim().toUpperCase() === (entry.currency || 'EGP');
+    const entryCurrency = await resolveEntryCurrency({
+      currency: currency !== undefined ? currency : entry.currency,
+      exchangeRate: exchangeRate !== undefined ? exchangeRate : sameCurrency ? entry.currencyUnitsPerBase : undefined,
+      date: entry.date,
+      currentCode: entry.currency,
+    });
+    convertedLines = applyCurrencyToLines(lines !== undefined ? lines : storedLinesAsInput(entry.lines), entryCurrency);
+    entry.currency = entryCurrency.code;
+    entry.currencyUnitsPerBase = entryCurrency.unitsPerBase;
+  }
+
   // Re-applied whenever the lines OR the entry's project change, so the lines always follow the
   // entry's current Project (a project change on an unchanged set of lines re-stamps them too).
-  if (lines !== undefined || project !== undefined) {
-    entry.lines = await applyEntryProjectToLines({ project: entry.project, lines: lines !== undefined ? lines : entry.lines.map(l => l.toObject({ depopulate: true })) });
+  if (convertedLines !== undefined || project !== undefined) {
+    entry.lines = await applyEntryProjectToLines({ project: entry.project, lines: convertedLines !== undefined ? convertedLines : entry.lines.map(l => l.toObject({ depopulate: true })) });
   }
 
   await entry.save();

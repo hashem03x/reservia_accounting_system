@@ -51,10 +51,19 @@ async function mirrorReverseEntry({ entryId, date, reference, reason, userId, se
             projectNumber: line.projectNumber,
             debit: line.credit,
             credit: line.debit,
+            // The original's currency, rate and transaction-currency amounts are mirrored too, so
+            // the reversal shows the same foreign amounts (swapped) at the SAME applied rate - a
+            // reversal never re-prices an entry at a newer rate.
+            currency: line.currency ?? null,
+            exchangeRate: line.exchangeRate ?? null,
+            currencyDebit: line.currencyCredit ?? null,
+            currencyCredit: line.currencyDebit ?? null,
             description: line.description,
             unearnedRevenue: 0,
           })),
         }),
+        currency: original.currency || 'EGP',
+        currencyUnitsPerBase: original.currencyUnitsPerBase || 1,
         reversalOfEntry: original._id,
         // A reversal belongs to the same Advanced Payment as the entry it reverses.
         advancedPayment: original.advancedPayment || null,

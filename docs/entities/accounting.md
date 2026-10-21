@@ -113,6 +113,51 @@ display this sum explicitly (green if zero, red with a warning if not) rather th
 potential imbalance - it should never be non-zero in practice, and if it ever is, that is a real
 bug or a direct database write bypassing this app, not something to silently paper over.
 
+## Currencies (`models/accounting/currencyModel.js`, `services/accounting/currencyService.js`)
+
+**EGP is the base (functional/reporting) currency.** Every balance, posting check and report uses
+the EGP amounts stored in `JournalLine.debit` / `credit` - this did not change.
+
+**Rate convention** (the one place it is applied: `utils/currencyMath.js`):
+
+```
+1 EGP = unitsPerBase units of the foreign currency
+EGP amount = foreign amount / unitsPerBase
+inverse (1 unit in EGP) = 1 / unitsPerBase
+```
+
+Example: USD with `unitsPerBase = 0.02` -> 1 EGP = 0.02 USD, 1 USD = 50 EGP, so 100 USD = 5,000 EGP.
+Conversions always use the stored full-precision rate; only the resulting amount is rounded to 2
+decimals.
+
+- **Currency Manager** (`/api/v1/currencies`, page Accounting -> Currencies): CRUD with search,
+  status filter, sort and pagination. EGP is created automatically (`ensureBaseCurrency`, or
+  `npm run db:seed-currencies`), always has rate 1, and can never be deactivated or deleted (the
+  service, the model and a single-base unique index all enforce this). Codes are 3 letters, unique,
+  and immutable. A rate change is appended to `rateHistory` with an effective date; the current
+  rate is the latest-dated one. A currency referenced by any journal entry (entry-level or line,
+  including imported lines) or advanced payment cannot be deleted - deactivate it instead.
+  Concurrent edits: `expectedVersion` (+ Mongoose optimistic concurrency) returns 409.
+  Permissions: resource `currencies`; reading is also allowed with `journalEntries:read`.
+- **Journal Entries**: one transaction currency per entry (`JournalEntry.currency`, default EGP)
+  and the **applied** rate frozen on the entry (`JournalEntry.currencyUnitsPerBase`). The request's
+  line amounts are in that currency; the server validates the currency (configured, active) and
+  rate (finite, > 0; omitted = the rate effective on the entry date), converts each line to EGP
+  (`debit`/`credit`) and keeps the original amounts in `currencyDebit`/`currencyCredit`. Rounding
+  residue between lines (at most 1 cent per line) is absorbed by the largest line so the entry
+  balances in EGP. Posted entries cannot change currency or rate; reversals mirror both. Changing a
+  currency's rate later never touches existing entries or reports. Automatic entries are EGP.
+- `JournalLine.exchangeRate` (written by the CSV import) keeps its **opposite** historical
+  convention - EGP per 1 foreign unit. Manual foreign entries fill it as `1 / unitsPerBase` so the
+  General Ledger report's Currency/Rate columns stay consistent.
+- The General Ledger line API (`getGeneralLedgerLines`) used to multiply the (already EGP)
+  `debit`/`credit` by `exchangeRate` for the local balance, converting imported lines twice. It now
+  sums the EGP amounts; the document-currency balance uses `currencyDebit`/`currencyCredit` where
+  present.
+- The per-warehouse foreign cash balances (Currencies page, "Warehouse Cash Balances" tab,
+  `warehouseController.js`) are a separate, older feature with their own rate in the opposite
+  direction (EGP per unit). They are not linked to Currency Manager rates.
+
 ## Automatic accounting entry on Project creation - REMOVED
 
 Project creation used to automatically post:
@@ -159,6 +204,9 @@ previously had no atomicity at all.
 Three new `Resources` entries (`projects`, `accounts`, `journalEntries`) in
 `utils/appConstant.js` / `frontend/src/utils/constants/resources.ts`, granted to
 admin/moderator/operator (not to `userPermission`/`defaultPermissions` - accounting is staff-only).
+A later `currencies` resource (Currency Manager) is full CRUD for admin and read-only for
+moderator/operator; since permissions are copied onto each user at creation, currency reads also
+accept `journalEntries:read` so existing staff can use the Journal Entry currency selector.
 **`fixedAssetRoute.js` was deliberately left on its pre-existing `Resources.expenses` permission
 check** rather than switched to a new `fixedAssets` resource, to avoid silently revoking access
 from any already-configured role/permission data in the live database.

@@ -30,11 +30,16 @@ export interface JournalLine {
   projectNumber?: string | null;
   debit: number;
   credit: number;
-  // Audit-trail only - debit/credit above always hold the local-currency amount. These preserve
-  // the original foreign-currency amount/rate when a line was imported from a multi-currency
-  // source (e.g. the accounting CSV import).
+  // Audit-trail only - debit/credit above always hold the local-currency (EGP) amount. These
+  // preserve the line's original currency and rate (the accounting CSV import, and manual entries
+  // in a foreign currency). `exchangeRate` here is EGP PER 1 UNIT of the currency - the inverse of
+  // JournalEntry.currencyUnitsPerBase.
   currency?: string | null;
   exchangeRate?: number | null;
+  // The line's amount in the entry's transaction currency - set only on entries whose currency is
+  // not EGP (debit/credit above stay the EGP amounts).
+  currencyDebit?: number | null;
+  currencyCredit?: number | null;
   description?: string;
   // Historical data field - kept on the type for compatibility, no longer displayed anywhere.
   unearnedRevenue?: number;
@@ -62,8 +67,14 @@ export interface JournalEntry {
   advancedPayment?: string | null;
   status: JournalEntryStatus;
   lines: JournalLine[];
+  // EGP totals.
   totalDebit: number;
   totalCredit: number;
+  // Transaction currency (Currency Manager) - EGP for automatic entries and entries that predate it.
+  // The APPLIED rate is frozen on the entry: 1 EGP = currencyUnitsPerBase units of `currency`
+  // (the `currency` field below - for a foreign-currency entry the listing's derived value is the
+  // same code).
+  currencyUnitsPerBase?: number;
   // Derived server-side (docs section "Which balance should the main page show?") - only present
   // on rows returned by the plain `GET journal-entries` listing (handled by the `withEntryListFields`
   // transform in journalEntryController.js), never computed in React. `currency`/`rate` reflect the
@@ -106,6 +117,8 @@ export interface GeneralLedgerRow {
   rate: number;
   debit: number;
   credit: number;
+  currencyDebit?: number | null;
+  currencyCredit?: number | null;
   balanceDocumentCurrency: number;
   balanceLocalCurrency: number;
   description: string | null;

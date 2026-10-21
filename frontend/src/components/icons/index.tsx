@@ -230,6 +230,7 @@ export const navIcons = {
   JournalEntries: Hi2.HiOutlineBookOpen,
   Accounts: Hi2.HiOutlineTableCells,
   AdvancedPayments: Hi2.HiOutlineBanknotes,
+  Currencies: Hi2.HiOutlineCurrencyDollar,
   Shareholders: Hi2.HiOutlineChartPie,
   AccountingPeriods: Hi2.HiOutlineCalendarDays,
   Expenses: Hi2.HiOutlineReceiptPercent,

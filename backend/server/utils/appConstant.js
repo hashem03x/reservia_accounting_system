@@ -67,6 +67,9 @@ exports.Resources = {
   journalEntries: 'journalEntries',
   advancedPayments: 'advancedPayments',
   shareholders: 'shareholders',
+  // Currency Manager (Accounting -> Currencies). Reading the list is also allowed with
+  // journalEntries:read (the Journal Entry form needs it) - see routes/accounting/currencyRoute.js.
+  currencies: 'currencies',
 };
 
 exports.Actions = {
@@ -106,6 +109,7 @@ exports.adminPermission = [
   { resource: 'accounts', actions: ['create', 'delete', 'read', 'update'] },
   { resource: 'journalEntries', actions: ['create', 'read', 'update', 'createGeneral'] },
   { resource: 'advancedPayments', actions: ['create', 'delete', 'read', 'update'] },
+  { resource: 'currencies', actions: ['create', 'delete', 'read', 'update'] },
 ];
 
 exports.moderatorPermission = [
@@ -134,6 +138,7 @@ exports.moderatorPermission = [
   { resource: 'accounts', actions: ['read'] },
   { resource: 'journalEntries', actions: ['create', 'read'] },
   { resource: 'advancedPayments', actions: ['create', 'read', 'update'] },
+  { resource: 'currencies', actions: ['read'] },
 ];
 
 exports.operatorPermission = [
@@ -148,6 +153,7 @@ exports.operatorPermission = [
   { resource: 'accounts', actions: ['read'] },
   { resource: 'journalEntries', actions: ['read'] },
   { resource: 'advancedPayments', actions: ['read'] },
+  { resource: 'currencies', actions: ['read'] },
 ];
 
 exports.userPermission = [

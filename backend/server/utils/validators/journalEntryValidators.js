@@ -4,6 +4,7 @@ const Project = require('../../models/project/projectModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { userHasPermission } = require('../../middleware/hasPermission');
 const { Resources, Actions } = require('../appConstant');
+const { isValidRate } = require('../currencyMath');
 
 // Mirrors journalEntryModel.js's own `round2` - kept in sync deliberately rather than imported,
 // since the model doesn't export it; this is only ever used for this fast pre-check, the model's
@@ -73,8 +74,26 @@ const projectRequired = check('project').custom((value, { req }) => {
   return true;
 });
 
+// Currency Manager: an optional transaction currency (3-letter code; omitted = EGP) and applied
+// rate (1 EGP = X units; omitted = the currency's rate on the entry date). Whether the code is a
+// configured, active currency is decided by currencyService.resolveEntryCurrency.
+const currencyValidators = [
+  check('currency').optional({ nullable: true }).isString().withMessage('Invalid currency').bail().trim().matches(/^[A-Za-z]{3}$/).withMessage('Currency must be a 3-letter code'),
+  check('exchangeRate')
+    .optional({ nullable: true })
+    .custom(value => {
+      if (value === '') return true;
+      const n = typeof value === 'number' ? value : Number(String(value).trim());
+      if (typeof value === 'boolean' || !isValidRate(n)) throw new Error('Exchange rate must be a finite number greater than zero');
+      return true;
+    }),
+  // Line currency fields (currency, exchangeRate, currencyDebit, currencyCredit) are always derived
+  // by the server - any client value is discarded by journalEntryCurrencyService.js.
+];
+
 const createJournalEntryValidators = [
   check('date').optional().isISO8601().withMessage('Invalid date'),
+  ...currencyValidators,
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('reference').optional().isString().trim().isLength({ max: 100 }),
   projectRequired,
@@ -86,6 +105,7 @@ const createJournalEntryValidators = [
 
 const updateJournalEntryValidators = [
   check('date').optional().isISO8601().withMessage('Invalid date'),
+  ...currencyValidators,
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('reference').optional().isString().trim().isLength({ max: 100 }),
   // Project stays optional on update (not re-required retroactively) - see docs section "Check

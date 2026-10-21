@@ -288,10 +288,10 @@ async function resolveSubAccountsForEntries(entries) {
  * ordering" - docs section "Balance (Document/Local Currency)"), computed per account across that
  * account's ENTIRE posted history (never just the current page - a page boundary must never reset
  * or skew a real running balance), via MongoDB's $setWindowFields rather than any React-side
- * accounting math. Also computes the local-currency running balance in the same pass
- * (`(debit-credit) * (exchangeRate ?? 1)`, cumulative - docs section "Balance (Local Currency)"),
- * reusing the same `exchangeRate` every other currency-aware feature in this app already stores,
- * never a second conversion mechanism.
+ * accounting math. Also computes the local-currency (EGP) running balance in the same pass - the
+ * cumulative EGP debit - credit (docs section "Balance (Local Currency)"). debit/credit are always
+ * stored in EGP, so no rate is applied; the document-currency balance uses the line's recorded
+ * transaction-currency amounts (currencyDebit/currencyCredit) where present.
  *
  * @returns {Promise<Map<string, {balance: number, localBalance: number}>>} keyed by
  *   `${entryId}:${lineIndex}` - lineIndex is the line's position within its own entry's `lines[]`
@@ -310,12 +310,18 @@ async function computeRunningBalances(accountIds) {
         partitionBy: '$lines.account',
         sortBy: { date: 1, entryNumber: 1, lineIndex: 1 },
         output: {
+          // Document (transaction) currency: the line's own currency amount where one was recorded
+          // (currencyDebit/currencyCredit - manual foreign-currency entries), else the line's
+          // amount as stored.
           runningBalance: {
-            $sum: { $subtract: ['$lines.debit', '$lines.credit'] },
+            $sum: { $subtract: [{ $ifNull: ['$lines.currencyDebit', '$lines.debit'] }, { $ifNull: ['$lines.currencyCredit', '$lines.credit'] }] },
             window: { documents: ['unbounded', 'current'] },
           },
+          // Local currency (EGP): debit/credit are ALWAYS stored in EGP (journalEntryModel.js), so
+          // they are summed as-is. They used to be multiplied by `exchangeRate` here, which
+          // converted lines that carry a rate (imported foreign-currency lines) a second time.
           runningLocalBalance: {
-            $sum: { $multiply: [{ $subtract: ['$lines.debit', '$lines.credit'] }, { $ifNull: ['$lines.exchangeRate', 1] }] },
+            $sum: { $subtract: ['$lines.debit', '$lines.credit'] },
             window: { documents: ['unbounded', 'current'] },
           },
         },
@@ -402,6 +408,9 @@ async function getGeneralLedgerLines({ page = 1, limit = 50 } = {}) {
         rate: line.exchangeRate ?? 1,
         debit: line.debit || 0,
         credit: line.credit || 0,
+        // Transaction-currency amounts (null on EGP lines) - debit/credit above are always EGP.
+        currencyDebit: line.currencyDebit ?? null,
+        currencyCredit: line.currencyCredit ?? null,
         balanceDocumentCurrency: running.balance,
         balanceLocalCurrency: running.localBalance,
         description: line.description || entry.description || null,

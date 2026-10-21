@@ -10,6 +10,7 @@ import useDataHandler from "@/hooks/useDataHandler";
 import useHasPermission from "@/hooks/useHasPermission";
 import useHandlePreviousFilters from "@/hooks/useHandlePreviousFilters";
 import handleRequest from "@/utils/helpers/handle-request";
+import { formatRate } from "@/utils/helpers/currency-math";
 import { formatDate } from "@/utils/helpers/date-formaters";
 import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
 import resources from "@/utils/constants/resources";
@@ -48,8 +49,12 @@ export default function JournalEntries() {
 
   const [showFilters, setShowFilters] = useState(false);
   const [entryNumber, setEntryNumber] = useState(searchParams.get("entryNumber") || "");
-  const [dateFrom, setDateFrom] = useState<Date | null>(searchParams.get("dateFrom") ? new Date(searchParams.get("dateFrom") as string) : null);
-  const [dateTo, setDateTo] = useState<Date | null>(searchParams.get("dateTo") ? new Date(searchParams.get("dateTo") as string) : null);
+  const [dateFrom, setDateFrom] = useState<Date | null>(
+    searchParams.get("dateFrom") ? new Date(searchParams.get("dateFrom") as string) : null,
+  );
+  const [dateTo, setDateTo] = useState<Date | null>(
+    searchParams.get("dateTo") ? new Date(searchParams.get("dateTo") as string) : null,
+  );
   const [accountNumber, setAccountNumber] = useState(searchParams.get("accountNumber") || "");
   const [accountName, setAccountName] = useState(searchParams.get("accountName") || "");
   const [subAccount, setSubAccount] = useState(searchParams.get("subAccount") || "");
@@ -156,7 +161,19 @@ export default function JournalEntries() {
     window.scrollTo({ top: 0, behavior: "instant" });
     const cancelRequest = handleLoadEntries();
     return cancelRequest;
-  }, [activePage, sort, debouncedEntryNumber, dateFrom, dateTo, debouncedAccountNumber, debouncedAccountName, debouncedSubAccount, debouncedProjectNumber, debouncedDescription, status]);
+  }, [
+    activePage,
+    sort,
+    debouncedEntryNumber,
+    dateFrom,
+    dateTo,
+    debouncedAccountNumber,
+    debouncedAccountName,
+    debouncedSubAccount,
+    debouncedProjectNumber,
+    debouncedDescription,
+    status,
+  ]);
 
   const [createModalOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure();
 
@@ -173,7 +190,12 @@ export default function JournalEntries() {
     >
       <div className="flex items-center justify-between gap-2">
         {hasActiveFilters && (
-          <Button color="red" variant="light" onClick={clearFilters} title={translate("Clear All Filters", "مسح جميع الفلاتر")}>
+          <Button
+            color="red"
+            variant="light"
+            onClick={clearFilters}
+            title={translate("Clear All Filters", "مسح جميع الفلاتر")}
+          >
             <outlineIcons.Trash />
           </Button>
         )}
@@ -183,14 +205,20 @@ export default function JournalEntries() {
             {translate("Filters", "الفلاتر")}
           </Button>
           {hasActiveFilters && (
-            <span className={`absolute -top-[6px] ${translate("-right-[6px]", "-left-[6px]")} h-[15px] w-[15px] rounded-full bg-blue-500`} />
+            <span
+              className={`absolute -top-[6px] ${translate("-right-[6px]", "-left-[6px]")} h-[15px] w-[15px] rounded-full bg-blue-500`}
+            />
           )}
         </div>
       </div>
 
       {showFilters && (
         <div className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700 sm:grid-cols-2 lg:grid-cols-4">
-          <TextInput label={translate("Entry Number", "رقم القيد")} value={entryNumber} onChange={(e) => setEntryNumber(e.currentTarget.value)} />
+          <TextInput
+            label={translate("Entry Number", "رقم القيد")}
+            value={entryNumber}
+            onChange={(e) => setEntryNumber(e.currentTarget.value)}
+          />
           <DateInput label={translate("Date From", "من تاريخ")} value={dateFrom} onChange={setDateFrom} clearable />
           <DateInput label={translate("Date To", "إلى تاريخ")} value={dateTo} onChange={setDateTo} clearable />
           <Select
@@ -204,16 +232,33 @@ export default function JournalEntries() {
             ]}
             clearable
           />
-          <TextInput label={translate("Account Number", "رقم الحساب")} value={accountNumber} onChange={(e) => setAccountNumber(e.currentTarget.value)} />
-          <TextInput label={translate("Account Name", "اسم الحساب")} value={accountName} onChange={(e) => setAccountName(e.currentTarget.value)} />
-          <TextInput label={translate("Sub Account / Party Number", "الحساب الفرعي / رقم العميل")} value={subAccount} onChange={(e) => setSubAccount(e.currentTarget.value)} />
+          <TextInput
+            label={translate("Account Number", "رقم الحساب")}
+            value={accountNumber}
+            onChange={(e) => setAccountNumber(e.currentTarget.value)}
+          />
+          <TextInput
+            label={translate("Account Name", "اسم الحساب")}
+            value={accountName}
+            onChange={(e) => setAccountName(e.currentTarget.value)}
+          />
+          <TextInput
+            label={translate("Sub Account / Party Number", "الحساب الفرعي / رقم العميل")}
+            value={subAccount}
+            onChange={(e) => setSubAccount(e.currentTarget.value)}
+          />
           <TextInput
             label={translate("Project Number", "رقم المشروع")}
             placeholder={translate('Type "general" for no-project entries', 'اكتب "general" للقيود بدون مشروع')}
             value={projectNumber}
             onChange={(e) => setProjectNumber(e.currentTarget.value)}
           />
-          <TextInput label={translate("Description", "الوصف")} value={description} onChange={(e) => setDescription(e.currentTarget.value)} className="sm:col-span-2" />
+          <TextInput
+            label={translate("Description", "الوصف")}
+            value={description}
+            onChange={(e) => setDescription(e.currentTarget.value)}
+            className="sm:col-span-2"
+          />
         </div>
       )}
 
@@ -257,11 +302,19 @@ export default function JournalEntries() {
                     <Table.Th className="whitespace-nowrap">{translate("Module", "الوحدة")}</Table.Th>
                     <Table.Th className="whitespace-nowrap">{translate("Project Number", "رقم المشروع")}</Table.Th>
                     <Table.Th className="whitespace-nowrap">{translate("Currency", "العملة")}</Table.Th>
-                    <Table.Th className="whitespace-nowrap text-right">{translate("Rate", "السعر")}</Table.Th>
-                    <Table.Th className="cursor-pointer whitespace-nowrap text-right" onClick={() => toggleSort("totalDebit")}>
+                    <Table.Th className="whitespace-nowrap text-right">
+                      {translate("Rate (EGP per unit)", "السعر (جنيه لكل وحدة)")}
+                    </Table.Th>
+                    <Table.Th
+                      className="cursor-pointer whitespace-nowrap text-right"
+                      onClick={() => toggleSort("totalDebit")}
+                    >
                       {translate("Total Debit", "إجمالي المدين")} {sortIndicator("totalDebit")}
                     </Table.Th>
-                    <Table.Th className="cursor-pointer whitespace-nowrap text-right" onClick={() => toggleSort("totalCredit")}>
+                    <Table.Th
+                      className="cursor-pointer whitespace-nowrap text-right"
+                      onClick={() => toggleSort("totalCredit")}
+                    >
                       {translate("Total Credit", "إجمالي الدائن")} {sortIndicator("totalCredit")}
                     </Table.Th>
                     <Table.Th className="whitespace-nowrap text-right">{translate("Balance", "الرصيد")}</Table.Th>
@@ -277,14 +330,18 @@ export default function JournalEntries() {
                     // "Which balance should the main page show?").
                     const difference = entry.difference ?? Math.round((entry.totalDebit - entry.totalCredit) * 100) / 100;
                     return (
-                      <ClickableRow key={entry._id} className="cursor-pointer text-gray-600" onClick={() => navigate(entry._id)}>
+                      <ClickableRow
+                        key={entry._id}
+                        className="cursor-pointer text-gray-600"
+                        onClick={() => navigate(entry._id)}
+                      >
                         <Table.Td className="whitespace-nowrap">{formatDate(entry.date, language)}</Table.Td>
                         <Table.Td className="whitespace-nowrap font-medium text-gray-800">{entry.entryNumber}</Table.Td>
                         <Table.Td className="whitespace-nowrap">{displayModuleLabel(entry.module, translate)}</Table.Td>
                         <Table.Td className="whitespace-nowrap">{entry.project?.projectNumber || "-"}</Table.Td>
                         <Table.Td className="whitespace-nowrap">{entry.currency || "-"}</Table.Td>
                         <Table.Td className="whitespace-nowrap text-right tabular-nums">
-                          {entry.rate ? entry.rate.toLocaleString() : "-"}
+                          {entry.rate ? formatRate(entry.rate) : "-"}
                         </Table.Td>
                         <Table.Td className="whitespace-nowrap text-right tabular-nums">
                           {entry.totalDebit.toLocaleString()}

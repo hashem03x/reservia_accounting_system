@@ -71,6 +71,8 @@ const mountRoutes = app => {
   // PDF attachments of purchase orders, sales orders and journal entries (services/files/attachmentService.js)
   app.use('/api/v1/attachments', require('./attachmentRoute'));
   app.use('/api/v1/accounting-periods', require('./accounting/accountingPeriodRoute'));
+  // Currency Manager - currencies and their rates against the EGP base (services/accounting/currencyService.js)
+  app.use('/api/v1/currencies', require('./accounting/currencyRoute'));
 
   // advanced payments (customer/vendor advances against a project)
   app.use('/api/v1/advanced-payments', require('./payments/advancedPaymentRoute'));
