@@ -14,13 +14,11 @@ export default function EditAccountModal({
   opened,
   close,
   account,
-  accounts,
   onUpdated,
 }: {
   opened: boolean;
   close: () => void;
   account: ChartOfAccount | null;
-  accounts: ChartOfAccount[];
   onUpdated: (account: ChartOfAccount) => void;
 }) {
   const { translate, language } = useLanguage();
@@ -33,6 +31,25 @@ export default function EditAccountModal({
   const [description, setDescription] = useState("");
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
+
+  // Only accounts designated as parents, minus this account and its own sub-accounts (`exclude`) -
+  // the same rule the API validates against on submit.
+  const { privateRequest: parentRequest, data: parentOptions, setData: setParentOptions } = useDataHandler<ChartOfAccount[]>({ initialData: [] });
+  useEffect(() => {
+    if (!opened || !account) return;
+    parentRequest({ url: "accounts/parent-eligible", params: { exclude: account._id }, language })
+      .then((res) => setParentOptions(Array.isArray(res?.data) ? res.data : []))
+      .catch(() => setParentOptions([]));
+  }, [opened, account]);
+
+  // The account's existing parent stays selectable even if it is no longer eligible (e.g. since
+  // deactivated) - the API accepts re-saving an unchanged parent, so editing other fields never
+  // forces the relationship to change.
+  const currentParent = account?.parentAccount;
+  const parentSelectData = [
+    ...(currentParent && !parentOptions.some((a) => a._id === currentParent._id) ? [currentParent] : []),
+    ...parentOptions,
+  ].map((a) => ({ value: a._id, label: `${a.code} - ${a.name}` }));
 
   // Re-seed the form fields every time a different account is opened for editing.
   useEffect(() => {
@@ -93,9 +110,10 @@ export default function EditAccountModal({
           label={translate("Parent Account (optional)", "الحساب الرئيسي (اختياري)")}
           value={parentAccount}
           onChange={(v) => setParentAccount(v || "")}
-          data={accounts.filter((a) => a._id !== account?._id).map((a) => ({ value: a._id, label: `${a.code} - ${a.name}` }))}
+          data={parentSelectData}
           searchable
           clearable
+          nothingFoundMessage={translate("No parent accounts found", "لا توجد حسابات رئيسية")}
         />
         <Textarea label={translate("Description (optional)", "الوصف (اختياري)")} value={description} onChange={(e) => setDescription(e.target.value)} autosize minRows={2} />
 

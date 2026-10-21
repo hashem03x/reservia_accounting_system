@@ -6,6 +6,7 @@ const apiResponse = require('../../utils/apiResponse');
 const ApiFeatures = require('../../utils/apiFeatures');
 const { getAccountBalance, getTrialBalance } = require('../../services/accounting/generalLedgerService');
 const { getNextSortOrder } = require('../../services/accounting/chartOfAccountOrderingService');
+const { getParentEligibleAccounts: loadParentEligibleAccounts } = require('../../services/accounting/chartOfAccountParentService');
 const { CashEquivalentParentGroupName, isPucAccountEligible } = require('../../utils/accountingConstants');
 const { ACCOUNT_CODE_COLLATION, ACCOUNT_CODE_SORT } = require('../../utils/accountCodeSort');
 
@@ -102,6 +103,16 @@ const getPucEligibleAccounts = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Eligible PUC accounts retrieved successfully', true, assets.filter(isPucAccountEligible)));
 });
 
+// Accounts selectable as a Parent Account in the Create/Edit Account forms - only accounts designated
+// as parents by the Chart of Accounts' own "Parent Account" column, never the whole chart (see
+// chartOfAccountParentService.js for the rule, shared with the create/update validators). The edit
+// form passes `exclude` (the account being edited) so neither it nor any of its own sub-accounts is
+// offered.
+const getParentEligibleAccounts = asyncHandler(async (req, res) => {
+  const accounts = await loadParentEligibleAccounts({ excludeId: req.query.exclude || null });
+  res.status(200).json(apiResponse('Eligible parent accounts retrieved successfully', true, accounts));
+});
+
 const updateAccount = asyncHandler(async (req, res, next) => {
   try {
     // sortOrder is never editable through this endpoint - see chartOfAccountOrderingService.js.
@@ -155,4 +166,5 @@ module.exports = {
   getCogsEligibleAccounts,
   getCashEquivalentAccounts,
   getPucEligibleAccounts,
+  getParentEligibleAccounts,
 };

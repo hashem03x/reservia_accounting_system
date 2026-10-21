@@ -2,6 +2,7 @@ const { check } = require('express-validator');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { AccountTypes, AccountStates } = require('../accountingConstants');
+const { validateParentAssignment } = require('../../services/accounting/chartOfAccountParentService');
 
 const createChartOfAccountValidators = [
   check('code')
@@ -27,11 +28,12 @@ const createChartOfAccountValidators = [
     .optional({ nullable: true })
     .isMongoId()
     .withMessage('Invalid parent account id')
-    .custom(value =>
-      ChartOfAccount.findById(value).then(account => {
-        if (!account) return Promise.reject(new Error('Parent account does not exist.'));
-      })
-    ),
+    // Only an account designated as a parent (see chartOfAccountParentService.js) - the same rule
+    // that builds the create/edit dropdown.
+    .custom(async value => {
+      const reason = await validateParentAssignment(value);
+      if (reason) throw new Error(reason);
+    }),
 
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('isActive').optional().isBoolean(),
@@ -58,11 +60,9 @@ const updateChartOfAccountValidators = [
     .optional({ nullable: true })
     .isMongoId()
     .withMessage('Invalid parent account id')
-    .custom((value, { req }) => {
-      if (value === req.params.id) return Promise.reject(new Error('An account cannot be its own parent.'));
-      return ChartOfAccount.findById(value).then(account => {
-        if (!account) return Promise.reject(new Error('Parent account does not exist.'));
-      });
+    .custom(async (value, { req }) => {
+      const reason = await validateParentAssignment(value, { accountId: req.params.id });
+      if (reason) throw new Error(reason);
     }),
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('isActive').optional().isBoolean(),

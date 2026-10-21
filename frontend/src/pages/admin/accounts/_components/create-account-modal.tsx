@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
@@ -13,12 +13,10 @@ const accountTypes: AccountType[] = ["asset", "liability", "equity", "revenue", 
 export default function CreateAccountModal({
   opened,
   close,
-  accounts,
   onCreated,
 }: {
   opened: boolean;
   close: () => void;
-  accounts: ChartOfAccount[];
   onCreated: (account: ChartOfAccount) => void;
 }) {
   const { translate, language } = useLanguage();
@@ -32,6 +30,16 @@ export default function CreateAccountModal({
   const [description, setDescription] = useState("");
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
+
+  // Only accounts designated as parents (`GET accounts/parent-eligible`) - the same rule the API
+  // validates against on submit. Re-fetched on every open so a parent created since is offered.
+  const { privateRequest: parentRequest, data: parentOptions, setData: setParentOptions } = useDataHandler<ChartOfAccount[]>({ initialData: [] });
+  useEffect(() => {
+    if (!opened) return;
+    parentRequest({ url: "accounts/parent-eligible", language })
+      .then((res) => setParentOptions(Array.isArray(res?.data) ? res.data : []))
+      .catch(() => setParentOptions([]));
+  }, [opened]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,9 +101,10 @@ export default function CreateAccountModal({
           label={translate("Parent Account (optional)", "الحساب الرئيسي (اختياري)")}
           value={parentAccount}
           onChange={(v) => setParentAccount(v || "")}
-          data={accounts.map((a) => ({ value: a._id, label: `${a.code} - ${a.name}` }))}
+          data={parentOptions.map((a) => ({ value: a._id, label: `${a.code} - ${a.name}` }))}
           searchable
           clearable
+          nothingFoundMessage={translate("No parent accounts found", "لا توجد حسابات رئيسية")}
         />
         <Textarea label={translate("Description (optional)", "الوصف (اختياري)")} value={description} onChange={(e) => setDescription(e.target.value)} autosize minRows={2} />
 

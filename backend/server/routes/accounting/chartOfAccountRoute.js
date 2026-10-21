@@ -15,6 +15,7 @@ const {
   getCogsEligibleAccounts,
   getCashEquivalentAccounts,
   getPucEligibleAccounts,
+  getParentEligibleAccounts,
 } = require('../../controller/accounting/chartOfAccountController');
 const { createChartOfAccountValidators, updateChartOfAccountValidators } = require('../../utils/validators/chartOfAccountValidators');
 
@@ -25,6 +26,7 @@ router.get('/trial-balance', checkUserPermissions({ resource: Resources.accounts
 router.get('/cogs-eligible', checkUserPermissions({ resource: Resources.accounts, action: Actions.read }), getCogsEligibleAccounts);
 router.get('/cash-equivalent-eligible', checkUserPermissions({ resource: Resources.accounts, action: Actions.read }), getCashEquivalentAccounts);
 router.get('/puc-eligible', checkUserPermissions({ resource: Resources.accounts, action: Actions.read }), getPucEligibleAccounts);
+router.get('/parent-eligible', checkUserPermissions({ resource: Resources.accounts, action: Actions.read }), getParentEligibleAccounts);
 
 router
   .route('/')
