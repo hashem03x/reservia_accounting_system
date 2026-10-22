@@ -77,7 +77,7 @@ const isDesignatedParent = (accountId, childrenOf) => childrenOf.has(String(acco
 function selectParentEligible(accounts, { excludeId } = {}) {
   const childrenOf = buildChildrenIndex(accounts);
   const excluded = excludeId ? new Set([String(excludeId), ...descendantIdsOf(excludeId, childrenOf)]) : new Set();
-  return accounts.filter(a => a.isActive !== false && isDesignatedParent(a._id, childrenOf) && !excluded.has(String(a._id)));
+  return accounts.filter(a => a.isActive !== false && a.parentGroupNameEn !== null  );
 }
 
 /**
