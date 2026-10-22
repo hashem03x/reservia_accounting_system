@@ -35,6 +35,8 @@ const createChartOfAccountValidators = [
       if (reason) throw new Error(reason);
     }),
 
+  // A parent group id (AccountParentGroup) or null to clear it - see chartOfAccountController.js.
+  check('parentGroup').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Invalid parent group id'),
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('isActive').optional().isBoolean(),
 
@@ -64,6 +66,8 @@ const updateChartOfAccountValidators = [
       const reason = await validateParentAssignment(value, { accountId: req.params.id });
       if (reason) throw new Error(reason);
     }),
+  // A parent group id (AccountParentGroup) or null to clear it - see chartOfAccountController.js.
+  check('parentGroup').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Invalid parent group id'),
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('isActive').optional().isBoolean(),
 

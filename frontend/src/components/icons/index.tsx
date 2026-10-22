@@ -229,6 +229,7 @@ export const navIcons = {
   Categories: Hi2.HiOutlineTag,
   JournalEntries: Hi2.HiOutlineBookOpen,
   Accounts: Hi2.HiOutlineTableCells,
+  AccountParentGroups: Hi2.HiOutlineRectangleGroup,
   AdvancedPayments: Hi2.HiOutlineBanknotes,
   Currencies: Hi2.HiOutlineCurrencyDollar,
   Shareholders: Hi2.HiOutlineChartPie,

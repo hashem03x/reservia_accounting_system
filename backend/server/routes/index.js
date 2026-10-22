@@ -73,6 +73,9 @@ const mountRoutes = app => {
   app.use('/api/v1/accounting-periods', require('./accounting/accountingPeriodRoute'));
   // Currency Manager - currencies and their rates against the EGP base (services/accounting/currencyService.js)
   app.use('/api/v1/currencies', require('./accounting/currencyRoute'));
+  // Parent Account Groups - the managed classifications behind ChartOfAccount.parentGroupNameEn/Ar
+  // (services/accounting/accountParentGroupService.js)
+  app.use('/api/v1/account-parent-groups', require('./accounting/accountParentGroupRoute'));
 
   // advanced payments (customer/vendor advances against a project)
   app.use('/api/v1/advanced-payments', require('./payments/advancedPaymentRoute'));

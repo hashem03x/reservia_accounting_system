@@ -7,16 +7,25 @@ const ApiFeatures = require('../../utils/apiFeatures');
 const { getAccountBalance, getTrialBalance } = require('../../services/accounting/generalLedgerService');
 const { getNextSortOrder } = require('../../services/accounting/chartOfAccountOrderingService');
 const { getParentEligibleAccounts: loadParentEligibleAccounts } = require('../../services/accounting/chartOfAccountParentService');
+const { resolveAccountGroupAssignment } = require('../../services/accounting/accountParentGroupService');
 const { CashEquivalentParentGroupName, isPucAccountEligible } = require('../../utils/accountingConstants');
 const { ACCOUNT_CODE_COLLATION, ACCOUNT_CODE_SORT } = require('../../utils/accountCodeSort');
+
+// The parent group arrives as `parentGroup` (an AccountParentGroup id, or null to clear it) and is
+// stored as the group's names in parentGroupNameEn / parentGroupNameAr - the fields every report and
+// rule reads. Those two fields are never taken from the client directly, so an account can only be
+// classified under a real, active group of its own type (accountParentGroupService.js).
+const splitGroupInput = ({ parentGroup, parentGroupNameEn, parentGroupNameAr, ...rest }) => ({ parentGroup, body: rest });
 
 const createAccount = asyncHandler(async (req, res, next) => {
   try {
     // sortOrder is always server-computed (bottom of the account's type/parent group) - never
     // accepted from the client, see chartOfAccountOrderingService.js.
-    const { sortOrder, ...body } = req.body;
+    const { sortOrder, ...input } = req.body;
+    const { parentGroup, body } = splitGroupInput(input);
+    const groupFields = await resolveAccountGroupAssignment({ parentGroup, type: body.type });
     const nextSortOrder = await getNextSortOrder({ type: body.type, parentAccount: body.parentAccount || null });
-    const account = await ChartOfAccount.create({ ...body, sortOrder: nextSortOrder, createdBy: req.user._id });
+    const account = await ChartOfAccount.create({ ...body, ...groupFields, sortOrder: nextSortOrder, createdBy: req.user._id });
     // Model.create() is not a find-family operation, so the schema's pre(/^find/) hook (which
     // populates `parentAccount`) never runs for it - without this, the response here would carry
     // a raw ObjectId string instead of {_id, code, name, type}, and the frontend table would render
@@ -116,8 +125,12 @@ const getParentEligibleAccounts = asyncHandler(async (req, res) => {
 const updateAccount = asyncHandler(async (req, res, next) => {
   try {
     // sortOrder is never editable through this endpoint - see chartOfAccountOrderingService.js.
-    const { sortOrder, ...body } = req.body;
-    const account = await ChartOfAccount.findByIdAndUpdate(req.params.id, { $set: body }, { new: true, runValidators: true });
+    const { sortOrder, ...input } = req.body;
+    const { parentGroup, body } = splitGroupInput(input);
+    const current = await ChartOfAccount.findById(req.params.id).lean();
+    if (!current) return next(new ApiError('No account found with that id', 404));
+    const groupFields = await resolveAccountGroupAssignment({ parentGroup, type: body.type, current });
+    const account = await ChartOfAccount.findByIdAndUpdate(req.params.id, { $set: { ...body, ...groupFields } }, { new: true, runValidators: true });
     if (!account) return next(new ApiError('No account found with that id', 404));
     res.status(200).json(apiResponse('Account updated successfully', true, account));
   } catch (err) {

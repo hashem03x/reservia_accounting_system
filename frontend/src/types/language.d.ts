@@ -76,6 +76,7 @@ export interface LanguageContextProps {
       analytics: string;
       projects: string;
       accounts: string;
+      accountParentGroups: string;
       journalEntries: string;
       advancedPayments: string;
       shareholders: string;

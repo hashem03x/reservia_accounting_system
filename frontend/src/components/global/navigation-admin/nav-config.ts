@@ -175,6 +175,13 @@ export function useAdminNavigation(): NavSection[] {
             resource: resources.accounts,
           },
           {
+            key: "accountParentGroups",
+            to: admin(paths.accountParentGroups),
+            label: pages.accountParentGroups,
+            Icon: navIcons.AccountParentGroups,
+            resource: resources.accounts,
+          },
+          {
             key: "advancedPayments",
             to: admin(paths.advancedPayments),
             label: pages.advancedPayments,

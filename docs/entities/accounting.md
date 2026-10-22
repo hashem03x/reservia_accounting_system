@@ -30,6 +30,38 @@ account; no separate `SubAccount` model), `isActive` (deactivation, not hard del
 in the roadmap), `isSystemDefault` (marks accounts the automatic project/fixed-asset entries
 depend on, so they can't be casually deactivated).
 
+### Parent Account Groups (`models/accounting/accountParentGroupModel.js`)
+
+Managed classifications such as "Cash & Cash Equivalents" (Accounting -> Parent Account Groups,
+`/api/v1/account-parent-groups`). Not posting accounts, and unrelated to `parentAccount`. Fields:
+`nameEn`, `nameAr` (both required, unique after normalization - case, spacing and dash variants
+never make two groups different), `type` (one of the account types), `description`, `sortOrder`,
+`isActive`, `isSystemDefault`.
+
+- **Storage on accounts is unchanged.** An account still stores its group as
+  `parentGroupNameEn` / `parentGroupNameAr`, which every report and rule reads (payment-method
+  accounts, Fixed Assets, PUC, tax reports). An account belongs to the group whose normalized
+  English name matches. The account API takes `parentGroup` (a group id, or `null` to clear it)
+  and writes the group's names. It never accepts the two name fields from the client.
+- **Assignment rules** (`services/accounting/accountParentGroupService.js#resolveAccountGroupAssignment`):
+  - The group must be active and have the account's type.
+  - Re-saving an account with its current group is always allowed, even if that group is inactive
+    or is a legacy name with no managed group, so editing never forces a change.
+- **Group rules:**
+  - Renaming a group renames it on its accounts in the same transaction. Only the two name fields
+    change; no journal entry is created and no balance changes.
+  - The type cannot change while accounts use the group.
+  - A group assigned to any account cannot be deleted; deactivate it instead.
+  - System-default groups (the names in `accountingConstants.js`: Cash & Cash Equivalents and the
+    Fixed Asset groups) cannot be renamed, retyped, deactivated or deleted.
+- **Audit:** every create, update, status change, delete and migration is written to
+  `AccountParentGroupLog`.
+- **Permissions:** governed by the existing `accounts` permission.
+- **Legacy data:** `npm run db:migrate-account-parent-groups -- --dry-run`, then without
+  `--dry-run`. It is additive and idempotent: it creates a group for each consistent legacy name
+  and only reports names whose accounts disagree on type or Arabic name, or have no Arabic name.
+  It never modifies an account.
+
 ### Starter accounts
 
 `scripts/seedChartOfAccounts.js` (`npm run db:seed-accounts`) seeds seven accounts by code (Cash
