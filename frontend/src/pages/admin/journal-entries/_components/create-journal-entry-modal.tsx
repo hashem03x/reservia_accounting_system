@@ -51,7 +51,9 @@ export default function CreateJournalEntryModal({
   // from (journalEntries:createGeneral) - hiding it from everyone else is a UX nicety, not the
   // real authorization boundary, which the backend enforces independently on the request itself.
   const canCreateGeneral = useHasPermission(resources.journalEntries, "createGeneral");
-  const [entryKind, setEntryKind] = useState<"project" | "general">("project");
+  // Project or G&A (General & Administrative) - no preselected value: the user always chooses, and
+  // the choice is stored on the entry as `classification` (never inferred from a missing project).
+  const [entryKind, setEntryKind] = useState<"" | "project" | "ga">("");
 
   const [date, setDate] = useState("");
   const [description, setDescription] = useState("");
@@ -182,12 +184,12 @@ export default function CreateJournalEntryModal({
     isBalanced &&
     rateValid &&
     !rateLoading &&
-    (entryKind === "general" || !!entryProject) &&
+    (entryKind === "ga" || (entryKind === "project" && !!entryProject)) &&
     !missingDescription &&
     !missingSubAccount;
   const entryProjectNumber =
-    entryKind === "general"
-      ? translate("General", "عام")
+    entryKind === "ga"
+      ? translate("G&A", "عمومية وإدارية")
       : projects.find((p) => p._id === entryProject)?.projectNumber || "";
 
   async function handleSubmit(e: React.FormEvent) {
@@ -202,13 +204,14 @@ export default function CreateJournalEntryModal({
           date: date || undefined,
           description,
           reference,
-          project: entryKind === "general" ? undefined : entryProject,
+          classification: entryKind,
+          project: entryKind === "ga" ? undefined : entryProject,
           currency: currencyCode,
           exchangeRate: isForeign ? numericRate : undefined,
           lines: lines.map((l) => ({
             ...l,
             subAccount: l.subAccount || undefined,
-            project: entryKind === "general" ? undefined : entryProject || undefined,
+            project: entryKind === "ga" ? undefined : entryProject || undefined,
             partyType: l.partyNumber != null ? l.partyType : undefined,
             partyNumber: l.partyNumber ?? undefined,
           })),
@@ -236,7 +239,7 @@ export default function CreateJournalEntryModal({
       setDescription("");
       setReference("");
       setEntryProject("");
-      setEntryKind("project");
+      setEntryKind("");
       setLines([{ ...emptyLine }, { ...emptyLine }]);
       setCurrencyCode(BASE_CURRENCY_CODE);
       setRate(1);
@@ -343,22 +346,23 @@ export default function CreateJournalEntryModal({
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Select
-            label={translate("Entry Type", "نوع القيد")}
+            label={translate("Project or G&A", "مشروع أو عمومية وإدارية")}
             description={translate(
-              "Every journal entry must explicitly be either project-related or General (no project).",
-              "يجب أن يكون كل قيد يومية مرتبطًا بمشروع بشكل واضح أو عامًا (بدون مشروع).",
+              "Choose whether this entry is for a specific project or for General & Administrative (no project).",
+              "اختر ما إذا كان القيد لمشروع محدد أو للمصروفات العمومية والإدارية (بدون مشروع).",
             )}
-            value={entryKind}
+            placeholder={translate("Select Project or G&A", "اختر مشروع أو عمومية وإدارية")}
+            value={entryKind || null}
             onChange={(v) => {
-              setEntryKind((v as "project" | "general") || "project");
-              if (v === "general") setEntryProject("");
+              setEntryKind((v as "project" | "ga") || "");
+              if (v === "ga") setEntryProject("");
             }}
             data={[
-              { value: "project", label: translate("Project-related", "مرتبط بمشروع") },
-              // Only offered to a user the backend would actually accept a General entry from
+              { value: "project", label: translate("Project", "مشروع") },
+              // Only offered to a user the backend would actually accept a G&A entry from
               // (journalEntries:createGeneral) - never shown as a tempting option to everyone else.
               ...(canCreateGeneral
-                ? [{ value: "general", label: translate("General (No Project)", "عام (بدون مشروع)") }]
+                ? [{ value: "ga", label: translate("G&A (General & Administrative - no project)", "عمومية وإدارية (بدون مشروع)") }]
                 : []),
             ]}
             allowDeselect={false}

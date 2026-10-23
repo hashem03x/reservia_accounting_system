@@ -16,7 +16,7 @@ import { PaginatedData } from "@/types/global";
 import paths from "@/utils/constants/paths";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
-import { getProductFinalPrice } from "@/utils/helpers/product-helpers";
+import { getProductFinalPrice, priceText } from "@/utils/helpers/product-helpers";
 import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
 import { getProductTypeLabel, isService } from "@/utils/constants/product-types";
 import { formatDate } from "@/utils/helpers/date-formaters";
@@ -331,10 +331,10 @@ export default function Products() {
                           </div>
                         </Table.Td>
                         <Table.Td>
-                          {product.price.toFixed(2)} {translations.currency}
+                          {priceText(product.price)} {translations.currency}
                         </Table.Td>
                         <Table.Td className="font-semibold text-gray-800">
-                          {getProductFinalPrice(product.priceAfterDiscount, product.price).toFixed(2)}{" "}
+                          {priceText(getProductFinalPrice(product.priceAfterDiscount, product.price))}{" "}
                           {translations.currency}
                         </Table.Td>
                         {renderIfAdmin(

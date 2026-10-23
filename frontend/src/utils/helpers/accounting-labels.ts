@@ -11,3 +11,21 @@ export function displayModuleLabel(module: string | null | undefined, translate:
   if (module === "Purchase Order") return translate("Purchase Invoice", "فاتورة مشتريات");
   return module;
 }
+
+// Project / G&A classification of a journal entry, as shown to the user. An entry that predates
+// the field reads as Project when it has a project; one without a project is "Unclassified" -
+// never presented as G&A just because its project is missing (the backend filter
+// journalEntryController.js#createJournalEntryFilterObject applies the same rule).
+export type EntryClassificationKey = "project" | "ga" | "unclassified";
+
+export function entryClassification(entry: { classification?: string | null; project?: unknown }): EntryClassificationKey {
+  if (entry.classification === "ga") return "ga";
+  if (entry.classification === "project" || entry.project) return "project";
+  return "unclassified";
+}
+
+export function entryClassificationLabel(key: EntryClassificationKey, translate: (en: string, ar: string) => string): string {
+  if (key === "project") return translate("Project", "مشروع");
+  if (key === "ga") return translate("G&A", "عمومية وإدارية");
+  return translate("Unclassified", "غير مصنف");
+}

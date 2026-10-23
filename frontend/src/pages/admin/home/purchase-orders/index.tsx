@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
-import { useSearchParams, useNavigate, Link } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
 import useHasPermission from "@/hooks/useHasPermission";
@@ -19,7 +19,6 @@ import { Button, Table } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import { DataTableContainer } from "@/components/ui/data-table";
-import { ClickableRow } from "@/components/ui/clickable-row";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
@@ -38,7 +37,6 @@ export default function PurchaseOrders() {
 
   const { getWarehouseNameById } = useWarehouseHelpers();
 
-  const navigate = useNavigate();
 
   // URL search params for filters
   const [searchParams, setSearchParams] = useSearchParams();
@@ -165,12 +163,14 @@ export default function PurchaseOrders() {
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedPurchaseOrders.data.map((purchaseOrder) => (
-                    <ClickableRow
-                      key={purchaseOrder._id}
-                      className="cursor-pointer text-gray-600"
-                      onClick={() => navigate(purchaseOrder._id)}
-                    >
-                      <Table.Td className="font-semibold text-gray-800">{purchaseOrder._id}</Table.Td>
+                    <Table.Tr key={purchaseOrder._id} className="text-gray-600">
+                      {/* Rows are not clickable, so any cell can be selected and copied (mouse or Ctrl+C) without
+                        opening the Purchase Invoice; its number opens its full details. */}
+                      <Table.Td className="font-semibold">
+                        <Link to={purchaseOrder._id} className="text-blue-600 hover:underline">
+                          {purchaseOrder._id}
+                        </Link>
+                      </Table.Td>
                       <Table.Td>{getWarehouseNameById(purchaseOrder.warehouseId)}</Table.Td>
                       <Table.Td>{purchaseOrder.vendor?.name || translate("Deleted Vendor", "بائع محذوف")}</Table.Td>
                       <Table.Td>{purchaseOrder.project?.projectNumber || "-"}</Table.Td>
@@ -180,7 +180,7 @@ export default function PurchaseOrders() {
                       <Table.Td>{purchaseOrder.remainingAmount.toFixed(2)}</Table.Td>
                       <Table.Td>{formatDate(purchaseOrder.createdAt, language)}</Table.Td>
                       <Table.Td>{purchaseOrder.createdBy?.name || ""}</Table.Td>
-                    </ClickableRow>
+                    </Table.Tr>
                   ))}
                 </Table.Tbody>
               </Table>

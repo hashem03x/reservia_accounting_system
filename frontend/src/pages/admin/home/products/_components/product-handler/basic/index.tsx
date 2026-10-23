@@ -36,6 +36,7 @@ export default function ProductBasicInfo() {
     priceAfterDiscount,
     isAvailable,
     category,
+    subcategory,
     brand,
     model,
     specifications,
@@ -95,19 +96,22 @@ export default function ProductBasicInfo() {
       formData.append("title[ar]", titleAr);
       formData.append("description[en]", descriptionEn);
       formData.append("description[ar]", descriptionAr);
-      formData.append("price", price.toString());
+      // Optional - only sent when entered (backend productModel.js#cost).
+      if (price !== "") formData.append("price", price.toString());
       priceAfterDiscount !== "" && formData.append("priceAfterDiscount", priceAfterDiscount.toString());
       formData.append("isAvailable", isAvailable.toString());
 
       if (productIsService) {
-        // A service has no cost/category/brand/stock - see docs/entities/products.md.
+        // A service has no cost/category/brand/stock - see docs/entities/products.md. (Service
+        // classification is pending client confirmation - unchanged.)
         formData.append("durationValue", durationValue.toString());
         formData.append("durationUnit", durationUnit);
         // The Service's PUC account - Purchase Orders post this service's cost to it.
         if (pucAccount) formData.append("pucAccount", pucAccount);
       } else {
-        formData.append("cost", cost.toString());
+        if (cost !== "") formData.append("cost", cost.toString());
         formData.append("category", category as string);
+        if (subcategory) formData.append("subcategory", subcategory);
         formData.append("brand", brand as string);
         if (model) formData.append("model", model);
         if (specifications) formData.append("specifications", specifications);

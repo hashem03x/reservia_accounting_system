@@ -1,6 +1,7 @@
 import { ChartOfAccount } from "./chart-of-account";
 
 export type JournalEntryStatus = "draft" | "posted" | "reversed";
+export type JournalEntryClassification = "project" | "ga";
 export type JournalEntrySource = "manual" | "project_creation" | "fixed_asset_purchase";
 // The originating business module (docs section "Module field") - normalized through
 // AccountingModules/AccountingModuleByAction on the backend, never a free-text variation. `null`
@@ -56,6 +57,10 @@ export interface JournalEntry {
   sourceId?: string | null;
   reference?: string;
   project?: { _id: string; projectNumber: string; name?: string } | null;
+  // Project or G&A (General & Administrative), chosen explicitly on every new manual entry. null for
+  // an entry that predates the field or an automatic entry without a project - see
+  // utils/helpers/accounting-labels.ts#entryClassification for how those are shown.
+  classification?: JournalEntryClassification | null;
   // Set only on PROJECT_REVENUE_RECOGNITION/PROJECT_COST_RECOGNITION entries, whose real
   // sourceId/sourceType can't point back at a Sales Order (it's a project+percentage hash) - the
   // one reliable link for those two entries back to the Sales Order that triggered them (docs

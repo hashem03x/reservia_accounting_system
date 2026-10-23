@@ -2,12 +2,35 @@ const { Schema, model } = require('mongoose');
 const { ProjectStatuses } = require('../../utils/accountingConstants');
 const { resolveProjectSector } = require('../../services/project/sectorService');
 const { computeProjectExecution } = require('../../utils/projectExecution');
+const { documentPaymentTermsSchema } = require('../shared/paymentTermsSchema');
+const { validateDocumentPaymentTerms, computeDocumentPaymentSchedule } = require('../../utils/documentPaymentTerms');
 // Explicit require (not just the string `ref:` name) so this model can be used standalone without
 // a hard dependency on load order - mirrors journalEntryModel.js's existing convention for the
 // same reason.
 const ChartOfAccount = require('../accounting/chartOfAccountModel');
 // Registers 'ProjectManager' for the projectManager populate below, whatever the load order.
 require('./projectManagerModel');
+// Registers 'Product' for the boqLines.product populate below, whatever the load order.
+require('../inventory/productModel');
+
+// One line of a Project's BOQ (Bill of Quantities - client requirement "Projects - Raw Materials
+// Breakdown, BOQ Price, and PO Cost"): the contract quantity and the BOQ unit price of one catalog
+// product. The BOQ price is the revenue-side price of the item; its cost comes from the project's
+// purchases (services/inventory/pucMaterialBalanceService.js#getProjectMaterialBreakdown). At most
+// one line per product, so an item can never be matched to the wrong price. Analysis only - a BOQ
+// line never posts or recognizes anything.
+const boqLineSchema = new Schema(
+  {
+    product: { type: Schema.Types.ObjectId, ref: 'Product', required: [true, 'BOQ product is required'] },
+    quantity: { type: Number, required: [true, 'BOQ quantity is required'], min: [0.0001, 'BOQ quantity must be greater than 0'] },
+    unit: { type: String, trim: true, maxlength: 30, default: null },
+    unitPrice: { type: Number, required: [true, 'BOQ unit price is required'], min: [0, 'BOQ unit price cannot be negative'] },
+    // Transaction currency of the BOQ price (Currency Manager code); EGP when omitted.
+    currency: { type: String, trim: true, uppercase: true, default: 'EGP' },
+    notes: { type: String, trim: true, maxlength: 300, default: null },
+  },
+  { _id: true }
+);
 
 // One line of a Project's Average Cost structure (see docs section "Project - Average Cost").
 // References a real ChartOfAccount document (never just an account name/label) so the relationship
@@ -125,6 +148,15 @@ const projectSchema = new Schema(
       type: [averageCostLineSchema],
       default: [],
     },
+    // Customer payment terms of the project (client requirement "Projects - Customer Payment
+    // Terms"): immediate / lump sum with a due date / installments, measured from the project's
+    // start date against its contract value - the same structure as a Purchase Order's vendor terms
+    // (utils/documentPaymentTerms.js), kept on the project itself (never coupled to the customer's
+    // own default terms). Contractual only: an installment is never marked paid because its date
+    // passed, and nothing is posted. null = not set (every project created before this field).
+    customerPaymentTerms: { type: documentPaymentTermsSchema, default: null },
+    // The project's BOQ lines - see boqLineSchema above. Empty for every existing project.
+    boqLines: { type: [boqLineSchema], default: [] },
     averageCost: {
       type: Number,
       default: 0,
@@ -193,6 +225,10 @@ const projectSchema = new Schema(
           ret.executedAmount = execution.executedAmount;
           ret.remainingMoney = execution.remainingMoney;
         }
+        // Amounts and due dates derived from the CURRENT contract value and start date.
+        ret.customerPaymentSchedule = ret.customerPaymentTerms
+          ? computeDocumentPaymentSchedule(ret.customerPaymentTerms, { total: ret.contractValue, issueDate: ret.startDate })
+          : null;
         return ret;
       },
     },
@@ -285,13 +321,38 @@ projectSchema.pre('validate', async function (next) {
   }
 });
 
+// Backstop for the customer payment terms against the (possibly just changed) contract value and
+// start date - a contract value change recalculates percentage installments, but fixed amounts can
+// no longer exceed it.
+projectSchema.pre('validate', function (next) {
+  if (!this.customerPaymentTerms) return next();
+  if (!(this.isNew || this.isModified('customerPaymentTerms') || this.isModified('contractValue') || this.isModified('startDate'))) return next();
+  const terms = typeof this.customerPaymentTerms.toObject === 'function' ? this.customerPaymentTerms.toObject() : this.customerPaymentTerms;
+  if (terms.mode !== 'immediate' && !(this.contractValue > 0)) return next(new Error('Customer payment terms need the project contract value.'));
+  const error = validateDocumentPaymentTerms(terms, { total: this.contractValue, issueDate: this.startDate });
+  return next(error ? new Error(`Customer payment terms: ${error}`) : undefined);
+});
+
+// BOQ lines: one line per product (backstop - projectController.js#checkedBoqLines checks first).
+projectSchema.pre('validate', function (next) {
+  if (!this.isModified('boqLines')) return next();
+  const seen = new Set();
+  for (const line of this.boqLines || []) {
+    const id = String(line.product?._id || line.product);
+    if (seen.has(id)) return next(new Error('Each product can appear only once in the BOQ.'));
+    seen.add(id);
+  }
+  return next();
+});
+
 projectSchema.pre(/^find/, function (next) {
   this.where({ isDeleted: { $ne: true } })
     .populate({ path: 'projectManager', select: 'name email phone isActive' })
     .populate({ path: 'customer', select: 'name email phone type customerNumber' })
     .populate({ path: 'createdBy', select: 'name' })
     .populate({ path: 'contract.uploadedBy', select: 'name' })
-    .populate({ path: 'averageCostLines.account', select: 'code name nameAr type' });
+    .populate({ path: 'averageCostLines.account', select: 'code name nameAr type' })
+    .populate({ path: 'boqLines.product', select: 'title model brand category subcategory sku type' });
   next();
 });
 

@@ -29,7 +29,6 @@ function validateProductTypeFields({ type = 'product', cost, category, brand, du
   }
 
   // type === 'product'
-  if (cost === undefined || cost === null || cost === '') return 'Product cost is required';
   if (!category) return 'Category is required for a product';
   if (!brand) return 'Brand is required for a product';
   if (pucAccount) return 'Only a service can have a PUC account';

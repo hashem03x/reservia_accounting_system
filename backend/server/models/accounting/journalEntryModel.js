@@ -1,6 +1,6 @@
 const { Schema, model } = require('mongoose');
 const ApiError = require('../../utils/apiError');
-const { JournalEntryStatus, JournalEntrySources, AccountingActions, AccountingModules } = require('../../utils/accountingConstants');
+const { JournalEntryStatus, JournalEntrySources, AccountingActions, AccountingModules, JournalEntryClassifications } = require('../../utils/accountingConstants');
 const { BASE_CURRENCY_CODE, isValidRate } = require('../../utils/currencyMath');
 
 // Explicit requires (not just string `ref:` names) for every model this schema's pre(/^find/)
@@ -118,6 +118,14 @@ const journalEntrySchema = new Schema(
       default: null,
     },
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
+    // 'project' | 'ga' (General & Administrative) - see accountingConstants.js#JournalEntryClassifications.
+    // 'project' always goes with a project and 'ga' never has one (RULE 2 below). null = an entry
+    // that predates the field, or an automatic entry with no project (never assumed to be G&A).
+    classification: {
+      type: String,
+      enum: { values: [...JournalEntryClassifications, null], message: '{VALUE} is not a valid journal entry classification' },
+      default: null,
+    },
     // Additive, optional link from a PROJECT_REVENUE_RECOGNITION/PROJECT_COST_RECOGNITION entry
     // back to the specific Sales Order whose creation/cancellation/return pushed the project's
     // executedPercentage up and triggered this entry (docs section "Sales Order Source Link").
@@ -272,6 +280,15 @@ journalEntrySchema.pre('save', async function (next) {
     //     future direct model call that never went through the validator).
     if (this.isNew && !this.reversalOfEntry && this.source === 'manual' && !this.project && !this.$locals.generalEntryAuthorized) {
       throw new Error('Project is required when creating a journal entry.');
+    }
+    // Project / G&A classification: an entry with a project is a Project entry; a new manual entry
+    // without one must have been explicitly classified G&A (never inferred from the missing
+    // project); and the classification can never contradict the project.
+    if (this.isNew && !this.classification && this.project) this.classification = 'project';
+    if (this.classification === 'project' && !this.project) throw new Error('A Project journal entry requires a project.');
+    if (this.classification === 'ga' && this.project) throw new Error('A G&A journal entry cannot have a project.');
+    if (this.isNew && !this.reversalOfEntry && this.source === 'manual' && !this.project && this.classification !== 'ga') {
+      throw new Error('Choose whether this journal entry is for a Project or G&A.');
     }
     // Every entry always has a Module value to display (docs section "Module field") - automatic
     // entries get theirs set explicitly by postAutomaticJournalEntry; a manual entry (and any other

@@ -173,6 +173,9 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
         sourceId,
         accountingAction,
         project: project || null,
+        // An automatic entry is a Project entry when it has a project; one without is left
+        // unclassified (never assumed to be G&A).
+        classification: project ? 'project' : null,
         // Only ever set by postProjectRevenueRecognitionJE below,
         // which are the one case where `sourceId` itself can't point back at the triggering Sales
         // Order (docs section "Sales Order Source Link") - every other automatic entry leaves this
@@ -703,8 +706,8 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
 
 /**
  * The Customer Number (Sub Account) of a project's Sales Order entries (JV0010 / JV0011): the
- * project's customer, or - for a project with no linked customer - the triggering Sales Order's
- * customer. Null when there is neither.
+ * triggering Sales Order's customer, or - for a recognition no Sales Order triggered (e.g. a
+ * contract value change) - the project's customer. Null when there is neither.
  */
 // `required` (default true): a NEW recognition (an increase - revenue/cost being recognized for
 // the first time at this percentage) must resolve a real customer - Accounts Receivable is a
@@ -714,8 +717,13 @@ async function postSalesOrderAdvanceAppliedJE(salesOrder, consumedAmount, sessio
 // a slice recognized earlier, possibly before this rule existed) - a reversal must still be able
 // to undo whatever was posted historically, even for a legacy project that has no customer; it is
 // never a NEW line being created from nothing.
+//
+// The triggering Sales Order's OWN customer comes first: the receivable it recognizes is owed by
+// the customer that invoice was issued to - the same customer its payments are posted against
+// (postSalesPaymentRecordedJE uses the payment's customer, i.e. the invoice's). Taking the
+// project's customer first attributed an invoice issued to another customer to the project's
+// customer, so that invoice's receivable and its payments landed under two different customers.
 async function resolveProjectCustomerNumber(project, triggeredBySalesOrder, session, { required = true } = {}) {
-  if (project.customer) return resolveCustomerNumber(project.customer, { required }, session);
   const orderId = triggeredBySalesOrder?._id || triggeredBySalesOrder;
   let order = null;
   if (orderId) {
@@ -723,6 +731,7 @@ async function resolveProjectCustomerNumber(project, triggeredBySalesOrder, sess
     order = await SalesOrder.findById(orderId).select('customer').session(session || null).lean();
   }
   if (order?.customer) return resolveCustomerNumber(order.customer, { required }, session);
+  if (project.customer) return resolveCustomerNumber(project.customer, { required }, session);
   if (required) {
     throw new ApiError(
       `Cannot recognize revenue/cost for project ${project.projectNumber}: no customer is linked to this project (and the triggering Sales Order has none either). Assign a customer to the project before invoicing against it.`,

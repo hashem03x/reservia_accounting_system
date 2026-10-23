@@ -132,3 +132,73 @@ exports.createGroup = async function createGroup(value, context) {
     createdBy: context?.userId,
   });
 };
+
+// Format guide of every column (utils/csvImport/formatGuide.js - downloaded from the import screen as
+// a separate file, never mixed into the data template). Kept beside the validation above, and
+// test/import/importFormatGuides.test.js fails if these and the real columns ever disagree.
+// required: 'yes' (column and value required) | 'no' | 'conditional' (see the description).
+exports.fieldSpecs = [
+  {
+    column: "POReference",
+    required: "yes",
+    description: "Your reference for the Purchase Order - rows with the same reference are the lines of ONE Purchase Order; a reference already imported is refused.",
+    format: "Text",
+    example: "PO-SAMPLE-0001"
+  },
+  {
+    column: "VendorNumber",
+    required: "yes",
+    description: "Vendor Number of an existing vendor - the same on every line of a PO.",
+    format: "Number",
+    example: "2000"
+  },
+  {
+    column: "ProjectNumber",
+    required: "yes",
+    description: "Project Number of an existing project - the same on every line of a PO.",
+    format: "Existing project number",
+    example: "PRJ-0000001"
+  },
+  {
+    column: "ItemDescription",
+    required: "yes",
+    description: "Line description / notes.",
+    format: "Text",
+    example: "Steel Rebar 12mm"
+  },
+  {
+    column: "ProductCode",
+    required: "no",
+    description: "Barcode of the catalog product/service of the line (recommended - the Purchase Order form requires a product for new lines; a line imported without one is kept as a description-only line).",
+    format: "Existing product barcode",
+    example: "123456789012"
+  },
+  {
+    column: "Quantity",
+    required: "yes",
+    description: "Ordered quantity.",
+    format: "Number > 0",
+    example: "10"
+  },
+  {
+    column: "Unit",
+    required: "no",
+    description: "Unit of measure.",
+    format: "Text",
+    example: "ton"
+  },
+  {
+    column: "UnitPrice",
+    required: "yes",
+    description: "Unit price.",
+    format: "Number (EGP), up to 2 decimals, no separators or currency symbol, >= 0",
+    example: "15000"
+  },
+  {
+    column: "Notes",
+    required: "no",
+    description: "Purchase Order notes - the same on every line of a PO when given.",
+    format: "Text",
+    example: "Sample purchase order"
+  }
+];

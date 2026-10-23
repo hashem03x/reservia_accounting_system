@@ -1,4 +1,5 @@
 import { BankInfo, BusinessDocument, PaymentInfo, TaxInfo } from "@/types/document";
+import type { VendorPaymentAccount } from "@/utils/helpers/vendor-payment-accounts";
 
 export type VendorType = "current" | "equity";
 
@@ -28,6 +29,9 @@ export type Vendor = {
   taxInfo?: TaxInfo;
   bankInfo?: BankInfo;
   paymentInfo?: PaymentInfo;
+  // All payment (settlement) accounts - several banks / InstaPay / wallets, one primary. paymentInfo
+  // mirrors the primary one (kept for older readers).
+  paymentAccounts?: VendorPaymentAccount[];
   paymentTerms?: PaymentTerms;
   customPaymentDays?: number | null;
   paymentTermsConfig?: PaymentTermsConfig;

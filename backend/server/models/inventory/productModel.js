@@ -16,11 +16,16 @@ const productSchema = mongoose.Schema(
     // Cost/category/subcategory are inventory/merchandising concepts that only make sense for a
     // physical product - conditionally required so a service isn't forced to fabricate values for
     // fields it has no real answer for.
+    // Neither cost nor price is required to DEFINE a product or service (client requirement
+    // "Products - Cost and Price are not required to define a product"): both are known only once
+    // it is bought / quoted. A product without a cost never produces a zero-value accounting entry -
+    // the PUC transfer refuses it (pucTransferService.js) and a purchase sets it from the purchase
+    // price (purchaseOrderController.js); every document line carries its own price.
     cost: {
       type: Number,
-      required: [function () { return this.type !== 'service'; }, 'Product cost is required'],
+      min: [0, 'Product cost cannot be negative'],
     },
-    price: { type: Number, required: [true, 'Product price is rquired'], max: 250000 }, // Also doubles as the service's selling price when type === 'service'.
+    price: { type: Number, min: [0, 'Product price cannot be negative'], max: 250000 }, // Also doubles as the service's selling price when type === 'service'. Optional - see cost above.
     priceAfterDiscount: { type: Number, default: null },
     totalSold: { type: Number, default: 0 },
     isAvailable: { type: Boolean, default: true },
@@ -30,11 +35,11 @@ const productSchema = mongoose.Schema(
       ref: 'Category',
       required: [function () { return this.type !== 'service'; }, 'Category is required'],
     },
-    // Legacy identification field - the catalog hierarchy is now Category -> Brand -> Model/Item
-    // Number (see `brand` below, which replaces this as the required identifier). No longer
-    // required on new/updated products; kept on the schema only so existing products and
-    // historical reports/lookups that reference it keep working untouched. Migrated to `brand`
-    // by scripts/migrateSubcategoryToBrand.js where a reasonable match exists.
+    // Second level of the catalog hierarchy: Main Category -> Subcategory -> Brand -> Model/Item ->
+    // Technical Specifications (client requirement "Products - Category, Brand, Model/Item,
+    // Specifications"). Optional (products created before it was restored to the hierarchy have
+    // none), but when set it must belong to `category` - checked by productValidator.js and the
+    // product CSV import. Services are unchanged (their classification is pending client confirmation).
     subcategory: {
       type: mongoose.Schema.ObjectId,
       ref: 'SubCategory',

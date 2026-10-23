@@ -93,9 +93,9 @@ export default function GeneralInformation() {
           for admins when creating and updating, and available for others only when creating */}
       {!isService(type) && ((!!loggedInUser && isAdmin(loggedInUser.role)) || !currentProduct) && (
         <NumberInput
-          label={translate("Cost", "التكلفة")}
+          label={translate("Cost (Optional)", "التكلفة (اختياري)")}
           placeholder={translate("Cost in EGP", "التكلفة بالجنيه")}
-          withAsterisk
+          
           min={0}
           clampBehavior="strict"
           allowNegative={false}
@@ -109,9 +109,9 @@ export default function GeneralInformation() {
       {/* Price and Price After Discount */}
       <div className={doubleInputDivClasses}>
         <NumberInput
-          label={translate("Price", "السعر")}
+          label={translate("Price (Optional)", "السعر (اختياري)")}
           placeholder={translate("Price in EGP", "السعر بالجنيه")}
-          withAsterisk
+          
           min={0}
           clampBehavior="strict"
           allowNegative={false}

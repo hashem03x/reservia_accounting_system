@@ -6,13 +6,13 @@ export type Product = {
   type: ProductType;
   title: { en: string; ar: string };
   description: { en: string; ar: string };
-  // Product-only fields - absent/meaningless when type === "service".
+  // Product-only fields - absent/meaningless when type === "service". Cost (like price) is optional:
+  // a product can be defined before it is bought or priced.
   cost?: number;
   category?: string;
-  // Legacy identification field - kept for reading historical products; no longer set by the
-  // product form (see `brand` below).
+  // Catalog hierarchy: Main Category -> Subcategory -> Brand -> Model/Item -> Specifications.
+  // Services use Main Category + Subcategory only. Subcategory is optional (older products have none).
   subcategory?: string;
-  // Catalog hierarchy: Category -> Brand -> Model/Item Number/Specifications.
   brand?: string;
   model?: string;
   specifications?: string;
@@ -31,7 +31,7 @@ export type Product = {
   // service posts to. Populated object from the API; null/absent for a service created before this
   // field existed (it must be set before the service can be purchased).
   pucAccount?: { _id: string; code: string; name: string; nameAr?: string | null } | string | null;
-  price: number; // Also doubles as the service's selling price when type === "service".
+  price?: number; // Also doubles as the service's selling price when type === "service". Optional - see cost.
   priceAfterDiscount: number | null;
   isDeleted: boolean;
   isAvailable: boolean;

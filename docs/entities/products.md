@@ -73,3 +73,16 @@ isAvailable, isDeleted, totalSold, season, brand, createdBy, ratingsQuantity/Ave
 
 Services cannot appear in sales or purchase orders under the current schema - see
 `../reversia-business-logic.md`'s "Open question for a future phase".
+
+## Catalog hierarchy and optional cost / price
+
+Products: Main Category → Subcategory (optional, must belong to the category) → Brand → Model/Item →
+Specifications. Brands are managed on the Categories page; a brand used by products cannot be
+deleted.
+
+Cost and price are optional when defining a product. A product without a cost takes its first
+purchase cost and is never averaged as 0, and a PUC transfer refuses a product with no cost.
+Service classification is unchanged and pending client confirmation.
+
+Purchase Order lines must reference a catalog product, and the description is optional line notes.
+Legacy description-only lines stay readable and can be kept unchanged.

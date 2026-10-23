@@ -29,6 +29,8 @@ async function mirrorReverseEntry({ entryId, date, reference, reason, userId, se
         description: description.slice(0, 1000),
         reference,
         project: original.project,
+        // Mirrors the original exactly, including null for an entry that predates the field.
+        classification: original.classification ?? null,
         source: original.source,
         module: original.module,
         sourceType: null,

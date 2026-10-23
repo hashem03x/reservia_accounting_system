@@ -95,7 +95,8 @@ export default function OrderItemRow({
               language,
             });
             // A product is bought at its cost; a service has no cost field, so it starts at its price.
-            const unitPrice = getPurchaseUnitPrice(response.data);
+            // No catalog cost/price (optional): the line starts empty for the user to enter.
+            const unitPrice = getPurchaseUnitPrice(response.data) ?? undefined;
             updateItem({
               productCode: newProductCode,
               productError: false,

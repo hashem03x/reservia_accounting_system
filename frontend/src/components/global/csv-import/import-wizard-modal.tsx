@@ -8,6 +8,7 @@ import Modal from "@/components/ui/modal";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
 import { exportRowsToCsv } from "@/utils/helpers/csv-export";
 import { CsvCommitResult, CsvPreviewResult, CsvRowError, ApiErrorPayload } from "./types";
+import ImportFormatGuide from "./format-guide";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024; // mirrors backend/server/utils/csvImport/limits.js
 
@@ -159,6 +160,8 @@ export default function ImportWizardModal({
             </Button>
             {previewError && <Alert color="red" variant="light">{previewError}</Alert>}
           </div>
+          {/* Every importer serves its own format guide next to /preview (…/format-guide). */}
+          <ImportFormatGuide guideUrl={previewUrl.replace("/preview", "/format-guide")} filename={`${previewUrl.split("/").slice(-2, -1)[0] || "import"}-format-guide.csv`} />
         </Stepper.Step>
 
         <Stepper.Step label={translate("Preview & Validate", "معاينة وتحقق")} description={translate("Review before confirming", "راجع قبل التأكيد")}>

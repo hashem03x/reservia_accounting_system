@@ -1,4 +1,5 @@
 const Project = require('../../models/project/projectModel');
+const { computeDocumentPaymentSchedule } = require('../../utils/documentPaymentTerms');
 const SalesOrder = require('../../models/sales/salesOrderModel');
 const Requisition = require('../../models/vendor/requisitionModel');
 const PurchaseOrder = require('../../models/vendor/purchaseOrder');
@@ -110,6 +111,25 @@ function deriveScheduledStatus(date, paymentStatus) {
 }
 
 // =============================================================
+// Contractual payment terms (Purchase Order vendor terms, Project customer terms) -
+// utils/documentPaymentTerms.js. Used ONLY for a document nothing has been invoiced against yet:
+// once an invoice exists, the invoice's own due date / schedule is what is forecast (above), and
+// splitting the remaining commitment across the terms' installments would invent an allocation
+// rule. So terms never double-count with invoices, and never mark anything paid - an installment
+// whose date has passed is shown as overdue, exactly like an unpaid invoice.
+// =============================================================
+
+/** Scheduled lines for each installment with an amount, plus the unallocated remainder (if any). */
+function linesFromTerms(terms, { total, issueDate, base, unscheduledReason }) {
+  const schedule = computeDocumentPaymentSchedule(terms, { total, issueDate });
+  const scheduledLines = schedule.rows
+    .filter(row => row.amount > 0 && row.dueDate)
+    .map(row => ({ ...base, amount: round2(row.amount), date: new Date(row.dueDate), installment: row.description, status: deriveScheduledStatus(new Date(row.dueDate), null) }));
+  const remainder = schedule.unallocatedAmount > 0 ? [{ ...base, amount: schedule.unallocatedAmount, date: null, status: 'unscheduled', reason: unscheduledReason }] : [];
+  return { scheduledLines, remainder };
+}
+
+// =============================================================
 // Customer inflow obligations (per Project)
 // =============================================================
 
@@ -122,7 +142,7 @@ async function getCustomerInflowObligations({ projectIds = null, customerId = nu
   if (projectIds) projectFilter._id = { $in: projectIds };
   if (customerId) projectFilter.customer = customerId;
 
-  const projects = await Project.find(projectFilter).select('_id projectNumber name contractValue customer status').lean();
+  const projects = await Project.find(projectFilter).select('_id projectNumber name contractValue customer status startDate customerPaymentTerms').lean();
   const ids = projects.map(p => p._id);
   if (ids.length === 0) return { projects: [], scheduled: [], unscheduled: [] };
 
@@ -180,6 +200,18 @@ async function getCustomerInflowObligations({ projectIds = null, customerId = nu
       continue;
     }
     const remainder = Math.max(0, round2(p.contractValue - invoiced));
+    // Not invoiced at all yet, with customer payment terms: forecast the contract by its terms.
+    if (remainder > 0 && invoiced === 0 && p.customerPaymentTerms?.mode) {
+      const { scheduledLines, remainder: rest } = linesFromTerms(p.customerPaymentTerms, {
+        total: p.contractValue,
+        issueDate: p.startDate,
+        base: { direction: 'in', source: 'project', sourceId: p._id, project: { _id: p._id, projectNumber: p.projectNumber, name: p.name }, party: p.customer || null, reason: 'customer_payment_terms' },
+        unscheduledReason: 'uninvoiced_contract_remainder',
+      });
+      scheduled.push(...scheduledLines);
+      unscheduled.push(...rest);
+      continue;
+    }
     if (remainder > 0) {
       unscheduled.push({
         direction: 'in',
@@ -212,7 +244,7 @@ async function getVendorOutflowObligations({ projectIds = null, vendorId = null 
   if (vendorId) requisitionFilter.vendorId = vendorId;
 
   const requisitions = await Requisition.find(requisitionFilter)
-    .select('code vendorId project amount invoicedAmount status createdAt')
+    .select('code vendorId project amount invoicedAmount status createdAt issueDate paymentTerms')
     .lean();
 
   const invoiceFilter = { remainingAmount: { $gt: 0 } };
@@ -250,6 +282,19 @@ async function getVendorOutflowObligations({ projectIds = null, vendorId = null 
     // amount - invoicedAmount, the exact same guarded figure the Purchase Invoice's own atomic
     // increment maintains (purchaseOrder.js) - never recomputed here, just read.
     const remainder = Math.max(0, round2((req.amount || 0) - (req.invoicedAmount || 0)));
+    // An OPEN Purchase Order not invoiced at all yet, with payment terms: forecast it by its terms.
+    // (A draft is not a commitment yet - it stays unscheduled as before.)
+    if (remainder > 0 && (req.invoicedAmount || 0) === 0 && req.status === 'open' && req.paymentTerms?.mode) {
+      const { scheduledLines, remainder: rest } = linesFromTerms(req.paymentTerms, {
+        total: req.amount,
+        issueDate: req.issueDate || req.createdAt,
+        base: { direction: 'out', source: 'requisition', sourceId: req._id, code: req.code || null, project: req.project || null, party: req.vendorId || null, requisition: req._id, reason: 'purchase_order_payment_terms' },
+        unscheduledReason: 'uninvoiced_po_commitment',
+      });
+      scheduled.push(...scheduledLines);
+      unscheduled.push(...rest);
+      continue;
+    }
     if (remainder > 0) {
       unscheduled.push({
         direction: 'out',

@@ -108,7 +108,7 @@ const getCashEquivalentAccounts = asyncHandler(async (req, res) => {
 // Product model backstop can never disagree. Asset accounts are a small set, so filtering the
 // already-narrowed `type: 'asset'` result in JS (to reuse the exact same function) is cheap.
 const getPucEligibleAccounts = asyncHandler(async (req, res) => {
-  const assets = await ChartOfAccount.find({ type: 'asset', isActive: true }).sort(ACCOUNT_CODE_SORT).collation(ACCOUNT_CODE_COLLATION);
+  const assets = await ChartOfAccount.find({ type: 'asset', isActive: true, parentGroupNameEn: "Projects Under Construction" }).sort(ACCOUNT_CODE_SORT).collation(ACCOUNT_CODE_COLLATION);
   res.status(200).json(apiResponse('Eligible PUC accounts retrieved successfully', true, assets.filter(isPucAccountEligible)));
 });
 

@@ -31,14 +31,13 @@ exports.headers = [
   'WithholdingTaxPercentage',
   'PaymentMethod',
   'PaymentAccountCode',
-  'ShippingCost',
   'Notes',
 ];
 
 exports.requiredHeaders = ['InvoiceReference', 'CustomerNumber', 'ProjectNumber', 'WarehouseName', 'ProductCode', 'Quantity', 'UnitPrice'];
 
 exports.exampleRows = [
-  ['SINV-SAMPLE-0001', '1000', 'PRJ-0000001', 'Main Warehouse', '', '2', '5000', '', '', '14', '1', '', '', '', 'Sample sales invoice'],
+  ['SINV-SAMPLE-0001', '1000', 'PRJ-0000001', 'Main Warehouse', '', '2', '5000', '', '', '14', '1', '', '', 'Sample sales invoice'],
 ];
 
 exports.groupKey = row => (row.InvoiceReference || '').trim();
@@ -155,13 +154,11 @@ exports.validateGroup = async function validateGroup(rows, context) {
     else withholdingTaxPercentage = Number(withholdingRaw);
   }
 
-  let shippingCost;
+  // Shipping Cost was removed from Sales Invoices (client requirement "Sales Invoice - Remove Payment
+  // Method and Shipping Cost") - no longer in the template. An older file that still carries a value
+  // is refused rather than silently dropping an amount; historical invoices keep theirs.
   if (shippingCostRaw) {
-    if (Number.isNaN(Number(shippingCostRaw)) || Number(shippingCostRaw) <= 0) {
-      errors.push({ column: 'ShippingCost', value: shippingCostRaw, message: 'Must be a positive number when provided.' });
-    } else {
-      shippingCost = Number(shippingCostRaw);
-    }
+    errors.push({ column: 'ShippingCost', value: shippingCostRaw, message: 'Shipping Cost is no longer part of a Sales Invoice - leave it empty or remove the column.' });
   }
 
   const items = [];
@@ -219,7 +216,6 @@ exports.validateGroup = async function validateGroup(rows, context) {
       project: project._id,
       items,
       isPrepaid: false,
-      shippingCost,
       paymentMethod,
       paymentAccount: paymentAccount ? paymentAccount._id : null,
       vatPercentage,
@@ -240,7 +236,6 @@ exports.createGroup = async function createGroup(value, context) {
     warehouse: value.warehouse,
     items: value.items,
     isPrepaid: value.isPrepaid,
-    shippingCost: value.shippingCost,
     paymentMethod: value.paymentMethod || undefined,
     paymentAccount: value.paymentAccount || undefined,
     project: value.project,
@@ -251,3 +246,108 @@ exports.createGroup = async function createGroup(value, context) {
     extraFields: { importReference: value.importReference, notes: value.notes },
   });
 };
+
+// Format guide of every column (utils/csvImport/formatGuide.js - downloaded from the import screen as
+// a separate file, never mixed into the data template). Kept beside the validation above, and
+// test/import/importFormatGuides.test.js fails if these and the real columns ever disagree.
+// required: 'yes' (column and value required) | 'no' | 'conditional' (see the description).
+exports.fieldSpecs = [
+  {
+    column: "InvoiceReference",
+    required: "yes",
+    description: "Your reference for the Sales Invoice - rows with the same reference are the lines of ONE invoice; a reference already imported is refused.",
+    format: "Text",
+    example: "SINV-SAMPLE-0001"
+  },
+  {
+    column: "CustomerNumber",
+    required: "yes",
+    description: "Customer Number of an existing customer - the invoice receivable is recorded under this customer.",
+    format: "Number",
+    example: "1000"
+  },
+  {
+    column: "ProjectNumber",
+    required: "yes",
+    description: "Project Number of an existing, not cancelled project.",
+    format: "Existing project number",
+    example: "PRJ-0000001"
+  },
+  {
+    column: "WarehouseName",
+    required: "yes",
+    description: "Warehouse the goods are issued from.",
+    format: "Existing warehouse name",
+    example: "Main Warehouse"
+  },
+  {
+    column: "ProductCode",
+    required: "yes",
+    description: "Barcode of the product/service sold.",
+    format: "Existing product barcode",
+    example: "123456789012"
+  },
+  {
+    column: "Quantity",
+    required: "yes",
+    description: "Quantity sold.",
+    format: "Whole number > 0",
+    example: "2"
+  },
+  {
+    column: "UnitPrice",
+    required: "yes",
+    description: "Unit price before discount.",
+    format: "Number (EGP), up to 2 decimals, no separators or currency symbol, > 0",
+    example: "5000"
+  },
+  {
+    column: "ItemDiscountType",
+    required: "no",
+    description: "Line discount type.",
+    format: "percentage or fixed",
+    example: "percentage"
+  },
+  {
+    column: "ItemDiscountValue",
+    required: "no",
+    description: "Line discount (percent or amount, per ItemDiscountType).",
+    format: "Number >= 0",
+    example: "5"
+  },
+  {
+    column: "VATPercentage",
+    required: "no",
+    description: "VAT % of the invoice.",
+    format: "Number >= 0",
+    example: "14"
+  },
+  {
+    column: "WithholdingTaxPercentage",
+    required: "no",
+    description: "Withholding tax % of the invoice.",
+    format: "0, 1, 3 or 5",
+    example: "1"
+  },
+  {
+    column: "PaymentMethod",
+    required: "no",
+    description: "Collect payment when the invoice is created: into a cash/bank account, or from the customer's advance (the project must belong to the customer). Empty = unpaid. (Shipping Cost is no longer part of a Sales Invoice.)",
+    format: "account or advanced_payment",
+    example: ""
+  },
+  {
+    column: "PaymentAccountCode",
+    required: "conditional",
+    description: "Chart of Accounts code of the Cash / Cash Equivalent account - required when PaymentMethod is account (only then).",
+    format: "Existing cash/bank account code",
+    example: "11000001"
+  },
+  {
+    column: "Notes",
+    required: "no",
+    description: "Invoice notes.",
+    format: "Text",
+    example: "Sample sales invoice"
+  }
+];

@@ -129,6 +129,11 @@ const createProjectValidators = [
       return true;
     }),
 
+  // Customer payment terms - shape only; the rules that need the contract value / start date are
+  // checked by projectController.js#checkedCustomerTerms (utils/documentPaymentTerms.js).
+  check('customerPaymentTerms').optional({ nullable: true }).isObject().withMessage('Customer payment terms must be an object'),
+  // BOQ lines - shape only; the rules are in projectController.js#checkedBoqLines.
+  check('boqLines').optional().isArray().withMessage('BOQ lines must be a list'),
   validatorMiddleware,
 ];
 
@@ -168,6 +173,11 @@ const updateProjectValidators = [
       return true;
     }),
 
+  // Customer payment terms - shape only; the rules that need the contract value / start date are
+  // checked by projectController.js#checkedCustomerTerms (utils/documentPaymentTerms.js).
+  check('customerPaymentTerms').optional({ nullable: true }).isObject().withMessage('Customer payment terms must be an object'),
+  // BOQ lines - shape only; the rules are in projectController.js#checkedBoqLines.
+  check('boqLines').optional().isArray().withMessage('BOQ lines must be a list'),
   validatorMiddleware,
 ];
 

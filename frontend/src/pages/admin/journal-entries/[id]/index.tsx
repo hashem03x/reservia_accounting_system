@@ -17,7 +17,7 @@ import ErrorAlert from "@/components/ui/error-alert";
 import paths from "@/utils/constants/paths";
 import { JournalEntry, JournalLine } from "@/types/journal-entry";
 import { groupJournalLines } from "@/utils/helpers/journal-lines";
-import { displayModuleLabel } from "@/utils/helpers/accounting-labels";
+import { displayModuleLabel, entryClassification, entryClassificationLabel } from "@/utils/helpers/accounting-labels";
 import ReverseJournalEntryModal from "../_components/reverse-journal-entry-modal";
 import AttachmentsPanel from "@/components/global/attachments/attachments-panel";
 import { BASE_CURRENCY_CODE, formatRate, inverseRate } from "@/utils/helpers/currency-math";
@@ -171,6 +171,7 @@ export default function JournalEntryDetail() {
         <InfoCard label={translate("Date", "التاريخ")} value={formatDate(entry.date, language)} />
         <InfoCard label={translate("Source", "المصدر")} value={entry.source} />
         <InfoCard label={translate("Module", "الوحدة")} value={displayModuleLabel(entry.module, translate)} />
+        <InfoCard label={translate("Project / G&A", "مشروع / عمومية")} value={entryClassificationLabel(entryClassification(entry), translate)} />
         <InfoCard label={translate("Project", "المشروع")} value={entry.project?.projectNumber || "-"} />
         <InfoCard label={translate("Reference", "المرجع")} value={entry.reference || "-"} />
         <InfoCard label={translate("Currency", "العملة")} value={entryCurrency || BASE_CURRENCY_CODE} />

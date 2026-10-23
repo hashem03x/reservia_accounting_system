@@ -7,7 +7,7 @@ import useHasPermission from "@/hooks/useHasPermission";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
 import { Warehouse } from "@/types/warehouse";
-import { Button } from "@mantine/core";
+import { Button, Tabs } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
@@ -16,6 +16,7 @@ import EmptySection from "@/components/ui/sections/empty";
 import WarehouseCard from "./_components/warehouse-card";
 import WarehouseModal from "./_components/warehouse-modal";
 import DeleteWarehouseModal from "./_components/delete-warehouse-modal";
+import PucBalancesTab from "./_components/puc-balances-tab";
 
 export default function Warehouses() {
   const { translations, translate } = useLanguage();
@@ -59,28 +60,39 @@ export default function Warehouses() {
         border: true,
       }}
     >
-      {loading ? (
-        <LoadingSection message={translate("Loading Warehouses...", "جاري تحميل المخازن...")} />
-      ) : error ? (
-        <ErrorSection
-          errorTitle={translate("Error Loading Warehouses", "خطأ في تحميل المخازن")}
-          errorMessage={error}
-          button={{ text: translate("Retry", "إعادة المحاولة"), onClick: reFetch }}
-        />
-      ) : warehouses.length === 0 ? (
-        <EmptySection useDefaultImg message={translate("No Warehouses Found", "لا توجد مخازن")} />
-      ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {warehouses.map((warehouse) => (
-            <WarehouseCard
-              key={warehouse._id}
-              warehouse={warehouse}
-              openUpdateModal={canIUpdateWarehouses ? () => handleOpenUpdateModal(warehouse) : null}
-              openDeleteModal={canIDeleteWarehouses ? () => handleOpenDeleteModal(warehouse) : null}
+      <Tabs defaultValue="warehouses" keepMounted={false}>
+        <Tabs.List mb="md">
+          <Tabs.Tab value="warehouses">{translations.pages.warehouses}</Tabs.Tab>
+          <Tabs.Tab value="puc">{translate("PUC - Raw Materials", "مشروعات تحت التنفيذ - مواد خام")}</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="puc">
+          <PucBalancesTab />
+        </Tabs.Panel>
+        <Tabs.Panel value="warehouses">
+          {loading ? (
+            <LoadingSection message={translate("Loading Warehouses...", "جاري تحميل المخازن...")} />
+          ) : error ? (
+            <ErrorSection
+              errorTitle={translate("Error Loading Warehouses", "خطأ في تحميل المخازن")}
+              errorMessage={error}
+              button={{ text: translate("Retry", "إعادة المحاولة"), onClick: reFetch }}
             />
-          ))}
-        </div>
-      )}
+          ) : warehouses.length === 0 ? (
+            <EmptySection useDefaultImg message={translate("No Warehouses Found", "لا توجد مخازن")} />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {warehouses.map((warehouse) => (
+                <WarehouseCard
+                  key={warehouse._id}
+                  warehouse={warehouse}
+                  openUpdateModal={canIUpdateWarehouses ? () => handleOpenUpdateModal(warehouse) : null}
+                  openDeleteModal={canIDeleteWarehouses ? () => handleOpenDeleteModal(warehouse) : null}
+                />
+              ))}
+            </div>
+          )}
+        </Tabs.Panel>
+      </Tabs>
 
       {/* Modals */}
       <WarehouseModal

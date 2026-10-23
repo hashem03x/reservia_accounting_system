@@ -6,6 +6,8 @@ const { EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX, PaymentModes, WalletProviders } =
 const { isValidPhone } = require('./phoneValidator');
 const { PaymentTerms } = require('../paymentTerms');
 const { validatePaymentTermsConfig } = require('../paymentTermsConfig');
+const mongoose = require('mongoose');
+const { normalizeVendorPaymentAccounts, paymentInfoFromAccounts } = require('../vendorPaymentAccounts');
 
 // Payment Terms (docs section "Payment Terms for Customers and Vendors") - optional (defaults to
 // 'Net 30' at the schema level if omitted entirely), but `customPaymentDays` is required exactly
@@ -105,6 +107,32 @@ const taxAndBankInfoValidators = [
         .withMessage('SWIFT code must be a valid 8 or 11 character SWIFT/BIC code.'),
 ];
 
+// Vendor payment accounts (utils/vendorPaymentAccounts.js): validated and normalized here, and the
+// legacy single paymentInfo set to the primary account (updates use findByIdAndUpdate, so the
+// model's save hook does not run for them). On update, an account a payment record points at can
+// be deactivated but not removed, and an id that is not one of this vendor's accounts is refused.
+const paymentAccountsValidator = check('paymentAccounts')
+    .optional({ nullable: true })
+    .custom(async (value, { req }) => {
+        const { accounts, error } = normalizeVendorPaymentAccounts(value);
+        if (error) throw new Error(error);
+        if (req.params && req.params.id) {
+            const existing = await Vendor.findById(req.params.id).select('paymentAccounts').lean();
+            const existingIds = new Set(((existing && existing.paymentAccounts) || []).map(a => String(a._id)));
+            const unknown = accounts.find(a => a._id && !existingIds.has(String(a._id)));
+            if (unknown) throw new Error('A payment account in the request does not belong to this vendor.');
+            const kept = new Set(accounts.filter(a => a._id).map(a => String(a._id)));
+            const removed = ((existing && existing.paymentAccounts) || []).filter(a => !kept.has(String(a._id)));
+            if (removed.length) {
+                const used = await mongoose.connection.collection('payments').countDocuments({ 'vendorPaymentAccount.accountId': { $in: removed.map(a => a._id) } });
+                if (used) throw new Error(`A payment account that ${used} payment record(s) were sent to cannot be deleted - deactivate it instead.`);
+            }
+        }
+        req.body.paymentAccounts = accounts;
+        req.body.paymentInfo = paymentInfoFromAccounts(accounts);
+        return true;
+    });
+
 // CREATE: Validate required fields for creating a new vendor
 const createVendorValidators = [
     ...taxAndBankInfoValidators,
@@ -179,6 +207,7 @@ const createVendorValidators = [
     check('cashFlowActivity')
         .optional({ nullable: true })
         .isIn(['operating', 'investing', 'financing']).withMessage('Cash flow activity must be operating, investing or financing'),
+    paymentAccountsValidator,
         validatorMiddleware
 ];
 
@@ -201,6 +230,7 @@ const updateVendorValidators = [
     check('cashFlowActivity')
         .optional({ nullable: true })
         .isIn(['operating', 'investing', 'financing']).withMessage('Cash flow activity must be operating, investing or financing'),
+    paymentAccountsValidator,
     // Add other validators as needed
     validatorMiddleware,
   ];

@@ -29,6 +29,19 @@ function validateTypeSpecificFields(value, { req }) {
   return true;
 }
 
+// The Subcategory must belong to the product's Main Category - the one in this request, or (on an
+// update that leaves the category unchanged) the stored one.
+async function subcategoryBelongsToCategory(subcategoryId, { req }) {
+  const subcategory = await SubCategory.findById(subcategoryId).lean();
+  if (!subcategory) throw new Error(`No subcategory for this id ${subcategoryId}`);
+  let categoryId = req.body.category;
+  if (!categoryId && req.params?.id) categoryId = (await Product.findById(req.params.id).select('category').lean())?.category;
+  if (!categoryId) throw new Error('Choose the Main Category before its Subcategory');
+  const parent = subcategory.mainCategory?._id || subcategory.mainCategory;
+  if (String(parent) !== String(categoryId?._id || categoryId)) throw new Error('The selected Subcategory does not belong to the selected Main Category');
+  return true;
+}
+
 // Fast pre-check of a submitted PUC account against the one shared eligibility rule
 // (accountingConstants.js#isPucAccountEligible) - productModel.js's pre('save') hook is the real
 // backstop for saves; this is the ONLY check on updates, since updateProduct uses
@@ -57,13 +70,16 @@ exports.createProductValidator = [
   check('type').custom(validateTypeSpecificFields),
   // check('quantity').notEmpty().withMessage('product quantity is is required').isNumeric().withMessage('Product quantity must be number'),
   check('sold').optional().isNumeric().withMessage('product sales must be number'),
-  check('price').notEmpty().withMessage('Product price is required ').isNumeric().withMessage('Product price must be number').isLength({ max: 20 }).withMessage('Too long price'),
+  // Cost and price are optional (productModel.js#cost) - but never negative or non-numeric.
+  check('price').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0, max: 250000 }).withMessage('Product price must be a number between 0 and 250000'),
+  check('cost').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0 }).withMessage('Product cost must be a non-negative number'),
   check('priceAfterDiscount')
     .optional()
     .isFloat()
     .isNumeric()
     .withMessage('priceAfterDiscount must be a number')
     .custom((value, { req }) => {
+      if (req.body.price === undefined || req.body.price === null || req.body.price === '') throw new Error('A discounted price needs a price');
       if (req.body.price <= value) {
         throw new Error('priceAfterDiscount must be lower than price');
       }
@@ -81,16 +97,8 @@ exports.createProductValidator = [
         if (!category) return Promise.reject(new Error(`No category for this id ${categoryId}`));
       });
     }),
-  // Legacy, optional - no longer the required identification field (see productModel.js#brand).
-  check('subcategory')
-    .optional()
-    .isMongoId()
-    .withMessage('Invalid subcategory id formate')
-    .custom(async subcategoryId => {
-      await SubCategory.findById(subcategoryId).then(category => {
-        if (!category) return Promise.reject(new Error(`No subcategory for this id ${subcategoryId}`));
-      });
-    }),
+  // Second level of the hierarchy - optional, but must belong to the selected Main Category.
+  check('subcategory').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Invalid subcategory id formate').custom(subcategoryBelongsToCategory),
 
   // Required for products (enforced by validateTypeSpecificFields above); optional here only so
   // a service (which never has one) isn't forced through this check.
@@ -177,6 +185,9 @@ exports.updateProductValidator = [
     }),
   check('capacity.value').optional({ nullable: true }).isNumeric().withMessage('Capacity value must be a number'),
   check('capacity.unit').optional({ nullable: true }).isString().withMessage('Capacity unit must be a string'),
+  check('price').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0, max: 250000 }).withMessage('Product price must be a number between 0 and 250000'),
+  check('cost').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0 }).withMessage('Product cost must be a non-negative number'),
+  check('subcategory').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Invalid subcategory id formate').custom(subcategoryBelongsToCategory),
   check('brand')
     .optional()
     .isMongoId()

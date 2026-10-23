@@ -8,6 +8,7 @@ import { solidIcons } from "@/components/icons";
 import ErrorAlert from "@/components/ui/error-alert";
 import Modal from "@/components/ui/modal";
 import PaymentAccountSelect from "@/components/global/payment-account-select";
+import { VendorPaymentAccount, accountsForVendor, describeAccount } from "@/utils/helpers/vendor-payment-accounts";
 import { AdvancedPayment } from "@/types/advanced-payment";
 import { useOrder } from "../../../../context";
 
@@ -24,6 +25,10 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
   const [paymentSource, setPaymentSource] = useState<"account" | "advanced_payment">("account");
   const [paymentAccount, setPaymentAccount] = useState("");
   const [notes, setNotes] = useState<string>("");
+  // Optional: which of the vendor's own payment accounts (bank / InstaPay / wallet) the money was sent
+  // to - recorded on the payment as a snapshot; never changes the accounting entry.
+  const [vendorPaymentAccount, setVendorPaymentAccount] = useState("");
+  const [vendorAccounts, setVendorAccounts] = useState<VendorPaymentAccount[]>([]);
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
@@ -45,6 +50,20 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
   }, [paymentSource, vendorId]);
 
   const isAdvancedPayment = paymentSource === "advanced_payment";
+
+  const { privateRequest: fetchVendorRequest } = useDataHandler({ initialData: null });
+  useEffect(() => {
+    if (!opened || !vendorId) return;
+    fetchVendorRequest({ url: `vendors/${vendorId}`, language })
+      .then((res) => {
+        // Only saved (migrated) accounts have an id a payment can point at.
+        const active = accountsForVendor(res.data).filter((a) => a.isActive && a._id);
+        setVendorAccounts(active);
+        setVendorPaymentAccount(active.find((a) => a.isPrimary)?._id || "");
+      })
+      .catch(() => setVendorAccounts([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened, vendorId]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -105,6 +124,7 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
           amountPaid: amountPaid,
           paymentAccount: isAdvancedPayment ? undefined : paymentAccount,
           useAdvancedPayment: isAdvancedPayment || undefined,
+          vendorPaymentAccount: vendorPaymentAccount || undefined,
           notes,
         },
       });
@@ -184,6 +204,17 @@ export default function AddPaymentModal({ opened, close }: { opened: boolean; cl
             )
           ) : (
             <PaymentAccountSelect value={paymentAccount} onChange={setPaymentAccount} required />
+          )}
+
+          {vendorAccounts.length > 0 && (
+            <Select
+              label={translate("Paid to vendor account (optional)", "حساب المورد المحوَّل إليه (اختياري)")}
+              description={translate("The vendor's receiving account - the company account above is what the payment is recorded from.", "حساب الاستلام الخاص بالمورد - الحساب أعلاه هو حساب الشركة الذي تُسجل منه الدفعة.")}
+              value={vendorPaymentAccount || null}
+              onChange={(v) => setVendorPaymentAccount(v || "")}
+              data={vendorAccounts.map((a) => ({ value: a._id as string, label: `${describeAccount(a)}${a.isPrimary ? ` (${translate("primary", "أساسي")})` : ""}` }))}
+              clearable
+            />
           )}
 
           <Textarea

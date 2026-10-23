@@ -3,6 +3,7 @@ const factory = require('../handlersFactory');
 const Project = require('../../models/project/projectModel');
 const JournalEntry = require('../../models/accounting/journalEntryModel');
 const ApiError = require('../../utils/apiError');
+const mongoose = require('mongoose');
 const apiResponse = require('../../utils/apiResponse');
 const { destroyDocument } = require('../../middleware/documentUploadMiddleware');
 const { sendStoredDocument } = require('../documentController');
@@ -11,6 +12,58 @@ const { recalculateRemainingMoney, recalculateExecutedPercentage } = require('..
 const { getNextProjectNumber } = require('../../services/project/projectNumberService');
 const { resolveProjectSector } = require('../../services/project/sectorService');
 const { logAccountingEvent } = require('../../utils/accountingLogger');
+const { normalizeDocumentPaymentTerms, validateDocumentPaymentTerms } = require('../../utils/documentPaymentTerms');
+
+/**
+ * BOQ lines from a request (replace semantics, like averageCostLines): every line a real physical
+ * product, once per BOQ, quantity > 0, unit price >= 0, currency a configured active currency (EGP
+ * when omitted). A clear 400 for anything else.
+ */
+async function checkedBoqLines(lines) {
+  if (lines === undefined) return undefined;
+  if (!Array.isArray(lines)) throw new ApiError('BOQ lines must be a list.', 400);
+  const Product = require('../../models/inventory/productModel'); // eslint-disable-line global-require
+  const Currency = require('../../models/accounting/currencyModel'); // eslint-disable-line global-require
+  const ids = lines.map(l => String(l?.product || ''));
+  const products = new Map((await Product.find({ _id: { $in: ids.filter(id => mongoose.isValidObjectId(id)) } }).select('type title').lean()).map(pr => [String(pr._id), pr]));
+  const seen = new Set();
+  const result = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] || {};
+    const label = `BOQ line ${i + 1}`;
+    const product = products.get(String(line.product));
+    if (!product) throw new ApiError(`${label}: select a product from the catalog.`, 400);
+    if (product.type === 'service') throw new ApiError(`${label}: the BOQ material breakdown is for physical products - "${product.title?.en}" is a service.`, 400);
+    if (seen.has(String(line.product))) throw new ApiError(`${label}: "${product.title?.en}" is already in the BOQ - each product can appear once.`, 400);
+    seen.add(String(line.product));
+    const quantity = Number(line.quantity);
+    const unitPrice = Number(line.unitPrice);
+    if (!(quantity > 0)) throw new ApiError(`${label}: the BOQ quantity must be greater than 0.`, 400);
+    if (line.unitPrice === '' || line.unitPrice === null || line.unitPrice === undefined || !Number.isFinite(unitPrice) || unitPrice < 0) {
+      throw new ApiError(`${label}: the BOQ unit price is required and cannot be negative.`, 400);
+    }
+    const currency = (typeof line.currency === 'string' && line.currency.trim().toUpperCase()) || 'EGP';
+    if (currency !== 'EGP') {
+      const configured = await Currency.findOne({ code: currency }).select('isActive').lean();
+      if (!configured) throw new ApiError(`${label}: "${currency}" is not a configured currency.`, 400);
+      if (!configured.isActive) throw new ApiError(`${label}: the currency ${currency} is inactive.`, 400);
+    }
+    result.push({ product: line.product, quantity, unit: (line.unit || '').trim() || null, unitPrice, currency, notes: (line.notes || '').trim() || null });
+  }
+  return result;
+}
+
+// Customer payment terms of a project, checked against its contract value and start date (the
+// installments' tenor is counted from the start date) - a clear 400 here; projectModel.js has the
+// same rule as backstop. null/undefined = no terms.
+function checkedCustomerTerms(input, { contractValue, startDate }) {
+  const terms = normalizeDocumentPaymentTerms(input);
+  if (!terms) return terms;
+  if (terms.mode !== 'immediate' && !(Number(contractValue) > 0)) throw new ApiError('Customer payment terms need the project contract value.', 400);
+  const error = validateDocumentPaymentTerms(terms, { total: contractValue, issueDate: startDate });
+  if (error) throw new ApiError(`Customer payment terms: ${error}`, 400);
+  return terms;
+}
 
 // `averageCostLines[].recognizedAmount` (projectModel.js) is internal bookkeeping - only ever
 // advanced by accountingEventService.js#postProjectCostRecognitionJE once a posting actually
@@ -45,7 +98,7 @@ const createProject = asyncHandler(async (req, res, next) => {
   // projectNumberService.js, the same mechanism journalEntryNumberService.js uses, so concurrent
   // creates can never collide. Historical projects keep whatever number they already have; this
   // only changes how a NEW project's number is populated.
-  const { name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines } = req.body;
+  const { name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines, customerPaymentTerms, boqLines } = req.body;
 
   try {
     // The project number's prefix is derived from the project's SECTOR (docs section "Automatic
@@ -72,6 +125,8 @@ const createProject = asyncHandler(async (req, res, next) => {
       sector: canonicalSector,
       customer: customer || null,
       averageCostLines: sanitizeAverageCostLines(averageCostLines),
+      customerPaymentTerms: checkedCustomerTerms(customerPaymentTerms, { contractValue, startDate }),
+      boqLines: (await checkedBoqLines(boqLines)) || [],
       createdBy: req.user._id,
     });
 
@@ -99,7 +154,8 @@ const updateProject = asyncHandler(async (req, res, next) => {
   // executedPercentage are always derived (see projectAccountingService.js#
   // recalculateRemainingMoney / #recalculateExecutedPercentage). All three are silently ignored
   // rather than rejected, matching updateCustomer's existing partial-update convention.
-  const { name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines } = req.body;
+  const { name, description, contractValue, projectManager, startDate, deliveryDate, status, sector, customer, averageCostLines, customerPaymentTerms, boqLines } = req.body;
+  if (boqLines !== undefined) project.boqLines = await checkedBoqLines(boqLines);
   if (name !== undefined) project.name = name;
   if (description !== undefined) project.description = description;
   if (projectManager !== undefined) project.projectManager = projectManager;
@@ -114,6 +170,13 @@ const updateProject = asyncHandler(async (req, res, next) => {
 
   const contractValueChanged = contractValue !== undefined && contractValue !== project.contractValue;
   if (contractValue !== undefined) project.contractValue = contractValue;
+  // After contractValue/startDate above, so the terms are checked against the values being saved; a
+  // contract value change alone re-checks the existing terms too (fixed amounts cannot exceed it).
+  if (customerPaymentTerms !== undefined) {
+    project.customerPaymentTerms = checkedCustomerTerms(customerPaymentTerms, { contractValue: project.contractValue, startDate: project.startDate });
+  } else if (project.customerPaymentTerms && (contractValueChanged || startDate !== undefined)) {
+    checkedCustomerTerms(project.customerPaymentTerms.toObject(), { contractValue: project.contractValue, startDate: project.startDate });
+  }
 
   await project.save();
 

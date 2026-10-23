@@ -5,6 +5,7 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { userHasPermission } = require('../../middleware/hasPermission');
 const { Resources, Actions } = require('../appConstant');
 const { isValidRate } = require('../currencyMath');
+const { JournalEntryClassifications } = require('../accountingConstants');
 
 // Mirrors journalEntryModel.js's own `round2` - kept in sync deliberately rather than imported,
 // since the model doesn't export it; this is only ever used for this fast pre-check, the model's
@@ -74,6 +75,22 @@ const projectRequired = check('project').custom((value, { req }) => {
   return true;
 });
 
+// Project / G&A classification (client requirement "Create Journal Entry - Project or G&A"): the
+// user chooses explicitly. 'project' needs a project (checked above); 'ga' must not have one. A
+// request with a project and no classification is a Project entry; a request with NEITHER is
+// refused - an entry is never classified G&A just because its project is missing.
+const classificationRule = check('classification').custom((value, { req }) => {
+  const hasProject = !!req.body.project;
+  if (value === undefined || value === null || value === '') {
+    if (hasProject) return true;
+    throw new Error('Choose whether this journal entry is for a Project or G&A.');
+  }
+  if (!JournalEntryClassifications.includes(value)) throw new Error('Classification must be "project" or "ga".');
+  if (value === 'project' && !hasProject) throw new Error('A Project journal entry requires a project.');
+  if (value === 'ga' && hasProject) throw new Error('A G&A journal entry cannot have a project - choose Project instead, or remove the project.');
+  return true;
+});
+
 // Currency Manager: an optional transaction currency (3-letter code; omitted = EGP) and applied
 // rate (1 EGP = X units; omitted = the currency's rate on the entry date). Whether the code is a
 // configured, active currency is decided by currencyService.resolveEntryCurrency.
@@ -97,6 +114,7 @@ const createJournalEntryValidators = [
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('reference').optional().isString().trim().isLength({ max: 100 }),
   projectRequired,
+  classificationRule,
   check('lines').isArray({ min: 1 }).withMessage('A journal entry needs at least one line'),
   linesAreBalanced,
   ...lineValidators(),
@@ -112,6 +130,9 @@ const updateJournalEntryValidators = [
   // Existing Journal Entries": the new mandatory rule applies to new creation, not to editing a
   // pre-existing entry that may predate it.
   check('project').optional({ nullable: true }).isMongoId().withMessage('Invalid project id'),
+  // The classification of an existing entry is not changed through an edit (the model refuses one
+  // that contradicts the entry's project either way).
+  check('classification').not().exists().withMessage('The Project / G&A classification cannot be changed after creation'),
   check('lines').optional().isArray({ min: 1 }).withMessage('A journal entry needs at least one line'),
   linesAreBalanced,
   ...lineValidators(),

@@ -26,7 +26,7 @@ import PaginationHandler from "@/components/ui/pagination-handler";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
 import { ClickableRow } from "@/components/ui/clickable-row";
 import { solidIcons, outlineIcons } from "@/components/icons";
-import { displayModuleLabel } from "@/utils/helpers/accounting-labels";
+import { displayModuleLabel, entryClassification, entryClassificationLabel } from "@/utils/helpers/accounting-labels";
 import CreateJournalEntryModal from "./_components/create-journal-entry-modal";
 
 const ITEMS_PER_PAGE = import.meta.env.VITE_ITEMS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
@@ -61,6 +61,9 @@ export default function JournalEntries() {
   const [projectNumber, setProjectNumber] = useState(searchParams.get("projectNumber") || "");
   const [description, setDescription] = useState(searchParams.get("description") || "");
   const [status, setStatus] = useState(searchParams.get("status") || "");
+  const [classification, setClassification] = useState(searchParams.get("classification") || "");
+  const [currency, setCurrency] = useState(searchParams.get("currency") || "");
+  const [moduleFilter, setModuleFilter] = useState(searchParams.get("module") || "");
 
   const [debouncedAccountNumber] = useDebounce(accountNumber, 350);
   const [debouncedAccountName] = useDebounce(accountName, 350);
@@ -68,8 +71,24 @@ export default function JournalEntries() {
   const [debouncedProjectNumber] = useDebounce(projectNumber, 350);
   const [debouncedDescription] = useDebounce(description, 350);
   const [debouncedEntryNumber] = useDebounce(entryNumber, 350);
+  const [debouncedCurrency] = useDebounce(currency, 350);
 
   const [sort, setSort] = useState(searchParams.get("sort") || "entryNumber");
+  const sortOptions = [
+    { value: "entryNumber", label: translate("Entry number: old to new", "رقم القيد: من الأقدم للأحدث") },
+    { value: "-entryNumber", label: translate("Entry number: new to old", "رقم القيد: من الأحدث للأقدم") },
+    { value: "date", label: translate("Date: old to new", "التاريخ: من الأقدم للأحدث") },
+    { value: "-date", label: translate("Date: new to old", "التاريخ: من الأحدث للأقدم") },
+  ];
+  const moduleOptions = ["Manual", "Sales Order", "Purchase Order", "Payment", "Advanced Payment", "Project", "Expense", "Fixed Asset", "Equity", "Inventory"].map(
+    (m) => ({ value: m, label: displayModuleLabel(m, translate) }),
+  );
+  const classificationOptions = (["project", "ga", "unclassified"] as const).map((key) => ({ value: key, label: entryClassificationLabel(key, translate) }));
+  const statusOptions = [
+    { value: "draft", label: translate("Draft", "مسودة") },
+    { value: "posted", label: translate("Posted", "مرحّل") },
+    { value: "reversed", label: translate("Reversed", "ملغى") },
+  ];
 
   function toggleSort(field: SortField) {
     setSort((prev) => (prev === field ? `-${field}` : field));
@@ -90,6 +109,9 @@ export default function JournalEntries() {
     ...(debouncedProjectNumber ? { projectNumber: debouncedProjectNumber } : {}),
     ...(debouncedDescription ? { description: debouncedDescription } : {}),
     ...(status ? { status } : {}),
+    ...(classification ? { classification } : {}),
+    ...(debouncedCurrency.trim() ? { currency: debouncedCurrency.trim() } : {}),
+    ...(moduleFilter ? { module: moduleFilter } : {}),
   };
   const params = { page: activePage.toString(), sort, ...filterParams };
 
@@ -105,6 +127,9 @@ export default function JournalEntries() {
     setProjectNumber("");
     setDescription("");
     setStatus("");
+    setClassification("");
+    setCurrency("");
+    setModuleFilter("");
   }
 
   const { filtersChanged, updatePreviousFilters } = useHandlePreviousFilters(filterParams);
@@ -173,6 +198,9 @@ export default function JournalEntries() {
     debouncedProjectNumber,
     debouncedDescription,
     status,
+    classification,
+    debouncedCurrency,
+    moduleFilter,
   ]);
 
   const [createModalOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure();
@@ -199,7 +227,18 @@ export default function JournalEntries() {
             <outlineIcons.Trash />
           </Button>
         )}
-        <div className="relative ms-auto">
+        {/* Explicit oldest/newest order - the same server-side sort the column headers toggle, so it
+            always orders the WHOLE result set, never just the loaded page. */}
+        <Select
+          className="ms-auto w-[230px]"
+          aria-label={translate("Sort order", "ترتيب العرض")}
+          value={sortOptions.some((o) => o.value === sort) ? sort : null}
+          placeholder={translate("Custom column sort", "ترتيب حسب عمود")}
+          onChange={(v) => v && setSort(v)}
+          data={sortOptions}
+          allowDeselect={false}
+        />
+        <div className="relative">
           <Button variant="light" onClick={() => setShowFilters(!showFilters)}>
             <solidIcons.Filter className="me-1" />
             {translate("Filters", "الفلاتر")}
@@ -225,11 +264,14 @@ export default function JournalEntries() {
             label={translate("Status", "الحالة")}
             value={status || null}
             onChange={(v) => setStatus(v || "")}
-            data={[
-              { value: "draft", label: translate("Draft", "مسودة") },
-              { value: "posted", label: translate("Posted", "مرحّل") },
-              { value: "reversed", label: translate("Reversed", "ملغى") },
-            ]}
+            data={statusOptions}
+            clearable
+          />
+          <Select
+            label={translate("Project / G&A", "مشروع / عمومية")}
+            value={classification || null}
+            onChange={(v) => setClassification(v || "")}
+            data={classificationOptions}
             clearable
           />
           <TextInput
@@ -290,7 +332,7 @@ export default function JournalEntries() {
                 the Chart of Accounts table. Columns below are this page's own - only the
                 container/header/row presentation is shared. */}
             <DataTableContainer>
-              <DataTable className="min-w-[1200px]">
+              <DataTable className="min-w-[1320px]">
                 <Table.Thead className={dataTableHeadClassName}>
                   <Table.Tr>
                     <Table.Th className="cursor-pointer whitespace-nowrap" onClick={() => toggleSort("date")}>
@@ -300,6 +342,7 @@ export default function JournalEntries() {
                       {translate("Document Number", "رقم المستند")} {sortIndicator("entryNumber")}
                     </Table.Th>
                     <Table.Th className="whitespace-nowrap">{translate("Module", "الوحدة")}</Table.Th>
+                    <Table.Th className="whitespace-nowrap">{translate("Project / G&A", "مشروع / عمومية")}</Table.Th>
                     <Table.Th className="whitespace-nowrap">{translate("Project Number", "رقم المشروع")}</Table.Th>
                     <Table.Th className="whitespace-nowrap">{translate("Currency", "العملة")}</Table.Th>
                     <Table.Th className="whitespace-nowrap text-right">
@@ -321,6 +364,38 @@ export default function JournalEntries() {
                     <Table.Th>{translate("Description", "الوصف")}</Table.Th>
                     <Table.Th className="whitespace-nowrap">{translate("Status", "الحالة")}</Table.Th>
                   </Table.Tr>
+                  {/* Column filters, in the header itself - the same state as the Filters panel, so both
+                      always agree, and every filter runs on the server across all pages. */}
+                  <Table.Tr className="align-top">
+                    <Table.Th className="font-normal">
+                      <DateInput size="xs" placeholder={translate("From", "من")} aria-label={translate("Date From", "من تاريخ")} value={dateFrom} onChange={setDateFrom} clearable valueFormat="YYYY-MM-DD" />
+                    </Table.Th>
+                    <Table.Th className="font-normal">
+                      <TextInput size="xs" placeholder="#" aria-label={translate("Entry Number", "رقم القيد")} value={entryNumber} onChange={(e) => setEntryNumber(e.currentTarget.value)} />
+                    </Table.Th>
+                    <Table.Th className="font-normal">
+                      <Select size="xs" aria-label={translate("Module", "الوحدة")} placeholder={translate("All", "الكل")} value={moduleFilter || null} onChange={(v) => setModuleFilter(v || "")} data={moduleOptions} clearable comboboxProps={{ withinPortal: true }} />
+                    </Table.Th>
+                    <Table.Th className="font-normal">
+                      <Select size="xs" aria-label={translate("Project / G&A", "مشروع / عمومية")} placeholder={translate("All", "الكل")} value={classification || null} onChange={(v) => setClassification(v || "")} data={classificationOptions} clearable comboboxProps={{ withinPortal: true }} />
+                    </Table.Th>
+                    <Table.Th className="font-normal">
+                      <TextInput size="xs" placeholder={translate("Project No.", "رقم المشروع")} aria-label={translate("Project Number", "رقم المشروع")} value={projectNumber} onChange={(e) => setProjectNumber(e.currentTarget.value)} />
+                    </Table.Th>
+                    <Table.Th className="font-normal">
+                      <TextInput size="xs" placeholder="EGP" aria-label={translate("Currency", "العملة")} value={currency} onChange={(e) => setCurrency(e.currentTarget.value.toUpperCase())} maxLength={3} />
+                    </Table.Th>
+                    <Table.Th />
+                    <Table.Th />
+                    <Table.Th />
+                    <Table.Th />
+                    <Table.Th className="font-normal">
+                      <TextInput size="xs" placeholder={translate("Search", "بحث")} aria-label={translate("Description", "الوصف")} value={description} onChange={(e) => setDescription(e.currentTarget.value)} />
+                    </Table.Th>
+                    <Table.Th className="font-normal">
+                      <Select size="xs" aria-label={translate("Status", "الحالة")} placeholder={translate("All", "الكل")} value={status || null} onChange={(v) => setStatus(v || "")} data={statusOptions} clearable comboboxProps={{ withinPortal: true }} />
+                    </Table.Th>
+                  </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedEntries.data.map((entry) => {
@@ -338,6 +413,15 @@ export default function JournalEntries() {
                         <Table.Td className="whitespace-nowrap">{formatDate(entry.date, language)}</Table.Td>
                         <Table.Td className="whitespace-nowrap font-medium text-gray-800">{entry.entryNumber}</Table.Td>
                         <Table.Td className="whitespace-nowrap">{displayModuleLabel(entry.module, translate)}</Table.Td>
+                        <Table.Td className="whitespace-nowrap">
+                          <Badge
+                            size="sm"
+                            variant="light"
+                            color={{ project: "blue", ga: "grape", unclassified: "gray" }[entryClassification(entry)]}
+                          >
+                            {entryClassificationLabel(entryClassification(entry), translate)}
+                          </Badge>
+                        </Table.Td>
                         <Table.Td className="whitespace-nowrap">{entry.project?.projectNumber || "-"}</Table.Td>
                         <Table.Td className="whitespace-nowrap">{entry.currency || "-"}</Table.Td>
                         <Table.Td className="whitespace-nowrap text-right tabular-nums">

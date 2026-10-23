@@ -24,6 +24,10 @@ import ProjectContractSection from "../_components/project-contract-section";
 import ProjectCostAdjustmentSection from "../_components/project-cost-adjustment-section";
 import CustomerSearch from "@/components/global/customer-search";
 import AverageCostEditor from "../_components/average-cost-editor";
+import ProjectMaterialsSection from "../_components/project-materials-section";
+import BoqEditor, { BoqLineInput, boqLineIsComplete, boqPayload } from "../_components/boq-editor";
+import PaymentTermsEditor, { PaymentScheduleView } from "@/components/global/payment-terms-editor";
+import { DocumentPaymentTerms, toPaymentTermsPayload, validateDocumentPaymentTerms } from "@/utils/helpers/document-payment-terms";
 import SectorSelect from "@/components/global/sector-select";
 import ProjectManagerSelect from "@/components/global/project-manager-select";
 import { AdvancedPayment } from "@/types/advanced-payment";
@@ -106,6 +110,8 @@ export default function ProjectDetail() {
   const [deliveryDate, setDeliveryDate] = useState<Date | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [averageCostLines, setAverageCostLines] = useState<AverageCostLineInput[]>([]);
+  const [customerPaymentTerms, setCustomerPaymentTerms] = useState<DocumentPaymentTerms | null>(null);
+  const [boqLines, setBoqLines] = useState<BoqLineInput[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -129,6 +135,12 @@ export default function ProjectDetail() {
     setAverageCostLines(
       (project.averageCostLines || []).filter((l) => l.account).map((l) => ({ account: l.account!._id, amount: l.amount })),
     );
+    setCustomerPaymentTerms(project.customerPaymentTerms || null);
+    setBoqLines(
+      (project.boqLines || [])
+        .filter((l) => l.product)
+        .map((l) => ({ product: l.product!._id, productLabel: [translate(l.product!.title.en, l.product!.title.ar), l.product!.model].filter(Boolean).join(" - "), quantity: l.quantity, unit: l.unit || "", unitPrice: l.unitPrice, currency: l.currency || "EGP" })),
+    );
     setEditing(true);
   }
 
@@ -150,6 +162,8 @@ export default function ProjectDetail() {
           deliveryDate,
           customer: customer?._id || null,
           averageCostLines: cleanedAverageCostLines,
+          customerPaymentTerms: customerPaymentTerms ? toPaymentTermsPayload(customerPaymentTerms) : null,
+          boqLines: boqPayload(boqLines),
         },
         language,
       });
@@ -282,8 +296,28 @@ export default function ProjectDetail() {
 
           <AverageCostEditor lines={averageCostLines} setLines={setAverageCostLines} />
 
+          <BoqEditor lines={boqLines} setLines={setBoqLines} />
+
+          <h4>{translate("Customer Payment Terms", "شروط سداد العميل")}</h4>
+          <PaymentTermsEditor
+            value={customerPaymentTerms}
+            onChange={setCustomerPaymentTerms}
+            total={project.contractValue || 0}
+            issueDate={startDate}
+            issueDateLabel={translate("project start date", "تاريخ بدء المشروع")}
+            emptyLabel={translate("Not set", "غير محددة")}
+          />
+
           <div className="flex gap-2">
-            <Button loading={saving} disabled={!!editDeliveryBeforeStartError} onClick={handleSave}>
+            <Button
+              loading={saving}
+              disabled={
+                !!editDeliveryBeforeStartError ||
+                !!validateDocumentPaymentTerms(customerPaymentTerms, { total: project.contractValue || 0, issueDate: startDate }) ||
+                !boqLines.every(boqLineIsComplete)
+              }
+              onClick={handleSave}
+            >
               {translations.confirm}
             </Button>
             <Button variant="light" color="dark" onClick={() => setEditing(false)}>
@@ -358,6 +392,20 @@ export default function ProjectDetail() {
           )}
         </>
       )}
+
+      {!editing && (
+        <div className="mt-6 flex flex-col gap-2">
+          <h4>{translate("Customer Payment Terms", "شروط سداد العميل")}</h4>
+          <PaymentScheduleView
+            schedule={project.customerPaymentSchedule}
+            emptyText={translate("No customer payment terms set for this project.", "لا توجد شروط سداد للعميل لهذا المشروع.")}
+          />
+        </div>
+      )}
+
+      <div className="mt-6">
+        <ProjectMaterialsSection projectId={project._id} reloadKey={project.updatedAt} />
+      </div>
 
       <div className="mt-6">
         <ProjectContractSection project={project} onChange={(contract) => setProject({ ...project, contract })} />

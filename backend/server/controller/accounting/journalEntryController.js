@@ -19,7 +19,7 @@ const createJournalEntry = asyncHandler(async (req, res) => {
   // `project` is guaranteed either present-and-valid, or absent-and-the-user-is-authorized for a
   // "General" entry (journalEntries:createGeneral) by createJournalEntryValidators (RULE 2) by the
   // time this handler runs - never silently defaulted to null here.
-  const { date, description, reference, project, lines, currency, exchangeRate } = req.body;
+  const { date, description, reference, project, classification, lines, currency, exchangeRate } = req.body;
 
   // Transaction currency + applied rate, resolved and validated server-side (an omitted rate gets
   // the currency's rate effective on the entry date). Line amounts in the request are in that
@@ -38,6 +38,9 @@ const createJournalEntry = asyncHandler(async (req, res) => {
     description,
     reference,
     project,
+    // Explicit Project / G&A choice (validated by createJournalEntryValidators#classificationRule);
+    // a request with a project and no classification is a Project entry.
+    classification: classification || (project ? 'project' : null),
     // Every line gets the entry's Project and that Project's real Project Number (a client-typed
     // projectNumber is never trusted) - see journalEntryProjectService.js.
     lines: await applyEntryProjectToLines({ project, lines: convertedLines }),
@@ -114,7 +117,10 @@ function sanitizeSort(rawSort) {
 // documents (no document has a field by that name) and silently empties every result.
 const createJournalEntryFilterObject = asyncHandler(async (req, res, next) => {
   const filter = {};
-  const { entryNumber, dateFrom, dateTo, accountNumber, accountName, subAccount, projectNumber, description, debitMin, debitMax, creditMin, creditMax, status, isReversal } = req.query;
+  const { entryNumber, dateFrom, dateTo, accountNumber, accountName, subAccount, projectNumber, description, debitMin, debitMax, creditMin, creditMax, status, isReversal, classification, currency, module } = req.query;
+  // Clauses that need their own $or (classification, currency) - combined with $and so they never
+  // overwrite each other or the plain field filters.
+  const and = [];
 
   if (entryNumber) {
     filter.entryNumber = Number(entryNumber);
@@ -187,6 +193,35 @@ const createJournalEntryFilterObject = asyncHandler(async (req, res, next) => {
     filter.reversalOfEntry = isReversal === 'true' ? { $ne: null } : null;
     delete req.query.isReversal;
   }
+
+  // Project / G&A. An entry that predates the field reads as Project when it has a project; one
+  // without a project is "unclassified" - never counted as G&A.
+  if (classification) {
+    if (classification === 'project') and.push({ $or: [{ classification: 'project' }, { classification: null, project: { $ne: null } }] });
+    else if (classification === 'ga') and.push({ classification: 'ga' });
+    else if (classification === 'unclassified') and.push({ classification: null, project: null });
+    else and.push({ _id: null }); // unknown value: no rows, never every row
+    delete req.query.classification;
+  }
+
+  // Currency as the list shows it: the entry's transaction currency, or - for an entry recorded in
+  // EGP - the currency an imported line carries (legacy imported data, any letter case).
+  if (currency) {
+    const code = String(currency).trim().toUpperCase().replace(/[^A-Z]/g, '');
+    if (code === 'EGP') {
+      and.push({ currency: { $in: ['EGP', null] } }, { lines: { $not: { $elemMatch: { currency: { $nin: [null, '', 'EGP', 'egp'] } } } } });
+    } else {
+      and.push({ $or: [{ currency: code }, { currency: { $in: ['EGP', null] }, 'lines.currency': { $regex: '^' + code + '$', $options: 'i' } }] });
+    }
+    delete req.query.currency;
+  }
+
+  if (module) {
+    filter.module = module;
+    delete req.query.module;
+  }
+
+  if (and.length) filter.$and = and;
 
   // Defense in depth: apiFeatures.filter() (utils/apiFeatures.js) merges whatever is left in
   // req.query straight into the Mongo filter with NO field whitelist of its own - any leftover,

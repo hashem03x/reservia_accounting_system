@@ -107,6 +107,31 @@ const paymentInfoSchema = new Schema(
   { _id: false }
 );
 
+// One of a vendor's payment (settlement) accounts - see utils/vendorPaymentAccounts.js for the rules.
+// A vendor can have any number of them (several banks, InstaPay addresses, wallets). Each keeps its
+// own _id, so a payment record can say which one it was paid to.
+const vendorPaymentAccountSchema = new Schema(
+  {
+    type: { type: String, enum: ['bank', 'instapay', 'wallet'], required: true },
+    label: { type: String, trim: true, maxlength: 100 },
+    isPrimary: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
+    bank: {
+      bankName: { type: String, trim: true },
+      accountHolderName: { type: String, trim: true },
+      accountNumber: { type: String, trim: true },
+      iban: { type: String, trim: true, uppercase: true, validate: { validator: v => !v || EGYPTIAN_IBAN_REGEX.test(v), message: props => `"${props.value}" is not a valid Egyptian IBAN.` } },
+      swiftCode: { type: String, trim: true, uppercase: true, validate: { validator: v => !v || SWIFT_CODE_REGEX.test(v), message: props => `"${props.value}" is not a valid SWIFT/BIC code.` } },
+    },
+    instapay: { identifier: { type: String, trim: true } },
+    wallet: {
+      provider: { type: String, enum: [...WalletProviders, null], default: null },
+      identifier: { type: String, trim: true },
+    },
+  },
+  { _id: true, timestamps: true }
+);
+
 // Stable, bilingual-agnostic internal identifiers - the Arabic/English display label lives only in
 // the frontend's localized constants map, never in the database (see task requirement: "Do NOT use
 // Arabic strings as database enum values").
@@ -132,6 +157,7 @@ module.exports = {
   taxInfoSchema,
   bankInfoSchema,
   paymentInfoSchema,
+  vendorPaymentAccountSchema,
   PaymentModes,
   WalletProviders,
   businessDocumentSchema,

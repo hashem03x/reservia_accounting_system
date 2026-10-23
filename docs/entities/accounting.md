@@ -253,3 +253,25 @@ with a clear message (`server/test/accounting/projectAccounting.test.js`) rather
 code is correct and exercised against a real transactional database in production; it's the local
 dev database that lacks the capability. Confirmed with the project owner: intentionally left as-is
 rather than reconfiguring the shared local MongoDB service.
+
+### Journal Entry classification - Project or G&A
+
+`JournalEntry.classification` is `'project'` or `'ga'` (General & Administrative). Every new manual
+entry must choose one explicitly: a request with neither a project nor a classification is refused,
+because an entry is never classified G&A just because it has no project. `'project'` requires a
+project; `'ga'` must not have one. Both the validator and the model enforce this. G&A still needs
+the existing `journalEntries:createGeneral` permission.
+
+Automatic entries are `'project'` when they have a project and otherwise stay `null`. Reversals copy
+the original's classification. Older entries keep `null`: they read as Project when they have a
+project, and otherwise as "Unclassified". The list can be filtered with
+`classification=project|ga|unclassified`, and also by `currency` and `module`.
+
+### Accounts Receivable attribution
+
+A sales invoice's revenue and cost recognition entries (JV0010/JV0011) use the invoice's own
+customer as the Sub Account. They used to use the project's customer first, which put an invoice
+issued to another customer under the project's customer, while that invoice's payments went to the
+invoice customer. `npm run db:audit-ar-attribution` lists historical entries affected by the old
+rule. It is read-only; a correction is a reversal and re-post. AR lines with no Sub Account at all
+are listed by `npm run db:repair-sub-accounts`, which is report-only by default.

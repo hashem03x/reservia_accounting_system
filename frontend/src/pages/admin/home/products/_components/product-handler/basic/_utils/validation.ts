@@ -42,9 +42,16 @@ export default function validation(
   if (!titleAr) return translate(language, "Please provide a title in Arabic.", "يرجى إدخال عنوان بالعربية.");
   if (!descriptionEn) return translate(language, "An English description is required.", "مطلوب وصف بالإنجليزية.");
   if (!descriptionAr) return translate(language, "An Arabic description is required.", "مطلوب وصف بالعربية.");
-  if (!price) return translate(language, "Please specify a price for the product.", "يرجى تحديد سعر للمنتج.");
+  // Cost and price are NOT required to define a product or service (client requirement "Products -
+  // Cost and Price are not required") - but when entered they must be valid numbers.
+  if (price !== "" && (isNaN(+price) || +price < 0 || +price > 250000))
+    return translate(language, "The price must be a number between 0 and 250000.", "يجب أن يكون السعر رقمًا بين 0 و 250000.");
+  if (cost !== "" && (isNaN(+cost) || +cost < 0))
+    return translate(language, "The cost must be a positive number.", "يجب أن تكون التكلفة رقمًا موجبًا.");
   // priceAfterDiscount is optional, It can be a number between 0 and the original price. Or an empty string (which will be null in the server)
   if (priceAfterDiscount !== "") {
+    if (price === "")
+      return translate(language, "Enter the price before a discounted price.", "أدخل السعر قبل السعر بعد الخصم.");
     if (+priceAfterDiscount <= 0)
       return translate(
         language,
@@ -69,7 +76,6 @@ export default function validation(
     if (!pucAccount)
       return translate(language, "Please select the service's PUC account.", "يرجى اختيار حساب مشروعات تحت التنفيذ للخدمة.");
   } else {
-    if (!cost) return translate(language, "Please specify a cost for the product.", "يرجى تحديد تكلفة للمنتج.");
     if (!category)
       return translate(language, "Please specify a the main category for the product.", "يرجى تحديد الفئة الرئيسية للمنتج.");
     if (!brand)

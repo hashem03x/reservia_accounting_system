@@ -18,9 +18,20 @@ const productRefValidator = body('items.*.product')
     return true;
   });
 
+// Purchase Order payment terms / issue date - shape only here; the rules that need the order's
+// value (allocation <= 100% / <= value, lump-sum date >= issue date) are checked by the controller
+// against the computed total, with the model as backstop (utils/documentPaymentTerms.js).
+const termsValidators = [
+  body('issueDate').optional({ nullable: true }).isISO8601().withMessage('Invalid issue date'),
+  body('paymentTerms').optional({ nullable: true }).isObject().withMessage('Payment terms must be an object'),
+];
+
+// Every new line names a catalog product (its description is optional line notes) - see
+// requisitionController.js#buildItems, which also keeps a draft's unchanged legacy lines editable.
 const itemsValidators = [
   body('items').isArray({ min: 1 }).withMessage('A Purchase Order needs at least one line item.'),
-  body('items.*.description').notEmpty().withMessage('Each line needs a description'),
+  body('items.*.product').notEmpty().withMessage('Each line needs a product or service from the catalog'),
+  body('items.*.description').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
   body('items.*.quantity').isFloat({ gt: 0 }).withMessage('Quantity must be a positive number'),
   body('items.*.unitPrice').isFloat({ min: 0 }).withMessage('Unit price cannot be negative'),
   productRefValidator,
@@ -51,6 +62,7 @@ const createRequisitionValidators = [
     }),
 
   ...itemsValidators,
+  ...termsValidators,
 
   body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 2000 }),
 
@@ -79,10 +91,11 @@ const updateRequisitionValidators = [
     }),
 
   body('items').optional().isArray({ min: 1 }).withMessage('A Purchase Order needs at least one line item.'),
-  body('items.*.description').if(body('items').exists()).notEmpty().withMessage('Each line needs a description'),
+  body('items.*.description').if(body('items').exists()).optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
   body('items.*.quantity').if(body('items').exists()).isFloat({ gt: 0 }).withMessage('Quantity must be a positive number'),
   body('items.*.unitPrice').if(body('items').exists()).isFloat({ min: 0 }).withMessage('Unit price cannot be negative'),
   productRefValidator,
+  ...termsValidators,
 
   body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 2000 }),
 

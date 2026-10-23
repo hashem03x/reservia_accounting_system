@@ -35,6 +35,14 @@ const paymentSchema = Schema(
     // Accounts"). Validated for eligibility (type 'asset' + state 'cash'/'cash-equivalent') in the
     // pre('save') hook below, mirroring salesOrderModel.js's identical check.
     paymentAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
+    // Vendor payments: WHICH of the vendor's payment accounts (Vendor.paymentAccounts) the money was
+    // sent to - optional. A snapshot (type + masked description), so the record still reads correctly
+    // if the vendor later edits or deactivates that account. Never affects the accounting entry.
+    vendorPaymentAccount: {
+      accountId: { type: Schema.Types.ObjectId, default: null },
+      type: { type: String, enum: ['bank', 'instapay', 'wallet', null], default: null },
+      description: { type: String, trim: true, default: null },
+    },
     // The specific AdvancedPayment this payment was funded from (docs section "Add Payment -
     // Advanced Payment") - an alternative to `paymentAccount`, never both at once (see the
     // pre('save') backstop below). Resolved and set server-side (controller/PO/PaymentController.js)

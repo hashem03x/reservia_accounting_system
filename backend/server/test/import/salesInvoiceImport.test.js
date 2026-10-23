@@ -252,3 +252,12 @@ test('No accounting side effects from a failed/rejected import attempt', async t
   assert.equal(await JournalEntry.countDocuments({}), beforeEntries);
   assert.equal(await SalesOrder.countDocuments({}), beforeOrders);
 });
+
+test('Shipping Cost was removed from Sales Invoices: an old file still carrying a ShippingCost value is refused (never silently dropped); an empty column is harmless', async () => {
+  const withValue = `${customer.customerNumber},${project.projectNumber},${warehouse.name},${product.barcode},1,500,,,,,,,50,`;
+  const result = await previewGroupedImport(await writeTempCsv(`${HEADER}\nSINV-SHIP,${withValue}\n`), invoiceSchema);
+  assert.equal(result.validCount, 0);
+  const messages = result.errors.flatMap(r => r.errors.map(e => `${e.column}: ${e.message}`));
+  assert.ok(messages.some(m => /^ShippingCost: Shipping Cost is no longer part of a Sales Invoice/.test(m)), JSON.stringify(messages));
+  assert.ok(!invoiceSchema.headers.includes('ShippingCost'), 'not in the template any more');
+});

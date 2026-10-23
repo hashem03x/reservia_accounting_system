@@ -52,7 +52,7 @@ after(async () => {
 });
 
 let seq = 0;
-let vendor, project, manager;
+let vendor, project, manager, catalogProduct;
 
 beforeEach(async () => {
   await Promise.all(['requisitions', 'vendors', 'projects', 'users', 'journalentries', 'counters'].map(c => mongoose.connection.collection(c).deleteMany({})));
@@ -60,13 +60,23 @@ beforeEach(async () => {
   manager = await User.create({ name: 'Req Manager', email: `req-manager-${seq}@example.com`, role: 'admin', type: 'online' });
   vendor = await Vendor.create({ name: 'Requisition Vendor', contact: { phone: `010${Date.now()}${seq}`.slice(0, 11) } });
   project = await Project.create({ projectNumber: `REQ-PRJ-${seq}`, projectManager: manager._id, startDate: new Date('2026-01-01'), deliveryDate: new Date('2026-12-31') });
+  catalogProduct = await Product.create({
+    type: 'product',
+    title: { en: `Steel Bars ${seq}`, ar: `حديد ${seq}` },
+    description: { en: 'd', ar: 'د' },
+    category: new mongoose.Types.ObjectId(),
+    brand: new mongoose.Types.ObjectId(),
+  });
 });
+
+// Every new Purchase Order line names a catalog product (see requisitionController.js#buildItems).
+const line = (extra = {}) => ({ product: String(catalogProduct._id), description: 'Steel bars', quantity: 10, unitPrice: 100, unit: 'ton', ...extra });
 
 function baseBody(overrides = {}) {
   return {
     vendorId: String(vendor._id),
     project: String(project._id),
-    items: [{ description: 'Steel bars', quantity: 10, unitPrice: 100, unit: 'ton' }],
+    items: [line()],
     ...overrides,
   };
 }
@@ -89,8 +99,8 @@ test('createRequisition: amount sums multiple line items correctly', async () =>
   const res = await callHandler(requisitionController.createRequisition, {
     body: baseBody({
       items: [
-        { description: 'Line A', quantity: 2, unitPrice: 50 }, // 100
-        { description: 'Line B', quantity: 3, unitPrice: 25 }, // 75
+        line({ description: 'Line A', quantity: 2, unitPrice: 50 }), // 100
+        line({ description: 'Line B', quantity: 3, unitPrice: 25 }), // 75
       ],
     }),
     user: manager,
@@ -100,7 +110,7 @@ test('createRequisition: amount sums multiple line items correctly', async () =>
 
 test('createRequisition: a zero-quantity or zero-price item is rejected (never a silently-zero line)', async () => {
   await assert.rejects(() =>
-    callHandler(requisitionController.createRequisition, { body: baseBody({ items: [{ description: 'Bad', quantity: 0, unitPrice: 10 }] }), user: manager })
+    callHandler(requisitionController.createRequisition, { body: baseBody({ items: [line({ description: 'Bad', quantity: 0, unitPrice: 10 })] }), user: manager })
   );
 });
 
@@ -125,7 +135,7 @@ test('a fresh Requisition (0 invoiced): remainingAmount = amount, executedPercen
 test('a zero-amount Requisition never produces an invalid/NaN/Infinity percentage', async () => {
   // Not realistically createable (unitPrice/quantity must be positive), but guard the derived
   // formula itself directly against amount === 0.
-  const req = new Requisition({ vendorId: vendor._id, project: project._id, items: [{ description: 'x', quantity: 1, unitPrice: 0.0001 }] });
+  const req = new Requisition({ vendorId: vendor._id, project: project._id, items: [{ product: catalogProduct._id, description: 'x', quantity: 1, unitPrice: 0.0001 }] });
   req.amount = 0; // force, bypassing the normal computed path, to test the derived-field guard itself
   const json = req.toJSON();
   assert.equal(json.executedPercentage, 0);
@@ -200,22 +210,125 @@ test('createRequisition: a line item can reference a real catalog Product; it is
   assert.equal(String(reloaded.items[0].product._id), String(product._id), 'the product reference must survive a reload (populated by the pre(/^find/) hook)');
 });
 
-test('createRequisition: items without a product reference still work - the description stays the canonical, required field', async () => {
-  const res = await callHandler(requisitionController.createRequisition, { body: baseBody(), user: manager });
-  assert.equal(res.status, 201);
-  assert.equal(res.body.data.items[0].product, null);
+test('createRequisition: a new line must name a catalog product - free text is never a substitute; the description becomes optional notes', async () => {
+  await assert.rejects(
+    () => callHandler(requisitionController.createRequisition, { body: baseBody({ items: [{ description: 'Steel bars', quantity: 1, unitPrice: 10 }] }), user: manager }),
+    /Line 1: select a product or service from the catalog/
+  );
+  await assert.rejects(
+    () => callHandler(requisitionController.createRequisition, { body: baseBody({ items: [line({ product: String(new mongoose.Types.ObjectId()) })] }), user: manager }),
+    /does not exist/
+  );
+  // No notes typed: the line is described by the product's name.
+  const res = await callHandler(requisitionController.createRequisition, { body: baseBody({ items: [line({ description: '' })] }), user: manager });
+  assert.equal(res.body.data.items[0].description, catalogProduct.title.en);
+});
+
+test('updateRequisition: a legacy description-only line stays readable and editable unchanged, but a new free-text line is refused', async () => {
+  // A Purchase Order created before the product rule (or CSV-imported) - written directly.
+  const legacy = await Requisition.create({ vendorId: vendor._id, project: project._id, items: [{ description: 'Old free-text line', quantity: 2, unitPrice: 50 }] });
+  const id = String(legacy._id);
+
+  const kept = await callHandler(requisitionController.updateRequisition, {
+    params: { id },
+    body: { items: [{ description: 'Old free-text line', quantity: 3, unitPrice: 50 }, line({ quantity: 1, unitPrice: 10 })] },
+  });
+  assert.equal(kept.body.data.amount, 160);
+  assert.equal(kept.body.data.items[0].description, 'Old free-text line');
+  assert.equal(kept.body.data.items[0].product, null);
+
+  await assert.rejects(
+    () => callHandler(requisitionController.updateRequisition, { params: { id }, body: { items: [{ description: 'A brand new free-text line', quantity: 1, unitPrice: 1 }] } }),
+    /select a product or service from the catalog/
+  );
 });
 
 test('updateRequisition: a draft can be edited (items recomputed); an open one cannot', async () => {
   const created = await callHandler(requisitionController.createRequisition, { body: baseBody(), user: manager });
   const id = String(created.body.data._id);
 
-  const updated = await callHandler(requisitionController.updateRequisition, { params: { id }, body: { items: [{ description: 'New line', quantity: 1, unitPrice: 500 }] } });
+  const updated = await callHandler(requisitionController.updateRequisition, { params: { id }, body: { items: [line({ description: 'New line', quantity: 1, unitPrice: 500 })] } });
   assert.equal(updated.body.data.amount, 500);
 
   await callHandler(requisitionController.openRequisition, { params: { id } });
   await assert.rejects(
-    () => callHandler(requisitionController.updateRequisition, { params: { id }, body: { items: [{ description: 'x', quantity: 1, unitPrice: 1 }] } }),
+    () => callHandler(requisitionController.updateRequisition, { params: { id }, body: { items: [line({ description: 'x', quantity: 1, unitPrice: 1 })] } }),
     /Only a draft/
+  );
+});
+
+// ===================== Purchase Order payment terms (client requirement "Vendor Payment Terms and
+// Installments") - utils/documentPaymentTerms.js =====================
+
+const create = async body => (await callHandler(requisitionController.createRequisition, { body: baseBody(body), user: manager })).body.data.toJSON();
+const day = iso => new Date(`${iso}T00:00:00.000Z`).getTime();
+
+test('payment terms: no terms given -> the vendor default terms are snapshotted; immediate = 100% on the issue date', async () => {
+  const immediate = await create({ issueDate: '2026-03-01' });
+  assert.equal(immediate.paymentTerms.mode, 'immediate');
+  assert.equal(immediate.paymentSchedule.rows.length, 1);
+  assert.equal(immediate.paymentSchedule.rows[0].amount, 1000);
+  assert.equal(new Date(immediate.paymentSchedule.rows[0].dueDate).getTime(), day('2026-03-01'));
+
+  await Vendor.updateOne({ _id: vendor._id }, { $set: { paymentTermsConfig: { kind: 'installments', installments: [{ durationDays: 30, percentage: 40 }, { durationDays: 60, percentage: 60 }] } } });
+  const fromVendor = await create({ issueDate: '2026-03-01' });
+  assert.equal(fromVendor.paymentTerms.mode, 'installments');
+  assert.deepEqual(fromVendor.paymentSchedule.rows.map(r => [r.percentage, r.amount, r.tenorDays]), [[40, 400, 30], [60, 600, 60]]);
+});
+
+test('payment terms: three installments (percentage and fixed amount) each have a description, tenor from the PO issue date and due date; the remainder is unallocated', async () => {
+  const po = await create({
+    issueDate: '2026-04-01',
+    paymentTerms: {
+      mode: 'installments',
+      installments: [
+        { description: 'Advance', basis: 'percentage', percentage: 30, tenorDays: 0 },
+        { description: 'On delivery', basis: 'amount', amount: 250, tenorDays: 30 },
+        { description: 'Retention', basis: 'percentage', percentage: 10, tenorDays: 90 },
+      ],
+    },
+  });
+  const { rows, allocatedAmount, allocatedPercentage, unallocatedAmount } = po.paymentSchedule;
+  assert.deepEqual(rows.map(r => r.description), ['Advance', 'On delivery', 'Retention']);
+  assert.deepEqual(rows.map(r => r.amount), [300, 250, 100]);
+  assert.deepEqual(rows.map(r => new Date(r.dueDate).getTime()), [day('2026-04-01'), day('2026-05-01'), day('2026-06-30')]);
+  assert.equal(allocatedAmount, 650);
+  assert.equal(allocatedPercentage, 65);
+  assert.equal(unallocatedAmount, 350);
+  assert.equal(await JournalEntry.countDocuments({}), 0, 'a payment schedule never posts anything');
+});
+
+test('payment terms: allocations above 100% or above the PO value, missing descriptions, negative values and a lump-sum date before the issue date are refused', async () => {
+  const bad = paymentTerms => assert.rejects(() => callHandler(requisitionController.createRequisition, { body: baseBody({ issueDate: '2026-04-01', paymentTerms }), user: manager }));
+  const row = extra => ({ description: 'Part', basis: 'percentage', percentage: 50, tenorDays: 30, ...extra });
+  await bad({ mode: 'installments', installments: [row(), row({ percentage: 60 })] });
+  await bad({ mode: 'installments', installments: [row({ basis: 'amount', amount: 900, percentage: undefined }), row({ basis: 'amount', amount: 200, percentage: undefined })] });
+  await bad({ mode: 'installments', installments: [row({ description: '  ' })] });
+  await bad({ mode: 'installments', installments: [row({ percentage: -5 })] });
+  await bad({ mode: 'installments', installments: [row({ tenorDays: -1 })] });
+  await bad({ mode: 'installments', installments: [] });
+  await bad({ mode: 'lump_sum', lumpSumDueDate: '2026-03-01' });
+  await bad({ mode: 'weekly' });
+  assert.equal(await Requisition.countDocuments({}), 0, 'nothing is saved for an invalid schedule');
+
+  const lump = await create({ issueDate: '2026-04-01', paymentTerms: { mode: 'lump_sum', lumpSumDueDate: '2026-06-15' } });
+  assert.deepEqual(lump.paymentSchedule.rows.map(r => [r.percentage, r.amount, r.tenorDays]), [[100, 1000, 75]]);
+});
+
+test('payment terms: rounding - 100% in percentages reconciles to the cent (last row absorbs it); a PO value change recalculates percentages but cannot push fixed amounts over the value', async () => {
+  const thirds = { mode: 'installments', installments: [1, 2, 3].map(i => ({ description: `Third ${i}`, basis: 'percentage', percentage: 33.3333, tenorDays: i * 30 })) };
+  thirds.installments[2].percentage = 33.3334;
+  const po = await create({ items: [line({ quantity: 1, unitPrice: 100 })], paymentTerms: thirds });
+  assert.deepEqual(po.paymentSchedule.rows.map(r => r.amount), [33.33, 33.33, 33.34]);
+  assert.equal(po.paymentSchedule.allocatedAmount, 100);
+
+  const id = String(po._id);
+  const raised = (await callHandler(requisitionController.updateRequisition, { params: { id }, body: { items: [line({ quantity: 3, unitPrice: 100 })] } })).body.data.toJSON();
+  assert.deepEqual(raised.paymentSchedule.rows.map(r => r.amount), [100, 100, 100], 'percentages follow the new value');
+
+  const fixed = await create({ items: [line({ quantity: 1, unitPrice: 500 })], paymentTerms: { mode: 'installments', installments: [{ description: 'Fixed', basis: 'amount', amount: 400, tenorDays: 10 }] } });
+  await assert.rejects(
+    () => callHandler(requisitionController.updateRequisition, { params: { id: String(fixed._id) }, body: { items: [line({ quantity: 1, unitPrice: 300 })] } }),
+    /more than the total value|cannot exceed 100%/
   );
 });

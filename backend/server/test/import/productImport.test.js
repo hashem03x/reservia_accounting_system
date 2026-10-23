@@ -193,9 +193,9 @@ test('8. Duplicate TitleEn/TitleAr against an EXISTING product is rejected at pr
 });
 
 test('9. Missing required CSV header is rejected', async () => {
-  const badHeader = HEADER.replace('Price,', '');
+  const badHeader = HEADER.replace('Type,', '');
   const file = await writeTempCsv(`${badHeader}\nCopper Cable,كابل نحاس,d,د,product,90,Electrical Materials,ACME,,,,,,,,,,,,\n`);
-  await assert.rejects(() => previewImport(file, productSchema), /missing required column.*Price/i);
+  await assert.rejects(() => previewImport(file, productSchema), /missing required column.*Type/i);
 });
 
 test('10. An empty CSV file (header only, no data rows) is rejected', async () => {

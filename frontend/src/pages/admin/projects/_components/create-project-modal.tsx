@@ -13,6 +13,8 @@ import SectorSelect from "@/components/global/sector-select";
 import CustomerSearch from "@/components/global/customer-search";
 import AverageCostEditor from "./average-cost-editor";
 import ProjectManagerSelect from "@/components/global/project-manager-select";
+import PaymentTermsEditor from "@/components/global/payment-terms-editor";
+import { DocumentPaymentTerms, toPaymentTermsPayload, validateDocumentPaymentTerms } from "@/utils/helpers/document-payment-terms";
 
 export default function CreateProjectModal({
   opened,
@@ -35,6 +37,9 @@ export default function CreateProjectModal({
   const [sector, setSector] = useState("");
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [averageCostLines, setAverageCostLines] = useState<AverageCostLineInput[]>([]);
+  // Customer payment terms (optional) - tenor counted from the start date, against the contract value.
+  const [customerPaymentTerms, setCustomerPaymentTerms] = useState<DocumentPaymentTerms | null>(null);
+  const termsError = validateDocumentPaymentTerms(customerPaymentTerms, { total: Number(contractValue) || 0, issueDate: startDate });
 
   const { loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
@@ -76,6 +81,7 @@ export default function CreateProjectModal({
           sector,
           customer: customer._id,
           averageCostLines: cleanedAverageCostLines,
+          ...(customerPaymentTerms ? { customerPaymentTerms: toPaymentTermsPayload(customerPaymentTerms) } : {}),
         },
       });
 
@@ -96,6 +102,7 @@ export default function CreateProjectModal({
       setSector("");
       setCustomer(null);
       setAverageCostLines([]);
+      setCustomerPaymentTerms(null);
       setError("");
     }, 250);
   }
@@ -171,7 +178,16 @@ export default function CreateProjectModal({
 
         <AverageCostEditor lines={averageCostLines} setLines={setAverageCostLines} />
 
-        <Button type="submit" loading={loading} disabled={!!deliveryBeforeStartError || !customer || !sector} mt="md">
+        <PaymentTermsEditor
+          value={customerPaymentTerms}
+          onChange={setCustomerPaymentTerms}
+          total={Number(contractValue) || 0}
+          issueDate={startDate}
+          issueDateLabel={translate("project start date", "تاريخ بدء المشروع")}
+          emptyLabel={translate("Not set", "غير محددة")}
+        />
+
+        <Button type="submit" loading={loading} disabled={!!deliveryBeforeStartError || !customer || !sector || !!termsError} mt="md">
           {translate("Create Project", "إنشاء مشروع")}
         </Button>
       </form>

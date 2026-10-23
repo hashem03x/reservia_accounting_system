@@ -1,5 +1,6 @@
 const Product = require('../../../models/inventory/productModel');
 const Category = require('../../../models/categoryModel');
+const SubCategory = require('../../../models/subCategoryModel');
 const Brand = require('../../../models/brandModel');
 const Warehouse = require('../../../models/inventory/warehouseModel');
 const ChartOfAccount = require('../../../models/accounting/chartOfAccountModel');
@@ -26,6 +27,7 @@ exports.headers = [
   'PriceAfterDiscount',
   'Cost',
   'CategoryName',
+  'SubcategoryName',
   'BrandName',
   'Model',
   'Specifications',
@@ -41,7 +43,7 @@ exports.headers = [
   'IsAvailable',
 ];
 
-exports.requiredHeaders = ['TitleEn', 'TitleAr', 'DescriptionEn', 'DescriptionAr', 'Type', 'Price'];
+exports.requiredHeaders = ['TitleEn', 'TitleAr', 'DescriptionEn', 'DescriptionAr', 'Type'];
 
 // Two example rows - one physical product, one service - so both supported `Type` values and
 // which columns apply to each are obvious from the template itself (docs section "Product CSV
@@ -61,6 +63,7 @@ exports.exampleRows = [
     '',
     '90',
     'Electrical Materials',
+    'Cables',
     'ACME',
     'PX-200',
     'Stainless steel, 2-inch inlet',
@@ -82,6 +85,7 @@ exports.exampleRows = [
     'خدمة تركيب كهربائي في الموقع',
     'service',
     '500',
+    '',
     '',
     '',
     '',
@@ -133,6 +137,7 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
   const priceAfterDiscountRaw = (row.PriceAfterDiscount || '').trim();
   const costRaw = (row.Cost || '').trim();
   const categoryNameRaw = (row.CategoryName || '').trim();
+  const subcategoryNameRaw = (row.SubcategoryName || '').trim();
   const brandNameRaw = (row.BrandName || '').trim();
   const modelRaw = (row.Model || '').trim();
   const specificationsRaw = (row.Specifications || '').trim();
@@ -162,10 +167,9 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
     errors.push({ column: 'TitleAr', value: row.TitleAr, message: 'A product/service with this Arabic title already exists.' });
   }
 
+  // Price is optional (a product/service can be defined before it is priced) - productModel.js#cost.
   let price;
-  if (!priceRaw) {
-    errors.push({ column: 'Price', value: row.Price, message: 'Price is required.' });
-  } else {
+  if (priceRaw) {
     price = Number(priceRaw);
     if (Number.isNaN(price) || price < 0) {
       errors.push({ column: 'Price', value: row.Price, message: 'Price must be a non-negative number.' });
@@ -217,6 +221,7 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
   }
 
   let category = null;
+  let subcategory = null;
   let brand = null;
   let cost;
   let warehouse = null;
@@ -230,7 +235,9 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
     // A service has no inventory/cost/category concept (productModel.js, productTypeValidation.js)
     // - reject any attempt to smuggle those in via the CSV instead of silently ignoring them.
     if (costRaw) errors.push({ column: 'Cost', value: row.Cost, message: 'Cost does not apply to a service - leave it blank.' });
+    // Service classification is pending client confirmation - unchanged: no category for a service.
     if (categoryNameRaw) errors.push({ column: 'CategoryName', value: row.CategoryName, message: 'CategoryName does not apply to a service - leave it blank.' });
+    if (subcategoryNameRaw) errors.push({ column: 'SubcategoryName', value: row.SubcategoryName, message: 'SubcategoryName does not apply to a service - leave it blank.' });
     if (brandNameRaw) errors.push({ column: 'BrandName', value: row.BrandName, message: 'BrandName does not apply to a service - leave it blank.' });
     if (modelRaw) errors.push({ column: 'Model', value: row.Model, message: 'Model does not apply to a service - leave it blank.' });
     if (specificationsRaw) errors.push({ column: 'Specifications', value: row.Specifications, message: 'Specifications does not apply to a service - leave it blank.' });
@@ -269,21 +276,15 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
     if (durationValueRaw) errors.push({ column: 'DurationValue', value: row.DurationValue, message: 'DurationValue does not apply to a product - leave it blank.' });
     if (pucAccountCodeRaw) errors.push({ column: 'PucAccountCode', value: row.PucAccountCode, message: 'PucAccountCode does not apply to a product - leave it blank.' });
 
-    if (!costRaw) {
-      errors.push({ column: 'Cost', value: row.Cost, message: 'Cost is required for a product.' });
-    } else {
+    // Cost is optional (set by the first purchase if left blank) - productModel.js#cost.
+    if (costRaw) {
       cost = Number(costRaw);
       if (Number.isNaN(cost) || cost < 0) {
         errors.push({ column: 'Cost', value: row.Cost, message: 'Cost must be a non-negative number.' });
       }
     }
 
-    if (!categoryNameRaw) {
-      errors.push({ column: 'CategoryName', value: row.CategoryName, message: 'CategoryName is required for a product.' });
-    } else {
-      category = await Category.findOne({ 'name.en': categoryNameRaw });
-      if (!category) errors.push({ column: 'CategoryName', value: row.CategoryName, message: `No category found named "${categoryNameRaw}".` });
-    }
+    if (!categoryNameRaw) errors.push({ column: 'CategoryName', value: row.CategoryName, message: 'CategoryName is required for a product.' });
 
     if (!brandNameRaw) {
       errors.push({ column: 'BrandName', value: row.BrandName, message: 'BrandName is required for a product.' });
@@ -310,6 +311,21 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
     }
   }
 
+  // Main Category + Subcategory of a product (a service row was refused above if it had them): the
+  // Subcategory (optional) must belong to the Main Category.
+  if (type !== 'service' && categoryNameRaw) {
+    category = await Category.findOne({ 'name.en': categoryNameRaw });
+    if (!category) errors.push({ column: 'CategoryName', value: row.CategoryName, message: `No category found named "${categoryNameRaw}".` });
+  }
+  if (type !== 'service' && subcategoryNameRaw) {
+    if (!categoryNameRaw) {
+      errors.push({ column: 'SubcategoryName', value: row.SubcategoryName, message: 'SubcategoryName needs a CategoryName.' });
+    } else if (category) {
+      subcategory = await SubCategory.findOne({ 'name.en': subcategoryNameRaw, mainCategory: category._id });
+      if (!subcategory) errors.push({ column: 'SubcategoryName', value: row.SubcategoryName, message: `No subcategory named "${subcategoryNameRaw}" under category "${categoryNameRaw}".` });
+    }
+  }
+
   if (errors.length > 0) return { errors, value: null };
 
   return {
@@ -318,8 +334,10 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
       type,
       title: { en: titleEn, ar: titleAr },
       description: { en: descriptionEn, ar: descriptionAr },
-      price,
+      ...(price !== undefined ? { price } : {}),
       priceAfterDiscount: priceAfterDiscount ?? null,
+      ...(category ? { category: category._id } : {}),
+      ...(subcategory ? { subcategory: subcategory._id } : {}),
       isAvailable,
       ...(capacityValue !== undefined ? { capacity: { value: capacityValue, unit: capacityUnitRaw } } : {}),
       sku: sku || undefined,
@@ -331,8 +349,7 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
             pucAccount: pucAccount._id,
           }
         : {
-            cost,
-            category: category._id,
+            ...(cost !== undefined ? { cost } : {}),
             brand: brand._id,
             model: modelRaw || undefined,
             specifications: specificationsRaw || undefined,
@@ -357,3 +374,172 @@ exports.dedupeKeys = [
 exports.createOne = async function createOne(value, context) {
   return Product.create({ ...value, createdBy: context?.userId });
 };
+
+// Format guide of every column (utils/csvImport/formatGuide.js - downloaded from the import screen as
+// a separate file, never mixed into the data template). Kept beside the validation above, and
+// test/import/importFormatGuides.test.js fails if these and the real columns ever disagree.
+// required: 'yes' (column and value required) | 'no' | 'conditional' (see the description).
+exports.fieldSpecs = [
+  {
+    column: "TitleEn",
+    required: "yes",
+    description: "English name - must be unique.",
+    format: "Text",
+    example: "Copper Cable"
+  },
+  {
+    column: "TitleAr",
+    required: "yes",
+    description: "Arabic name - must be unique.",
+    format: "Text",
+    example: "كابل نحاس"
+  },
+  {
+    column: "DescriptionEn",
+    required: "yes",
+    description: "English description.",
+    format: "Text",
+    example: "Electrical cable, 10mm"
+  },
+  {
+    column: "DescriptionAr",
+    required: "yes",
+    description: "Arabic description.",
+    format: "Text",
+    example: "كابل كهربائي 10 مم"
+  },
+  {
+    column: "Type",
+    required: "yes",
+    description: "Physical product or service.",
+    format: "product or service",
+    example: "product"
+  },
+  {
+    column: "Price",
+    required: "no",
+    description: "Selling price - optional (a product can be defined before it is priced).",
+    format: "Number (EGP), up to 2 decimals, no separators or currency symbol, 0 - 250000",
+    example: "150"
+  },
+  {
+    column: "PriceAfterDiscount",
+    required: "no",
+    description: "Discounted price - must be lower than Price.",
+    format: "Number (EGP), up to 2 decimals, no separators or currency symbol",
+    example: "140"
+  },
+  {
+    column: "Cost",
+    required: "no",
+    description: "Products only, optional - if empty, the first purchase sets it. Leave empty for a service.",
+    format: "Number (EGP), up to 2 decimals, no separators or currency symbol, >= 0",
+    example: "90"
+  },
+  {
+    column: "CategoryName",
+    required: "conditional",
+    description: "Main Category (English name, must exist) - required for a product; leave empty for a service.",
+    format: "Existing category name",
+    example: "Electrical Materials"
+  },
+  {
+    column: "SubcategoryName",
+    required: "no",
+    description: "Subcategory (English name) - products only, must belong to CategoryName.",
+    format: "Existing subcategory of that category",
+    example: "Cables"
+  },
+  {
+    column: "BrandName",
+    required: "conditional",
+    description: "Brand (English name, must exist) - required for a product; leave empty for a service.",
+    format: "Existing brand name",
+    example: "ACME"
+  },
+  {
+    column: "Model",
+    required: "no",
+    description: "Model / item number - products only.",
+    format: "Text",
+    example: "PX-200"
+  },
+  {
+    column: "Specifications",
+    required: "no",
+    description: "Technical specifications - products only.",
+    format: "Text",
+    example: "10mm, PVC insulated"
+  },
+  {
+    column: "SKU",
+    required: "no",
+    description: "Stock-keeping code.",
+    format: "Text",
+    example: "CAB-001"
+  },
+  {
+    column: "Barcode",
+    required: "no",
+    description: "Barcode (generated when empty) - must be unique.",
+    format: "Digits only",
+    maxLength: 12,
+    example: "123456789012"
+  },
+  {
+    column: "WarehouseName",
+    required: "conditional",
+    description: "Opening stock warehouse - products only, together with Quantity.",
+    format: "Existing warehouse name",
+    example: "Main Warehouse"
+  },
+  {
+    column: "Quantity",
+    required: "conditional",
+    description: "Opening stock quantity - products only, together with WarehouseName.",
+    format: "Number, no separators, >= 0",
+    example: "100"
+  },
+  {
+    column: "DurationValue",
+    required: "conditional",
+    description: "Service duration - required for a service; leave empty for a product.",
+    format: "Number > 0",
+    example: "1"
+  },
+  {
+    column: "DurationUnit",
+    required: "no",
+    description: "Unit of DurationValue (services only; defaults to month).",
+    format: "month",
+    example: "month"
+  },
+  {
+    column: "PucAccountCode",
+    required: "conditional",
+    description: "Chart of Accounts code of the PUC account a purchase of this service posts to - required for a service; leave empty for a product.",
+    format: "Existing active, non-cash asset account code",
+    example: "11000009"
+  },
+  {
+    column: "CapacityValue",
+    required: "conditional",
+    description: "Capacity (e.g. 100) - together with CapacityUnit.",
+    format: "Number, no separators, >= 0",
+    example: "100"
+  },
+  {
+    column: "CapacityUnit",
+    required: "conditional",
+    description: "Capacity unit (e.g. kW) - together with CapacityValue.",
+    format: "Text",
+    example: "kW"
+  },
+  {
+    column: "IsAvailable",
+    required: "no",
+    description: "Whether it can be sold / bought (defaults to true).",
+    format: "true or false",
+    example: "true"
+  }
+];
