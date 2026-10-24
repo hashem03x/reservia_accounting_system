@@ -16,7 +16,8 @@ export default function useCategoryHelpers() {
 
   function getSubcategoriesByMainCategoryId(mainCategoryId: string): Subcategory[] {
     if (!subcategories || !mainCategoryId) return [];
-    return subcategories.filter((subcategory) => subcategory.mainCategory?._id === mainCategoryId);
+    // mainCategory may arrive populated or as a bare id.
+    return subcategories.filter((subcategory) => (subcategory.mainCategory?._id || (subcategory.mainCategory as unknown as string)) === mainCategoryId);
   }
 
   function getMainCategoryNameOfSubcategory(subcategory: Subcategory): string {
@@ -54,6 +55,13 @@ export default function useCategoryHelpers() {
     return translate(brand.name.en, brand.name.ar);
   }
 
+  // A product's Brand is its Subcategory (a subcategory of its Main Category). Products saved before
+  // that only have the old flat `brand` - shown as a fallback.
+  function getProductBrandName(product?: { subcategory?: string | null; brand?: string | null } | null): string {
+    if (!product) return "";
+    return (product.subcategory && getSubcategoryNameById(product.subcategory)) || (product.brand ? getBrandNameById(product.brand) : "");
+  }
+
   return {
     getMainCategoryById,
     getSubcategoriesByMainCategoryId,
@@ -62,5 +70,6 @@ export default function useCategoryHelpers() {
     getMainCategoryNameById,
     getSubcategoryNameById,
     getBrandNameById,
+    getProductBrandName,
   };
 }

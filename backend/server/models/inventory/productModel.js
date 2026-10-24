@@ -35,10 +35,10 @@ const productSchema = mongoose.Schema(
       ref: 'Category',
       required: [function () { return this.type !== 'service'; }, 'Category is required'],
     },
-    // Legacy field - Brand (below) is the product's second catalog level and replaced Subcategory
-    // (Main Category -> Brand -> Model/Item -> Specifications). No longer set by the product form or
-    // the CSV import; kept so existing products and reports that read it keep working, and still
-    // accepted by the API (it must belong to `category` when sent - productValidator.js).
+    // The product's Brand (Main Category -> Brand -> Model/Item -> Specifications): one of
+    // `category`'s subcategories, set by the product form and the CSV import's BrandName column. The
+    // request validator requires it for a new product and checks it belongs to `category`
+    // (productValidator.js) - not required here, so internal/legacy creates keep working.
     subcategory: {
       type: mongoose.Schema.ObjectId,
       ref: 'SubCategory',
@@ -92,10 +92,9 @@ const productSchema = mongoose.Schema(
 
     // Not used
     imageCover: { url: { type: String }, sortOrder: { type: Number, default: 0 }, publicId: { type: String } },
-    // Primary identification field under Category in the catalog hierarchy (Category -> Brand ->
-    // Model/Item Number/Specifications) - replaces `subcategory` above as the field the request
-    // validator (productValidator.js/productTypeValidation.js) requires for a NEW product created
-    // through the API. Deliberately NOT required at the schema level (unlike `category`/`cost`
+    // Older flat Brand (not scoped to a category) - a product's Brand is now `subcategory` above.
+    // Kept on existing products, still accepted by the API in place of `subcategory`, and shown only
+    // when a product has no subcategory. Deliberately NOT required at the schema level (unlike `category`/`cost`
     // above) - the same reasoning as `pucAccount` below: a huge amount of existing/internal
     // Product creation (migration scripts, CSV import fixtures, accounting/PO/reversal test
     // suites, and any legacy document already in the database) sets `category`/`subcategory` but

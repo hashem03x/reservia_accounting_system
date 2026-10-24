@@ -24,8 +24,8 @@ export default function PrintProductBarcode({ product, buttonType }: { product: 
   const subcategory = subcategories.find((sub) => sub._id === product.subcategory);
 
   const infoParts: string[] = [];
-  if (aboutData?.barcodeSittings?.subcategory && (brand || subcategory)) {
-    infoParts.push((brand || subcategory)!.name.en);
+  if (aboutData?.barcodeSittings?.subcategory && (subcategory || brand)) {
+    infoParts.push((subcategory || brand)!.name.en);
   }
   const info = infoParts.join(" - ");
 

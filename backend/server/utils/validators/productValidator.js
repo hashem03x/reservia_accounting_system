@@ -18,7 +18,9 @@ function validateTypeSpecificFields(value, { req }) {
     type: req.body.type || 'product',
     cost: req.body.cost,
     category: req.body.category,
-    brand: req.body.brand,
+    // A product's Brand is a subcategory of its Main Category (`subcategory`); the old flat
+    // `brand` is still accepted from older clients.
+    brand: req.body.subcategory || req.body.brand,
     durationValue: req.body.durationValue,
     durationUnit: req.body.durationUnit,
     pucAccount: req.body.pucAccount,
@@ -97,11 +99,11 @@ exports.createProductValidator = [
         if (!category) return Promise.reject(new Error(`No category for this id ${categoryId}`));
       });
     }),
-  // Second level of the hierarchy - optional, but must belong to the selected Main Category.
+  // Second level of the hierarchy (shown as Brand) - must belong to the selected Main Category.
   check('subcategory').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Invalid subcategory id formate').custom(subcategoryBelongsToCategory),
 
-  // Required for products (enforced by validateTypeSpecificFields above); optional here only so
-  // a service (which never has one) isn't forced through this check.
+  // Legacy flat brand - a product's Brand is now its `subcategory` (above). Still accepted (and
+  // satisfies the Brand requirement in validateTypeSpecificFields) so older clients keep working.
   check('brand')
     .optional()
     .isMongoId()

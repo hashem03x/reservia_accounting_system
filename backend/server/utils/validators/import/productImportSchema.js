@@ -1,6 +1,6 @@
 const Product = require('../../../models/inventory/productModel');
 const Category = require('../../../models/categoryModel');
-const Brand = require('../../../models/brandModel');
+const SubCategory = require('../../../models/subCategoryModel');
 const Warehouse = require('../../../models/inventory/warehouseModel');
 const ChartOfAccount = require('../../../models/accounting/chartOfAccountModel');
 const { isPucAccountEligible } = require('../../accountingConstants');
@@ -61,7 +61,7 @@ exports.exampleRows = [
     '',
     '90',
     'Electrical Materials',
-    'ACME',
+    'Cables',
     'PX-200',
     'Stainless steel, 2-inch inlet',
     'CAB-001',
@@ -216,7 +216,7 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
   }
 
   let category = null;
-  let brand = null;
+  let subcategory = null;
   let cost;
   let warehouse = null;
   let quantity;
@@ -277,14 +277,20 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
       }
     }
 
-    if (!categoryNameRaw) errors.push({ column: 'CategoryName', value: row.CategoryName, message: 'CategoryName is required for a product.' });
+    if (!categoryNameRaw) {
+      errors.push({ column: 'CategoryName', value: row.CategoryName, message: 'CategoryName is required for a product.' });
+    } else {
+      category = await Category.findOne({ 'name.en': categoryNameRaw });
+      if (!category) errors.push({ column: 'CategoryName', value: row.CategoryName, message: `No category found named "${categoryNameRaw}".` });
+    }
 
+    // Brand = a subcategory of the product's Main Category (saved as `subcategory`).
     if (!brandNameRaw) {
       errors.push({ column: 'BrandName', value: row.BrandName, message: 'BrandName is required for a product.' });
-    } else {
-      brand = await Brand.findOne({ 'name.en': brandNameRaw });
-      if (!brand) {
-        errors.push({ column: 'BrandName', value: row.BrandName, message: `No brand found named "${brandNameRaw}".` });
+    } else if (category) {
+      subcategory = await SubCategory.findOne({ 'name.en': brandNameRaw, mainCategory: category._id });
+      if (!subcategory) {
+        errors.push({ column: 'BrandName', value: row.BrandName, message: `No brand named "${brandNameRaw}" under the category "${categoryNameRaw}".` });
       }
     }
 
@@ -302,13 +308,6 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
       warehouse = await Warehouse.findOne({ name: warehouseNameRaw });
       if (!warehouse) errors.push({ column: 'WarehouseName', value: row.WarehouseName, message: `No warehouse found named "${warehouseNameRaw}".` });
     }
-  }
-
-  // Main Category of a product (a service row was refused above if it had one). Brand is the second
-  // catalog level - it replaced Subcategory, which this import does not take.
-  if (type !== 'service' && categoryNameRaw) {
-    category = await Category.findOne({ 'name.en': categoryNameRaw });
-    if (!category) errors.push({ column: 'CategoryName', value: row.CategoryName, message: `No category found named "${categoryNameRaw}".` });
   }
 
   if (errors.length > 0) return { errors, value: null };
@@ -334,7 +333,7 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
           }
         : {
             ...(cost !== undefined ? { cost } : {}),
-            brand: brand._id,
+            subcategory: subcategory._id,
             model: modelRaw || undefined,
             specifications: specificationsRaw || undefined,
             stock: warehouse ? [{ warehouse: warehouse._id, quantity }] : [],
@@ -430,9 +429,9 @@ exports.fieldSpecs = [
   {
     column: "BrandName",
     required: "conditional",
-    description: "Brand (English name, must exist) - required for a product; leave empty for a service.",
-    format: "Existing brand name",
-    example: "ACME"
+    description: "Brand (English name of a subcategory of CategoryName, must exist) - required for a product; leave empty for a service.",
+    format: "Existing subcategory name under the category",
+    example: "Cables"
   },
   {
     column: "Model",

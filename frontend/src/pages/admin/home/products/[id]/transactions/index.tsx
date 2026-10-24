@@ -80,6 +80,7 @@ type ProductHistoryData = {
     barcode?: string;
     capacity?: { value?: number; unit?: string };
     category?: string;
+    subcategory?: string;
     brand?: string;
     model?: string;
     specifications?: string;
@@ -111,7 +112,7 @@ export default function ProductTransactions() {
 
   useDocumentTitle(`${translate("Product Transactions", "حركات المنتج")} | ${translations.adminPanel}`);
 
-  const { getMainCategoryNameById, getBrandNameById } = useCategoryHelpers();
+  const { getMainCategoryNameById, getProductBrandName } = useCategoryHelpers();
   const { getWarehouseNameById } = useWarehouseHelpers();
 
   const [page, setPage] = useState(1);
@@ -191,7 +192,7 @@ export default function ProductTransactions() {
               value={product.capacity?.value != null && product.capacity?.unit ? `${product.capacity.value} ${product.capacity.unit}` : "-"}
             />
             <InfoField label={translate("Category", "الفئة")} value={product.category ? getMainCategoryNameById(product.category) : "-"} />
-            <InfoField label={translate("Brand", "الماركة")} value={product.brand ? getBrandNameById(product.brand) : "-"} />
+            <InfoField label={translate("Brand", "الماركة")} value={getProductBrandName(product) || "-"} />
             <InfoField label={translate("Model", "الموديل")} value={product.model || "-"} />
           </div>
         </section>

@@ -42,8 +42,8 @@ type ProductContextProps = {
   setIsAvailable: React.Dispatch<React.SetStateAction<boolean>>;
   category: string | null;
   setCategory: React.Dispatch<React.SetStateAction<string | null>>;
-  // Catalog hierarchy: Main Category -> Brand -> Model/Item -> Specifications (Brand is the second
-  // level - it replaced the legacy Subcategory; a product's stored subcategory is kept, never sent).
+  // Catalog hierarchy: Main Category -> Brand -> Model/Item -> Specifications. Brand is one of the
+  // Main Category's subcategories - stored in the product's `subcategory` field.
   brand: string | null;
   setBrand: React.Dispatch<React.SetStateAction<string | null>>;
   model: string;
@@ -129,7 +129,7 @@ export default function ProductFormProvider({ product, children }: { product?: P
   const [priceAfterDiscount, setPriceAfterDiscount] = useState<string | number>(product?.priceAfterDiscount || "");
   const [isAvailable, setIsAvailable] = useState<boolean>(product ? product.isAvailable : true);
   const [category, setCategory] = useState<string | null>(product?.category || null);
-  const [brand, setBrand] = useState<string | null>(product?.brand || null);
+  const [brand, setBrand] = useState<string | null>(product?.subcategory || null);
   const [model, setModel] = useState<string>(product?.model || "");
   const [specifications, setSpecifications] = useState<string>(product?.specifications || "");
   const [capacity, setCapacity] = useState<ProductCapacityInput>({

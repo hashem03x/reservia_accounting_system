@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { useLanguage } from "@/context/LanguageContext";
 import { useMainCategories } from "@/context/MainCategoriesContext";
-import { useBrands } from "@/context/BrandsContext";
 import useCategoryHelpers from "@/hooks/useCategoryHelpers";
 import useDataHandler from "@/hooks/useDataHandler";
 import { Product } from "@/types/product";
@@ -33,8 +32,7 @@ export default function ProductSearchModal({
   const { translate, translations, language } = useLanguage();
 
   const { data: mainCategories } = useMainCategories();
-  const { data: brands } = useBrands();
-  const { getMainCategoryNameById, getBrandNameById } = useCategoryHelpers();
+  const { getMainCategoryNameById, getSubcategoriesByMainCategoryId, getProductBrandName } = useCategoryHelpers();
 
   const [products, setProducts] = useState<Product[]>([]);
 
@@ -60,7 +58,8 @@ export default function ProductSearchModal({
           page: 1,
           keyword: debouncedKeyword,
           ...(mainCategoryFilter ? { mainCategoryId: mainCategoryFilter } : {}),
-          ...(brandFilter ? { brands: brandFilter } : {}),
+          // Brand = a subcategory of the selected Main Category.
+          ...(brandFilter ? { subCategories: brandFilter } : {}),
         },
         signal: controller.signal,
         language,
@@ -108,7 +107,11 @@ export default function ProductSearchModal({
           {/* Main Category */}
           <Select
             value={mainCategoryFilter}
-            onChange={(value) => setMainCategoryFilter(value as string)}
+            onChange={(value) => {
+              // A brand belongs to its main category - changing the category clears it.
+              if (value !== mainCategoryFilter) setBrandFilter("");
+              setMainCategoryFilter(value as string);
+            }}
             label={translate("Main Category", "الفئة الرئيسية")}
             data={[
               { value: "", label: translate("All", "الكل") },
@@ -121,19 +124,20 @@ export default function ProductSearchModal({
             rightSection={mainCategoryFilter ? <solidIcons.Check color="green" size={12} /> : null}
           />
 
-          {/* Brand - flat (not scoped to a category), unlike the legacy Subcategory filter this replaces */}
+          {/* Brand - the subcategories of the selected Main Category */}
           <Select
             value={brandFilter}
             onChange={(value) => setBrandFilter(value as string)}
             label={translate("Brand", "الماركة")}
             data={[
               { value: "", label: translate("All", "الكل") },
-              ...brands.map((b) => ({
+              ...getSubcategoriesByMainCategoryId(mainCategoryFilter).map((b) => ({
                 value: b._id,
                 label: translate(b.name.en, b.name.ar),
               })),
             ]}
             allowDeselect={false}
+            disabled={!mainCategoryFilter}
             searchable
             rightSection={brandFilter ? <solidIcons.Check color="green" size={12} /> : null}
           />
@@ -185,7 +189,7 @@ export default function ProductSearchModal({
                           {translate(product.title.en, product.title.ar)}
                         </Table.Td>
                         <Table.Td>
-                          {[product.category ? getMainCategoryNameById(product.category) : null, product.brand ? getBrandNameById(product.brand) : null].filter(Boolean).join(" / ") ||
+                          {[product.category ? getMainCategoryNameById(product.category) : null, getProductBrandName(product) || null].filter(Boolean).join(" / ") ||
                             (product.type === "service" ? translate("Service", "خدمة") : "-")}
                         </Table.Td>
                         <Table.Td>{product.model || "-"}</Table.Td>

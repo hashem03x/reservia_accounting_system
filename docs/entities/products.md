@@ -76,11 +76,11 @@ Services cannot appear in sales or purchase orders under the current schema - se
 
 ## Catalog hierarchy and optional cost / price
 
-Products: Main Category → Brand → Model/Item → Specifications. Brand is the second level and
-replaced Subcategory: the product form and the product CSV import no longer take a subcategory. A
-product's stored `subcategory` is kept, the API still accepts it, and barcode printing falls back to
-it when there is no brand. Brands are managed on the Categories page; a brand used by products cannot
-be deleted.
+Products: Main Category → Brand → Model/Item → Specifications. A product's Brand is one of its Main
+Category's subcategories and is saved in `subcategory` (required for a product, and it must belong to
+the category). The form, the product filters and the CSV import's `BrandName` column all use the
+selected category's subcategories. The older flat `brand` field is kept on existing products, is
+still accepted by the API, and is shown only when a product has no subcategory.
 
 Cost is not entered on the product form. A product's cost comes from its purchases: the Purchase
 Invoice line price, averaged by `applyPurchaseToProducts`. Editing a product never changes a stored

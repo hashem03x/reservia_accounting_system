@@ -32,7 +32,7 @@ export default function PurchaseRequisitionDetail() {
   const navigate = useNavigate();
   const canUpdate = useHasPermission(resources.purchaseRequisitions, actions.update);
   const statusLabel = useRequisitionStatusLabel();
-  const { getBrandNameById } = useCategoryHelpers();
+  const { getProductBrandName } = useCategoryHelpers();
 
   const {
     privateRequest,
@@ -182,7 +182,7 @@ export default function PurchaseRequisitionDetail() {
                     </span>
                   )}
                 </Table.Td>
-                <Table.Td>{item.product ? [item.product.brand ? getBrandNameById(item.product.brand) : null, item.product.model].filter(Boolean).join(" / ") || "-" : "-"}</Table.Td>
+                <Table.Td>{item.product ? [getProductBrandName(item.product) || null, item.product.model].filter(Boolean).join(" / ") || "-" : "-"}</Table.Td>
                 <Table.Td>{item.product ? item.description || "-" : "-"}</Table.Td>
                 <Table.Td>{item.quantity}</Table.Td>
                 <Table.Td>{item.unit || "-"}</Table.Td>

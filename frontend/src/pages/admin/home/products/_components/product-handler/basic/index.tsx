@@ -108,7 +108,8 @@ export default function ProductBasicInfo() {
       } else {
         // No cost from the form: a product's cost is set by its purchases (Purchase Orders / Invoices).
         formData.append("category", category as string);
-        formData.append("brand", brand as string);
+        // Brand is the selected subcategory of the Main Category (the old flat `brand` is left as stored).
+        formData.append("subcategory", brand as string);
         if (model) formData.append("model", model);
         if (specifications) formData.append("specifications", specifications);
 
@@ -170,7 +171,7 @@ export default function ProductBasicInfo() {
           durationUnit !== currentProduct.durationUnit ||
           pucAccount !== getPucAccountId(currentProduct)
         : category !== currentProduct.category ||
-          brand !== (currentProduct.brand || null) ||
+          brand !== (currentProduct.subcategory || null) ||
           model !== (currentProduct.model || "") ||
           specifications !== (currentProduct.specifications || "") ||
           sku !== (currentProduct.sku || "") ||
