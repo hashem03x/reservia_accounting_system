@@ -110,15 +110,17 @@ export default function OrderItemRow({
               signal: abortController.signal,
               language,
             });
-            const price = response.data.price;
-            const priceAfterDiscount = response.data.priceAfterDiscount || price;
+            // A product's / service's price is optional: without one the line starts with an empty
+            // unit price for the user to enter (required on save) and zero totals - never undefined.
+            const price: number | undefined = typeof response.data.price === "number" ? response.data.price : undefined;
+            const priceAfterDiscount = price === undefined ? 0 : response.data.priceAfterDiscount || price;
             updateItem({
               productCode: newProductCode,
               productError: false,
               productData: response.data,
               starterQuantity: 1,
-              unitPrice: price,
-              itemDiscount: { type: "fixed", value: price - priceAfterDiscount },
+              unitPrice: price as number,
+              itemDiscount: { type: "fixed", value: price === undefined ? 0 : price - priceAfterDiscount },
               unitPriceAfterDiscount: priceAfterDiscount,
               starterSubtotal: priceAfterDiscount,
             });
@@ -295,10 +297,10 @@ export default function OrderItemRow({
             </div>
           </Table.Td>
           <Table.Td>
-            {unitPriceAfterDiscount.toFixed(2)} {translations.currency}
+            {(Number(unitPriceAfterDiscount) || 0).toFixed(2)} {translations.currency}
           </Table.Td>
           <Table.Td className="font-bold text-gray-800">
-            {starterSubtotal.toFixed(2)} {translations.currency}
+            {(Number(starterSubtotal) || 0).toFixed(2)} {translations.currency}
           </Table.Td>
         </>
       ) : (

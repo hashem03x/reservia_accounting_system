@@ -65,7 +65,8 @@ const createPurchaseOrderValidate = [
 
     body('items.*.productId').isMongoId().withMessage('Product ID must be a mongoID'),
     body('items.*.unitPrice').isFloat({ gt: 0 }).withMessage('Price must be a positive number'),
-    body('items.*.starterQuantity').isInt({ gt: 0 }).withMessage('Quantity must be a positive integer'),
+    // At most 1,000 per line - the same cap as the invoice form's quantity input.
+    body('items.*.starterQuantity').isInt({ gt: 0, max: 1000 }).withMessage('Quantity must be a whole number from 1 to 1000'),
     // Legacy field - no longer used for accounting (a service line always posts to the Service's own
     // PUC account). Still format-checked so a stray value can't be junk.
     body('items.*.costAccount').optional({ nullable: true }).isMongoId().withMessage('Cost account ID must be a mongoID'),

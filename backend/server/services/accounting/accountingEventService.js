@@ -103,11 +103,13 @@ async function resolveCustomerNumber(customerRef, { required = true } = {}, sess
  * single source of truth). Every line of a Sales Order / Purchase Order / Expense / Fixed Asset /
  * Equity entry (`withParty`) also gets the entry's business party as its Sub Account
  * (partyNumber/partyType - the Customer Number for a Sales Order, the Vendor Number for a Purchase
- * Order, Expense or Fixed Asset acquisition, the Shareholder Number for Equity): `party` when the caller passes one,
+ * Order, Expense or Fixed Asset acquisition): `party` when the caller passes one,
  * otherwise the party already stamped on the entry's control-account line. A line that already
  * carries its own party keeps it; an entry with no party has none.
  */
-const PartyOnEveryLineModules = ['Sales Order', 'Purchase Order', 'Expense', 'Fixed Asset', 'Equity'];
+// Not Equity: a shareholder sub-account is only valid on an equity account, so a contribution puts
+// it on its equity line alone (shareholderService.js#addContribution).
+const PartyOnEveryLineModules = ['Sales Order', 'Purchase Order', 'Expense', 'Fixed Asset'];
 
 function applyEntryDescriptionAndPartyToLines(lines, description, party, withParty) {
   const source = !withParty ? null : party?.number != null && party?.type ? party : (lines || []).find(l => l.partyNumber != null && l.partyType);

@@ -56,7 +56,7 @@ beforeEach(async () => {
 });
 
 async function invoice(project, product, { quantity, unitPrice, wh = warehouse, date = '2026-03-01' }) {
-  const requisition = await Requisition.create({ vendorId: vendor._id, project: project._id, items: [{ product: product._id, description: 'x', quantity: 1, unitPrice: 1000000 }], status: 'open' });
+  const requisition = await Requisition.create({ vendorId: vendor._id, project: project._id, items: [{ product: product._id, description: 'x', quantity, unitPrice }], status: 'open' });
   const inv = await PurchaseOrder.create({ vendorId: vendor._id, warehouseId: wh._id, project: project._id, requisition: requisition._id, items: [{ productId: product._id, unitPrice, starterQuantity: quantity }] });
   await allocatePurchaseOrderToProject(inv._id, { userId: manager._id });
   await PucTransfer.updateMany({ purchaseOrder: inv._id }, { $set: { date: new Date(date) } });

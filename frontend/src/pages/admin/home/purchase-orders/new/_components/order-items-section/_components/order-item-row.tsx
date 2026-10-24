@@ -7,7 +7,8 @@ import { DEFAULT_VARIANT_CODE_LENGTH } from "@/utils/constants";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import { Button, NumberInput, Table, TextInput } from "@mantine/core";
 import ProductSearchModal from "@/components/global/variant-search-modal";
-import { OrderItemInput } from "../../../types";
+import { OrderItemInput, PurchaseOrderLines } from "../../../types";
+import { MAX_ITEM_QUANTITY } from "../../../_utils/validation";
 import { calculateSubTotal, calculateUnitPriceAfterDiscount } from "../../../_utils/calculations";
 import noProductDetails from "../../../_utils/no-variant-details";
 import { getPurchaseUnitPrice } from "@/utils/helpers/purchase-unit-price";
@@ -18,12 +19,14 @@ export default function OrderItemRow({
   index,
   items,
   setItems,
+  poLines,
   // addNewItem,
 }: {
   index: number;
   items: OrderItemInput[];
   setItems: React.Dispatch<React.SetStateAction<OrderItemInput[]>>;
   addNewItem?: () => void;
+  poLines?: PurchaseOrderLines | null;
 }) {
   const { translate, language, translations } = useLanguage();
   const privateRequest = usePrivateRequest();
@@ -41,6 +44,12 @@ export default function OrderItemRow({
     starterQuantity,
     starterSubtotal,
   } = currentItem;
+
+  // This item's Purchase Order line: its agreed price and what is left to invoice (less what the
+  // invoice's other rows of the same product already take).
+  const poLine = productData ? poLines?.lines.find((line) => line.product === productData._id) : undefined;
+  const otherRowsQuantity = items.reduce((sum, item, i) => (i !== index && productData && item.productData?._id === productData._id ? sum + (Number(item.starterQuantity) || 0) : sum), 0);
+  const maxQuantity = poLine ? Math.max(0, Math.min(MAX_ITEM_QUANTITY, poLine.remaining - otherRowsQuantity)) : MAX_ITEM_QUANTITY;
 
   const updateItem = (updates: Partial<typeof currentItem>) => {
     setItems((prevItems) => {
@@ -94,9 +103,22 @@ export default function OrderItemRow({
               signal: abortController.signal,
               language,
             });
-            // A product is bought at its cost; a service has no cost field, so it starts at its price.
-            // No catalog cost/price (optional): the line starts empty for the user to enter.
-            const unitPrice = getPurchaseUnitPrice(response.data) ?? undefined;
+            // With a Purchase Order, an item must be on it (unless it has legacy description-only
+            // lines) with something left to invoice, and it starts at the PO line's agreed price.
+            const line = poLines?.lines.find((l) => l.product === response.data._id);
+            const refusal =
+              poLines && !line && !poLines.hasUnmatchableLines
+                ? translate("This item is not on the selected Purchase Order.", "هذا الصنف غير موجود في أمر الشراء المحدد.")
+                : line && line.remaining <= 0
+                  ? translate("Nothing is left to invoice for this item on the selected Purchase Order.", "لا توجد كمية متبقية لهذا الصنف في أمر الشراء المحدد.")
+                  : "";
+            if (refusal) {
+              updateItem({ productCode: newProductCode, productError: true, productErrorMessage: refusal, ...noProductDetails });
+              return;
+            }
+            // Without a PO line: a product is bought at its cost; a service has no cost field, so
+            // it starts at its price. No catalog cost/price (optional): the line starts empty.
+            const unitPrice = line ? line.unitPrice : (getPurchaseUnitPrice(response.data) ?? undefined);
             updateItem({
               productCode: newProductCode,
               productError: false,
@@ -194,12 +216,19 @@ export default function OrderItemRow({
               value={starterQuantity}
               onChange={(value) => handleValueChange("starterQuantity", value)}
               min={1}
-              max={1000}
+              max={maxQuantity}
+              clampBehavior="strict"
+              allowNegative={false}
               decimalScale={0}
               className="font-bold text-gray-800"
               hideControls
               required
             />
+            {poLine && (
+              <p className="text-[11px] text-gray-500">
+                {translate(`${poLine.remaining} of ${poLine.ordered} left on the PO`, `متبقي ${poLine.remaining} من ${poLine.ordered} في أمر الشراء`)}
+              </p>
+            )}
           </Table.Td>
           <Table.Td>
             <NumberInput

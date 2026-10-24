@@ -12,7 +12,7 @@ import paths from "@/utils/constants/paths";
 import { Button, Select, TextInput } from "@mantine/core";
 import ErrorAlert from "@/components/ui/error-alert";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
-import { OrderItemInput } from "./types";
+import { OrderItemInput, PurchaseOrderLines } from "./types";
 import validation from "./_utils/validation";
 import noProductDetails from "./_utils/no-variant-details";
 import VendorWarehouseSection from "./_components/vendor-warehouse-section";
@@ -24,6 +24,7 @@ import { calculateOrderTotals } from "@/utils/helpers/order-totals";
 import AttachmentPicker from "@/components/global/attachments/attachment-picker";
 import useAttachmentUpload, { uploadPendingAttachments } from "@/components/global/attachments/use-attachment-upload";
 import { notifyError } from "@/utils/helpers/notifiers";
+import usePrivateRequest from "@/hooks/usePrivateRequest";
 
 const emptyOrderItem: OrderItemInput = {
   productCode: "",
@@ -48,12 +49,18 @@ export default function NewPurchaseOrder() {
   const [warehouseId, setWarehouseId] = useState<string>(defatulWarehouseId);
   const [items, setItems] = useState<OrderItemInput[]>([emptyOrderItem]);
   const [project, setProject] = useState("");
+  // The selected Purchase Order's lines: what each item may still be invoiced for, at what price.
+  const [poLines, setPoLines] = useState<PurchaseOrderLines | null>(null);
+  const linesRequest = usePrivateRequest();
 
   // Selecting a Purchase Order sets and locks its vendor and project (docs section "Link Purchase
   // Invoices to Purchase Orders") - the backend rejects a mismatch, so the UI never offers one.
   // Clearing the selection resets both back - otherwise they'd keep showing the previous Purchase
   // Order's vendor/project, unlocked, with no selection backing them.
+  // Items are priced and limited by their Purchase Order, so changing it starts the items over.
   useEffect(() => {
+    setItems([emptyOrderItem]);
+    setPoLines(null);
     if (!requisition) {
       setVendor(null);
       setProject("");
@@ -61,6 +68,10 @@ export default function NewPurchaseOrder() {
     }
     setVendor((requisition.vendorId as unknown as Vendor) || null);
     setProject(requisition.project?._id || "");
+    const hasUnmatchableLines = (requisition.items || []).some((item) => !item.product);
+    linesRequest({ url: `requisitions/${requisition._id}/remaining-quantities`, language })
+      .then((res) => setPoLines({ lines: res.data || [], hasUnmatchableLines }))
+      .catch((err) => notifyError({ language, message: (err as { message?: string })?.message || translate("Could not load the Purchase Order lines.", "تعذر تحميل بنود أمر الشراء.") }));
   }, [requisition]);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentAccount, setPaymentAccount] = useState("");
@@ -102,7 +113,7 @@ export default function NewPurchaseOrder() {
         return;
       }
 
-      const validationError = validation({ vendor, warehouse: warehouseId, items: filteredItems }, language);
+      const validationError = validation({ vendor, warehouse: warehouseId, items: filteredItems, poLines }, language);
 
       if (validationError) {
         setError(validationError);
@@ -273,7 +284,7 @@ export default function NewPurchaseOrder() {
 
       <hr />
 
-      <OrderItemsSection items={items} setItems={setItems} addNewItem={addNewItem} />
+      <OrderItemsSection items={items} setItems={setItems} addNewItem={addNewItem} poLines={poLines} />
 
       <hr />
 

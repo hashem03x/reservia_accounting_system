@@ -277,3 +277,74 @@ test('creating an Invoice through the REAL createPO controller still posts the e
   const reloadedRequisition = await Requisition.findById(requisition._id);
   assert.equal(reloadedRequisition.invoicedAmount, 25000, 'the Purchase Order\'s progress must update from the real controller flow too, not just direct model creation');
 });
+
+// ===================== Quantity per Purchase Order line =====================
+
+async function productPurchaseOrder(quantity = 100, unitPrice = 10) {
+  return openRequisition({ items: [{ product: service._id, description: 'Linked Service', quantity, unitPrice }] });
+}
+const lineInvoice = (requisitionId, starterQuantity) => invoiceBody(requisitionId, { items: [{ productId: service._id, unitPrice: 10, starterQuantity }] });
+
+test('a PO line of 100 with 30 invoiced accepts at most 70 more; once fully invoiced, 1 more is refused', async () => {
+  const { getRemainingQuantities } = require('../../services/vendor/requisitionQuantityService');
+  const requisition = await productPurchaseOrder();
+  await PurchaseOrder.create(lineInvoice(requisition._id, 30));
+
+  let line = (await getRemainingQuantities(await Requisition.findById(requisition._id))).get(String(service._id));
+  assert.deepEqual([line.ordered, line.invoiced, line.remaining, line.unitPrice], [100, 30, 70, 10]);
+
+  await assert.rejects(() => PurchaseOrder.create(lineInvoice(requisition._id, 71)), /Invoice quantity 71 exceeds the quantity remaining on the Purchase Order line \(70 of 100 left; 30 already invoiced\)/);
+  // Two rows of the same product on one invoice are added up.
+  await assert.rejects(() => PurchaseOrder.create(invoiceBody(requisition._id, { items: [{ productId: service._id, unitPrice: 10, starterQuantity: 40 }, { productId: service._id, unitPrice: 10, starterQuantity: 31 }] })), /exceeds/);
+  assert.equal((await Requisition.findById(requisition._id)).invoicedAmount, 300, 'nothing applied by a refused invoice');
+
+  await PurchaseOrder.create(lineInvoice(requisition._id, 70));
+  await assert.rejects(() => PurchaseOrder.create(lineInvoice(requisition._id, 1)), /0 of 100 left; 100 already invoiced/);
+});
+
+test('a returned quantity is free to invoice again; an item that is not on the Purchase Order is refused', async () => {
+  const { getRemainingQuantities } = require('../../services/vendor/requisitionQuantityService');
+  const requisition = await productPurchaseOrder(10);
+  const invoice = await PurchaseOrder.create(lineInvoice(requisition._id, 10));
+  await PurchaseOrder.updateOne({ _id: invoice._id }, { $set: { 'items.0.returnedQuantity': 4 } });
+  const line = (await getRemainingQuantities(await Requisition.findById(requisition._id))).get(String(service._id));
+  assert.deepEqual([line.invoiced, line.remaining], [6, 4]);
+
+  const other = await Product.create({ type: 'service', title: { en: 'Not On PO', ar: 'خدمة أخرى' }, description: { en: 'd', ar: 'د' }, price: 5, durationValue: 1, durationUnit: 'month', pucAccount: service.pucAccount });
+  await assert.rejects(() => PurchaseOrder.create(invoiceBody(requisition._id, { items: [{ productId: other._id, unitPrice: 5, starterQuantity: 1 }] })), /not on its linked Purchase Order/);
+});
+
+test('request validation: an invoice line quantity must be a whole number from 1 to 1000', async () => {
+  const { validationResult } = require('express-validator');
+  const { createPurchaseOrderValidate } = require('../../utils/validators/poValidator');
+  const errorsFor = async starterQuantity => {
+    const req = { body: { items: [{ productId: String(service._id), unitPrice: 10, starterQuantity }] }, params: {}, query: {} };
+    for (const v of createPurchaseOrderValidate) if (typeof v.run === 'function') await v.run(req);
+    return validationResult(req).array().filter(e => /items\[0\]\.starterQuantity/.test(e.param)).map(e => e.msg);
+  };
+  assert.deepEqual(await errorsFor(1), []);
+  assert.deepEqual(await errorsFor(1000), []);
+  for (const bad of [1001, 0, -1, 2.5, 'abc', '']) assert.match((await errorsFor(bad)).join(), /1 to 1000/, `quantity ${bad}`);
+});
+
+test('concurrent invoices for the same PO line can never jointly exceed its quantity', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const requisition = await productPurchaseOrder(10);
+  const attempt = async () => {
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+      await new PurchaseOrder(lineInvoice(requisition._id, 6)).save({ session });
+      await session.commitTransaction();
+      return 'ok';
+    } catch (err) {
+      await session.abortTransaction().catch(() => {});
+      return 'refused';
+    } finally {
+      session.endSession();
+    }
+  };
+  const results = await Promise.all([attempt(), attempt(), attempt()]);
+  assert.equal(results.filter(r => r === 'ok').length, 1, results.join());
+  assert.equal(await PurchaseOrder.countDocuments({ requisition: requisition._id }), 1);
+});

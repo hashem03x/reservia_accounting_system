@@ -153,6 +153,18 @@ const getRequisitionInvoices = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Linked purchase invoices retrieved successfully', true, invoices));
 });
 
+// GET /requisitions/:id/remaining-quantities - per product on this Purchase Order: ordered,
+// already invoiced (net of returns), remaining and the agreed unit price - what a new Purchase
+// Invoice may still take (requisitionQuantityService.js; enforced again when the invoice is saved).
+const getRequisitionRemainingQuantities = asyncHandler(async (req, res, next) => {
+  const requisition = await Requisition.findById(req.params.id);
+  if (!requisition) return next(new ApiError('Purchase Order not found', 404));
+  const { getRemainingQuantities } = require('../../services/vendor/requisitionQuantityService'); // eslint-disable-line global-require
+  const remaining = await getRemainingQuantities(requisition);
+  const data = [...remaining].map(([product, line]) => ({ product, ordered: line.ordered, invoiced: line.invoiced, remaining: line.remaining, unitPrice: line.unitPrice }));
+  res.status(200).json(apiResponse('Remaining quantities retrieved successfully', true, data));
+});
+
 module.exports = {
   createRequisition,
   getAllRequisitions,
@@ -161,4 +173,5 @@ module.exports = {
   openRequisition,
   cancelRequisition,
   getRequisitionInvoices,
+  getRequisitionRemainingQuantities,
 };
