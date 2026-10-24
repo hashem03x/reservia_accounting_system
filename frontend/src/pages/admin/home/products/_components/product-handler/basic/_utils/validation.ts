@@ -11,7 +11,6 @@ export default function validation(
     titleAr,
     descriptionEn,
     descriptionAr,
-    cost,
     price,
     priceAfterDiscount,
     category,
@@ -26,7 +25,6 @@ export default function validation(
     titleAr: string;
     descriptionEn: string;
     descriptionAr: string;
-    cost: string | number;
     price: string | number;
     priceAfterDiscount: string | number;
     category: string | null;
@@ -42,12 +40,10 @@ export default function validation(
   if (!titleAr) return translate(language, "Please provide a title in Arabic.", "يرجى إدخال عنوان بالعربية.");
   if (!descriptionEn) return translate(language, "An English description is required.", "مطلوب وصف بالإنجليزية.");
   if (!descriptionAr) return translate(language, "An Arabic description is required.", "مطلوب وصف بالعربية.");
-  // Cost and price are NOT required to define a product or service (client requirement "Products -
-  // Cost and Price are not required") - but when entered they must be valid numbers.
+  // Price is NOT required to define a product or service - but when entered it must be valid. Cost
+  // is not entered here at all: it comes from the product's Purchase Orders / Invoices.
   if (price !== "" && (isNaN(+price) || +price < 0 || +price > 250000))
     return translate(language, "The price must be a number between 0 and 250000.", "يجب أن يكون السعر رقمًا بين 0 و 250000.");
-  if (cost !== "" && (isNaN(+cost) || +cost < 0))
-    return translate(language, "The cost must be a positive number.", "يجب أن تكون التكلفة رقمًا موجبًا.");
   // priceAfterDiscount is optional, It can be a number between 0 and the original price. Or an empty string (which will be null in the server)
   if (priceAfterDiscount !== "") {
     if (price === "")

@@ -31,12 +31,10 @@ export default function ProductBasicInfo() {
     titleAr,
     descriptionEn,
     descriptionAr,
-    cost,
     price,
     priceAfterDiscount,
     isAvailable,
     category,
-    subcategory,
     brand,
     model,
     specifications,
@@ -72,7 +70,6 @@ export default function ProductBasicInfo() {
           titleAr,
           descriptionEn,
           descriptionAr,
-          cost,
           price,
           priceAfterDiscount,
           category,
@@ -109,9 +106,8 @@ export default function ProductBasicInfo() {
         // The Service's PUC account - Purchase Orders post this service's cost to it.
         if (pucAccount) formData.append("pucAccount", pucAccount);
       } else {
-        if (cost !== "") formData.append("cost", cost.toString());
+        // No cost from the form: a product's cost is set by its purchases (Purchase Orders / Invoices).
         formData.append("category", category as string);
-        if (subcategory) formData.append("subcategory", subcategory);
         formData.append("brand", brand as string);
         if (model) formData.append("model", model);
         if (specifications) formData.append("specifications", specifications);
@@ -173,8 +169,7 @@ export default function ProductBasicInfo() {
         ? durationValue !== currentProduct.durationValue ||
           durationUnit !== currentProduct.durationUnit ||
           pucAccount !== getPucAccountId(currentProduct)
-        : cost !== currentProduct.cost ||
-          category !== currentProduct.category ||
+        : category !== currentProduct.category ||
           brand !== (currentProduct.brand || null) ||
           model !== (currentProduct.model || "") ||
           specifications !== (currentProduct.specifications || "") ||

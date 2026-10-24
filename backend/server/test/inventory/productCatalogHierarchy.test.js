@@ -6,8 +6,8 @@ const path = require('path');
 const fs = require('fs').promises;
 const { validationResult } = require('express-validator');
 
-// Client requirement "Products - Category, Brand, Model/Item, Specifications": the catalog hierarchy
-// Main Category -> Subcategory -> Brand -> Model/Item -> Specifications, with cost and price NOT
+// Products: the catalog hierarchy Main Category -> Brand -> Model/Item -> Specifications (Brand
+// replaced the legacy Subcategory), with cost and price NOT
 // required to define a product. Services are unchanged (their classification is pending client
 // confirmation). No artificial zero-cost value is ever produced for a product without a cost.
 
@@ -63,19 +63,19 @@ const productBody = extra => ({
   description: { en: 'Cable', ar: 'كابل' },
   type: 'product',
   category: String(cables._id),
-  subcategory: String(cablesSub._id),
   brand: String(acme._id),
   model: 'CX-10',
   specifications: '10mm, PVC',
   ...extra,
 });
 
-test('a product can be defined without cost or price; the full hierarchy is stored', async () => {
+test('a product is defined with Category -> Brand -> Model -> Specifications and no cost or price (what the product form sends)', async () => {
   assert.deepEqual(await errorsOf(createProductValidator, productBody()), []);
   const product = await Product.create({ ...productBody(), createdBy: user._id });
   assert.equal(product.cost, undefined);
   assert.equal(product.price, undefined);
-  assert.equal(String(product.subcategory), String(cablesSub._id));
+  assert.equal(String(product.brand), String(acme._id));
+  assert.equal(product.subcategory, undefined, 'the form no longer sends a subcategory');
   assert.equal(product.model, 'CX-10');
   assert.equal(await JournalEntry.countDocuments({}), 0, 'defining a product never posts anything');
 
@@ -84,16 +84,20 @@ test('a product can be defined without cost or price; the full hierarchy is stor
   assert.ok((await errorsOf(createProductValidator, productBody({ cost: 'abc' }))).some(m => /cost/i.test(m)));
 });
 
-test('the Subcategory must belong to the selected Main Category (create and update)', async () => {
-  const wrong = await errorsOf(createProductValidator, productBody({ subcategory: String(pipesSub._id) }));
-  assert.ok(wrong.some(m => /does not belong/.test(m)));
-  const withoutCategory = await errorsOf(createProductValidator, productBody({ category: undefined }));
-  assert.ok(withoutCategory.some(m => /Main Category|Category is required/.test(m)));
+test('legacy subcategory: still accepted by the API (and checked against the category), and an edit without it leaves a stored one untouched', async () => {
+  assert.ok((await errorsOf(createProductValidator, productBody({ subcategory: String(pipesSub._id) }))).some(m => /does not belong/.test(m)));
+  assert.deepEqual(await errorsOf(createProductValidator, productBody({ subcategory: String(cablesSub._id) })), []);
 
-  // Update with only a subcategory is checked against the STORED category.
-  const product = await Product.create({ ...productBody(), createdBy: user._id });
-  assert.ok((await errorsOf(updateProductValidator, { subcategory: String(pipesSub._id) }, { id: String(product._id) })).some(m => /does not belong/.test(m)));
-  assert.deepEqual(await errorsOf(updateProductValidator, { subcategory: String(cablesSub._id) }, { id: String(product._id) }), []);
+  // An existing product with a legacy subcategory and a cost: the form's update (no subcategory, no
+  // cost) keeps both - updates are partial ($set of the fields sent - productController.js).
+  const product = await Product.create({ ...productBody({ subcategory: cablesSub._id, cost: 42 }), createdBy: user._id });
+  const formUpdate = { title: { en: 'Copper Cable 2', ar: 'كابل نحاس 2' }, brand: String(acme._id), model: 'CX-11' };
+  assert.deepEqual(await errorsOf(updateProductValidator, formUpdate, { id: String(product._id) }), []);
+  await Product.findByIdAndUpdate(product._id, { $set: formUpdate });
+  const reloaded = await Product.findById(product._id).lean();
+  assert.equal(String(reloaded.subcategory), String(cablesSub._id));
+  assert.equal(reloaded.cost, 42);
+  assert.equal(reloaded.model, 'CX-11');
 });
 
 test('services are unchanged (classification pending client confirmation): no category, brand or model is required', async () => {
@@ -121,21 +125,20 @@ test('a product without a cost takes its first purchase cost - never NaN or an a
   assert.equal(after2.cost, (15 * 40 + 5 * 80) / 20);
 });
 
-test('product CSV import: Price and Cost optional; SubcategoryName must belong to CategoryName; old templates without the column still import', async () => {
-  const header = 'TitleEn,TitleAr,DescriptionEn,DescriptionAr,Type,Price,Cost,CategoryName,SubcategoryName,BrandName';
+test('product CSV import: Category -> Brand, Price and Cost optional; an older file with a SubcategoryName column still imports (the column is ignored)', async () => {
   const write = async content => {
     const file = path.join(os.tmpdir(), `hierarchy-${Date.now()}-${Math.random().toString(36).slice(2)}.csv`);
     await fs.writeFile(file, Buffer.from(content, 'utf8'));
     return { path: file };
   };
-  const ok = await previewImport(await write(`${header}\nCopper Cable,كابل نحاس,d,د,product,,,Electrical Materials,Cables,ACME\n`), productSchema);
+  assert.ok(!productSchema.headers.includes('SubcategoryName'), 'not in the template');
+  const ok = await previewImport(await write(`TitleEn,TitleAr,DescriptionEn,DescriptionAr,Type,Price,Cost,CategoryName,BrandName
+Copper Cable,كابل نحاس,d,د,product,,,Electrical Materials,ACME
+`), productSchema);
   assert.equal(ok.validCount, 1, JSON.stringify(ok.errors));
 
-  const bad = await previewImport(await write(`${header}\nCopper Cable,كابل نحاس,d,د,product,,,Electrical Materials,Pipes,ACME\n`), productSchema);
-  assert.equal(bad.validCount, 0);
-  const messages = bad.errors.flatMap(r => r.errors.map(e => e.message));
-  assert.ok(messages.includes('No subcategory named "Pipes" under category "Electrical Materials".'), JSON.stringify(messages));
-
-  const legacy = await previewImport(await write(`TitleEn,TitleAr,DescriptionEn,DescriptionAr,Type,Price,Cost,CategoryName,BrandName\nSteel Pipe,ماسورة,d,د,product,10,5,Plumbing,ACME\n`), productSchema);
-  assert.equal(legacy.validCount, 1, JSON.stringify(legacy.errors));
+  const older = await previewImport(await write(`TitleEn,TitleAr,DescriptionEn,DescriptionAr,Type,Price,Cost,CategoryName,SubcategoryName,BrandName
+Steel Pipe,ماسورة,d,د,product,10,,Plumbing,Pipes,ACME
+`), productSchema);
+  assert.equal(older.validCount, 1, JSON.stringify(older.errors));
 });

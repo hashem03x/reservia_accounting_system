@@ -1,6 +1,5 @@
 const Product = require('../../../models/inventory/productModel');
 const Category = require('../../../models/categoryModel');
-const SubCategory = require('../../../models/subCategoryModel');
 const Brand = require('../../../models/brandModel');
 const Warehouse = require('../../../models/inventory/warehouseModel');
 const ChartOfAccount = require('../../../models/accounting/chartOfAccountModel');
@@ -27,7 +26,6 @@ exports.headers = [
   'PriceAfterDiscount',
   'Cost',
   'CategoryName',
-  'SubcategoryName',
   'BrandName',
   'Model',
   'Specifications',
@@ -63,7 +61,6 @@ exports.exampleRows = [
     '',
     '90',
     'Electrical Materials',
-    'Cables',
     'ACME',
     'PX-200',
     'Stainless steel, 2-inch inlet',
@@ -85,7 +82,6 @@ exports.exampleRows = [
     'خدمة تركيب كهربائي في الموقع',
     'service',
     '500',
-    '',
     '',
     '',
     '',
@@ -137,7 +133,6 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
   const priceAfterDiscountRaw = (row.PriceAfterDiscount || '').trim();
   const costRaw = (row.Cost || '').trim();
   const categoryNameRaw = (row.CategoryName || '').trim();
-  const subcategoryNameRaw = (row.SubcategoryName || '').trim();
   const brandNameRaw = (row.BrandName || '').trim();
   const modelRaw = (row.Model || '').trim();
   const specificationsRaw = (row.Specifications || '').trim();
@@ -221,7 +216,6 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
   }
 
   let category = null;
-  let subcategory = null;
   let brand = null;
   let cost;
   let warehouse = null;
@@ -237,7 +231,6 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
     if (costRaw) errors.push({ column: 'Cost', value: row.Cost, message: 'Cost does not apply to a service - leave it blank.' });
     // Service classification is pending client confirmation - unchanged: no category for a service.
     if (categoryNameRaw) errors.push({ column: 'CategoryName', value: row.CategoryName, message: 'CategoryName does not apply to a service - leave it blank.' });
-    if (subcategoryNameRaw) errors.push({ column: 'SubcategoryName', value: row.SubcategoryName, message: 'SubcategoryName does not apply to a service - leave it blank.' });
     if (brandNameRaw) errors.push({ column: 'BrandName', value: row.BrandName, message: 'BrandName does not apply to a service - leave it blank.' });
     if (modelRaw) errors.push({ column: 'Model', value: row.Model, message: 'Model does not apply to a service - leave it blank.' });
     if (specificationsRaw) errors.push({ column: 'Specifications', value: row.Specifications, message: 'Specifications does not apply to a service - leave it blank.' });
@@ -311,19 +304,11 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
     }
   }
 
-  // Main Category + Subcategory of a product (a service row was refused above if it had them): the
-  // Subcategory (optional) must belong to the Main Category.
+  // Main Category of a product (a service row was refused above if it had one). Brand is the second
+  // catalog level - it replaced Subcategory, which this import does not take.
   if (type !== 'service' && categoryNameRaw) {
     category = await Category.findOne({ 'name.en': categoryNameRaw });
     if (!category) errors.push({ column: 'CategoryName', value: row.CategoryName, message: `No category found named "${categoryNameRaw}".` });
-  }
-  if (type !== 'service' && subcategoryNameRaw) {
-    if (!categoryNameRaw) {
-      errors.push({ column: 'SubcategoryName', value: row.SubcategoryName, message: 'SubcategoryName needs a CategoryName.' });
-    } else if (category) {
-      subcategory = await SubCategory.findOne({ 'name.en': subcategoryNameRaw, mainCategory: category._id });
-      if (!subcategory) errors.push({ column: 'SubcategoryName', value: row.SubcategoryName, message: `No subcategory named "${subcategoryNameRaw}" under category "${categoryNameRaw}".` });
-    }
   }
 
   if (errors.length > 0) return { errors, value: null };
@@ -337,7 +322,6 @@ exports.validateRow = async function validateRow(row, { existingTitlesEn, existi
       ...(price !== undefined ? { price } : {}),
       priceAfterDiscount: priceAfterDiscount ?? null,
       ...(category ? { category: category._id } : {}),
-      ...(subcategory ? { subcategory: subcategory._id } : {}),
       isAvailable,
       ...(capacityValue !== undefined ? { capacity: { value: capacityValue, unit: capacityUnitRaw } } : {}),
       sku: sku || undefined,
@@ -442,13 +426,6 @@ exports.fieldSpecs = [
     description: "Main Category (English name, must exist) - required for a product; leave empty for a service.",
     format: "Existing category name",
     example: "Electrical Materials"
-  },
-  {
-    column: "SubcategoryName",
-    required: "no",
-    description: "Subcategory (English name) - products only, must belong to CategoryName.",
-    format: "Existing subcategory of that category",
-    example: "Cables"
   },
   {
     column: "BrandName",

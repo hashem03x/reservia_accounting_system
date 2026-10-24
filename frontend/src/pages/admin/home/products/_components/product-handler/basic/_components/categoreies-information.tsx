@@ -1,27 +1,20 @@
 import { useLanguage } from "@/context/LanguageContext";
 import { useMainCategories } from "@/context/MainCategoriesContext";
-import { useSubcategories } from "@/context/SubcategoriesContext";
 import { useBrands } from "@/context/BrandsContext";
 import { Select, TextInput } from "@mantine/core";
 import { useProduct } from "../../context";
 
-// Catalog hierarchy of a physical product: Main Category -> Subcategory -> Brand -> Model/Item ->
-// Technical Specifications (client requirement "Products - Category, Brand, Model/Item,
-// Specifications"). The Subcategory list shows only the selected Main Category's subcategories and
-// is cleared when the category changes. Shown for products only - service classification is pending
-// client confirmation and is unchanged.
+// Catalog hierarchy of a physical product: Main Category -> Brand -> Model/Item -> Technical
+// Specifications. Brand is the second level - it replaces the legacy Subcategory (which is no
+// longer selected here; a product's stored subcategory is kept untouched). Shown for products only -
+// service classification is pending client confirmation and is unchanged.
 export default function CategoriesInformation() {
   const { translate } = useLanguage();
 
-  const { category, setCategory, subcategory, setSubcategory, brand, setBrand, model, setModel, specifications, setSpecifications, readOnly } = useProduct();
+  const { category, setCategory, brand, setBrand, model, setModel, specifications, setSpecifications, readOnly } = useProduct();
 
   const { data: mainCategories } = useMainCategories();
-  const { data: subcategories } = useSubcategories();
   const { data: brands } = useBrands();
-
-  const subcategoryOptions = subcategories
-    .filter((s) => category && (s.mainCategory?._id || (s.mainCategory as unknown as string)) === category)
-    .map((s) => ({ label: translate(s.name.en, s.name.ar), value: s._id }));
 
   return (
     <div className="product-details-box h-full">
@@ -33,27 +26,11 @@ export default function CategoriesInformation() {
         label={translate("Main Category", "الفئة الرئيسية")}
         placeholder={translate("Main Category", "الفئة الرئيسية")}
         value={category}
-        onChange={(value) => {
-          setCategory(value);
-          // A subcategory always belongs to its main category - a new category starts without one.
-          if (value !== category) setSubcategory(null);
-        }}
+        onChange={(value) => setCategory(value)}
         data={mainCategories.map((mainCategory) => ({
           label: translate(mainCategory.name.en, mainCategory.name.ar),
           value: mainCategory._id,
         }))}
-        readOnly={readOnly}
-      />
-      <Select
-        searchable
-        clearable
-        label={translate("Subcategory (optional)", "الفئة الفرعية (اختياري)")}
-        placeholder={category ? translate("Subcategory", "الفئة الفرعية") : translate("Select the main category first", "اختر الفئة الرئيسية أولاً")}
-        value={subcategory}
-        onChange={(value) => setSubcategory(value)}
-        data={subcategoryOptions}
-        disabled={!category}
-        nothingFoundMessage={translate("No subcategories under this category", "لا توجد فئات فرعية لهذه الفئة")}
         readOnly={readOnly}
       />
       <Select
@@ -67,6 +44,7 @@ export default function CategoriesInformation() {
           label: translate(b.name.en, b.name.ar),
           value: b._id,
         }))}
+        nothingFoundMessage={translate("No brands found", "لا توجد ماركات")}
         readOnly={readOnly}
       />
       <TextInput

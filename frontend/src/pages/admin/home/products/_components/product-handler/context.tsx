@@ -34,8 +34,6 @@ type ProductContextProps = {
   setDescriptionEn: React.Dispatch<React.SetStateAction<string>>;
   descriptionAr: string;
   setDescriptionAr: React.Dispatch<React.SetStateAction<string>>;
-  cost: string | number;
-  setCost: React.Dispatch<React.SetStateAction<string | number>>;
   price: string | number;
   setPrice: React.Dispatch<React.SetStateAction<string | number>>;
   priceAfterDiscount: string | number;
@@ -44,10 +42,8 @@ type ProductContextProps = {
   setIsAvailable: React.Dispatch<React.SetStateAction<boolean>>;
   category: string | null;
   setCategory: React.Dispatch<React.SetStateAction<string | null>>;
-  // Catalog hierarchy: Main Category -> Subcategory -> Brand -> Model/Item -> Specifications.
-  // Services: Main Category + Subcategory only.
-  subcategory: string | null;
-  setSubcategory: React.Dispatch<React.SetStateAction<string | null>>;
+  // Catalog hierarchy: Main Category -> Brand -> Model/Item -> Specifications (Brand is the second
+  // level - it replaced the legacy Subcategory; a product's stored subcategory is kept, never sent).
   brand: string | null;
   setBrand: React.Dispatch<React.SetStateAction<string | null>>;
   model: string;
@@ -90,8 +86,6 @@ export const ProductContext = createContext<ProductContextProps>({
   setDescriptionEn: () => {},
   descriptionAr: "",
   setDescriptionAr: () => {},
-  cost: "",
-  setCost: () => {},
   price: "",
   setPrice: () => {},
   priceAfterDiscount: "",
@@ -100,8 +94,6 @@ export const ProductContext = createContext<ProductContextProps>({
   setIsAvailable: () => {},
   category: null,
   setCategory: () => {},
-  subcategory: null,
-  setSubcategory: () => {},
   brand: null,
   setBrand: () => {},
   model: "",
@@ -133,12 +125,10 @@ export default function ProductFormProvider({ product, children }: { product?: P
   const [descriptionEn, setDescriptionEn] = useState(product?.description.en || "");
   const [descriptionAr, setDescriptionAr] = useState(product?.description.ar || "");
   // `?? ""` (not `|| ""`): a real 0 stays 0; only a missing value is empty.
-  const [cost, setCost] = useState<string | number>(product?.cost ?? "");
   const [price, setPrice] = useState<string | number>(product?.price ?? "");
   const [priceAfterDiscount, setPriceAfterDiscount] = useState<string | number>(product?.priceAfterDiscount || "");
   const [isAvailable, setIsAvailable] = useState<boolean>(product ? product.isAvailable : true);
   const [category, setCategory] = useState<string | null>(product?.category || null);
-  const [subcategory, setSubcategory] = useState<string | null>(product?.subcategory || null);
   const [brand, setBrand] = useState<string | null>(product?.brand || null);
   const [model, setModel] = useState<string>(product?.model || "");
   const [specifications, setSpecifications] = useState<string>(product?.specifications || "");
@@ -175,8 +165,6 @@ export default function ProductFormProvider({ product, children }: { product?: P
         setDescriptionEn,
         descriptionAr,
         setDescriptionAr,
-        cost,
-        setCost,
         price,
         setPrice,
         priceAfterDiscount,
@@ -185,8 +173,6 @@ export default function ProductFormProvider({ product, children }: { product?: P
         setIsAvailable,
         category,
         setCategory,
-        subcategory,
-        setSubcategory,
         brand,
         setBrand,
         model,

@@ -3,7 +3,6 @@ import { useDebounce } from "use-debounce";
 import { useLanguage } from "@/context/LanguageContext";
 import { useMainCategories } from "@/context/MainCategoriesContext";
 import { useBrands } from "@/context/BrandsContext";
-import { useSubcategories } from "@/context/SubcategoriesContext";
 import useCategoryHelpers from "@/hooks/useCategoryHelpers";
 import useDataHandler from "@/hooks/useDataHandler";
 import { Product } from "@/types/product";
@@ -35,7 +34,6 @@ export default function ProductSearchModal({
 
   const { data: mainCategories } = useMainCategories();
   const { data: brands } = useBrands();
-  const { data: subcategories } = useSubcategories();
   const { getMainCategoryNameById, getBrandNameById } = useCategoryHelpers();
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -44,9 +42,6 @@ export default function ProductSearchModal({
   const [debouncedKeyword] = useDebounce(keyword, 350);
   const [mainCategoryFilter, setMainCategoryFilter] = useState<string>("");
   const [brandFilter, setBrandFilter] = useState<string>("");
-  // Subcategories of the selected Main Category only (dependent selector).
-  const [subcategoryFilter, setSubcategoryFilter] = useState<string>("");
-  const subcategoryOptions = subcategories.filter((s) => !mainCategoryFilter || (s.mainCategory?._id || (s.mainCategory as unknown as string)) === mainCategoryFilter);
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({
     initialData: null,
@@ -66,7 +61,6 @@ export default function ProductSearchModal({
           keyword: debouncedKeyword,
           ...(mainCategoryFilter ? { mainCategoryId: mainCategoryFilter } : {}),
           ...(brandFilter ? { brands: brandFilter } : {}),
-          ...(subcategoryFilter ? { subCategories: subcategoryFilter } : {}),
         },
         signal: controller.signal,
         language,
@@ -87,7 +81,7 @@ export default function ProductSearchModal({
   useEffect(() => {
     const cancelRequest = handleLoadProducts(); // This will send the request and return the function to cancel it.
     return cancelRequest; // This will be called when the component unmounts.
-  }, [debouncedKeyword, mainCategoryFilter, brandFilter, subcategoryFilter]);
+  }, [debouncedKeyword, mainCategoryFilter, brandFilter]);
 
   function handleClose() {
     close();
@@ -102,7 +96,7 @@ export default function ProductSearchModal({
     <Modal opened={opened} onClose={handleClose} title={translate("Search for a product", "ابحث عن منتج")} size="lg">
       <div className="flex flex-col gap-3">
         {/* Filters */}
-        <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-3">
           <TextInput
             placeholder={translate("Title, model / item or SKU...", "العنوان أو الموديل / الصنف أو الكود...")}
             label={translate("Search (title / model / SKU)", "بحث (العنوان / الموديل / الكود)")}
@@ -114,10 +108,7 @@ export default function ProductSearchModal({
           {/* Main Category */}
           <Select
             value={mainCategoryFilter}
-            onChange={(value) => {
-              setMainCategoryFilter(value as string);
-              setSubcategoryFilter("");
-            }}
+            onChange={(value) => setMainCategoryFilter(value as string)}
             label={translate("Main Category", "الفئة الرئيسية")}
             data={[
               { value: "", label: translate("All", "الكل") },
@@ -128,20 +119,6 @@ export default function ProductSearchModal({
             ]}
             allowDeselect={false}
             rightSection={mainCategoryFilter ? <solidIcons.Check color="green" size={12} /> : null}
-          />
-
-          {/* Subcategory - only those of the selected Main Category */}
-          <Select
-            value={subcategoryFilter}
-            onChange={(value) => setSubcategoryFilter(value as string)}
-            label={translate("Subcategory", "الفئة الفرعية")}
-            data={[
-              { value: "", label: translate("All", "الكل") },
-              ...subcategoryOptions.map((s) => ({ value: s._id, label: translate(s.name.en, s.name.ar) })),
-            ]}
-            allowDeselect={false}
-            searchable
-            rightSection={subcategoryFilter ? <solidIcons.Check color="green" size={12} /> : null}
           />
 
           {/* Brand - flat (not scoped to a category), unlike the legacy Subcategory filter this replaces */}

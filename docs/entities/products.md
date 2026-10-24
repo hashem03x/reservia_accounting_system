@@ -76,12 +76,17 @@ Services cannot appear in sales or purchase orders under the current schema - se
 
 ## Catalog hierarchy and optional cost / price
 
-Products: Main Category → Subcategory (optional, must belong to the category) → Brand → Model/Item →
-Specifications. Brands are managed on the Categories page; a brand used by products cannot be
-deleted.
+Products: Main Category → Brand → Model/Item → Specifications. Brand is the second level and
+replaced Subcategory: the product form and the product CSV import no longer take a subcategory. A
+product's stored `subcategory` is kept, the API still accepts it, and barcode printing falls back to
+it when there is no brand. Brands are managed on the Categories page; a brand used by products cannot
+be deleted.
 
-Cost and price are optional when defining a product. A product without a cost takes its first
-purchase cost and is never averaged as 0, and a PUC transfer refuses a product with no cost.
+Cost is not entered on the product form. A product's cost comes from its purchases: the Purchase
+Invoice line price, averaged by `applyPurchaseToProducts`. Editing a product never changes a stored
+cost. A product without a cost takes its first purchase cost and is never averaged as 0, and a PUC
+transfer refuses a product with no cost. Price is optional. The Purchase Invoice form requires a unit
+price on every line.
 Service classification is unchanged and pending client confirmation.
 
 Purchase Order lines must reference a catalog product, and the description is optional line notes.

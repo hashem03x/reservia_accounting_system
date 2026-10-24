@@ -35,11 +35,10 @@ const productSchema = mongoose.Schema(
       ref: 'Category',
       required: [function () { return this.type !== 'service'; }, 'Category is required'],
     },
-    // Second level of the catalog hierarchy: Main Category -> Subcategory -> Brand -> Model/Item ->
-    // Technical Specifications (client requirement "Products - Category, Brand, Model/Item,
-    // Specifications"). Optional (products created before it was restored to the hierarchy have
-    // none), but when set it must belong to `category` - checked by productValidator.js and the
-    // product CSV import. Services are unchanged (their classification is pending client confirmation).
+    // Legacy field - Brand (below) is the product's second catalog level and replaced Subcategory
+    // (Main Category -> Brand -> Model/Item -> Specifications). No longer set by the product form or
+    // the CSV import; kept so existing products and reports that read it keep working, and still
+    // accepted by the API (it must belong to `category` when sent - productValidator.js).
     subcategory: {
       type: mongoose.Schema.ObjectId,
       ref: 'SubCategory',

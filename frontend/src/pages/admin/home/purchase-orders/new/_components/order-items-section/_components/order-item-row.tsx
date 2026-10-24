@@ -104,8 +104,9 @@ export default function OrderItemRow({
               starterQuantity: 1,
               unitPrice,
               itemDiscount: { type: "percentage", value: 0 },
-              unitPriceAfterDiscount: unitPrice,
-              starterSubtotal: unitPrice,
+              // Totals start at 0 (never NaN) until the purchase price is entered.
+              unitPriceAfterDiscount: unitPrice ?? 0,
+              starterSubtotal: unitPrice ?? 0,
             });
           } catch (error) {
             updateItem({
