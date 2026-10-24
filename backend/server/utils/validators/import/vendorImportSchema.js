@@ -389,7 +389,7 @@ exports.fieldSpecs = [
     column: "PaymentTerms",
     required: "no",
     description: "Default payment terms of the vendor.",
-    format: "One of: Immediate, Net 15, Net 30, Net 45, Net 60, Custom",
+    format: "One of: Immediate, Net 15, Net 30, Net 45, Net 60, Net 90, Custom",
     example: "Net 30"
   },
   {

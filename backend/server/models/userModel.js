@@ -99,7 +99,7 @@ const userSchema = mongoose.Schema(
       default: 'Net 30',
       enum: {
         values: PaymentTerms,
-        message: '{VALUE} is not a valid payment term. Choose from "Immediate", "Net 15", "Net 30", "Net 45", "Net 60", "Custom"',
+        message: '{VALUE} is not a valid payment term. Choose from "Immediate", "Net 15", "Net 30", "Net 45", "Net 60", "Net 90", "Custom"',
       },
     },
     customPaymentDays: { type: Number, min: 0, default: null },

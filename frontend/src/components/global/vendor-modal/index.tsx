@@ -54,7 +54,7 @@ export default function VendorModal({
   // The Payment Schedule follows the Payment Terms: a fixed "Net N" term hides it and saves one
   // payment due after N days; Immediate allows a lump sum only (no installments); Custom keeps the
   // full schedule. What is saved is derived here, so a hidden schedule never submits stale values.
-  const netTermDays: Partial<Record<VendorPaymentTerms, number>> = { "Net 15": 15, "Net 30": 30, "Net 45": 45, "Net 60": 60 };
+  const netTermDays: Partial<Record<VendorPaymentTerms, number>> = { "Net 15": 15, "Net 30": 30, "Net 45": 45, "Net 60": 60, "Net 90": 90 };
   const fixedTermDays = netTermDays[paymentTerms];
   const scheduleHidden = fixedTermDays !== undefined;
   const effectivePaymentTermsConfig: PaymentTermsConfig = scheduleHidden
@@ -253,6 +253,7 @@ export default function VendorModal({
                 { value: "Net 30", label: translate("Net 30", "صافي 30 يوم") },
                 { value: "Net 45", label: translate("Net 45", "صافي 45 يوم") },
                 { value: "Net 60", label: translate("Net 60", "صافي 60 يوم") },
+                { value: "Net 90", label: translate("Net 90", "صافي 90 يوم") },
                 { value: "Custom", label: translate("Custom", "مخصص") },
               ]}
               label={translate("Payment Terms", "شروط الدفع")}

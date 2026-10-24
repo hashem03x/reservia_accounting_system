@@ -18,6 +18,7 @@ const NET_DAYS_BY_TERM = {
   'Net 30': 30,
   'Net 45': 45,
   'Net 60': 60,
+  'Net 90': 90,
 };
 
 function addDays(date, days) {
@@ -28,7 +29,7 @@ function addDays(date, days) {
 
 /**
  * @param {Date|string} invoiceDate
- * @param {string} paymentTerms - 'Immediate' | 'Net 15' | 'Net 30' | 'Net 45' | 'Net 60' | 'Custom'
+ * @param {string} paymentTerms - 'Immediate' | 'Net 15' | 'Net 30' | 'Net 45' | 'Net 60' | 'Net 90' | 'Custom'
  * @param {number|null} customDays - only used when paymentTerms === 'Custom'
  * @returns {Date}
  */
