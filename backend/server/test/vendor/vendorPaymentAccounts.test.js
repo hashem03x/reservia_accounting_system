@@ -88,6 +88,23 @@ test('create: accounts are validated, normalized and paymentInfo follows the pri
   assert.ok(bad.errors.some(m => /listed twice/.test(m)));
 });
 
+test('vendor type is optional: create without it defaults to "current"; an edit without it keeps the stored type', async () => {
+  const body = { name: 'No Type Vendor', contact: { phone: '01123456780', email: 'notype@example.com' }, paymentTerms: 'Net 90' };
+  const { req, errors } = await runValidators(createVendorValidators, body);
+  assert.deepEqual(errors, []);
+  const vendor = await Vendor.create(req.body);
+  assert.equal(vendor.type, 'current');
+
+  const equity = await Vendor.create({ name: 'Equity Vendor', type: 'equity', contact: { phone: '01123456781' } });
+  const update = { name: 'Equity Vendor 2', paymentTerms: 'Immediate' };
+  const checked = await runValidators(updateVendorValidators, update, { id: String(equity._id) });
+  assert.deepEqual(checked.errors, []);
+  await Vendor.findByIdAndUpdate(equity._id, { $set: checked.req.body });
+  const reloaded = await Vendor.findById(equity._id).lean();
+  assert.equal(reloaded.type, 'equity');
+  assert.equal(reloaded.name, 'Equity Vendor 2');
+});
+
 test('update: edit, add, deactivate - ids are kept; an account a payment was sent to cannot be deleted; a foreign id is refused', async () => {
   const vendor = await Vendor.create({ name: 'Delta Trading', contact: { phone: '01223456789' }, paymentAccounts: [bank(), instapay()] });
   const [bankAcc, instaAcc] = vendor.paymentAccounts.map(a => a.toObject());

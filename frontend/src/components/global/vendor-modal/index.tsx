@@ -2,8 +2,7 @@ import { useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
-import { PaymentTerms as VendorPaymentTerms, PaymentTermsConfig, Vendor, VendorType } from "@/types/vendor";
-import vendorTypes, { vendorTypesArray } from "@/utils/constants/vendor-types";
+import { PaymentTerms as VendorPaymentTerms, PaymentTermsConfig, Vendor } from "@/types/vendor";
 import { Button, NumberInput, Select, TextInput } from "@mantine/core";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
@@ -26,7 +25,6 @@ export default function VendorModal({
   const { language, translate, translations } = useLanguage();
 
   const [name, setName] = useState(vendorToUpdate?.name || "");
-  const [type, setType] = useState<VendorType>(vendorToUpdate?.type || vendorTypes.current.value);
   const [cashFlowActivity, setCashFlowActivity] = useState<string>(vendorToUpdate?.cashFlowActivity || "");
   const [phone, setPhone] = useState(vendorToUpdate?.contact.phone || "");
   const [email, setEmail] = useState(vendorToUpdate?.contact.email || "");
@@ -99,8 +97,9 @@ export default function VendorModal({
         method: savedVendor ? "PUT" : "POST",
         url: savedVendor ? `vendors/${savedVendor._id}` : "vendors",
         data: {
+          // No vendor type from the form: the backend defaults a new vendor to "current" and an edit
+          // keeps the stored type (updates are partial).
           name,
-          type,
           cashFlowActivity: cashFlowActivity || null,
           balance: savedVendor ? savedVendor.balance : 0,
           contact: { phone, email: email || undefined },
@@ -134,7 +133,6 @@ export default function VendorModal({
     close();
     setTimeout(() => {
       setName(vendorToUpdate?.name || "");
-      setType(vendorToUpdate?.type || vendorTypes.current.value);
       setCashFlowActivity(vendorToUpdate?.cashFlowActivity || "");
       setPhone(vendorToUpdate?.contact.phone || "");
       setEmail(vendorToUpdate?.contact.email || "");
@@ -159,7 +157,6 @@ export default function VendorModal({
 
   const dataChanged = savedVendor
     ? name !== savedVendor.name ||
-      type !== savedVendor.type ||
       phone !== savedVendor.contact.phone ||
       (email || undefined) !== savedVendor.contact.email ||
       (country || undefined) !== savedVendor.address?.country ||
@@ -187,16 +184,6 @@ export default function VendorModal({
               required
               autoFocus
               flex={1}
-            />
-            <Select
-              value={type}
-              onChange={(value) => setType(value as VendorType)}
-              data={vendorTypesArray.map((type) => ({ value: type.value, label: translate(type.label.en, type.label.ar) }))}
-              label={translate("Type", "النوع")}
-              placeholder={translate("Select Type", "اختر النوع")}
-              allowDeselect={false}
-              style={{ width: 185 }}
-              required
             />
           </div>
 
@@ -344,7 +331,6 @@ export default function VendorModal({
             loading={loading}
             disabled={
               !name ||
-              !type ||
               !phone ||
               (isNewVendor && !email) ||
               !dataChanged ||
