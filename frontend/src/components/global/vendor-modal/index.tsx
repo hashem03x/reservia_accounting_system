@@ -51,7 +51,18 @@ export default function VendorModal({
   // additive, separate from paymentTerms/customPaymentDays above (never replaces them).
   const defaultPaymentTermsConfig: PaymentTermsConfig = { kind: "lump_sum", lumpSum: { timing: "immediate", durationDays: 0 } };
   const [paymentTermsConfig, setPaymentTermsConfig] = useState<PaymentTermsConfig>(vendorToUpdate?.paymentTermsConfig || defaultPaymentTermsConfig);
-  const paymentTermsConfigError = validatePaymentTermsConfigClientSide(paymentTermsConfig, translate);
+  // The Payment Schedule follows the Payment Terms: a fixed "Net N" term hides it and saves one
+  // payment due after N days; Immediate allows a lump sum only (no installments); Custom keeps the
+  // full schedule. What is saved is derived here, so a hidden schedule never submits stale values.
+  const netTermDays: Partial<Record<VendorPaymentTerms, number>> = { "Net 15": 15, "Net 30": 30, "Net 45": 45, "Net 60": 60 };
+  const fixedTermDays = netTermDays[paymentTerms];
+  const scheduleHidden = fixedTermDays !== undefined;
+  const effectivePaymentTermsConfig: PaymentTermsConfig = scheduleHidden
+    ? { kind: "lump_sum", lumpSum: { timing: "deferred", durationDays: fixedTermDays } }
+    : paymentTerms === "Immediate" && paymentTermsConfig.kind === "installments"
+      ? defaultPaymentTermsConfig
+      : paymentTermsConfig;
+  const paymentTermsConfigError = validatePaymentTermsConfigClientSide(effectivePaymentTermsConfig, translate);
 
   // Same rules as the backend (utils/helpers/vendor-payment-accounts.ts).
   const paymentAccountsError = validatePaymentAccounts(paymentAccounts);
@@ -106,7 +117,7 @@ export default function VendorModal({
           paymentAccounts: paymentAccountsPayload(paymentAccounts),
           paymentTerms,
           customPaymentDays: paymentTerms === "Custom" ? Number(customPaymentDays) : undefined,
-          paymentTermsConfig,
+          paymentTermsConfig: effectivePaymentTermsConfig,
         }, // I send them as undefined instead of empty string to avoid a backend issue.
       });
 
@@ -230,7 +241,12 @@ export default function VendorModal({
           <div className="flex gap-2">
             <Select
               value={paymentTerms}
-              onChange={(value) => setPaymentTerms((value as VendorPaymentTerms) || "Net 30")}
+              onChange={(value) => {
+                const next = (value as VendorPaymentTerms) || "Net 30";
+                setPaymentTerms(next);
+                // Immediate allows no installments - drop any configured ones.
+                if (next === "Immediate" && paymentTermsConfig.kind === "installments") setPaymentTermsConfig(defaultPaymentTermsConfig);
+              }}
               data={[
                 { value: "Immediate", label: translate("Immediate", "فوري") },
                 { value: "Net 15", label: translate("Net 15", "صافي 15 يوم") },
@@ -257,7 +273,7 @@ export default function VendorModal({
           </div>
         </section>
 
-        <PaymentTermsConfigSection value={paymentTermsConfig} onChange={setPaymentTermsConfig} />
+        {!scheduleHidden && <PaymentTermsConfigSection value={effectivePaymentTermsConfig} onChange={setPaymentTermsConfig} allowInstallments={paymentTerms !== "Immediate"} />}
 
         {/* Address */}
         <section className="flex flex-col gap-2">

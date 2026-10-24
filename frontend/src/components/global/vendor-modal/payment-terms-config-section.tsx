@@ -44,7 +44,16 @@ export function validatePaymentTermsConfigClientSide(config: PaymentTermsConfig,
   return null;
 }
 
-export default function PaymentTermsConfigSection({ value, onChange }: { value: PaymentTermsConfig; onChange: (value: PaymentTermsConfig) => void }) {
+export default function PaymentTermsConfigSection({
+  value,
+  onChange,
+  allowInstallments = true,
+}: {
+  value: PaymentTermsConfig;
+  onChange: (value: PaymentTermsConfig) => void;
+  // false (Immediate payment terms): the Installments option is not offered.
+  allowInstallments?: boolean;
+}) {
   const { translate } = useLanguage();
 
   const error = validatePaymentTermsConfigClientSide(value, translate);
@@ -84,7 +93,7 @@ export default function PaymentTermsConfigSection({ value, onChange }: { value: 
         }
         data={[
           { value: "lump_sum", label: translate("Lump Sum (one payment)", "دفعة واحدة") },
-          { value: "installments", label: translate("Installments", "دفعات متعددة") },
+          ...(allowInstallments ? [{ value: "installments", label: translate("Installments", "دفعات متعددة") }] : []),
         ]}
         label={translate("Payment Structure", "نوع الدفع")}
         allowDeselect={false}
