@@ -5,7 +5,7 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX, PaymentModes, WalletProviders } = require('../../models/shared/businessPartnerSchemas');
 const { isValidPhone } = require('./phoneValidator');
 const { PaymentTerms } = require('../paymentTerms');
-const { validatePaymentTermsConfig } = require('../paymentTermsConfig');
+const { validatePaymentTermsConfig, validateScheduleAgainstPaymentTerms, IMMEDIATE_PAYMENT_TERMS_CONFIG } = require('../paymentTermsConfig');
 const mongoose = require('mongoose');
 const { normalizeVendorPaymentAccounts, paymentInfoFromAccounts } = require('../vendorPaymentAccounts');
 
@@ -29,10 +29,37 @@ const paymentTermsValidators = [
 // schema default), but when sent, it must be a complete, internally-consistent configuration -
 // rejected with the SAME rule the Mongoose model's own backstop enforces
 // (utils/paymentTermsConfig.js is the single shared source of truth for both layers).
+// The schedule follows the Payment Terms (stored values fill in what an update leaves out):
+// Immediate always saves an immediate lump sum (stale schedules are replaced), and Custom
+// installments must add up to the custom days. Only applied when the request touches the terms or
+// the schedule, so editing an unrelated field of an older vendor is never blocked. A new vendor
+// without paymentTerms gets the schema default ('Net 30').
+async function resolvePaymentTerms(req) {
+    const body = req.body;
+    if (body.paymentTerms === undefined && body.customPaymentDays === undefined && body.paymentTermsConfig === undefined) return null;
+    const stored = req.params?.id && mongoose.Types.ObjectId.isValid(req.params.id)
+        ? await Vendor.findById(req.params.id).select('paymentTerms customPaymentDays paymentTermsConfig').lean()
+        : null;
+    return {
+        paymentTerms: body.paymentTerms !== undefined ? body.paymentTerms : stored?.paymentTerms,
+        customPaymentDays: body.customPaymentDays !== undefined ? body.customPaymentDays : stored?.customPaymentDays,
+        storedConfig: stored?.paymentTermsConfig,
+    };
+}
+
 const paymentTermsConfigValidators = [
-    check('paymentTermsConfig').custom((value) => {
+    check('paymentTermsConfig').customSanitizer(async (value, { req }) => {
+        const terms = await resolvePaymentTerms(req);
+        if (terms?.paymentTerms !== 'Immediate') return value;
+        return { ...IMMEDIATE_PAYMENT_TERMS_CONFIG, lumpSum: { ...IMMEDIATE_PAYMENT_TERMS_CONFIG.lumpSum }, installments: [] };
+    }),
+    check('paymentTermsConfig').custom(async (value, { req }) => {
         const error = validatePaymentTermsConfig(value);
         if (error) throw new Error(error);
+        const terms = await resolvePaymentTerms(req);
+        if (!terms) return true;
+        const mismatch = validateScheduleAgainstPaymentTerms(terms.paymentTerms, terms.customPaymentDays, value !== undefined ? value : terms.storedConfig);
+        if (mismatch) throw new Error(mismatch);
         return true;
     }),
 ];

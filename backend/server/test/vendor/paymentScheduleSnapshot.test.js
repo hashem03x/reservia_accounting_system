@@ -49,7 +49,7 @@ beforeEach(async () => {
     contact: { phone: `010${Date.now()}${seq}`.slice(0, 11) },
     paymentTermsConfig: {
       kind: 'installments',
-      installments: [{ durationDays: 30, percentage: 40 }, { durationDays: 60, percentage: 35 }, { durationDays: 90, percentage: 25 }],
+      installments: [{ durationDays: 30, percentage: 40 }, { durationDays: 30, percentage: 35 }, { durationDays: 30, percentage: 25 }],
     },
   });
 });

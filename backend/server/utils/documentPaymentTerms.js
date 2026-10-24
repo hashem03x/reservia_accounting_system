@@ -173,12 +173,13 @@ function termsFromVendorConfig(config, issueDate) {
     const days = config.lumpSum?.timing === 'deferred' ? Number(config.lumpSum.durationDays) || 0 : 0;
     return days > 0 ? { mode: 'lump_sum', lumpSumDueDate: addDays(issueDate || new Date(), days) } : { mode: 'immediate' };
   }
-  const installments = (config.installments || []).map((row, i) => ({
-    description: `Installment ${i + 1}`,
-    basis: 'percentage',
-    percentage: Number(row.percentage),
-    tenorDays: Number(row.durationDays) || 0,
-  }));
+  // A vendor installment's days count from the previous installment; a document row's tenor
+  // counts from the issue date - so the tenor is the running total.
+  let elapsedDays = 0;
+  const installments = (config.installments || []).map((row, i) => {
+    elapsedDays += Number(row.durationDays) || 0;
+    return { description: `Installment ${i + 1}`, basis: 'percentage', percentage: Number(row.percentage), tenorDays: elapsedDays };
+  });
   return installments.length ? { mode: 'installments', installments } : { mode: 'immediate' };
 }
 

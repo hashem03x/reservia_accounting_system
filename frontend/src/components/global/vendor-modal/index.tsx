@@ -50,17 +50,20 @@ export default function VendorModal({
   const defaultPaymentTermsConfig: PaymentTermsConfig = { kind: "lump_sum", lumpSum: { timing: "immediate", durationDays: 0 } };
   const [paymentTermsConfig, setPaymentTermsConfig] = useState<PaymentTermsConfig>(vendorToUpdate?.paymentTermsConfig || defaultPaymentTermsConfig);
   // The Payment Schedule follows the Payment Terms: a fixed "Net N" term hides it and saves one
-  // payment due after N days; Immediate allows a lump sum only (no installments); Custom keeps the
-  // full schedule. What is saved is derived here, so a hidden schedule never submits stale values.
+  // payment due after N days; Immediate is always one immediate lump sum (fixed, not editable);
+  // Custom keeps the full schedule, whose installment days must add up to the custom days. What is
+  // saved is derived here, so a hidden or fixed schedule never submits stale values.
   const netTermDays: Partial<Record<VendorPaymentTerms, number>> = { "Net 15": 15, "Net 30": 30, "Net 45": 45, "Net 60": 60, "Net 90": 90 };
   const fixedTermDays = netTermDays[paymentTerms];
   const scheduleHidden = fixedTermDays !== undefined;
   const effectivePaymentTermsConfig: PaymentTermsConfig = scheduleHidden
     ? { kind: "lump_sum", lumpSum: { timing: "deferred", durationDays: fixedTermDays } }
-    : paymentTerms === "Immediate" && paymentTermsConfig.kind === "installments"
+    : paymentTerms === "Immediate"
       ? defaultPaymentTermsConfig
       : paymentTermsConfig;
-  const paymentTermsConfigError = validatePaymentTermsConfigClientSide(effectivePaymentTermsConfig, translate);
+  const customTermDays =
+    paymentTerms === "Custom" && customPaymentDays !== "" && Number.isInteger(Number(customPaymentDays)) && Number(customPaymentDays) >= 0 ? Number(customPaymentDays) : null;
+  const paymentTermsConfigError = validatePaymentTermsConfigClientSide(effectivePaymentTermsConfig, translate, customTermDays);
 
   // Same rules as the backend (utils/helpers/vendor-payment-accounts.ts).
   const paymentAccountsError = validatePaymentAccounts(paymentAccounts);
@@ -231,8 +234,8 @@ export default function VendorModal({
               onChange={(value) => {
                 const next = (value as VendorPaymentTerms) || "Net 30";
                 setPaymentTerms(next);
-                // Immediate allows no installments - drop any configured ones.
-                if (next === "Immediate" && paymentTermsConfig.kind === "installments") setPaymentTermsConfig(defaultPaymentTermsConfig);
+                // Immediate is always Lump Sum + Immediate timing - drop any other schedule.
+                if (next === "Immediate") setPaymentTermsConfig(defaultPaymentTermsConfig);
               }}
               data={[
                 { value: "Immediate", label: translate("Immediate", "فوري") },
@@ -261,7 +264,15 @@ export default function VendorModal({
           </div>
         </section>
 
-        {!scheduleHidden && <PaymentTermsConfigSection value={effectivePaymentTermsConfig} onChange={setPaymentTermsConfig} allowInstallments={paymentTerms !== "Immediate"} />}
+        {!scheduleHidden && (
+          <PaymentTermsConfigSection
+            value={effectivePaymentTermsConfig}
+            onChange={setPaymentTermsConfig}
+            allowInstallments={paymentTerms !== "Immediate"}
+            locked={paymentTerms === "Immediate"}
+            termDays={customTermDays}
+          />
+        )}
 
         {/* Address */}
         <section className="flex flex-col gap-2">

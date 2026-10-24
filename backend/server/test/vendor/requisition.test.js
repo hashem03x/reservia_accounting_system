@@ -270,7 +270,7 @@ test('payment terms: no terms given -> the vendor default terms are snapshotted;
   assert.equal(immediate.paymentSchedule.rows[0].amount, 1000);
   assert.equal(new Date(immediate.paymentSchedule.rows[0].dueDate).getTime(), day('2026-03-01'));
 
-  await Vendor.updateOne({ _id: vendor._id }, { $set: { paymentTermsConfig: { kind: 'installments', installments: [{ durationDays: 30, percentage: 40 }, { durationDays: 60, percentage: 60 }] } } });
+  await Vendor.updateOne({ _id: vendor._id }, { $set: { paymentTermsConfig: { kind: 'installments', installments: [{ durationDays: 30, percentage: 40 }, { durationDays: 30, percentage: 60 }] } } });
   const fromVendor = await create({ issueDate: '2026-03-01' });
   assert.equal(fromVendor.paymentTerms.mode, 'installments');
   assert.deepEqual(fromVendor.paymentSchedule.rows.map(r => [r.percentage, r.amount, r.tenorDays]), [[40, 400, 30], [60, 600, 60]]);

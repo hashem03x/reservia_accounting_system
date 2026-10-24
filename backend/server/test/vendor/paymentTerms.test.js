@@ -91,9 +91,9 @@ test('buildPaymentSchedule: a deferred lump sum produces one row, due N days lat
   assert.equal(rows[0].dueDate.toISOString().slice(0, 10), '2026-01-31');
 });
 
-test('buildPaymentSchedule: installments split the total exactly per percentage, each due on its own date', () => {
+test('buildPaymentSchedule: installments split the total exactly per percentage; each installment days count from the previous one', () => {
   const rows = buildPaymentSchedule(
-    { kind: 'installments', installments: [{ durationDays: 30, percentage: 40 }, { durationDays: 60, percentage: 35 }, { durationDays: 90, percentage: 25 }] },
+    { kind: 'installments', installments: [{ durationDays: 30, percentage: 40 }, { durationDays: 30, percentage: 35 }, { durationDays: 30, percentage: 25 }] },
     '2026-01-01',
     1000,
   );
@@ -102,6 +102,7 @@ test('buildPaymentSchedule: installments split the total exactly per percentage,
   assert.equal(rows.reduce((sum, r) => sum + r.amount, 0), 1000);
   assert.equal(rows[0].dueDate.toISOString().slice(0, 10), '2026-01-31');
   assert.equal(rows[2].dueDate.toISOString().slice(0, 10), '2026-04-01');
+  assert.deepEqual(rows.map(r => r.durationDays), [30, 60, 90], 'days from the document date');
 });
 
 test('buildPaymentSchedule: rounding always reconciles exactly to the total - the last installment absorbs the remainder', () => {
@@ -183,4 +184,48 @@ test('Vendor: re-saving a vendor for an unrelated reason never re-validates an u
   reloaded.isActive = false;
   await reloaded.save();
   assert.equal(reloaded.isActive, false);
+});
+
+// ===================== Schedule vs Payment Terms (request validators) =====================
+
+async function runVendorValidators(validators, body, params = {}) {
+  const { validationResult } = require('express-validator');
+  const req = { body, params, query: {} };
+  for (const v of validators) if (typeof v.run === 'function') await v.run(req);
+  return { req, errors: validationResult(req).array().map(e => e.msg) };
+}
+
+test('validateScheduleAgainstPaymentTerms: Custom installment days (from the previous installment) must add up to the custom days', () => {
+  const { validateScheduleAgainstPaymentTerms } = require('../../utils/paymentTermsConfig');
+  const config = (...days) => ({ kind: 'installments', installments: days.map((d, i) => ({ durationDays: d, percentage: i === 0 ? 100 - (days.length - 1) : 1 })) });
+  assert.match(validateScheduleAgainstPaymentTerms('Custom', 30, config(20)), /10 day\(s\) remaining to complete the 30-day/);
+  assert.equal(validateScheduleAgainstPaymentTerms('Custom', 30, config(30)), null);
+  assert.match(validateScheduleAgainstPaymentTerms('Custom', 30, config(35)), /exceeds the 30-day payment term by 5 day/);
+  assert.equal(validateScheduleAgainstPaymentTerms('Custom', 30, config(10, 15, 5)), null, 'several installments are summed');
+  assert.equal(validateScheduleAgainstPaymentTerms('Custom', null, config(20)), null, 'no custom days - no days check');
+  assert.equal(validateScheduleAgainstPaymentTerms('Net 30', null, config(20)), null, 'only Custom terms');
+  assert.equal(validateScheduleAgainstPaymentTerms('Custom', 30, { kind: 'lump_sum', lumpSum: { timing: 'immediate' } }), null, 'only installments');
+});
+
+test('vendor API: Immediate always saves Lump Sum + Immediate (stale schedules replaced); Custom installment days must match on create and update', async () => {
+  const { createVendorValidators, updateVendorValidators } = require('../../utils/validators/vendorValidators');
+  const stale = { kind: 'installments', installments: [{ durationDays: 10, percentage: 50 }, { durationDays: 10, percentage: 40 }] }; // also not 100%
+  const immediate = await runVendorValidators(createVendorValidators, { ...vendorFields({ contact: { phone: '01123456782', email: 'imm@example.com' } }), paymentTerms: 'Immediate', paymentTermsConfig: stale });
+  assert.deepEqual(immediate.errors, []);
+  assert.deepEqual(immediate.req.body.paymentTermsConfig, { kind: 'lump_sum', lumpSum: { timing: 'immediate', durationDays: 0 }, installments: [] });
+
+  const custom = installments => ({ ...vendorFields({ contact: { phone: '01123456783', email: 'cus@example.com' } }), paymentTerms: 'Custom', customPaymentDays: 30, paymentTermsConfig: { kind: 'installments', installments } });
+  assert.ok((await runVendorValidators(createVendorValidators, custom([{ durationDays: 20, percentage: 100 }]))).errors.some(m => /10 day\(s\) remaining/.test(m)));
+  assert.ok((await runVendorValidators(createVendorValidators, custom([{ durationDays: 35, percentage: 100 }]))).errors.some(m => /by 5 day/.test(m)));
+  const ok = await runVendorValidators(createVendorValidators, custom([{ durationDays: 20, percentage: 60 }, { durationDays: 10, percentage: 40 }]));
+  assert.deepEqual(ok.errors, []);
+  const vendor = await Vendor.create(ok.req.body);
+
+  // Update: the stored terms / schedule fill in what the request leaves out.
+  const params = { id: String(vendor._id) };
+  assert.ok((await runVendorValidators(updateVendorValidators, { customPaymentDays: 45 }, params)).errors.some(m => /15 day\(s\) remaining to complete the 45-day/.test(m)));
+  assert.deepEqual((await runVendorValidators(updateVendorValidators, { name: 'Renamed' }, params)).errors, [], 'an unrelated edit is never blocked');
+  const toImmediate = await runVendorValidators(updateVendorValidators, { paymentTerms: 'Immediate' }, params);
+  assert.deepEqual(toImmediate.errors, []);
+  assert.equal(toImmediate.req.body.paymentTermsConfig.kind, 'lump_sum');
 });

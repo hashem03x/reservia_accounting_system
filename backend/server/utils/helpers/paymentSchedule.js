@@ -41,14 +41,19 @@ function buildPaymentSchedule(paymentTermsConfig, documentDate, total) {
     return [{ durationDays, dueDate: addDays(documentDate, durationDays), percentage: 100, amount: round2(safeTotal) }];
   }
 
-  // kind === 'installments'
+  // kind === 'installments' - each installment's days count from the previous installment (the
+  // first from the document date); a row's durationDays is its total days from the document date.
   const installments = paymentTermsConfig.installments || [];
-  const rows = installments.map(installment => ({
-    durationDays: installment.durationDays,
-    dueDate: addDays(documentDate, installment.durationDays),
-    percentage: installment.percentage,
-    amount: round2((safeTotal * installment.percentage) / 100),
-  }));
+  let elapsedDays = 0;
+  const rows = installments.map(installment => {
+    elapsedDays += Number(installment.durationDays) || 0;
+    return {
+      durationDays: elapsedDays,
+      dueDate: addDays(documentDate, elapsedDays),
+      percentage: installment.percentage,
+      amount: round2((safeTotal * installment.percentage) / 100),
+    };
+  });
 
   if (rows.length > 0) {
     const sumExceptLast = rows.slice(0, -1).reduce((sum, row) => sum + row.amount, 0);
