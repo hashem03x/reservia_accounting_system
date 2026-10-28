@@ -2,13 +2,14 @@
 // Invoices") - internally named Requisition on the backend because the model name `PurchaseOrder`
 // is already taken by the existing Purchase Invoice (see backend requisitionModel.js's header
 // comment). Purely operational: no tax/payment fields, never posts accounting.
+import type { DocumentPaymentTerms, PaymentSchedule } from "@/utils/helpers/document-payment-terms";
 
 export type RequisitionStatus = "draft" | "open" | "cancelled";
 // Derived display status (never stored) - see the backend model's toJSON transform.
 export type RequisitionEffectiveStatus = "draft" | "open" | "partially_invoiced" | "fully_invoiced" | "cancelled";
 
 export interface RequisitionItem {
-  product?: { _id: string; title?: { en: string; ar: string }; type?: "product" | "service" } | null;
+  product?: { _id: string; title?: { en: string; ar: string }; type?: "product" | "service"; category?: string; subcategory?: string; brand?: string; model?: string; specifications?: string; sku?: string } | null;
   description: string;
   quantity: number;
   unit?: string | null;
@@ -33,6 +34,11 @@ export interface Requisition {
   items: RequisitionItem[];
   // = sum of items[].lineTotal - always server-computed.
   amount: number;
+  // The date installment tenors are counted from (older Purchase Orders: their creation date).
+  issueDate?: string | null;
+  // Vendor payment terms of this Purchase Order and the schedule derived from its current value.
+  paymentTerms?: DocumentPaymentTerms | null;
+  paymentSchedule?: PaymentSchedule | null;
   notes?: string;
   status: RequisitionStatus;
   // The ONE cached/mutable field (atomically incremented by linked Purchase Invoices) - everything

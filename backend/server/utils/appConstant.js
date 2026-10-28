@@ -67,11 +67,17 @@ exports.Resources = {
   journalEntries: 'journalEntries',
   advancedPayments: 'advancedPayments',
   shareholders: 'shareholders',
+<<<<<<< HEAD
   // Currency Management master data (Currency Management / multi-currency Journal Entries) -
   // deliberately a distinct resource from the frontend's pre-existing `currencies` constant, which
   // was never wired to a backend permission - see routes/accounting/currencyRoute.js's header
   // comment for why.
   currencyManagement: 'currencyManagement',
+=======
+  // Currency Manager (Accounting -> Currencies). Reading the list is also allowed with
+  // journalEntries:read (the Journal Entry form needs it) - see routes/accounting/currencyRoute.js.
+  currencies: 'currencies',
+>>>>>>> origin/main
 };
 
 exports.Actions = {
@@ -111,7 +117,11 @@ exports.adminPermission = [
   { resource: 'accounts', actions: ['create', 'delete', 'read', 'update'] },
   { resource: 'journalEntries', actions: ['create', 'read', 'update', 'createGeneral'] },
   { resource: 'advancedPayments', actions: ['create', 'delete', 'read', 'update'] },
+<<<<<<< HEAD
   { resource: 'currencyManagement', actions: ['create', 'delete', 'read', 'update'] },
+=======
+  { resource: 'currencies', actions: ['create', 'delete', 'read', 'update'] },
+>>>>>>> origin/main
 ];
 
 exports.moderatorPermission = [
@@ -140,7 +150,11 @@ exports.moderatorPermission = [
   { resource: 'accounts', actions: ['read'] },
   { resource: 'journalEntries', actions: ['create', 'read'] },
   { resource: 'advancedPayments', actions: ['create', 'read', 'update'] },
+<<<<<<< HEAD
   { resource: 'currencyManagement', actions: ['read'] },
+=======
+  { resource: 'currencies', actions: ['read'] },
+>>>>>>> origin/main
 ];
 
 exports.operatorPermission = [
@@ -155,7 +169,11 @@ exports.operatorPermission = [
   { resource: 'accounts', actions: ['read'] },
   { resource: 'journalEntries', actions: ['read'] },
   { resource: 'advancedPayments', actions: ['read'] },
+<<<<<<< HEAD
   { resource: 'currencyManagement', actions: ['read'] },
+=======
+  { resource: 'currencies', actions: ['read'] },
+>>>>>>> origin/main
 ];
 
 exports.userPermission = [

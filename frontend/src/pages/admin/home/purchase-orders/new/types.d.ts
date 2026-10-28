@@ -1,3 +1,10 @@
+/** What is left to invoice on the selected Purchase Order, per product
+ * (GET requisitions/:id/remaining-quantities - enforced again by the backend on save). */
+export type PurchaseOrderLine = { product: string; ordered: number; invoiced: number; remaining: number; unitPrice: number };
+/** `hasUnmatchableLines`: the Purchase Order has legacy description-only lines, so a product that
+ * is not on it can't be refused here (the backend's amount guard still applies). */
+export type PurchaseOrderLines = { lines: PurchaseOrderLine[]; hasUnmatchableLines: boolean };
+
 export type OrderItemInput = {
   productCode: string;
   productError: boolean;

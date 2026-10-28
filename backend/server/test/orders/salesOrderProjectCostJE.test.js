@@ -189,6 +189,45 @@ test('a project with no linked customer: JV0010 and JV0011 lines carry the Sales
   }
 });
 
+test('two customers on one project: each invoice\'s receivable is attributed to the customer it was issued to, never the project\'s customer', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const other = await User.create({ name: 'Second Customer', email: `jv11-cust2-${Date.now()}@example.com`, role: 'user', type: 'online' });
+  assert.notEqual(other.customerNumber, customer.customerNumber);
+
+  const toProjectCustomer = await sell(100); // 200,000
+  const toOtherCustomer = await sell(50, { customer: other._id }); // 100,000
+
+  const [revenueA] = await entriesOf(toProjectCustomer, 'PROJECT_REVENUE_RECOGNITION');
+  const [revenueB] = await entriesOf(toOtherCustomer, 'PROJECT_REVENUE_RECOGNITION');
+  revenueA.lines.forEach(line => assert.equal(line.partyNumber, customer.customerNumber));
+  revenueB.lines.forEach(line => {
+    assert.equal(line.partyNumber, other.customerNumber, 'Sub Account = the invoice customer, not the project customer');
+    assert.equal(line.partyType, 'customer');
+  });
+  // The Accounts Receivable balance per Sub Account - what the customer reports read - splits the
+  // two invoices between the two customers, with nothing unassigned.
+  const byParty = await JournalEntry.aggregate([
+    { $unwind: '$lines' },
+    { $match: { 'lines.account': accounts[C.accountsReceivableProjects]._id } },
+    { $group: { _id: '$lines.partyNumber', debit: { $sum: '$lines.debit' } } },
+  ]);
+  const debitOf = number => byParty.find(r => r._id === number)?.debit;
+  assert.equal(debitOf(customer.customerNumber), 200000);
+  assert.equal(debitOf(other.customerNumber), 100000);
+  assert.equal(debitOf(null), undefined, 'no unassigned receivable');
+
+  // The read-only historical audit finds nothing to report for correctly attributed entries, and
+  // flags an entry recorded under the project's customer (what the old rule produced).
+  const { auditArCustomerAttribution } = require('../../scripts/auditArCustomerAttribution');
+  const clean = await auditArCustomerAttribution({ connect: false, log: () => {} });
+  assert.equal(clean.findings.length, 0);
+  await JournalEntry.collection.updateOne({ _id: revenueB._id }, { $set: { 'lines.$[].partyNumber': customer.customerNumber } });
+  const before = await JournalEntry.collection.findOne({ _id: revenueB._id });
+  const audit = await auditArCustomerAttribution({ connect: false, log: () => {} });
+  assert.deepEqual(audit.findings.map(f => [f.entryNumber, f.invoiceCustomerNumber, f.recordedCustomerNumbers]), [[revenueB.entryNumber, other.customerNumber, [customer.customerNumber]]]);
+  assert.deepEqual(await JournalEntry.collection.findOne({ _id: revenueB._id }), before, 'the audit never changes an entry');
+});
+
 test('manual journal entries keep their typed line descriptions, get no Sub Account added, and need a description on every line', async () => {
   const lines = [
     { account: accounts['50000001']._id, debit: 10, credit: 0, project: project._id, projectNumber: 'PRJ001', description: 'Typed by the accountant' },

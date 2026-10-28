@@ -77,6 +77,7 @@ test('calculateDueDate: "Net X" adds X days', () => {
   assert.equal(calculateDueDate(invoiceDate, 'Net 30', null).toISOString().slice(0, 10), '2026-03-31');
   assert.equal(calculateDueDate(invoiceDate, 'Net 45', null).toISOString().slice(0, 10), '2026-04-15');
   assert.equal(calculateDueDate(invoiceDate, 'Net 60', null).toISOString().slice(0, 10), '2026-04-30');
+  assert.equal(calculateDueDate(invoiceDate, 'Net 90', null).toISOString().slice(0, 10), '2026-05-30');
 });
 
 test('calculateDueDate: "Custom" adds the given number of days', () => {
@@ -123,7 +124,7 @@ test('Vendor.paymentTerms: the new "Immediate" and "Custom" values are also acce
 });
 
 test('Vendor.paymentTerms: rejects an invalid value', async () => {
-  await assert.rejects(() => Vendor.create({ name: 'Bad Terms Vendor', contact: { phone: `010${Date.now()}`.slice(0, 11) }, paymentTerms: 'Net 90' }));
+  await assert.rejects(() => Vendor.create({ name: 'Bad Terms Vendor', contact: { phone: `010${Date.now()}`.slice(0, 11) }, paymentTerms: 'Net 120' }));
 });
 
 test('createVendorValidators: Custom payment terms requires customPaymentDays', async () => {

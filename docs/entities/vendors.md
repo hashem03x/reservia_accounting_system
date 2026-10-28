@@ -57,3 +57,20 @@ pre-existing gap, not new-in-this-phase behavior being introduced.
 
 `pages/admin/home/vendors/index.tsx` shows Name, Phone, Email, Type, Tax Info (registration
 number), Balance (admin-only), Address. Bank info and documents remain detail/edit-view only.
+
+## Payment accounts (SSI)
+
+`Vendor.paymentAccounts` can hold any number of bank accounts, InstaPay addresses and wallets,
+including several of the same type. Rules (`utils/vendorPaymentAccounts.js`):
+- each account keeps only its own type's fields;
+- the same account cannot be listed twice;
+- at most one active account is primary;
+- `paymentInfo` mirrors the primary account, for older readers;
+- an account a payment refers to (`Payment.vendorPaymentAccount`, a masked snapshot) can be
+  deactivated but not deleted.
+
+The CSV import treats the PaymentMode columns as the primary account. `AdditionalPaymentAccounts`
+adds more in one cell: `bank|Name|AccountNo|IBAN|SWIFT|Holder ; instapay|Id ; wallet|provider|number`.
+
+`npm run db:migrate-vendor-payment-accounts` copies the legacy `paymentInfo`/`bankInfo` into the
+list. It is additive and idempotent, and only touches vendors with no accounts.

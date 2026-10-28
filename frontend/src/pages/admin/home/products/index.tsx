@@ -3,7 +3,6 @@ import { useDisclosure } from "@mantine/hooks";
 import { useDebounce } from "use-debounce";
 import { useLanguage } from "@/context/LanguageContext";
 import { useMainCategories } from "@/context/MainCategoriesContext";
-import { useBrands } from "@/context/BrandsContext";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useCategoryHelpers from "@/hooks/useCategoryHelpers";
@@ -16,7 +15,7 @@ import { PaginatedData } from "@/types/global";
 import paths from "@/utils/constants/paths";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
-import { getProductFinalPrice } from "@/utils/helpers/product-helpers";
+import { getProductFinalPrice, priceText } from "@/utils/helpers/product-helpers";
 import { DEFAULT_ITEMS_PER_PAGE } from "@/utils/constants";
 import { getProductTypeLabel, isService } from "@/utils/constants/product-types";
 import { formatDate } from "@/utils/helpers/date-formaters";
@@ -51,8 +50,7 @@ export default function Products() {
   const { user: loggedInUser } = useUser();
 
   const { data: mainCategories } = useMainCategories();
-  const { data: brands } = useBrands();
-  const { getBrandNameById, getMainCategoryNameById } = useCategoryHelpers();
+  const { getMainCategoryNameById, getSubcategoriesByMainCategoryId, getProductBrandName } = useCategoryHelpers();
 
   // URL search params for filters
   const [searchParams, setSearchParams] = useSearchParams();
@@ -62,7 +60,7 @@ export default function Products() {
   const [keyword, setKeyword] = useState(searchParams.get("keyword") || "");
   const [debouncedKeyword] = useDebounce(keyword, 350);
   const [mainCategoryFilter, setMainCategoryFilter] = useState(searchParams.get("mainCategoryId") || "");
-  const [brandFilter, setBrandFilter] = useState(searchParams.get("brands") || "");
+  const [brandFilter, setBrandFilter] = useState(searchParams.get("subCategories") || "");
 
   const [showFilters, setShowFilters] = useState(false);
 
@@ -70,7 +68,8 @@ export default function Products() {
     page: activePage.toString(),
     ...(debouncedKeyword ? { keyword: debouncedKeyword } : {}),
     ...(mainCategoryFilter ? { mainCategoryId: mainCategoryFilter } : {}),
-    ...(brandFilter ? { brands: brandFilter } : {}),
+    // Brand = a subcategory of the selected Main Category.
+    ...(brandFilter ? { subCategories: brandFilter } : {}),
   };
 
   // Track the previous filters and check if they have changed to reset the active page to 1.
@@ -225,7 +224,11 @@ export default function Products() {
           {/* Main Category */}
           <Select
             value={mainCategoryFilter}
-            onChange={(value) => setMainCategoryFilter(value as string)}
+            onChange={(value) => {
+              // A brand belongs to its main category - changing the category clears it.
+              if (value !== mainCategoryFilter) setBrandFilter("");
+              setMainCategoryFilter(value as string);
+            }}
             label={translate("Main Category", "الفئة الرئيسية")}
             data={[
               { value: "", label: translate(noFilterLabel.en, noFilterLabel.ar) },
@@ -238,18 +241,19 @@ export default function Products() {
             rightSection={mainCategoryFilter ? <solidIcons.Check color="green" size={12} /> : null}
           />
 
-          {/* Brand - flat (not scoped to a category), unlike the legacy Subcategory filter this replaces */}
+          {/* Brand - the subcategories of the selected Main Category */}
           <Select
             value={brandFilter}
             onChange={(value) => setBrandFilter(value as string)}
             label={translate("Brand", "الماركة")}
             data={[
               { value: "", label: translate(noFilterLabel.en, noFilterLabel.ar) },
-              ...brands.map((b) => ({
+              ...getSubcategoriesByMainCategoryId(mainCategoryFilter).map((b) => ({
                 value: b._id,
                 label: translate(b.name.en, b.name.ar),
               })),
             ]}
+            disabled={!mainCategoryFilter}
             allowDeselect={false}
             rightSection={brandFilter ? <solidIcons.Check color="green" size={12} /> : null}
           />
@@ -331,10 +335,10 @@ export default function Products() {
                           </div>
                         </Table.Td>
                         <Table.Td>
-                          {product.price.toFixed(2)} {translations.currency}
+                          {priceText(product.price)} {translations.currency}
                         </Table.Td>
                         <Table.Td className="font-semibold text-gray-800">
-                          {getProductFinalPrice(product.priceAfterDiscount, product.price).toFixed(2)}{" "}
+                          {priceText(getProductFinalPrice(product.priceAfterDiscount, product.price))}{" "}
                           {translations.currency}
                         </Table.Td>
                         {renderIfAdmin(
@@ -384,7 +388,7 @@ export default function Products() {
                         )}
                         <Table.Td>{product.totalSold}</Table.Td>
                         <Table.Td>{productIsService ? "-" : getMainCategoryNameById(product.category || "")}</Table.Td>
-                        <Table.Td>{productIsService ? "-" : getBrandNameById(product.brand || "")}</Table.Td>
+                        <Table.Td>{productIsService ? "-" : getProductBrandName(product) || "-"}</Table.Td>
                         <Table.Td>
                           {product.capacity?.value != null && product.capacity?.unit
                             ? `${product.capacity.value} ${product.capacity.unit}`

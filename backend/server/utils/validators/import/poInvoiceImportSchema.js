@@ -285,3 +285,115 @@ exports.createGroup = function createGroup(value, context) {
     });
   });
 };
+
+// Format guide of every column (utils/csvImport/formatGuide.js - downloaded from the import screen as
+// a separate file, never mixed into the data template). Kept beside the validation above, and
+// test/import/importFormatGuides.test.js fails if these and the real columns ever disagree.
+// required: 'yes' (column and value required) | 'no' | 'conditional' (see the description).
+exports.fieldSpecs = [
+  {
+    column: "InvoiceReference",
+    required: "yes",
+    description: "Your reference for the Purchase Invoice - rows with the same reference are the lines of ONE invoice; a reference already imported is refused.",
+    format: "Text",
+    example: "PINV-SAMPLE-0001"
+  },
+  {
+    column: "PONumber",
+    required: "yes",
+    description: "Code of the OPEN Purchase Order this invoice is for.",
+    format: "Existing Purchase Order code",
+    example: "000000000001"
+  },
+  {
+    column: "VendorNumber",
+    required: "yes",
+    description: "Vendor Number - must be the Purchase Order's vendor.",
+    format: "Number",
+    example: "2000"
+  },
+  {
+    column: "ProjectNumber",
+    required: "yes",
+    description: "Project Number - must be the Purchase Order's project.",
+    format: "Existing project number",
+    example: "PRJ-0000001"
+  },
+  {
+    column: "WarehouseName",
+    required: "yes",
+    description: "Warehouse receiving the goods.",
+    format: "Existing warehouse name",
+    example: "Main Warehouse"
+  },
+  {
+    column: "ProductCode",
+    required: "yes",
+    description: "Barcode of the product/service bought (a service needs a PUC account).",
+    format: "Existing product barcode",
+    example: "123456789012"
+  },
+  {
+    column: "Quantity",
+    required: "yes",
+    description: "Quantity bought.",
+    format: "Whole number > 0",
+    example: "10"
+  },
+  {
+    column: "UnitPrice",
+    required: "yes",
+    description: "Unit price before discount.",
+    format: "Number (EGP), up to 2 decimals, no separators or currency symbol, > 0",
+    example: "15000"
+  },
+  {
+    column: "ItemDiscountType",
+    required: "no",
+    description: "Line discount type.",
+    format: "percentage or fixed",
+    example: "percentage"
+  },
+  {
+    column: "ItemDiscountValue",
+    required: "no",
+    description: "Line discount (percent or amount, per ItemDiscountType).",
+    format: "Number >= 0",
+    example: "5"
+  },
+  {
+    column: "VATPercentage",
+    required: "no",
+    description: "VAT % of the invoice.",
+    format: "Number >= 0",
+    example: "14"
+  },
+  {
+    column: "WithholdingTaxPercentage",
+    required: "no",
+    description: "Withholding tax % of the invoice.",
+    format: "0, 1, 3 or 5",
+    example: "1"
+  },
+  {
+    column: "PaymentMethod",
+    required: "no",
+    description: "Pay the invoice when it is created: from a cash/bank account, or from the vendor advance. Empty = unpaid.",
+    format: "account or advanced_payment",
+    example: "account"
+  },
+  {
+    column: "PaymentAccountCode",
+    required: "conditional",
+    description: "Chart of Accounts code of the Cash / Cash Equivalent account - required when PaymentMethod is account (only then).",
+    format: "Existing cash/bank account code",
+    example: "11000001"
+  },
+  {
+    column: "Notes",
+    required: "no",
+    description: "Invoice notes.",
+    format: "Text",
+    example: "Sample purchase invoice"
+  }
+];

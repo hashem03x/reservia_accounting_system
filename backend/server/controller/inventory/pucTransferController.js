@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const apiResponse = require('../../utils/apiResponse');
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
 const { recordPucTransfer, transferOptions, listTransfers, listProjectInventory } = require('../../services/inventory/pucTransferService');
+const { getPucRawMaterialBalances, getProjectMaterialBreakdown } = require('../../services/inventory/pucMaterialBalanceService');
 
 async function inTransaction(work) {
   const session = await mongoose.startSession();
@@ -36,6 +37,19 @@ exports.getProjectInventory = asyncHandler(async (req, res) => {
 });
 
 // POST /puc-transfers/product/:productId - stock, transfer record and journal entry in one transaction.
+// GET /puc-transfers/balances - Warehouses -> PUC - Raw Materials: balances per project x material
+// (services/inventory/pucMaterialBalanceService.js). Read-only.
+exports.getPucBalances = asyncHandler(async (req, res) => {
+  const { project, product, warehouse, dateFrom, dateTo, keyword } = req.query;
+  res.status(200).json(apiResponse('PUC raw material balances retrieved successfully', true, await getPucRawMaterialBalances({ project, product, warehouse, dateFrom, dateTo, keyword })));
+});
+
+// GET /puc-transfers/project/:projectId/materials - a project's raw materials item by item, with
+// the source documents of their cost and, separately, what is ordered on Purchase Orders.
+exports.getProjectMaterials = asyncHandler(async (req, res) => {
+  res.status(200).json(apiResponse('Project raw materials retrieved successfully', true, await getProjectMaterialBreakdown(req.params.projectId)));
+});
+
 exports.createPucTransfer = asyncHandler(async (req, res) => {
   const startedAt = Date.now();
   try {

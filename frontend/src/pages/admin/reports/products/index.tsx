@@ -10,7 +10,7 @@ import paths from "@/utils/constants/paths";
 import { SortOrder } from "@/types/global";
 import { Product } from "@/types/product";
 import { sortOrdersArray } from "@/utils/constants/sort-order";
-import { getProductFinalPrice } from "@/utils/helpers/product-helpers";
+import { getProductFinalPrice, priceText } from "@/utils/helpers/product-helpers";
 import { formatDate } from "@/utils/helpers/date-formaters";
 import { solidIcons } from "@/components/icons";
 import { DateTimePicker } from "@mantine/dates";
@@ -287,10 +287,10 @@ export default function ProductsReport() {
                         {translate(product.title.en, product.title.ar)}
                       </Table.Td>
                       <Table.Td>
-                        {product.price.toFixed(2)} {translations.currency}
+                        {priceText(product.price)} {translations.currency}
                       </Table.Td>
                       <Table.Td className="font-semibold text-gray-800">
-                        {getProductFinalPrice(product.priceAfterDiscount, product.price).toFixed(2)} {translations.currency}
+                        {priceText(getProductFinalPrice(product.priceAfterDiscount, product.price))} {translations.currency}
                       </Table.Td>
                       <Table.Td>
                         {(product.cost || 0).toFixed(2)} {translations.currency}
@@ -314,14 +314,14 @@ export default function ProductsReport() {
                     {translate("Total", "الإجمالي")}
                   </Table.Td>
                   <Table.Td className="font-semibold">
-                    {data.reduce((acc: number, product: ProductReport) => acc + product.price, 0).toFixed(2)}{" "}
+                    {data.reduce((acc: number, product: ProductReport) => acc + (product.price || 0), 0).toFixed(2)}{" "}
                     {translations.currency}
                   </Table.Td>
                   <Table.Td className="font-semibold">
                     {data
                       .reduce(
                         (acc: number, product: ProductReport) =>
-                          acc + getProductFinalPrice(product.priceAfterDiscount, product.price),
+                          acc + (getProductFinalPrice(product.priceAfterDiscount, product.price) || 0),
                         0,
                       )
                       .toFixed(2)}{" "}

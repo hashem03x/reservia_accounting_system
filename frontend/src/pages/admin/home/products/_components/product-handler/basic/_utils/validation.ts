@@ -11,7 +11,6 @@ export default function validation(
     titleAr,
     descriptionEn,
     descriptionAr,
-    cost,
     price,
     priceAfterDiscount,
     category,
@@ -26,7 +25,6 @@ export default function validation(
     titleAr: string;
     descriptionEn: string;
     descriptionAr: string;
-    cost: string | number;
     price: string | number;
     priceAfterDiscount: string | number;
     category: string | null;
@@ -42,9 +40,14 @@ export default function validation(
   if (!titleAr) return translate(language, "Please provide a title in Arabic.", "يرجى إدخال عنوان بالعربية.");
   if (!descriptionEn) return translate(language, "An English description is required.", "مطلوب وصف بالإنجليزية.");
   if (!descriptionAr) return translate(language, "An Arabic description is required.", "مطلوب وصف بالعربية.");
-  if (!price) return translate(language, "Please specify a price for the product.", "يرجى تحديد سعر للمنتج.");
+  // Price is NOT required to define a product or service - but when entered it must be valid. Cost
+  // is not entered here at all: it comes from the product's Purchase Orders / Invoices.
+  if (price !== "" && (isNaN(+price) || +price < 0 || +price > 250000))
+    return translate(language, "The price must be a number between 0 and 250000.", "يجب أن يكون السعر رقمًا بين 0 و 250000.");
   // priceAfterDiscount is optional, It can be a number between 0 and the original price. Or an empty string (which will be null in the server)
   if (priceAfterDiscount !== "") {
+    if (price === "")
+      return translate(language, "Enter the price before a discounted price.", "أدخل السعر قبل السعر بعد الخصم.");
     if (+priceAfterDiscount <= 0)
       return translate(
         language,
@@ -69,7 +72,6 @@ export default function validation(
     if (!pucAccount)
       return translate(language, "Please select the service's PUC account.", "يرجى اختيار حساب مشروعات تحت التنفيذ للخدمة.");
   } else {
-    if (!cost) return translate(language, "Please specify a cost for the product.", "يرجى تحديد تكلفة للمنتج.");
     if (!category)
       return translate(language, "Please specify a the main category for the product.", "يرجى تحديد الفئة الرئيسية للمنتج.");
     if (!brand)

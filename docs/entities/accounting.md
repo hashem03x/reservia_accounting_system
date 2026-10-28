@@ -30,6 +30,38 @@ account; no separate `SubAccount` model), `isActive` (deactivation, not hard del
 in the roadmap), `isSystemDefault` (marks accounts the automatic project/fixed-asset entries
 depend on, so they can't be casually deactivated).
 
+### Parent Account Groups (`models/accounting/accountParentGroupModel.js`)
+
+Managed classifications such as "Cash & Cash Equivalents" (Accounting -> Parent Account Groups,
+`/api/v1/account-parent-groups`). Not posting accounts, and unrelated to `parentAccount`. Fields:
+`nameEn`, `nameAr` (both required, unique after normalization - case, spacing and dash variants
+never make two groups different), `type` (one of the account types), `description`, `sortOrder`,
+`isActive`, `isSystemDefault`.
+
+- **Storage on accounts is unchanged.** An account still stores its group as
+  `parentGroupNameEn` / `parentGroupNameAr`, which every report and rule reads (payment-method
+  accounts, Fixed Assets, PUC, tax reports). An account belongs to the group whose normalized
+  English name matches. The account API takes `parentGroup` (a group id, or `null` to clear it)
+  and writes the group's names. It never accepts the two name fields from the client.
+- **Assignment rules** (`services/accounting/accountParentGroupService.js#resolveAccountGroupAssignment`):
+  - The group must be active and have the account's type.
+  - Re-saving an account with its current group is always allowed, even if that group is inactive
+    or is a legacy name with no managed group, so editing never forces a change.
+- **Group rules:**
+  - Renaming a group renames it on its accounts in the same transaction. Only the two name fields
+    change; no journal entry is created and no balance changes.
+  - The type cannot change while accounts use the group.
+  - A group assigned to any account cannot be deleted; deactivate it instead.
+  - System-default groups (the names in `accountingConstants.js`: Cash & Cash Equivalents and the
+    Fixed Asset groups) cannot be renamed, retyped, deactivated or deleted.
+- **Audit:** every create, update, status change, delete and migration is written to
+  `AccountParentGroupLog`.
+- **Permissions:** governed by the existing `accounts` permission.
+- **Legacy data:** `npm run db:migrate-account-parent-groups -- --dry-run`, then without
+  `--dry-run`. It is additive and idempotent: it creates a group for each consistent legacy name
+  and only reports names whose accounts disagree on type or Arabic name, or have no Arabic name.
+  It never modifies an account.
+
 ### Starter accounts
 
 `scripts/seedChartOfAccounts.js` (`npm run db:seed-accounts`) seeds seven accounts by code (Cash
@@ -113,6 +145,51 @@ display this sum explicitly (green if zero, red with a warning if not) rather th
 potential imbalance - it should never be non-zero in practice, and if it ever is, that is a real
 bug or a direct database write bypassing this app, not something to silently paper over.
 
+## Currencies (`models/accounting/currencyModel.js`, `services/accounting/currencyService.js`)
+
+**EGP is the base (functional/reporting) currency.** Every balance, posting check and report uses
+the EGP amounts stored in `JournalLine.debit` / `credit` - this did not change.
+
+**Rate convention** (the one place it is applied: `utils/currencyMath.js`):
+
+```
+1 EGP = unitsPerBase units of the foreign currency
+EGP amount = foreign amount / unitsPerBase
+inverse (1 unit in EGP) = 1 / unitsPerBase
+```
+
+Example: USD with `unitsPerBase = 0.02` -> 1 EGP = 0.02 USD, 1 USD = 50 EGP, so 100 USD = 5,000 EGP.
+Conversions always use the stored full-precision rate; only the resulting amount is rounded to 2
+decimals.
+
+- **Currency Manager** (`/api/v1/currencies`, page Accounting -> Currencies): CRUD with search,
+  status filter, sort and pagination. EGP is created automatically (`ensureBaseCurrency`, or
+  `npm run db:seed-currencies`), always has rate 1, and can never be deactivated or deleted (the
+  service, the model and a single-base unique index all enforce this). Codes are 3 letters, unique,
+  and immutable. A rate change is appended to `rateHistory` with an effective date; the current
+  rate is the latest-dated one. A currency referenced by any journal entry (entry-level or line,
+  including imported lines) or advanced payment cannot be deleted - deactivate it instead.
+  Concurrent edits: `expectedVersion` (+ Mongoose optimistic concurrency) returns 409.
+  Permissions: resource `currencies`; reading is also allowed with `journalEntries:read`.
+- **Journal Entries**: one transaction currency per entry (`JournalEntry.currency`, default EGP)
+  and the **applied** rate frozen on the entry (`JournalEntry.currencyUnitsPerBase`). The request's
+  line amounts are in that currency; the server validates the currency (configured, active) and
+  rate (finite, > 0; omitted = the rate effective on the entry date), converts each line to EGP
+  (`debit`/`credit`) and keeps the original amounts in `currencyDebit`/`currencyCredit`. Rounding
+  residue between lines (at most 1 cent per line) is absorbed by the largest line so the entry
+  balances in EGP. Posted entries cannot change currency or rate; reversals mirror both. Changing a
+  currency's rate later never touches existing entries or reports. Automatic entries are EGP.
+- `JournalLine.exchangeRate` (written by the CSV import) keeps its **opposite** historical
+  convention - EGP per 1 foreign unit. Manual foreign entries fill it as `1 / unitsPerBase` so the
+  General Ledger report's Currency/Rate columns stay consistent.
+- The General Ledger line API (`getGeneralLedgerLines`) used to multiply the (already EGP)
+  `debit`/`credit` by `exchangeRate` for the local balance, converting imported lines twice. It now
+  sums the EGP amounts; the document-currency balance uses `currencyDebit`/`currencyCredit` where
+  present.
+- The per-warehouse foreign cash balances (Currencies page, "Warehouse Cash Balances" tab,
+  `warehouseController.js`) are a separate, older feature with their own rate in the opposite
+  direction (EGP per unit). They are not linked to Currency Manager rates.
+
 ## Automatic accounting entry on Project creation - REMOVED
 
 Project creation used to automatically post:
@@ -159,6 +236,9 @@ previously had no atomicity at all.
 Three new `Resources` entries (`projects`, `accounts`, `journalEntries`) in
 `utils/appConstant.js` / `frontend/src/utils/constants/resources.ts`, granted to
 admin/moderator/operator (not to `userPermission`/`defaultPermissions` - accounting is staff-only).
+A later `currencies` resource (Currency Manager) is full CRUD for admin and read-only for
+moderator/operator; since permissions are copied onto each user at creation, currency reads also
+accept `journalEntries:read` so existing staff can use the Journal Entry currency selector.
 **`fixedAssetRoute.js` was deliberately left on its pre-existing `Resources.expenses` permission
 check** rather than switched to a new `fixedAssets` resource, to avoid silently revoking access
 from any already-configured role/permission data in the live database.
@@ -173,3 +253,25 @@ with a clear message (`server/test/accounting/projectAccounting.test.js`) rather
 code is correct and exercised against a real transactional database in production; it's the local
 dev database that lacks the capability. Confirmed with the project owner: intentionally left as-is
 rather than reconfiguring the shared local MongoDB service.
+
+### Journal Entry classification - Project or G&A
+
+`JournalEntry.classification` is `'project'` or `'ga'` (General & Administrative). Every new manual
+entry must choose one explicitly: a request with neither a project nor a classification is refused,
+because an entry is never classified G&A just because it has no project. `'project'` requires a
+project; `'ga'` must not have one. Both the validator and the model enforce this. G&A still needs
+the existing `journalEntries:createGeneral` permission.
+
+Automatic entries are `'project'` when they have a project and otherwise stay `null`. Reversals copy
+the original's classification. Older entries keep `null`: they read as Project when they have a
+project, and otherwise as "Unclassified". The list can be filtered with
+`classification=project|ga|unclassified`, and also by `currency` and `module`.
+
+### Accounts Receivable attribution
+
+A sales invoice's revenue and cost recognition entries (JV0010/JV0011) use the invoice's own
+customer as the Sub Account. They used to use the project's customer first, which put an invoice
+issued to another customer under the project's customer, while that invoice's payments went to the
+invoice customer. `npm run db:audit-ar-attribution` lists historical entries affected by the old
+rule. It is read-only; a correction is a reversal and re-post. AR lines with no Sub Account at all
+are listed by `npm run db:repair-sub-accounts`, which is report-only by default.

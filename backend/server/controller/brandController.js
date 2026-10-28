@@ -5,6 +5,8 @@ const asyncHandler = require('express-async-handler');
 const factory = require('./handlersFactory');
 const { uploadSingleFile } = require('../middleware/uploadImageMiddleware');
 const Brand = require('../models/brandModel');
+const mongoose = require('mongoose');
+const ApiError = require('../utils/apiError');
 
 // Upload single image
 exports.uploadBrandImage = uploadSingleFile('image');
@@ -58,4 +60,11 @@ exports.updateBrand = factory.updateOne(Brand);
  *  @route       DELETE /api/brnad/:id
  *  @access      Private/Admin
  */
-exports.deleteBrand = factory.deleteOne(Brand);
+const deleteBrandDocument = factory.deleteOne(Brand);
+// A brand products still reference is never deleted (their identity would point at nothing) - the
+// same "cannot delete what is in use" rule as Currencies / Sectors / Parent Account Groups.
+exports.deleteBrand = asyncHandler(async (req, res, next) => {
+  const used = await mongoose.connection.collection('products').countDocuments({ brand: new mongoose.Types.ObjectId(String(req.params.id)) });
+  if (used > 0) return next(new ApiError(`This brand is used by ${used} product(s) and cannot be deleted.`, 400));
+  return deleteBrandDocument(req, res, next);
+});

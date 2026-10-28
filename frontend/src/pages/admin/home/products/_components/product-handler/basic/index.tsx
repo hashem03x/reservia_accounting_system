@@ -31,7 +31,6 @@ export default function ProductBasicInfo() {
     titleAr,
     descriptionEn,
     descriptionAr,
-    cost,
     price,
     priceAfterDiscount,
     isAvailable,
@@ -71,7 +70,6 @@ export default function ProductBasicInfo() {
           titleAr,
           descriptionEn,
           descriptionAr,
-          cost,
           price,
           priceAfterDiscount,
           category,
@@ -95,20 +93,23 @@ export default function ProductBasicInfo() {
       formData.append("title[ar]", titleAr);
       formData.append("description[en]", descriptionEn);
       formData.append("description[ar]", descriptionAr);
-      formData.append("price", price.toString());
+      // Optional - only sent when entered (backend productModel.js#cost).
+      if (price !== "") formData.append("price", price.toString());
       priceAfterDiscount !== "" && formData.append("priceAfterDiscount", priceAfterDiscount.toString());
       formData.append("isAvailable", isAvailable.toString());
 
       if (productIsService) {
-        // A service has no cost/category/brand/stock - see docs/entities/products.md.
+        // A service has no cost/category/brand/stock - see docs/entities/products.md. (Service
+        // classification is pending client confirmation - unchanged.)
         formData.append("durationValue", durationValue.toString());
         formData.append("durationUnit", durationUnit);
         // The Service's PUC account - Purchase Orders post this service's cost to it.
         if (pucAccount) formData.append("pucAccount", pucAccount);
       } else {
-        formData.append("cost", cost.toString());
+        // No cost from the form: a product's cost is set by its purchases (Purchase Orders / Invoices).
         formData.append("category", category as string);
-        formData.append("brand", brand as string);
+        // Brand is the selected subcategory of the Main Category (the old flat `brand` is left as stored).
+        formData.append("subcategory", brand as string);
         if (model) formData.append("model", model);
         if (specifications) formData.append("specifications", specifications);
 
@@ -169,9 +170,8 @@ export default function ProductBasicInfo() {
         ? durationValue !== currentProduct.durationValue ||
           durationUnit !== currentProduct.durationUnit ||
           pucAccount !== getPucAccountId(currentProduct)
-        : cost !== currentProduct.cost ||
-          category !== currentProduct.category ||
-          brand !== (currentProduct.brand || null) ||
+        : category !== currentProduct.category ||
+          brand !== (currentProduct.subcategory || null) ||
           model !== (currentProduct.model || "") ||
           specifications !== (currentProduct.specifications || "") ||
           sku !== (currentProduct.sku || "") ||

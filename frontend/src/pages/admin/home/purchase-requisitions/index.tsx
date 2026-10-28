@@ -1,7 +1,7 @@
 import { Requisition } from "@/types/requisition";
 import { PaginatedData } from "@/types/global";
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useLanguage } from "@/context/LanguageContext";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
@@ -23,7 +23,6 @@ import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
-import { ClickableRow } from "@/components/ui/clickable-row";
 import TruncatedText from "@/components/ui/truncated-text";
 import { requisitionStatusColors, useRequisitionStatusLabel } from "./_components/status";
 
@@ -152,8 +151,14 @@ export default function PurchaseRequisitions() {
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedRequisitions.data.map((requisition) => (
-                    <ClickableRow key={requisition._id} className="cursor-pointer" onClick={() => navigate(requisition._id)}>
-                      <Table.Td className="whitespace-nowrap font-medium">{requisition.code}</Table.Td>
+                    <Table.Tr key={requisition._id}>
+                      {/* Rows are not clickable, so any cell can be selected and copied (mouse or Ctrl+C) without
+                        opening the Purchase Order; the PO number (and View) opens its full details. */}
+                      <Table.Td className="whitespace-nowrap font-medium">
+                        <Link to={requisition._id} className="text-blue-600 hover:underline">
+                          {requisition.code}
+                        </Link>
+                      </Table.Td>
                       <Table.Td>
                         <TruncatedText
                           text={requisition.vendorId?.name || "-"}
@@ -193,7 +198,7 @@ export default function PurchaseRequisitions() {
                           {translate("View", "عرض")}
                         </Button>
                       </Table.Td>
-                    </ClickableRow>
+                    </Table.Tr>
                   ))}
                 </Table.Tbody>
               </DataTable>

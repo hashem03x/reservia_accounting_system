@@ -1,9 +1,10 @@
 import { BankInfo, BusinessDocument, PaymentInfo, TaxInfo } from "@/types/document";
+import type { VendorPaymentAccount } from "@/utils/helpers/vendor-payment-accounts";
 
 export type VendorType = "current" | "equity";
 
 // Payment Terms (docs section "Payment Terms for Customers and Vendors").
-export type PaymentTerms = "Immediate" | "Net 15" | "Net 30" | "Net 45" | "Net 60" | "Custom";
+export type PaymentTerms = "Immediate" | "Net 15" | "Net 30" | "Net 45" | "Net 60" | "Net 90" | "Custom";
 
 export type Vendor = {
   _id: string;
@@ -28,6 +29,9 @@ export type Vendor = {
   taxInfo?: TaxInfo;
   bankInfo?: BankInfo;
   paymentInfo?: PaymentInfo;
+  // All payment (settlement) accounts - several banks / InstaPay / wallets, one primary. paymentInfo
+  // mirrors the primary one (kept for older readers).
+  paymentAccounts?: VendorPaymentAccount[];
   paymentTerms?: PaymentTerms;
   customPaymentDays?: number | null;
   paymentTermsConfig?: PaymentTermsConfig;

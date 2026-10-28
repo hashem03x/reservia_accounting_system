@@ -3,17 +3,19 @@ import paths from "@/utils/constants/paths";
 import { Link } from "react-router-dom";
 import { Button, Table } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
-import { OrderItemInput } from "../../types";
+import { OrderItemInput, PurchaseOrderLines } from "../../types";
 import OrderItemRow from "./_components/order-item-row";
 
 export default function OrderItemsSection({
   items,
   setItems,
   addNewItem,
+  poLines,
 }: {
   items: OrderItemInput[];
   setItems: React.Dispatch<React.SetStateAction<OrderItemInput[]>>;
   addNewItem: () => void;
+  poLines: PurchaseOrderLines | null;
 }) {
   const { translate } = useLanguage();
 
@@ -50,7 +52,7 @@ export default function OrderItemsSection({
           </Table.Thead>
           <Table.Tbody>
             {items.map((_, index) => (
-              <OrderItemRow key={index} index={index} items={items} setItems={setItems} addNewItem={addNewItem} />
+              <OrderItemRow key={index} index={index} items={items} setItems={setItems} addNewItem={addNewItem} poLines={poLines} />
             ))}
           </Table.Tbody>
         </Table>

@@ -98,6 +98,7 @@ import AP_Backup from "@/pages/admin/backup";
 import AP_AccountingPeriods from "@/pages/admin/accounting-periods";
 import AP_ExpenseCategories from "@/pages/admin/expense-categories";
 import AP_Accounts from "@/pages/admin/accounts";
+import AP_AccountParentGroups from "@/pages/admin/account-parent-groups";
 import AP_JournalEntries from "@/pages/admin/journal-entries";
 import AP_JournalEntry from "@/pages/admin/journal-entries/[id]";
 import AP_AdvancedPayments from "@/pages/admin/advanced-payments";
@@ -286,6 +287,7 @@ export default function App() {
                   </Route>
                   <Route element={<ResourceGuard resource={resources.accounts} action={actions.read} />}>
                     <Route path={paths.accounts} element={<AP_Accounts />} />
+                    <Route path={paths.accountParentGroups} element={<AP_AccountParentGroups />} />
                   </Route>
                   <Route element={<ResourceGuard resource={resources.journalEntries} action={actions.read} />}>
                     <Route path={paths.journalEntries} element={<AP_JournalEntries />} />

@@ -175,11 +175,25 @@ export function useAdminNavigation(): NavSection[] {
             resource: resources.accounts,
           },
           {
+            key: "accountParentGroups",
+            to: admin(paths.accountParentGroups),
+            label: pages.accountParentGroups,
+            Icon: navIcons.AccountParentGroups,
+            resource: resources.accounts,
+          },
+          {
             key: "advancedPayments",
             to: admin(paths.advancedPayments),
             label: pages.advancedPayments,
             Icon: navIcons.AdvancedPayments,
             resource: resources.advancedPayments,
+          },
+          {
+            key: "currencies",
+            to: admin(paths.currencies),
+            label: pages.currencies,
+            Icon: navIcons.Currencies,
+            resource: resources.currencies,
           },
           {
             key: "shareholders",

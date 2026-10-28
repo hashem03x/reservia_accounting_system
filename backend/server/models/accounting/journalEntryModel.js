@@ -1,6 +1,7 @@
 const { Schema, model } = require('mongoose');
 const ApiError = require('../../utils/apiError');
-const { JournalEntryStatus, JournalEntrySources, AccountingActions, AccountingModules } = require('../../utils/accountingConstants');
+const { JournalEntryStatus, JournalEntrySources, AccountingActions, AccountingModules, JournalEntryClassifications } = require('../../utils/accountingConstants');
+const { BASE_CURRENCY_CODE, isValidRate } = require('../../utils/currencyMath');
 
 // Explicit requires (not just string `ref:` names) for every model this schema's pre(/^find/)
 // hook populates - mirrors paymentModel.js's existing convention of requiring its ref'd models at
@@ -47,6 +48,7 @@ const journalLineSchema = new Schema(
     // fields mean, on purpose (see utils/exchangeRate.js's header comment for the full reasoning).
     debit: { type: Number, default: 0, min: 0 },
     credit: { type: Number, default: 0, min: 0 },
+<<<<<<< HEAD
     // `currency` + `exchangeRate` (EGP per 1 unit of that currency - the existing convention,
     // predates Currency Management, see utils/exchangeRate.js) together with `transactionDebit`/
     // `transactionCredit` below record the ORIGINAL transaction-currency amount this line's EGP
@@ -60,6 +62,20 @@ const journalLineSchema = new Schema(
     exchangeRate: { type: Number, default: null },
     transactionDebit: { type: Number, default: null, min: 0 },
     transactionCredit: { type: Number, default: null, min: 0 },
+=======
+    // Audit-trail only - debit/credit above always hold the local-currency (EGP) amount (every
+    // existing balance/report calculation keeps assuming a single reporting currency). These two
+    // fields preserve the line's original currency and rate: written by the CSV accounting import
+    // and by manual entries in a foreign currency. `exchangeRate` here is EGP PER 1 UNIT of the
+    // foreign currency (the import sheet's convention: EGP = foreign amount x exchangeRate) - the
+    // inverse of JournalEntry.currencyUnitsPerBase below. Never used to recompute debit/credit.
+    currency: { type: String, trim: true, default: null },
+    exchangeRate: { type: Number, default: null },
+    // The line's amount in the entry's transaction currency (JournalEntry.currency) - set only on
+    // entries whose currency is not EGP. debit/credit above remain the EGP amounts.
+    currencyDebit: { type: Number, default: null, min: 0 },
+    currencyCredit: { type: Number, default: null, min: 0 },
+>>>>>>> origin/main
     description: { type: String, trim: true },
     // Populated only for lines that represent unearned/deferred revenue (e.g. the Cr line of the
     // automatic project-creation entry) - see projectAccountingService.js.
@@ -123,6 +139,14 @@ const journalEntrySchema = new Schema(
       default: null,
     },
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
+    // 'project' | 'ga' (General & Administrative) - see accountingConstants.js#JournalEntryClassifications.
+    // 'project' always goes with a project and 'ga' never has one (RULE 2 below). null = an entry
+    // that predates the field, or an automatic entry with no project (never assumed to be G&A).
+    classification: {
+      type: String,
+      enum: { values: [...JournalEntryClassifications, null], message: '{VALUE} is not a valid journal entry classification' },
+      default: null,
+    },
     // Additive, optional link from a PROJECT_REVENUE_RECOGNITION/PROJECT_COST_RECOGNITION entry
     // back to the specific Sales Order whose creation/cancellation/return pushed the project's
     // executedPercentage up and triggered this entry (docs section "Sales Order Source Link").
@@ -149,8 +173,16 @@ const journalEntrySchema = new Schema(
       type: [journalLineSchema],
       default: [],
     },
+    // EGP totals - what balancing, posting and every report use.
     totalDebit: { type: Number, default: 0, min: 0 },
     totalCredit: { type: Number, default: 0, min: 0 },
+    // Transaction currency (Currency Manager - models/accounting/currencyModel.js). One currency per
+    // entry; EGP (the base) for every automatic entry and every entry that predates this field.
+    currency: { type: String, trim: true, uppercase: true, default: BASE_CURRENCY_CODE },
+    // The rate APPLIED to this entry, frozen at creation/edit time: 1 EGP = currencyUnitsPerBase
+    // units of `currency` (utils/currencyMath.js). Changing the currency's rate later never changes
+    // this value, so historical entries and reports stay reproducible. Always 1 for EGP.
+    currencyUnitsPerBase: { type: Number, default: 1 },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     postedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     postedAt: { type: Date, default: null },
@@ -170,6 +202,7 @@ journalEntrySchema.index({ project: 1 });
 journalEntrySchema.index({ status: 1 });
 journalEntrySchema.index({ source: 1 });
 journalEntrySchema.index({ advancedPayment: 1 });
+journalEntrySchema.index({ currency: 1 });
 // Idempotency, legacy single-JE-per-source flows (project_creation, fixed_asset_purchase): at most
 // one journal entry per (sourceType, sourceId) pair when no accountingAction is set. Partial so
 // manual entries (sourceId: null) never collide with each other, and so it never conflicts with the
@@ -216,14 +249,37 @@ journalEntrySchema.pre('save', async function (next) {
     // Defense-in-depth: a posted entry's lines must never change in place. The controller is the
     // primary gate (a PATCH is rejected once status !== 'draft'), this catches any other code
     // path that might call .save() directly.
-    if (!this.isNew && this.isModified('lines')) {
+    // The same applies to the entry's currency and applied rate - they define what its lines mean.
+    const currencyModified = this.isModified('currency') || this.isModified('currencyUnitsPerBase');
+    if (!this.isNew && (this.isModified('lines') || currencyModified)) {
       // Raw collection access (not this.constructor.findById) - bypasses the pre(/^find/) hook's
       // populate() calls entirely, which is both unnecessary overhead for a single status check
       // and avoids a hard dependency on every populated model (e.g. Project) being registered on
       // this connection at the time this hook runs.
       const original = await this.constructor.collection.findOne({ _id: this._id }, { projection: { status: 1 } });
       if (original && original.status === 'posted') {
-        throw new Error('Posted journal entries cannot have their lines modified. Post a reversal entry instead.');
+        throw new Error(
+          this.isModified('lines')
+            ? 'Posted journal entries cannot have their lines modified. Post a reversal entry instead.'
+            : 'Posted journal entries cannot have their currency or exchange rate changed. Post a reversal entry instead.'
+        );
+      }
+    }
+
+    // Currency backstop (the Journal Entry controller resolves and converts; this refuses anything
+    // inconsistent from any other write path): a valid applied rate, 1 for EGP, and - for a
+    // foreign-currency entry - balanced transaction-currency amounts as well as balanced EGP ones.
+    if (this.isNew || this.isModified('lines') || currencyModified) {
+      if (!this.currency) this.currency = BASE_CURRENCY_CODE;
+      if (!isValidRate(this.currencyUnitsPerBase)) throw new ApiError('Journal entry exchange rate must be a finite number greater than zero.', 400);
+      if (this.currency === BASE_CURRENCY_CODE && this.currencyUnitsPerBase !== 1) {
+        throw new ApiError('The base currency (EGP) always has an exchange rate of 1.', 400);
+      }
+      const foreignLines = this.lines.filter(l => l.currencyDebit != null || l.currencyCredit != null);
+      if (foreignLines.length) {
+        const fDebit = round2(foreignLines.reduce((s, l) => s + (l.currencyDebit || 0), 0));
+        const fCredit = round2(foreignLines.reduce((s, l) => s + (l.currencyCredit || 0), 0));
+        if (fDebit !== fCredit) throw new ApiError(`Journal entry is not balanced in ${this.currency}. Total debit must equal total credit.`, 400);
       }
     }
 
@@ -245,6 +301,15 @@ journalEntrySchema.pre('save', async function (next) {
     //     future direct model call that never went through the validator).
     if (this.isNew && !this.reversalOfEntry && this.source === 'manual' && !this.project && !this.$locals.generalEntryAuthorized) {
       throw new Error('Project is required when creating a journal entry.');
+    }
+    // Project / G&A classification: an entry with a project is a Project entry; a new manual entry
+    // without one must have been explicitly classified G&A (never inferred from the missing
+    // project); and the classification can never contradict the project.
+    if (this.isNew && !this.classification && this.project) this.classification = 'project';
+    if (this.classification === 'project' && !this.project) throw new Error('A Project journal entry requires a project.');
+    if (this.classification === 'ga' && this.project) throw new Error('A G&A journal entry cannot have a project.');
+    if (this.isNew && !this.reversalOfEntry && this.source === 'manual' && !this.project && this.classification !== 'ga') {
+      throw new Error('Choose whether this journal entry is for a Project or G&A.');
     }
     // Every entry always has a Module value to display (docs section "Module field") - automatic
     // entries get theirs set explicitly by postAutomaticJournalEntry; a manual entry (and any other

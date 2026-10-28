@@ -16,11 +16,16 @@ const productSchema = mongoose.Schema(
     // Cost/category/subcategory are inventory/merchandising concepts that only make sense for a
     // physical product - conditionally required so a service isn't forced to fabricate values for
     // fields it has no real answer for.
+    // Neither cost nor price is required to DEFINE a product or service (client requirement
+    // "Products - Cost and Price are not required to define a product"): both are known only once
+    // it is bought / quoted. A product without a cost never produces a zero-value accounting entry -
+    // the PUC transfer refuses it (pucTransferService.js) and a purchase sets it from the purchase
+    // price (purchaseOrderController.js); every document line carries its own price.
     cost: {
       type: Number,
-      required: [function () { return this.type !== 'service'; }, 'Product cost is required'],
+      min: [0, 'Product cost cannot be negative'],
     },
-    price: { type: Number, required: [true, 'Product price is rquired'], max: 250000 }, // Also doubles as the service's selling price when type === 'service'.
+    price: { type: Number, min: [0, 'Product price cannot be negative'], max: 250000 }, // Also doubles as the service's selling price when type === 'service'. Optional - see cost above.
     priceAfterDiscount: { type: Number, default: null },
     totalSold: { type: Number, default: 0 },
     isAvailable: { type: Boolean, default: true },
@@ -30,11 +35,10 @@ const productSchema = mongoose.Schema(
       ref: 'Category',
       required: [function () { return this.type !== 'service'; }, 'Category is required'],
     },
-    // Legacy identification field - the catalog hierarchy is now Category -> Brand -> Model/Item
-    // Number (see `brand` below, which replaces this as the required identifier). No longer
-    // required on new/updated products; kept on the schema only so existing products and
-    // historical reports/lookups that reference it keep working untouched. Migrated to `brand`
-    // by scripts/migrateSubcategoryToBrand.js where a reasonable match exists.
+    // The product's Brand (Main Category -> Brand -> Model/Item -> Specifications): one of
+    // `category`'s subcategories, set by the product form and the CSV import's BrandName column. The
+    // request validator requires it for a new product and checks it belongs to `category`
+    // (productValidator.js) - not required here, so internal/legacy creates keep working.
     subcategory: {
       type: mongoose.Schema.ObjectId,
       ref: 'SubCategory',
@@ -88,10 +92,9 @@ const productSchema = mongoose.Schema(
 
     // Not used
     imageCover: { url: { type: String }, sortOrder: { type: Number, default: 0 }, publicId: { type: String } },
-    // Primary identification field under Category in the catalog hierarchy (Category -> Brand ->
-    // Model/Item Number/Specifications) - replaces `subcategory` above as the field the request
-    // validator (productValidator.js/productTypeValidation.js) requires for a NEW product created
-    // through the API. Deliberately NOT required at the schema level (unlike `category`/`cost`
+    // Older flat Brand (not scoped to a category) - a product's Brand is now `subcategory` above.
+    // Kept on existing products, still accepted by the API in place of `subcategory`, and shown only
+    // when a product has no subcategory. Deliberately NOT required at the schema level (unlike `category`/`cost`
     // above) - the same reasoning as `pucAccount` below: a huge amount of existing/internal
     // Product creation (migration scripts, CSV import fixtures, accounting/PO/reversal test
     // suites, and any legacy document already in the database) sets `category`/`subcategory` but

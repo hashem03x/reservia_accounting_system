@@ -1,5 +1,7 @@
 const PO = require('../../models/vendor/purchaseOrder');
 const Payment = require('../../models/vendor/paymentModel');
+const Vendor = require('../../models/vendor/vendor');
+const { describeAccount } = require('../../utils/vendorPaymentAccounts');
 const factory = require('../handlersFactory');
 const ApiError = require('../../utils/apiError');
 const salesOrderModel = require('../../models/sales/salesOrderModel');
@@ -7,7 +9,7 @@ const { postPurchasePaymentRecordedJE, postSalesPaymentRecordedJE, postPaymentCu
 const { consumeCustomerAdvancedPayment, consumeVendorAdvancedPayment } = require('../../services/payments/advancedPaymentService');
 
 exports.createPurchasePayment = async (req, res, next) => {
-  const { warehouseId, purchaseOrderId, amountPaid, paymentMethod, paymentAccount, useAdvancedPayment, notes } = req.body;
+  const { warehouseId, purchaseOrderId, amountPaid, paymentMethod, paymentAccount, useAdvancedPayment, notes, vendorPaymentAccount } = req.body;
 
   let payment;
 
@@ -27,6 +29,25 @@ exports.createPurchasePayment = async (req, res, next) => {
 
     if (amountPaid > purchaseOrder.remainingAmount) return next(new ApiError('Amount paid cannot be greater than remaining amount', 400));
 
+    // Optional: the vendor's own receiving account the money went to - must be one of THIS vendor's
+    // active payment accounts; stored as a snapshot (utils/vendorPaymentAccounts.js#describeAccount).
+    let payee = null;
+    if (vendorPaymentAccount) {
+      const vendorDoc = await Vendor.findById(vendorId).select('paymentAccounts').session(session).lean();
+      const account = (vendorDoc?.paymentAccounts || []).find(a => String(a._id) === String(vendorPaymentAccount));
+      if (!account) {
+        await session.abortTransaction();
+        session.endSession();
+        return next(new ApiError('The selected vendor payment account does not belong to this vendor.', 400));
+      }
+      if (account.isActive === false) {
+        await session.abortTransaction();
+        session.endSession();
+        return next(new ApiError('The selected vendor payment account is inactive.', 400));
+      }
+      payee = { accountId: account._id, type: account.type, description: describeAccount(account) };
+    }
+
     payment = new Payment({
       warehouseId,
       purchaseOrderId,
@@ -38,6 +59,7 @@ exports.createPurchasePayment = async (req, res, next) => {
       // Options") - the validator already enforces exactly one source was sent.
       paymentAccount: useAdvancedPayment ? undefined : paymentAccount,
       paymentCategory: 'purchase',
+      ...(payee ? { vendorPaymentAccount: payee } : {}),
       notes,
       createdBy: req.user.id,
     });

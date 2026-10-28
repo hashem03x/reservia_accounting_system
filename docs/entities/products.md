@@ -73,3 +73,21 @@ isAvailable, isDeleted, totalSold, season, brand, createdBy, ratingsQuantity/Ave
 
 Services cannot appear in sales or purchase orders under the current schema - see
 `../reversia-business-logic.md`'s "Open question for a future phase".
+
+## Catalog hierarchy and optional cost / price
+
+Products: Main Category → Brand → Model/Item → Specifications. A product's Brand is one of its Main
+Category's subcategories and is saved in `subcategory` (required for a product, and it must belong to
+the category). The form, the product filters and the CSV import's `BrandName` column all use the
+selected category's subcategories. The older flat `brand` field is kept on existing products, is
+still accepted by the API, and is shown only when a product has no subcategory.
+
+Cost is not entered on the product form. A product's cost comes from its purchases: the Purchase
+Invoice line price, averaged by `applyPurchaseToProducts`. Editing a product never changes a stored
+cost. A product without a cost takes its first purchase cost and is never averaged as 0, and a PUC
+transfer refuses a product with no cost. Price is optional. The Purchase Invoice form requires a unit
+price on every line.
+Service classification is unchanged and pending client confirmation.
+
+Purchase Order lines must reference a catalog product, and the description is optional line notes.
+Legacy description-only lines stay readable and can be kept unchanged.

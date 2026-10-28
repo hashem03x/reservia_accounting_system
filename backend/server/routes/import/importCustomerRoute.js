@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { formatGuideHandler } = require('../../utils/csvImport/formatGuide');
 const { uploadTempFile } = require('../../middleware/uploadImageMiddleware');
 const { previewCustomers, commitCustomers, sampleCustomers } = require('../../controller/import/customerImportController');
 const { checkUserPermissions } = require('../../middleware/hasPermission');
@@ -14,6 +15,8 @@ router.use(authController.protect);
 // `Resources.customers`) - an import must require exactly the same permission as the equivalent
 // manual action.
 router.get('/sample', checkUserPermissions({ resource: Resources.customers, action: Actions.read }), sampleCustomers);
+// Format guide of every column (utils/csvImport/formatGuide.js) - JSON, or ?format=csv to download.
+router.get('/format-guide', checkUserPermissions({ resource: Resources.customers, action: Actions.read }), formatGuideHandler(require('../../utils/validators/import/customerImportSchema'), 'reservia-customers-format-guide.csv'));
 router.post('/preview', checkUserPermissions({ resource: Resources.customers, action: Actions.create }), uploadTempFile('file'), previewCustomers);
 router.post('/commit', checkUserPermissions({ resource: Resources.customers, action: Actions.create }), uploadTempFile('file'), commitCustomers);
 

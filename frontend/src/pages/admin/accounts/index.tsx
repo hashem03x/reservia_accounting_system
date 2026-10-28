@@ -290,14 +290,12 @@ export default function ChartOfAccounts() {
       <CreateAccountModal
         opened={createModalOpened}
         close={closeCreateModal}
-        accounts={accounts}
         onCreated={(account) => setAccounts((prev) => sortAccountsByCode([...prev, account]))}
       />
       <EditAccountModal
         opened={editModalOpened}
         close={closeEditModal}
         account={editingAccount}
-        accounts={accounts}
         onUpdated={(updated) =>
           setAccounts((prev) => sortAccountsByCode(prev.map((a) => (a._id === updated._id ? updated : a))))
         }

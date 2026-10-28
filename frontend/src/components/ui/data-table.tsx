@@ -66,7 +66,10 @@ function useSyncedHorizontalScroll() {
 // The two-div scroll wrapper: horizontal overflow is contained to this card only (never the page
 // body), matching the convention already used throughout the app (e.g. the PO/SO payment history
 // tables) - see truncated-text.tsx's sibling usage on the Accounts page for why this matters.
-export function DataTableContainer({ children }: { children: ReactNode }) {
+// `maxHeight` (optional): the table scrolls vertically INSIDE this card instead of the page, so a
+// sticky header (`<DataTable stickyHeader>`) stays visible and the bottom horizontal scrollbar is
+// always on screen - never at the far end of a very long page. Without it, nothing changes.
+export function DataTableContainer({ children, maxHeight }: { children: ReactNode; maxHeight?: string }) {
   const { topRef, bottomRef, scrollWidth, hasOverflow, onTopScroll, onBottomScroll } = useSyncedHorizontalScroll();
 
   return (
@@ -76,7 +79,7 @@ export function DataTableContainer({ children }: { children: ReactNode }) {
           <div style={{ width: scrollWidth, height: 1 }} />
         </div>
       )}
-      <div ref={bottomRef} onScroll={onBottomScroll} className="overflow-x-auto">
+      <div ref={bottomRef} onScroll={onBottomScroll} className={maxHeight ? "overflow-auto" : "overflow-x-auto"} style={maxHeight ? { maxHeight } : undefined}>
         {children}
       </div>
     </div>

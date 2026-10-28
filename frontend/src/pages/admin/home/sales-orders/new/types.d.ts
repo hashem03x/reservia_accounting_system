@@ -13,7 +13,7 @@ export type OrderItemInput = {
     title: { en: string; ar: string };
     type?: "product" | "service";
     cost: number;
-    price: number;
+    price?: number; // optional - a product / service can be defined before it is priced
     priceAfterDiscount: number | null;
     stock?: ProductStock[];
   } | null;

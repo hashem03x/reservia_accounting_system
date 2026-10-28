@@ -227,6 +227,13 @@ purchaseOrderSchema.pre('save', async function (next) {
       if (requisitionProjectId !== (this.project?._id || this.project)?.toString()) {
         throw new Error("This Purchase Invoice's project does not match its linked Purchase Order's project.");
       }
+      // Each line's quantity must fit what is left on its Purchase Order line (ordered - already
+      // invoiced, net of returns). Read inside this save's transaction; two concurrent invoices for
+      // the same Purchase Order both write its invoicedAmount below, so one of them fails with a
+      // write conflict instead of both passing this check.
+      // eslint-disable-next-line global-require
+      const quantityError = await require('../../services/vendor/requisitionQuantityService').checkInvoiceQuantities(this.items, requisition, { session: this.$session() });
+      if (quantityError) throw new Error(quantityError);
     }
 
     // Due date, from this vendor's CURRENT payment terms, snapshotted once at creation (docs

@@ -1,6 +1,7 @@
 const mongooseI18n = require('mongoose-i18n-localize');
 const { Schema, model } = require('mongoose');
-const { taxInfoSchema, bankInfoSchema, paymentInfoSchema, businessDocumentSchema } = require('../shared/businessPartnerSchemas');
+const { taxInfoSchema, bankInfoSchema, paymentInfoSchema, vendorPaymentAccountSchema, businessDocumentSchema } = require('../shared/businessPartnerSchemas');
+const { normalizeVendorPaymentAccounts, paymentInfoFromAccounts } = require('../../utils/vendorPaymentAccounts');
 const { getNextVendorNumber } = require('../../services/vendor/vendorNumberService');
 const { isValidPhone } = require('../../utils/validators/phoneValidator');
 const { PaymentTerms } = require('../../utils/paymentTerms');
@@ -101,7 +102,7 @@ const vendorSchema = new Schema(
       default: 'Net 30',
       enum: {
         values: PaymentTerms,
-        message: '{VALUE} is not a valid payment term. Choose from "Immediate", "Net 15", "Net 30", "Net 45", "Net 60", "Custom"',
+        message: '{VALUE} is not a valid payment term. Choose from "Immediate", "Net 15", "Net 30", "Net 45", "Net 60", "Net 90", "Custom"',
       },
     },
     // Only meaningful (and required by the validator layer) when paymentTerms === 'Custom'.
@@ -142,6 +143,12 @@ const vendorSchema = new Schema(
     // scripts/migrateVendorPaymentInfo.js for the one-time, non-destructive copy of existing
     // `bankInfo` into `paymentInfo.bank` for vendors that predate this field.
     paymentInfo: paymentInfoSchema,
+    // All the vendor's payment (settlement) accounts - several banks, InstaPay addresses and wallets
+    // (utils/vendorPaymentAccounts.js). When set, `paymentInfo` above mirrors the PRIMARY account,
+    // so every existing reader of it keeps showing the vendor's default account. Empty for a vendor
+    // created before this field until scripts/migrateVendorPaymentAccounts.js copies its
+    // paymentInfo/bankInfo here (never deleting them).
+    paymentAccounts: { type: [vendorPaymentAccountSchema], default: [] },
     documents: { type: [businessDocumentSchema], default: [] },
     // Cash Flow Statement classification of payments to this vendor (services/reports/
     // financialStatements.js#cashMovements). Null = by the counterpart account (operating for
@@ -169,6 +176,21 @@ const vendorSchema = new Schema(
 vendorSchema.pre('save', async function (next) {
   if (!this.isNew) return next();
   this.vendorNumber = await getNextVendorNumber();
+  next();
+});
+
+// Backstop for paymentAccounts on every save (create, the CSV import, scripts): the same rules as
+// the request validators, and paymentInfo kept equal to the primary account. (Updates through the
+// API use findByIdAndUpdate, which skips this - vendorValidators.js applies the same rule there.)
+vendorSchema.pre('save', function (next) {
+  if (!this.isModified('paymentAccounts') || !this.paymentAccounts?.length) return next();
+  const plain = this.paymentAccounts.map(a => (typeof a.toObject === 'function' ? a.toObject() : a));
+  const { accounts, error } = normalizeVendorPaymentAccounts(plain);
+  if (error) return next(new Error(error));
+  accounts.forEach((a, i) => {
+    this.paymentAccounts[i].isPrimary = a.isPrimary;
+  });
+  this.paymentInfo = paymentInfoFromAccounts(accounts);
   next();
 });
 

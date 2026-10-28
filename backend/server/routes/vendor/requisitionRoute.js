@@ -11,6 +11,7 @@ const {
   openRequisition,
   cancelRequisition,
   getRequisitionInvoices,
+  getRequisitionRemainingQuantities,
 } = require('../../controller/vendor/requisitionController');
 const { createRequisitionValidators, updateRequisitionValidators } = require('../../utils/validators/requisitionValidators');
 
@@ -31,5 +32,6 @@ router
 router.post('/:id/open', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.update }), openRequisition);
 router.post('/:id/cancel', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.update }), cancelRequisition);
 router.get('/:id/invoices', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.read }), getRequisitionInvoices);
+router.get('/:id/remaining-quantities', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.read }), getRequisitionRemainingQuantities);
 
 module.exports = router;

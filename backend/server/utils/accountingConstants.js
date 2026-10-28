@@ -80,6 +80,13 @@ exports.JournalEntryStatus = ['draft', 'posted', 'reversed'];
 // them legitimately have no project (e.g. a customer advance payment not yet tied to one).
 exports.JournalEntrySources = ['manual', 'project_creation', 'fixed_asset_purchase', 'automatic'];
 
+// What a journal entry is FOR (client requirement "Create Journal Entry - Project or G&A"): a
+// specific project ('project') or General & Administrative ('ga', no project). Chosen explicitly
+// on every new manual entry - never inferred from a missing project. Entries that predate the
+// field have none (null): one with a project reads as 'project' (see journalEntryClassificationFilter
+// in journalEntryController.js), one without stays "unclassified", never silently G&A.
+exports.JournalEntryClassifications = ['project', 'ga'];
+
 // Every distinct automatic accounting action the engine can post - see
 // services/accounting/accountingEventService.js and docs/entities/automatic-accounting.md for the
 // full Business Event -> Accounting Action -> Journal Entry mapping (derived from

@@ -2,9 +2,9 @@ const express = require('express');
 const { check } = require('express-validator');
 const authController = require('../../controller/user/authController');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
-const { checkUserPermissions } = require('../../middleware/hasPermission');
+const { checkUserPermissions, checkAnyUserPermission } = require('../../middleware/hasPermission');
 const { Resources, Actions } = require('../../utils/appConstant');
-const { getPucTransferOptions, getProductPucTransfers, createPucTransfer, getProjectInventory } = require('../../controller/inventory/pucTransferController');
+const { getPucTransferOptions, getProductPucTransfers, createPucTransfer, getProjectInventory, getPucBalances, getProjectMaterials } = require('../../controller/inventory/pucTransferController');
 
 const router = express.Router();
 
@@ -25,6 +25,24 @@ const createValidators = [
   check('requestKey').optional({ nullable: true }).isString().trim().isLength({ min: 8, max: 100 }).withMessage('Invalid request key'),
   validatorMiddleware,
 ];
+
+// Warehouses -> PUC - Raw Materials tab: readable with the warehouses OR projects permission.
+router.get(
+  '/balances',
+  checkAnyUserPermission([
+    { resource: Resources.warehouses, action: Actions.read },
+    { resource: Resources.projects, action: Actions.read },
+  ]),
+  getPucBalances
+);
+
+router.get(
+  '/project/:projectId/materials',
+  checkUserPermissions({ resource: Resources.projects, action: Actions.read }),
+  check('projectId').isMongoId().withMessage('Invalid project id'),
+  validatorMiddleware,
+  getProjectMaterials
+);
 
 router.get(
   '/project/:projectId',

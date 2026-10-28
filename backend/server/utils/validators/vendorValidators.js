@@ -5,7 +5,13 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX, PaymentModes, WalletProviders } = require('../../models/shared/businessPartnerSchemas');
 const { isValidPhone } = require('./phoneValidator');
 const { PaymentTerms } = require('../paymentTerms');
+<<<<<<< HEAD
 const { validatePaymentTermsConfig, validateInstallmentsRequirePaymentTerms } = require('../paymentTermsConfig');
+=======
+const { validatePaymentTermsConfig, validateScheduleAgainstPaymentTerms, IMMEDIATE_PAYMENT_TERMS_CONFIG } = require('../paymentTermsConfig');
+const mongoose = require('mongoose');
+const { normalizeVendorPaymentAccounts, paymentInfoFromAccounts } = require('../vendorPaymentAccounts');
+>>>>>>> origin/main
 
 // Payment Terms (docs section "Payment Terms for Customers and Vendors") - optional (defaults to
 // 'Net 30' at the schema level if omitted entirely), but `customPaymentDays` is required exactly
@@ -27,10 +33,37 @@ const paymentTermsValidators = [
 // schema default), but when sent, it must be a complete, internally-consistent configuration -
 // rejected with the SAME rule the Mongoose model's own backstop enforces
 // (utils/paymentTermsConfig.js is the single shared source of truth for both layers).
+// The schedule follows the Payment Terms (stored values fill in what an update leaves out):
+// Immediate always saves an immediate lump sum (stale schedules are replaced), and Custom
+// installments must add up to the custom days. Only applied when the request touches the terms or
+// the schedule, so editing an unrelated field of an older vendor is never blocked. A new vendor
+// without paymentTerms gets the schema default ('Net 30').
+async function resolvePaymentTerms(req) {
+    const body = req.body;
+    if (body.paymentTerms === undefined && body.customPaymentDays === undefined && body.paymentTermsConfig === undefined) return null;
+    const stored = req.params?.id && mongoose.Types.ObjectId.isValid(req.params.id)
+        ? await Vendor.findById(req.params.id).select('paymentTerms customPaymentDays paymentTermsConfig').lean()
+        : null;
+    return {
+        paymentTerms: body.paymentTerms !== undefined ? body.paymentTerms : stored?.paymentTerms,
+        customPaymentDays: body.customPaymentDays !== undefined ? body.customPaymentDays : stored?.customPaymentDays,
+        storedConfig: stored?.paymentTermsConfig,
+    };
+}
+
 const paymentTermsConfigValidators = [
-    check('paymentTermsConfig').custom((value) => {
+    check('paymentTermsConfig').customSanitizer(async (value, { req }) => {
+        const terms = await resolvePaymentTerms(req);
+        if (terms?.paymentTerms !== 'Immediate') return value;
+        return { ...IMMEDIATE_PAYMENT_TERMS_CONFIG, lumpSum: { ...IMMEDIATE_PAYMENT_TERMS_CONFIG.lumpSum }, installments: [] };
+    }),
+    check('paymentTermsConfig').custom(async (value, { req }) => {
         const error = validatePaymentTermsConfig(value);
         if (error) throw new Error(error);
+        const terms = await resolvePaymentTerms(req);
+        if (!terms) return true;
+        const mismatch = validateScheduleAgainstPaymentTerms(terms.paymentTerms, terms.customPaymentDays, value !== undefined ? value : terms.storedConfig);
+        if (mismatch) throw new Error(mismatch);
         return true;
     }),
     // Cross-field rule (docs section "Vendor Payment Terms"): whenever installments are enabled,
@@ -138,6 +171,32 @@ const taxAndBankInfoValidators = [
         .withMessage('SWIFT code must be a valid 8 or 11 character SWIFT/BIC code.'),
 ];
 
+// Vendor payment accounts (utils/vendorPaymentAccounts.js): validated and normalized here, and the
+// legacy single paymentInfo set to the primary account (updates use findByIdAndUpdate, so the
+// model's save hook does not run for them). On update, an account a payment record points at can
+// be deactivated but not removed, and an id that is not one of this vendor's accounts is refused.
+const paymentAccountsValidator = check('paymentAccounts')
+    .optional({ nullable: true })
+    .custom(async (value, { req }) => {
+        const { accounts, error } = normalizeVendorPaymentAccounts(value);
+        if (error) throw new Error(error);
+        if (req.params && req.params.id) {
+            const existing = await Vendor.findById(req.params.id).select('paymentAccounts').lean();
+            const existingIds = new Set(((existing && existing.paymentAccounts) || []).map(a => String(a._id)));
+            const unknown = accounts.find(a => a._id && !existingIds.has(String(a._id)));
+            if (unknown) throw new Error('A payment account in the request does not belong to this vendor.');
+            const kept = new Set(accounts.filter(a => a._id).map(a => String(a._id)));
+            const removed = ((existing && existing.paymentAccounts) || []).filter(a => !kept.has(String(a._id)));
+            if (removed.length) {
+                const used = await mongoose.connection.collection('payments').countDocuments({ 'vendorPaymentAccount.accountId': { $in: removed.map(a => a._id) } });
+                if (used) throw new Error(`A payment account that ${used} payment record(s) were sent to cannot be deleted - deactivate it instead.`);
+            }
+        }
+        req.body.paymentAccounts = accounts;
+        req.body.paymentInfo = paymentInfoFromAccounts(accounts);
+        return true;
+    });
+
 // CREATE: Validate required fields for creating a new vendor
 const createVendorValidators = [
     ...taxAndBankInfoValidators,
@@ -212,6 +271,7 @@ const createVendorValidators = [
     check('cashFlowActivity')
         .optional({ nullable: true })
         .isIn(['operating', 'investing', 'financing']).withMessage('Cash flow activity must be operating, investing or financing'),
+    paymentAccountsValidator,
         validatorMiddleware
 ];
 
@@ -234,6 +294,7 @@ const updateVendorValidators = [
     check('cashFlowActivity')
         .optional({ nullable: true })
         .isIn(['operating', 'investing', 'financing']).withMessage('Cash flow activity must be operating, investing or financing'),
+    paymentAccountsValidator,
     // Add other validators as needed
     validatorMiddleware,
   ];

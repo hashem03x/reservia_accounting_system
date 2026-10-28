@@ -9,6 +9,9 @@
  *   { kind: 'lump_sum', lumpSum: { timing: 'deferred', durationDays: 30 } }
  *   { kind: 'installments', installments: [{ durationDays: 30, percentage: 40 }, ...] }
  *
+ * An installment's durationDays counts from the PREVIOUS installment (the first from the document
+ * date) - e.g. 20 + 10 = due on day 20 and day 30 (utils/helpers/paymentSchedule.js).
+ *
  * Returns an error message string, or null when the config is valid.
  */
 
@@ -77,6 +80,7 @@ function validatePaymentTermsConfig(config) {
   return null;
 }
 
+<<<<<<< HEAD
 /**
  * Cross-field rule: whenever installments are enabled (paymentTermsConfig.kind ===
  * 'installments'), the vendor's own Payment Terms (paymentTerms / customPaymentDays) become
@@ -104,3 +108,24 @@ function validateInstallmentsRequirePaymentTerms(paymentTermsConfig, paymentTerm
 }
 
 module.exports = { validatePaymentTermsConfig, validateInstallmentsRequirePaymentTerms, PERCENTAGE_TOLERANCE };
+=======
+// Immediate payment terms always mean one payment due at once - whatever schedule was sent.
+const IMMEDIATE_PAYMENT_TERMS_CONFIG = Object.freeze({ kind: 'lump_sum', lumpSum: { timing: 'immediate', durationDays: 0 }, installments: [] });
+
+/**
+ * The schedule against the vendor's Payment Terms: with Custom terms, installment days (each from
+ * the previous installment) must add up to the custom number of days. Returns an error or null.
+ * Mirrored by the vendor modal (vendor-modal/payment-terms-config-section.tsx).
+ */
+function validateScheduleAgainstPaymentTerms(paymentTerms, customPaymentDays, config) {
+  if (paymentTerms !== 'Custom' || !config || config.kind !== 'installments') return null;
+  const termDays = Number(customPaymentDays);
+  if (customPaymentDays == null || customPaymentDays === '' || !Number.isInteger(termDays) || termDays < 0) return null;
+  const totalDays = (config.installments || []).reduce((sum, i) => sum + (Number(i?.durationDays) || 0), 0);
+  if (totalDays > termDays) return `Installment days total ${totalDays}, which exceeds the ${termDays}-day payment term by ${totalDays - termDays} day(s).`;
+  if (totalDays < termDays) return `Installment days total ${totalDays} - ${termDays - totalDays} day(s) remaining to complete the ${termDays}-day payment term.`;
+  return null;
+}
+
+module.exports = { validatePaymentTermsConfig, validateScheduleAgainstPaymentTerms, IMMEDIATE_PAYMENT_TERMS_CONFIG, PERCENTAGE_TOLERANCE };
+>>>>>>> origin/main

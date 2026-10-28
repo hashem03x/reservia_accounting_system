@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { formatGuideHandler } = require('../../utils/csvImport/formatGuide');
 const { uploadTempFile } = require('../../middleware/uploadImageMiddleware');
 const { previewPurchaseOrders, commitPurchaseOrders, samplePurchaseOrders } = require('../../controller/import/poImportController');
 const { checkUserPermissions } = require('../../middleware/hasPermission');
@@ -15,6 +16,8 @@ router.use(authController.protect);
 // `Resources.purchaseRequisitions` permission the manual create endpoint uses
 // (routes/vendor/requisitionRoute.js).
 router.get('/sample', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.read }), samplePurchaseOrders);
+// Format guide of every column (utils/csvImport/formatGuide.js) - JSON, or ?format=csv to download.
+router.get('/format-guide', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.read }), formatGuideHandler(require('../../utils/validators/import/poImportSchema'), 'reservia-purchase-orders-format-guide.csv'));
 router.post('/preview', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.create }), uploadTempFile('file'), previewPurchaseOrders);
 router.post('/commit', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.create }), uploadTempFile('file'), commitPurchaseOrders);
 

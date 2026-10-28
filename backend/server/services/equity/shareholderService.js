@@ -23,7 +23,9 @@ const asBadRequest = err => (err instanceof mongoose.Error.ValidationError || er
  *   Dr  the payment account (Cash / Cash Equivalent)      amount
  *       Cr  the equity account (shareholder's, unless another equity account is chosen)   amount
  *
- * with the Shareholder Number as the Sub Account of every line. The shareholder is only updated if
+ * with the Shareholder Number as the Sub Account of the equity line only - a shareholder sub-account
+ * belongs on an equity account (journalLinePartyService.js), never on the bank / cash line. The
+ * shareholder is only updated if
  * its share capital is unchanged since it was read, so a concurrent duplicate cannot be applied twice.
  */
 async function addContribution(shareholderId, { amount, date, paymentAccount, equityAccount, reference, notes }, userId, session) {
@@ -51,9 +53,8 @@ async function addContribution(shareholderId, { amount, date, paymentAccount, eq
     description: notes?.trim() || `Capital contribution - ${shareholder.name}${reference ? ` (${reference})` : ''}`,
     lines: [
       { account: cashAccount._id, debit: value, credit: 0 },
-      { account: capitalAccount._id, debit: 0, credit: value },
+      { account: capitalAccount._id, debit: 0, credit: value, partyNumber: shareholder.shareholderNumber, partyType: 'shareholder' },
     ],
-    party: { number: shareholder.shareholderNumber, type: 'shareholder' },
     session,
   });
 

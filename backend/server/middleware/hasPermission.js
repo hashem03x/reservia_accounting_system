@@ -68,4 +68,15 @@ exports.checkUserPermissions = requiredPermission => (req, res, next) => {
   return next(new ApiError('You are not allowed to access this resource', 403));
 };
 
+// Same gate as checkUserPermissions, satisfied by ANY one of several resource:action pairs - for a
+// read that more than one feature legitimately needs (e.g. the currency list is read by the
+// Currency Manager AND by the Journal Entry form, whose users may hold only journalEntries:read).
+exports.checkAnyUserPermission = requiredPermissions => (req, res, next) => {
+  if (!hasActiveErpMembership(req.user)) {
+    return next(new ApiError('You do not have access to the ERP system. Contact your administrator.', 403));
+  }
+  if (requiredPermissions.some(({ resource, action }) => userHasPermission(req.user, resource, action))) return next();
+  return next(new ApiError('You are not allowed to access this resource', 403));
+};
+
 exports.userHasPermission = userHasPermission;

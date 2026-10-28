@@ -191,17 +191,34 @@ test('getGeneralLedgerLines: running balance accumulates chronologically per acc
   assert.deepEqual(cashRows.map(r => r.balanceDocumentCurrency), [1000, 600, 850]);
 });
 
-test('getGeneralLedgerLines: local-currency balance applies each line\'s own exchangeRate, cumulatively', async () => {
+// debit/credit are stored in EGP (journalEntryModel.js; the CSV import stores foreign x rate). The
+// local balance used to multiply them by exchangeRate again (100 USD @ 50 imported as 5,000 EGP
+// showed as 250,000) - it now sums the EGP amounts, and the document balance uses the line's own
+// transaction-currency amounts.
+test('getGeneralLedgerLines: local balance sums the EGP amounts (no second conversion); document balance uses the currency amounts', async () => {
   await postEntry([
-    { account: cash._id, description: 'Test line', debit: 100, credit: 0, currency: 'USD', exchangeRate: 50 },
-    { account: receivable._id, description: 'Test line', debit: 0, credit: 100, currency: 'USD', exchangeRate: 50 },
+    { account: cash._id, description: 'Test line', debit: 5000, credit: 0, currency: 'USD', exchangeRate: 50, currencyDebit: 100, currencyCredit: 0 },
+    { account: receivable._id, description: 'Test line', debit: 0, credit: 5000, currency: 'USD', exchangeRate: 50, currencyDebit: 0, currencyCredit: 100 },
   ]);
 
   const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
   const cashRow = result.data.find(r => r.accNumber === cash.code);
   assert.equal(cashRow.rate, 50);
-  assert.equal(cashRow.balanceDocumentCurrency, 100, 'document-currency balance uses the raw debit/credit, unaffected by rate');
-  assert.equal(cashRow.balanceLocalCurrency, 5000, 'local-currency balance = debit/credit * rate, cumulative');
+  assert.equal(cashRow.debit, 5000);
+  assert.equal(cashRow.currencyDebit, 100);
+  assert.equal(cashRow.balanceDocumentCurrency, 100, 'document-currency balance = cumulative transaction-currency amounts');
+  assert.equal(cashRow.balanceLocalCurrency, 5000, 'local-currency balance = cumulative EGP debit - credit, never re-multiplied by the rate');
+});
+
+test('getGeneralLedgerLines: an imported line (EGP amount + rate, no currency amounts) is not converted twice', async () => {
+  await postEntry([
+    { account: cash._id, description: 'Test line', debit: 5000, credit: 0, currency: 'USD', exchangeRate: 50 },
+    { account: receivable._id, description: 'Test line', debit: 0, credit: 5000, currency: 'USD', exchangeRate: 50 },
+  ]);
+
+  const result = await getGeneralLedgerLines({ page: 1, limit: 50 });
+  const cashRow = result.data.find(r => r.accNumber === cash.code);
+  assert.equal(cashRow.balanceLocalCurrency, 5000);
 });
 
 test('getGeneralLedgerLines: a line with no currency/exchangeRate defaults to rate 1 (never recalculated from a current rate)', async () => {

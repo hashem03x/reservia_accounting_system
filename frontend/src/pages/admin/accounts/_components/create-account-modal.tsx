@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
@@ -7,18 +7,19 @@ import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { AccountType, ChartOfAccount } from "@/types/chart-of-account";
 import { AccountStates } from "@/utils/constants/accounting";
+import { AccountParentGroup } from "@/types/account-parent-group";
+import { groupFitsType, parentGroupPayload, typeForSelectedGroup } from "@/utils/helpers/account-parent-groups";
+import ParentGroupSelect from "./parent-group-select";
 
 const accountTypes: AccountType[] = ["asset", "liability", "equity", "revenue", "cogs", "expense"];
 
 export default function CreateAccountModal({
   opened,
   close,
-  accounts,
   onCreated,
 }: {
   opened: boolean;
   close: () => void;
-  accounts: ChartOfAccount[];
   onCreated: (account: ChartOfAccount) => void;
 }) {
   const { translate, language } = useLanguage();
@@ -29,9 +30,22 @@ export default function CreateAccountModal({
   const [type, setType] = useState<string>("");
   const [state, setState] = useState("");
   const [parentAccount, setParentAccount] = useState("");
+  // Parent group (Accounting -> Parent Account Groups) - stored on the account as its group names.
+  const [parentGroup, setParentGroup] = useState("");
+  const [groups, setGroups] = useState<AccountParentGroup[]>([]);
   const [description, setDescription] = useState("");
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
+
+  // Only accounts designated as parents (`GET accounts/parent-eligible`) - the same rule the API
+  // validates against on submit. Re-fetched on every open so a parent created since is offered.
+  const { privateRequest: parentRequest, data: parentOptions, setData: setParentOptions } = useDataHandler<ChartOfAccount[]>({ initialData: [] });
+  useEffect(() => {
+    if (!opened) return;
+    parentRequest({ url: "accounts/parent-eligible", language })
+      .then((res) => setParentOptions(Array.isArray(res?.data) ? res.data : []))
+      .catch(() => setParentOptions([]));
+  }, [opened]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,7 +55,16 @@ export default function CreateAccountModal({
         language,
         method: "POST",
         url: "accounts",
-        data: { code, name, nameAr: nameAr || undefined, type, state: state || undefined, parentAccount: parentAccount || undefined, description },
+        data: {
+          code,
+          name,
+          nameAr: nameAr || undefined,
+          type,
+          state: state || undefined,
+          parentAccount: parentAccount || undefined,
+          parentGroup: parentGroupPayload(parentGroup) ?? undefined,
+          description,
+        },
       });
 
       onCreated(res.data);
@@ -58,6 +81,7 @@ export default function CreateAccountModal({
       setType("");
       setState("");
       setParentAccount("");
+      setParentGroup("");
       setDescription("");
       setError("");
     }, 250);
@@ -71,10 +95,26 @@ export default function CreateAccountModal({
         <TextInput label={translate("Code", "الرمز")} value={code} onChange={(e) => setCode(e.target.value)} required />
         <TextInput label={translate("Name", "الاسم")} value={name} onChange={(e) => setName(e.target.value)} required />
         <TextInput label={translate("Arabic Name (optional)", "الاسم بالعربي (اختياري)")} value={nameAr} onChange={(e) => setNameAr(e.target.value)} dir="rtl" />
+        <ParentGroupSelect
+          opened={opened}
+          value={parentGroup}
+          onGroupsLoaded={setGroups}
+          accountType={type}
+          onChange={(value) => {
+            setParentGroup(value);
+            // A group decides the account's type - every account in it shares the group's type.
+            setType((current) => typeForSelectedGroup(groups, value, current));
+          }}
+        />
         <Select
           label={translate("Type", "النوع")}
           value={type}
-          onChange={(v) => setType(v || "")}
+          onChange={(v) => {
+            const next = v || "";
+            setType(next);
+            // A group of another type can no longer be used - clear it rather than send a conflict.
+            if (!groupFitsType(groups, parentGroup, next)) setParentGroup("");
+          }}
           data={accountTypes.map((t) => ({ value: t, label: t }))}
           required
         />
@@ -93,9 +133,10 @@ export default function CreateAccountModal({
           label={translate("Parent Account (optional)", "الحساب الرئيسي (اختياري)")}
           value={parentAccount}
           onChange={(v) => setParentAccount(v || "")}
-          data={accounts.map((a) => ({ value: a._id, label: `${a.code} - ${a.name}` }))}
+          data={parentOptions.map((a) => ({ value: a._id, label: `${a.code} - ${a.name}` }))}
           searchable
           clearable
+          nothingFoundMessage={translate("No parent accounts found", "لا توجد حسابات رئيسية")}
         />
         <Textarea label={translate("Description (optional)", "الوصف (اختياري)")} value={description} onChange={(e) => setDescription(e.target.value)} autosize minRows={2} />
 

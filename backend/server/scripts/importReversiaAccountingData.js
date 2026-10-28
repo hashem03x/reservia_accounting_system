@@ -117,6 +117,30 @@ async function parseChartOfAccounts() {
   return { accounts, rejected, totalCsvRows: rows.length };
 }
 
+// Matches each imported account's parent group label to a managed AccountParentGroup by normalized
+// English name. Reads only.
+async function reportParentGroupResolution(accounts) {
+  /* eslint-disable global-require */
+  const AccountParentGroup = require('../models/accounting/accountParentGroupModel');
+  const { normalizeGroupName } = require('../utils/accountGroupName');
+  /* eslint-enable global-require */
+  const groups = new Map((await AccountParentGroup.find({}).lean()).map(g => [normalizeGroupName(g.nameEn), g]));
+  const resolvedNames = new Set();
+  const unresolved = new Set();
+  const typeMismatches = [];
+  for (const a of accounts) {
+    if (!a.parentGroupNameEn) continue;
+    const group = groups.get(normalizeGroupName(a.parentGroupNameEn));
+    if (!group) {
+      unresolved.add(a.parentGroupNameEn);
+      continue;
+    }
+    resolvedNames.add(group.nameEn);
+    if (group.type !== a.type) typeMismatches.push({ name: group.nameEn, groupType: group.type, code: a.code, type: a.type });
+  }
+  return { resolved: resolvedNames.size, unresolved: [...unresolved], typeMismatches };
+}
+
 // ===================== Journal Entry =====================
 
 function parseJournalEntryRows() {
@@ -235,6 +259,14 @@ async function run() {
     console.log('  Rejected rows:');
     coaPlan.rejected.forEach(r => console.log(`    - ${r.reason}`));
   }
+
+  // Parent groups: report which of the source's "Parent" labels match a managed Parent Account
+  // Group (accountParentGroupService.js). Report only - the labels are imported verbatim either
+  // way; unresolved ones are listed so they can be created (or db:migrate-account-parent-groups run).
+  const groupMatch = await reportParentGroupResolution(coaPlan.accounts);
+  console.log(`\nParent groups: ${groupMatch.resolved} label(s) resolved to an existing group, ${groupMatch.unresolved.length} unresolved, ${groupMatch.typeMismatches.length} type mismatch(es).`);
+  groupMatch.unresolved.forEach(name => console.log(`    - unresolved: "${name}"`));
+  groupMatch.typeMismatches.forEach(m => console.log(`    - type mismatch: "${m.name}" is a ${m.groupType} group but account ${m.code} is ${m.type}`));
 
   const projectCodes = new Set();
   const rawJournalRows = parseJournalEntryRows();

@@ -19,6 +19,7 @@ import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import VendorModal from "@/components/global/vendor-modal";
 import BusinessDocumentsSection from "@/components/global/business-documents-section";
+import { PaymentAccountsView } from "@/components/global/vendor-modal/payment-accounts-section";
 import DeleteVendorModal from "./_components/delete-vendor-modal";
 import UpdateBalanceModal from "./_components/update-balance-modal";
 import VendorOrdersHistory from "./_components/vendor-orders-history";
@@ -265,7 +266,9 @@ export default function Vendor() {
                 current, structured paymentInfo once set. Falls back to the legacy bankInfo
                 display only for a vendor that predates this field and hasn't been migrated/edited
                 yet (scripts/migrateVendorPaymentInfo.js) - never shown alongside paymentInfo. */}
-            {vendor.paymentInfo?.mode ? (
+            {vendor.paymentAccounts && vendor.paymentAccounts.length > 0 ? (
+              <PaymentAccountsView accounts={vendor.paymentAccounts} />
+            ) : vendor.paymentInfo?.mode ? (
               <section className="flex flex-col gap-[6px] rounded-md bg-gray-100 p-4">
                 <h4>{translate("Payment Information", "معلومات الدفع")}</h4>
                 {vendor.paymentInfo.mode === "instapay" && (

@@ -5,6 +5,6 @@
 // The four 'Net X' values are the ORIGINAL values Vendor.paymentTerms already shipped with -
 // preserved exactly so no historical vendor document needs migrating; 'Immediate' and 'Custom'
 // are the new additions.
-const PaymentTerms = ['Immediate', 'Net 15', 'Net 30', 'Net 45', 'Net 60', 'Custom'];
+const PaymentTerms = ['Immediate', 'Net 15', 'Net 30', 'Net 45', 'Net 60', 'Net 90', 'Custom'];
 
 module.exports = { PaymentTerms };

@@ -14,6 +14,7 @@ import ErrorSection from "@/components/ui/sections/error";
 import MainCategorySection from "./_components/main-category-section";
 import MainCategoryModal from "./_components/main-category-modal";
 import DeleteMainCategoryModal from "./_components/main-category-delete-modal";
+import BrandsSection from "./_components/brands-section";
 
 export default function Categories() {
   const { translate, translations } = useLanguage();
@@ -51,8 +52,8 @@ export default function Categories() {
           <h1>{translations.pages.categories}</h1>
           <p>
             {translate(
-              "The main categories are each organized into several subcategories.",
-              "إن كل فئة رئيسية مقسمة إلى عدة فئات فرعية.",
+              "Catalog hierarchy: Main Category -> Subcategory -> Brand -> Model / Item -> Technical Specifications.",
+              "تسلسل الكتالوج: الفئة الرئيسية -> الفئة الفرعية -> الماركة -> الموديل / الصنف -> المواصفات الفنية.",
             )}
           </p>
         </div>
@@ -89,6 +90,8 @@ export default function Categories() {
           />
         ))
       )}
+
+      <BrandsSection canCreate={canIcreateMainCategories} canUpdate={canIupdateMainCategories} canDelete={canIdeleteMainCategories} />
 
       {/* Modals */}
       <MainCategoryModal

@@ -4,6 +4,8 @@ const Project = require('../../models/project/projectModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { userHasPermission } = require('../../middleware/hasPermission');
 const { Resources, Actions } = require('../appConstant');
+const { isValidRate } = require('../currencyMath');
+const { JournalEntryClassifications } = require('../accountingConstants');
 
 // Mirrors journalEntryModel.js's own `round2` - kept in sync deliberately rather than imported,
 // since the model doesn't export it; this is only ever used for this fast pre-check, the model's
@@ -97,20 +99,59 @@ const projectRequired = check('project').custom((value, { req }) => {
   return true;
 });
 
+<<<<<<< HEAD
 // Currency Management: the entry-level currency selector/rate override - applied to every line by
 // journalEntryCurrencyService.js, which also validates the code actually exists and is active (a
 // DB lookup, not duplicated here).
 const currencyFields = [
   check('currency').optional({ nullable: true }).isString().trim().isLength({ min: 3, max: 3 }).withMessage('Invalid currency code'),
   check('exchangeRate').optional({ nullable: true }).isFloat({ gt: 0 }).withMessage('Exchange rate must be a number greater than zero'),
+=======
+// Project / G&A classification (client requirement "Create Journal Entry - Project or G&A"): the
+// user chooses explicitly. 'project' needs a project (checked above); 'ga' must not have one. A
+// request with a project and no classification is a Project entry; a request with NEITHER is
+// refused - an entry is never classified G&A just because its project is missing.
+const classificationRule = check('classification').custom((value, { req }) => {
+  const hasProject = !!req.body.project;
+  if (value === undefined || value === null || value === '') {
+    if (hasProject) return true;
+    throw new Error('Choose whether this journal entry is for a Project or G&A.');
+  }
+  if (!JournalEntryClassifications.includes(value)) throw new Error('Classification must be "project" or "ga".');
+  if (value === 'project' && !hasProject) throw new Error('A Project journal entry requires a project.');
+  if (value === 'ga' && hasProject) throw new Error('A G&A journal entry cannot have a project - choose Project instead, or remove the project.');
+  return true;
+});
+
+// Currency Manager: an optional transaction currency (3-letter code; omitted = EGP) and applied
+// rate (1 EGP = X units; omitted = the currency's rate on the entry date). Whether the code is a
+// configured, active currency is decided by currencyService.resolveEntryCurrency.
+const currencyValidators = [
+  check('currency').optional({ nullable: true }).isString().withMessage('Invalid currency').bail().trim().matches(/^[A-Za-z]{3}$/).withMessage('Currency must be a 3-letter code'),
+  check('exchangeRate')
+    .optional({ nullable: true })
+    .custom(value => {
+      if (value === '') return true;
+      const n = typeof value === 'number' ? value : Number(String(value).trim());
+      if (typeof value === 'boolean' || !isValidRate(n)) throw new Error('Exchange rate must be a finite number greater than zero');
+      return true;
+    }),
+  // Line currency fields (currency, exchangeRate, currencyDebit, currencyCredit) are always derived
+  // by the server - any client value is discarded by journalEntryCurrencyService.js.
+>>>>>>> origin/main
 ];
 
 const createJournalEntryValidators = [
   check('date').optional().isISO8601().withMessage('Invalid date'),
+  ...currencyValidators,
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('reference').optional().isString().trim().isLength({ max: 100 }),
   projectRequired,
+<<<<<<< HEAD
   ...currencyFields,
+=======
+  classificationRule,
+>>>>>>> origin/main
   check('lines').isArray({ min: 1 }).withMessage('A journal entry needs at least one line'),
   linesAreBalanced,
   ...lineValidators(),
@@ -119,13 +160,20 @@ const createJournalEntryValidators = [
 
 const updateJournalEntryValidators = [
   check('date').optional().isISO8601().withMessage('Invalid date'),
+  ...currencyValidators,
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('reference').optional().isString().trim().isLength({ max: 100 }),
   // Project stays optional on update (not re-required retroactively) - see docs section "Check
   // Existing Journal Entries": the new mandatory rule applies to new creation, not to editing a
   // pre-existing entry that may predate it.
   check('project').optional({ nullable: true }).isMongoId().withMessage('Invalid project id'),
+<<<<<<< HEAD
   ...currencyFields,
+=======
+  // The classification of an existing entry is not changed through an edit (the model refuses one
+  // that contradicts the entry's project either way).
+  check('classification').not().exists().withMessage('The Project / G&A classification cannot be changed after creation'),
+>>>>>>> origin/main
   check('lines').optional().isArray({ min: 1 }).withMessage('A journal entry needs at least one line'),
   linesAreBalanced,
   ...lineValidators(),

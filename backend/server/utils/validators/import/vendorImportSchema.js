@@ -2,6 +2,31 @@ const Vendor = require('../../../models/vendor/vendor');
 const { isValidPhone } = require('../phoneValidator');
 const { PaymentTerms } = require('../../paymentTerms');
 const { EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX, PaymentModes, WalletProviders } = require('../../../models/shared/businessPartnerSchemas');
+const { normalizeVendorPaymentAccounts } = require('../../vendorPaymentAccounts');
+
+/**
+ * AdditionalPaymentAccounts - any number of extra payment accounts in ONE cell, separated by ";",
+ * each "type|field|field...":
+ *   bank|BankName|AccountNumber|IBAN|SWIFT|AccountHolderName   (AccountNumber or IBAN required)
+ *   instapay|Identifier
+ *   wallet|Provider|WalletNumber                                (provider: vodafone_cash, orange_cash, etisalat_cash, we_pay, fawry, other)
+ * Returns { accounts, error }.
+ */
+function parseAdditionalAccounts(cell) {
+  const text = (cell || '').trim();
+  if (!text) return { accounts: [], error: null };
+  const accounts = [];
+  const segments = text.split(';').map(s => s.trim()).filter(Boolean);
+  for (let i = 0; i < segments.length; i += 1) {
+    const parts = segments[i].split('|').map(s => s.trim());
+    const type = (parts[0] || '').toLowerCase();
+    if (type === 'bank') accounts.push({ type, bank: { bankName: parts[1], accountNumber: parts[2], iban: parts[3], swiftCode: parts[4], accountHolderName: parts[5] } });
+    else if (type === 'instapay') accounts.push({ type, instapay: { identifier: parts[1] } });
+    else if (type === 'wallet') accounts.push({ type, wallet: { provider: (parts[1] || '').toLowerCase(), identifier: parts[2] } });
+    else return { accounts: null, error: `Entry ${i + 1} ("${segments[i]}"): must start with bank|, instapay| or wallet|.` };
+  }
+  return { accounts, error: null };
+}
 
 // Vendor CSV import schema (docs section "Vendor CSV Import"). Mirrors the EXACT fields/rules of
 // the real create path (controller/user/vendorController.js#createVendor = factory.createOne(Vendor),
@@ -45,6 +70,7 @@ exports.headers = [
   'PaymentBankSwiftCode',
   'CashFlowActivity',
   'IsActive',
+  'AdditionalPaymentAccounts',
 ];
 
 exports.requiredHeaders = ['Name', 'Phone', 'Email'];
@@ -75,6 +101,7 @@ exports.exampleRow = [
   'BMISEGCX',
   'operating',
   'true',
+  'instapay|nilesupplies@instapay ; wallet|vodafone_cash|01012345678',
 ];
 
 exports.fetchContext = async function fetchContext() {
@@ -184,6 +211,30 @@ exports.validateRow = async function validateRow(row, { existingPhones, existing
     errors.push({ column: 'PaymentBankSwiftCode', value: row.PaymentBankSwiftCode, message: 'Must be a valid 8 or 11 character SWIFT/BIC code.' });
   }
 
+  // Payment accounts: the PaymentMode columns above are the primary account; AdditionalPaymentAccounts
+  // adds any number of others (same rules as the vendor form - utils/vendorPaymentAccounts.js).
+  let paymentAccounts;
+  const additional = parseAdditionalAccounts(row.AdditionalPaymentAccounts);
+  if (additional.error) {
+    errors.push({ column: 'AdditionalPaymentAccounts', value: row.AdditionalPaymentAccounts, message: additional.error });
+  } else {
+    const primary = [];
+    if (paymentMode === 'bank') primary.push({ type: 'bank', isPrimary: true, bank: { bankName: row.PaymentBankName, accountHolderName: row.PaymentBankAccountHolderName, accountNumber: row.PaymentBankAccountNumber, iban, swiftCode } });
+    if (paymentMode === 'instapay') primary.push({ type: 'instapay', isPrimary: true, instapay: { identifier: row.InstapayIdentifier } });
+    if (paymentMode === 'wallet') primary.push({ type: 'wallet', isPrimary: true, wallet: { provider: walletProvider, identifier: row.WalletIdentifier } });
+    if (primary.length || additional.accounts.length) {
+      const { accounts, error } = normalizeVendorPaymentAccounts([...primary, ...additional.accounts]);
+      if (error && additional.accounts.length) {
+        // Number the error by the entry in the AdditionalPaymentAccounts cell (the primary is entry 0).
+        const offset = primary.length;
+        const message = error.replace(/Payment account (\d+)/, (_, n) => (Number(n) > offset ? `Entry ${Number(n) - offset}` : 'The primary account (PaymentMode columns)'));
+        errors.push({ column: 'AdditionalPaymentAccounts', value: row.AdditionalPaymentAccounts, message });
+      } else if (!error) {
+        paymentAccounts = accounts;
+      }
+    }
+  }
+
   if (cashFlowActivity && !['operating', 'investing', 'financing'].includes(cashFlowActivity)) {
     errors.push({ column: 'CashFlowActivity', value: row.CashFlowActivity, message: 'Must be "operating", "investing" or "financing".' });
   }
@@ -222,6 +273,7 @@ exports.validateRow = async function validateRow(row, { existingPhones, existing
             },
           }
         : undefined,
+      ...(paymentAccounts ? { paymentAccounts } : {}),
       paymentTerms: paymentTerms || undefined,
       customPaymentDays: customPaymentDays ? Number(customPaymentDays) : undefined,
       cashFlowActivity: cashFlowActivity || undefined,
@@ -242,3 +294,198 @@ exports.dedupeKeys = [
 exports.createOne = async function createOne(value) {
   return Vendor.create(value);
 };
+
+// Format guide of every column (utils/csvImport/formatGuide.js - downloaded from the import screen as
+// a separate file, never mixed into the data template). Kept beside the validation above, and
+// test/import/importFormatGuides.test.js fails if these and the real columns ever disagree.
+// required: 'yes' (column and value required) | 'no' | 'conditional' (see the description).
+exports.fieldSpecs = [
+  {
+    column: "Name",
+    required: "yes",
+    description: "Vendor name (2 to 50 characters).",
+    format: "Letters (English/Arabic), spaces and hyphens only",
+    maxLength: 50,
+    example: "Nile Supplies Co"
+  },
+  {
+    column: "Phone",
+    required: "yes",
+    description: "Main phone number - must not already belong to another vendor.",
+    format: "Egyptian mobile (01XXXXXXXXX, 11 digits) or international with + and country code",
+    example: "01123456789"
+  },
+  {
+    column: "Email",
+    required: "yes",
+    description: "Email address - must not already belong to another vendor.",
+    format: "Valid email address",
+    example: "contact@nilesupplies.example.com"
+  },
+  {
+    column: "Type",
+    required: "no",
+    description: "Vendor type (defaults to current).",
+    format: "current or equity",
+    example: "current"
+  },
+  {
+    column: "Balance",
+    required: "no",
+    description: "Opening balance.",
+    format: "Number (EGP), up to 2 decimals, no separators or currency symbol, >= 0",
+    example: "0"
+  },
+  {
+    column: "Street",
+    required: "no",
+    description: "Street address.",
+    format: "Text",
+    example: "45 Industrial Zone"
+  },
+  {
+    column: "City",
+    required: "no",
+    description: "City.",
+    format: "Letters and spaces",
+    example: "Giza"
+  },
+  {
+    column: "State",
+    required: "no",
+    description: "Governorate / state.",
+    format: "Letters and spaces",
+    example: "Giza"
+  },
+  {
+    column: "Country",
+    required: "no",
+    description: "Country.",
+    format: "Letters and spaces",
+    example: "Egypt"
+  },
+  {
+    column: "PostalCode",
+    required: "no",
+    description: "Postal code.",
+    format: "5 digits, or 5 digits-4 digits",
+    example: "12577"
+  },
+  {
+    column: "TaxRegistrationNumber",
+    required: "no",
+    description: "Tax registration number.",
+    format: "Text",
+    example: "321-654-987"
+  },
+  {
+    column: "CommercialRegistrationNumber",
+    required: "no",
+    description: "Commercial registration number.",
+    format: "Text",
+    example: "456-789-123"
+  },
+  {
+    column: "PaymentTerms",
+    required: "no",
+    description: "Default payment terms of the vendor.",
+    format: "One of: Immediate, Net 15, Net 30, Net 45, Net 60, Net 90, Custom",
+    example: "Net 30"
+  },
+  {
+    column: "CustomPaymentDays",
+    required: "conditional",
+    description: "Number of days - required when PaymentTerms is Custom.",
+    format: "Whole number >= 0",
+    example: "75"
+  },
+  {
+    column: "PaymentMode",
+    required: "no",
+    description: "The vendor's PRIMARY (default) payment account type. Fill the matching columns below; leave empty for none.",
+    format: "bank, instapay or wallet",
+    example: "bank"
+  },
+  {
+    column: "InstapayIdentifier",
+    required: "conditional",
+    description: "InstaPay address / mobile - required when PaymentMode is instapay.",
+    format: "Text",
+    maxLength: 100,
+    example: "nilesupplies@instapay"
+  },
+  {
+    column: "WalletProvider",
+    required: "conditional",
+    description: "Mobile wallet provider - required when PaymentMode is wallet.",
+    format: "vodafone_cash, orange_cash, etisalat_cash, we_pay, fawry, other",
+    example: "vodafone_cash"
+  },
+  {
+    column: "WalletIdentifier",
+    required: "conditional",
+    description: "Wallet number - required when PaymentMode is wallet.",
+    format: "Text / digits",
+    maxLength: 100,
+    example: "01012345678"
+  },
+  {
+    column: "PaymentBankName",
+    required: "conditional",
+    description: "Bank name - required when PaymentMode is bank.",
+    format: "Text",
+    maxLength: 100,
+    example: "Banque Misr"
+  },
+  {
+    column: "PaymentBankAccountHolderName",
+    required: "no",
+    description: "Name the bank account is held in.",
+    format: "Text",
+    maxLength: 100,
+    example: "Nile Supplies Co"
+  },
+  {
+    column: "PaymentBankAccountNumber",
+    required: "conditional",
+    description: "Bank account number - required when PaymentMode is bank.",
+    format: "Text / digits",
+    maxLength: 50,
+    example: "9876543210123456"
+  },
+  {
+    column: "PaymentBankIBAN",
+    required: "no",
+    description: "IBAN of the bank account.",
+    format: "Egyptian IBAN: \"EG\" + 27 letters/digits (29 characters total)",
+    example: "EG380019000500000000263180099"
+  },
+  {
+    column: "PaymentBankSwiftCode",
+    required: "no",
+    description: "SWIFT/BIC of the bank.",
+    format: "SWIFT/BIC: 8 or 11 letters/digits",
+    example: "BMISEGCX"
+  },
+  {
+    column: "CashFlowActivity",
+    required: "no",
+    description: "Cash flow activity of payments to this vendor.",
+    format: "operating, investing or financing",
+    example: "operating"
+  },
+  {
+    column: "IsActive",
+    required: "no",
+    description: "Whether the vendor is active (defaults to true).",
+    format: "true/false, yes/no or 1/0",
+    example: "true"
+  },
+  {
+    column: "AdditionalPaymentAccounts",
+    required: "no",
+    description: "Any number of EXTRA payment accounts (several banks, InstaPay addresses, wallets) besides the primary one, separated by \";\". Each entry: bank|BankName|AccountNumber|IBAN|SWIFT|AccountHolderName (account number or IBAN required), instapay|Identifier, or wallet|Provider|WalletNumber. The same account cannot appear twice.",
+    format: "type|field|field ; type|field ... (wallet providers: vodafone_cash, orange_cash, etisalat_cash, we_pay, fawry, other)",
+    example: "instapay|nilesupplies@instapay ; wallet|vodafone_cash|01012345678"
+  }
+];

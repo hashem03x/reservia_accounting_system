@@ -8,8 +8,10 @@ const PERCENTAGE_TOLERANCE = 0.01;
 // Mirrors backend/server/utils/paymentTermsConfig.js#validatePaymentTermsConfig exactly (same
 // rules, same tolerance) so the Save button disables for the SAME reason the backend would
 // reject the request - never a silent mismatch between what the UI allows and what the API
-// accepts. Returns an error message, or null when valid.
-export function validatePaymentTermsConfigClientSide(config: PaymentTermsConfig, translate: (en: string, ar: string) => string): string | null {
+// accepts. `termDays` (Custom payment terms only) mirrors validateScheduleAgainstPaymentTerms:
+// installment days, each counted from the previous installment, must add up to it. Returns an
+// error message, or null when valid.
+export function validatePaymentTermsConfigClientSide(config: PaymentTermsConfig, translate: (en: string, ar: string) => string, termDays: number | null = null): string | null {
   if (config.kind === "lump_sum") {
     const timing = config.lumpSum?.timing;
     if (timing !== "immediate" && timing !== "deferred") return translate("Select a timing for the lump-sum payment.", "اختر توقيت الدفعة المقطوعة.");
@@ -41,17 +43,46 @@ export function validatePaymentTermsConfigClientSide(config: PaymentTermsConfig,
     return translate(`Installment percentages must sum to 100% (currently ${total.toFixed(2)}%).`, `يجب أن يكون إجمالي نسب الدفعات 100% (الحالي ${total.toFixed(2)}%).`);
   }
 
+  if (termDays != null) {
+    const remaining = termDays - installmentDaysTotal(installments);
+    if (remaining < 0)
+      return translate(`Installment days exceed the ${termDays}-day payment term by ${-remaining} day(s).`, `أيام الدفعات تتجاوز مدة الدفع (${termDays} يوم) بمقدار ${-remaining} يوم.`);
+    if (remaining > 0)
+      return translate(`${remaining} days remaining to complete the ${termDays}-day payment term.`, `متبقي ${remaining} يوم لاستكمال مدة الدفع (${termDays} يوم).`);
+  }
+
   return null;
 }
 
-export default function PaymentTermsConfigSection({ value, onChange }: { value: PaymentTermsConfig; onChange: (value: PaymentTermsConfig) => void }) {
+function installmentDaysTotal(installments: PaymentTermsInstallment[]) {
+  return installments.reduce((sum, i) => sum + (Number(i.durationDays) || 0), 0);
+}
+
+export default function PaymentTermsConfigSection({
+  value,
+  onChange,
+  allowInstallments = true,
+  locked = false,
+  termDays = null,
+}: {
+  value: PaymentTermsConfig;
+  onChange: (value: PaymentTermsConfig) => void;
+  // false (Immediate payment terms): the Installments option is not offered.
+  allowInstallments?: boolean;
+  // true (Immediate payment terms): fixed to Lump Sum + Immediate timing.
+  locked?: boolean;
+  // Custom payment terms' days - installment days must add up to it (null: no such check).
+  termDays?: number | null;
+}) {
   const { translate } = useLanguage();
 
+  // Structure errors here; the days-vs-term state is shown separately below.
   const error = validatePaymentTermsConfigClientSide(value, translate);
 
   const installments = value.installments || [];
   const percentageTotal = installments.reduce((sum, i) => sum + (Number(i.percentage) || 0), 0);
   const remainingPercentage = 100 - percentageTotal;
+  const remainingDays = value.kind === "installments" && termDays != null ? termDays - installmentDaysTotal(installments) : null;
 
   function updateInstallment(index: number, patch: Partial<PaymentTermsInstallment>) {
     onChange({ ...value, installments: installments.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
@@ -84,10 +115,11 @@ export default function PaymentTermsConfigSection({ value, onChange }: { value: 
         }
         data={[
           { value: "lump_sum", label: translate("Lump Sum (one payment)", "دفعة واحدة") },
-          { value: "installments", label: translate("Installments", "دفعات متعددة") },
+          ...(allowInstallments ? [{ value: "installments", label: translate("Installments", "دفعات متعددة") }] : []),
         ]}
         label={translate("Payment Structure", "نوع الدفع")}
         allowDeselect={false}
+        disabled={locked}
       />
 
       {value.kind === "lump_sum" ? (
@@ -103,6 +135,7 @@ export default function PaymentTermsConfigSection({ value, onChange }: { value: 
             ]}
             label={translate("Timing", "التوقيت")}
             allowDeselect={false}
+            disabled={locked}
             flex={1}
           />
           {value.lumpSum?.timing === "deferred" && (
@@ -133,7 +166,12 @@ export default function PaymentTermsConfigSection({ value, onChange }: { value: 
               <NumberInput
                 value={installment.durationDays}
                 onChange={(v) => updateInstallment(index, { durationDays: Number(v) || 0 })}
-                label={translate(`Installment ${index + 1} - Days`, `الدفعة ${index + 1} - عدد الأيام`)}
+                label={
+                  // Days count from the previous installment (the first from the invoice date).
+                  index === 0
+                    ? translate("Installment 1 - Days after invoice", "الدفعة 1 - أيام بعد الفاتورة")
+                    : translate(`Installment ${index + 1} - Days after previous`, `الدفعة ${index + 1} - أيام بعد السابقة`)
+                }
                 min={0}
                 decimalScale={0}
                 flex={1}
@@ -156,6 +194,23 @@ export default function PaymentTermsConfigSection({ value, onChange }: { value: 
             </div>
           ))}
         </div>
+      )}
+
+      {/* Custom terms: installment days against the custom days - remaining, complete or over. */}
+      {remainingDays != null && remainingDays > 0 && (
+        <p className="text-xs text-blue-600">
+          {translate(`${remainingDays} days remaining to complete the ${termDays}-day payment term.`, `متبقي ${remainingDays} يوم لاستكمال مدة الدفع (${termDays} يوم).`)}
+        </p>
+      )}
+      {remainingDays === 0 && (
+        <p className="text-xs text-green-600">
+          {translate(`Schedule complete - installment days add up to the ${termDays}-day payment term.`, `الجدول مكتمل - أيام الدفعات تساوي مدة الدفع (${termDays} يوم).`)}
+        </p>
+      )}
+      {remainingDays != null && remainingDays < 0 && (
+        <p className="text-xs text-red-500">
+          {translate(`Installment days exceed the ${termDays}-day payment term by ${-remainingDays} day(s).`, `أيام الدفعات تتجاوز مدة الدفع (${termDays} يوم) بمقدار ${-remainingDays} يوم.`)}
+        </p>
       )}
 
       {error && <p className="text-xs text-red-500">{error}</p>}

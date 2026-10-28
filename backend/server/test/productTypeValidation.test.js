@@ -2,15 +2,15 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { validateProductTypeFields } = require('../utils/productTypeValidation');
 
-test('a product requires cost, category, and brand', () => {
+test('a product requires category and brand - cost and price are not required to define it', () => {
   assert.equal(validateProductTypeFields({ type: 'product', cost: 50, category: 'c1', brand: 'b1' }), null);
-  assert.match(validateProductTypeFields({ type: 'product', category: 'c1', brand: 'b1' }), /cost/i);
+  assert.equal(validateProductTypeFields({ type: 'product', category: 'c1', brand: 'b1' }), null, 'no cost is fine');
   assert.match(validateProductTypeFields({ type: 'product', cost: 50, brand: 'b1' }), /category/i);
   assert.match(validateProductTypeFields({ type: 'product', cost: 50, category: 'c1' }), /brand/i);
 });
 
 test('defaults to "product" rules when type is omitted', () => {
-  assert.match(validateProductTypeFields({}), /cost/i);
+  assert.match(validateProductTypeFields({}), /category/i);
 });
 
 test('a service requires a positive durationValue and does not require cost/category/brand', () => {

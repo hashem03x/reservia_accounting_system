@@ -17,9 +17,10 @@ import ErrorAlert from "@/components/ui/error-alert";
 import paths from "@/utils/constants/paths";
 import { JournalEntry, JournalLine } from "@/types/journal-entry";
 import { groupJournalLines } from "@/utils/helpers/journal-lines";
-import { displayModuleLabel } from "@/utils/helpers/accounting-labels";
+import { displayModuleLabel, entryClassification, entryClassificationLabel } from "@/utils/helpers/accounting-labels";
 import ReverseJournalEntryModal from "../_components/reverse-journal-entry-modal";
 import AttachmentsPanel from "@/components/global/attachments/attachments-panel";
+import { BASE_CURRENCY_CODE, formatRate, inverseRate } from "@/utils/helpers/currency-math";
 
 const statusColors: Record<string, string> = { draft: "yellow", posted: "green", reversed: "gray" };
 
@@ -113,6 +114,12 @@ export default function JournalEntryDetail() {
   const lines = entry.lines || [];
   const { debitLines, creditLines } = groupJournalLines(lines);
   const difference = Math.round(((entry.totalDebit || 0) - (entry.totalCredit || 0)) * 100) / 100;
+  // Transaction currency (Currency Manager): debit/credit are always EGP; a foreign-currency entry
+  // also shows its own amounts and the rate it was recorded with (never today's rate).
+  const entryCurrency = entry.currency && entry.currency !== BASE_CURRENCY_CODE ? entry.currency : null;
+  const appliedRate = entryCurrency ? (entry.currencyUnitsPerBase ?? null) : null;
+  const sumOf = (field: "currencyDebit" | "currencyCredit") =>
+    Math.round(lines.reduce((sum, l) => sum + (Number(l[field]) || 0), 0) * 100) / 100;
 
   return (
     <AdminLayoutBox
@@ -164,8 +171,23 @@ export default function JournalEntryDetail() {
         <InfoCard label={translate("Date", "التاريخ")} value={formatDate(entry.date, language)} />
         <InfoCard label={translate("Source", "المصدر")} value={entry.source} />
         <InfoCard label={translate("Module", "الوحدة")} value={displayModuleLabel(entry.module, translate)} />
+        <InfoCard label={translate("Project / G&A", "مشروع / عمومية")} value={entryClassificationLabel(entryClassification(entry), translate)} />
         <InfoCard label={translate("Project", "المشروع")} value={entry.project?.projectNumber || "-"} />
         <InfoCard label={translate("Reference", "المرجع")} value={entry.reference || "-"} />
+        <InfoCard label={translate("Currency", "العملة")} value={entryCurrency || BASE_CURRENCY_CODE} />
+        {entryCurrency && appliedRate && (
+          <InfoCard
+            label={translate("Applied exchange rate", "سعر الصرف المطبق")}
+            value={
+              <span className="tabular-nums">
+                1 EGP = {formatRate(appliedRate)} {entryCurrency}
+                <span className="block text-xs font-normal text-gray-500">
+                  1 {entryCurrency} = {formatRate(inverseRate(appliedRate))} EGP
+                </span>
+              </span>
+            }
+          />
+        )}
         {sourceOrder && (
           <InfoCard
             label={translate("Source Document", "المستند المصدر")}
@@ -232,10 +254,10 @@ export default function JournalEntryDetail() {
               <Table.Th>{translate("Sub Account", "الحساب الفرعي")}</Table.Th>
               <Table.Th>{translate("Project Number", "رقم المشروع")}</Table.Th>
               <Table.Th>{translate("Description", "الوصف")}</Table.Th>
-              <Table.Th className="text-right">{translate("Debit", "مدين")}</Table.Th>
-              <Table.Th className="text-right">{translate("Credit", "دائن")}</Table.Th>
-              <Table.Th className="text-right">{translate("Balance", "الرصيد")}</Table.Th>
-              <Table.Th>{translate("Original Currency", "العملة الأصلية")}</Table.Th>
+              <Table.Th className="text-right">{translate("Debit (EGP)", "مدين (جنيه)")}</Table.Th>
+              <Table.Th className="text-right">{translate("Credit (EGP)", "دائن (جنيه)")}</Table.Th>
+              <Table.Th className="text-right">{translate("Balance (EGP)", "الرصيد (جنيه)")}</Table.Th>
+              <Table.Th className="text-right">{translate("Transaction Currency Amount", "المبلغ بعملة القيد")}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -263,7 +285,12 @@ export default function JournalEntryDetail() {
               <Table.Td colSpan={4}>{translate("Total", "الإجمالي")}</Table.Td>
               <Table.Td className="text-right tabular-nums">{(entry.totalDebit || 0).toLocaleString()}</Table.Td>
               <Table.Td className="text-right tabular-nums">{(entry.totalCredit || 0).toLocaleString()}</Table.Td>
-              <Table.Td colSpan={2} />
+              <Table.Td />
+              <Table.Td className="text-right tabular-nums">
+                {entryCurrency
+                  ? `${translate("Dr", "مدين")} ${sumOf("currencyDebit").toLocaleString()} / ${translate("Cr", "دائن")} ${sumOf("currencyCredit").toLocaleString()} ${entryCurrency}`
+                  : ""}
+              </Table.Td>
             </Table.Tr>
             <Table.Tr>
               <Table.Td colSpan={LINE_COLUMNS} className={difference !== 0 ? "text-red-600" : "text-green-600"}>
@@ -328,7 +355,14 @@ function JournalLineRow({ line }: { line: JournalLine }) {
       <Table.Td className={`text-right tabular-nums ${lineBalance < 0 ? "text-red-600" : ""}`}>
         {lineBalance.toLocaleString()}
       </Table.Td>
-      <Table.Td>{line.currency ? `${line.currency}${line.exchangeRate ? ` @ ${line.exchangeRate}` : ""}` : "-"}</Table.Td>
+      <Table.Td className="text-right tabular-nums">
+        {line.currencyDebit != null || line.currencyCredit != null
+          ? `${(Number(line.currencyDebit) || Number(line.currencyCredit) || 0).toLocaleString()} ${line.currency ?? ""}`
+          : line.currency
+            ? // Imported lines: original currency and its rate (EGP per 1 unit), as recorded by the import.
+              `${line.currency}${line.exchangeRate ? ` @ ${formatRate(line.exchangeRate)} EGP` : ""}`
+            : "-"}
+      </Table.Td>
     </Table.Tr>
   );
 }

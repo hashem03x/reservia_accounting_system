@@ -97,7 +97,7 @@ test('ownership must be 0-100% and active shareholders cannot exceed 100% togeth
   assert.equal(await Shareholder.countDocuments({}), 3);
 });
 
-test('a contribution posts Dr bank / Cr equity with the Shareholder Number on every line', async t => {
+test('a contribution posts Dr bank / Cr equity with the Shareholder Number on the equity line only', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
   const shareholder = await create({ name: 'Ahmed', ownershipPercentage: 50 });
   await contribute(shareholder, { amount: 500000, date: '2026-09-15', reference: 'DEP-1' });
@@ -117,11 +117,12 @@ test('a contribution posts Dr bank / Cr equity with the Shareholder Number on ev
     ]
   );
   assert.equal(entry.totalDebit, entry.totalCredit);
-  for (const line of entry.lines) {
-    assert.equal(line.partyNumber, shareholder.shareholderNumber, 'Sub Account = Shareholder Number');
-    assert.equal(line.partyType, 'shareholder');
-    assert.equal(line.description, entry.description);
-  }
+  const [bankLine, equityLine] = entry.lines;
+  assert.equal(bankLine.partyNumber ?? null, null, 'no shareholder sub-account on the bank line');
+  assert.equal(bankLine.partyType ?? null, null);
+  assert.equal(equityLine.partyNumber, shareholder.shareholderNumber, 'Sub Account = Shareholder Number');
+  assert.equal(equityLine.partyType, 'shareholder');
+  for (const line of entry.lines) assert.equal(line.description, entry.description);
 
   // Another equity account can be chosen for a contribution.
   await contribute(shareholder, { amount: 1000, equityAccount: accounts.reserves._id });

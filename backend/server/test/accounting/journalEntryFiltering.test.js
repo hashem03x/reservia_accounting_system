@@ -169,3 +169,40 @@ test('an unwhitelisted sort field falls back to the default (entryNumber ascendi
   const res = await list({ sort: 'description' });
   assert.deepEqual(res.body.data.map(e => e.entryNumber), [100, 101, 102]);
 });
+
+test('filters by Project / G&A classification - a legacy entry with a project reads as Project, one without is unclassified (never G&A)', async () => {
+  await JournalEntry.collection.insertOne({
+    entryNumber: 103,
+    date: new Date('2026-03-05'),
+    description: 'Office supplies (G&A)',
+    status: 'posted',
+    source: 'manual',
+    project: null,
+    classification: 'ga',
+    currency: 'USD',
+    currencyUnitsPerBase: 0.02,
+    lines: [{ account: bank._id, debit: 0, credit: 20, description: 'G&A' }, { account: rent._id, debit: 20, credit: 0, description: 'G&A' }],
+    totalDebit: 20,
+    totalCredit: 20,
+  });
+  const numbers = async query => (await list(query)).body.data.map(e => e.entryNumber).sort((a, b) => a - b);
+  assert.deepEqual(await numbers({ classification: 'project' }), [100, 101]);
+  assert.deepEqual(await numbers({ classification: 'ga' }), [103]);
+  assert.deepEqual(await numbers({ classification: 'unclassified' }), [102]);
+  assert.deepEqual(await numbers({ classification: 'bogus' }), [], 'an unknown value returns no rows, never every row');
+  // Combined with another filter.
+  assert.deepEqual(await numbers({ classification: 'project', status: 'draft' }), [101]);
+
+  // Currency: the entry currency, or EGP for entries recorded in the base currency.
+  assert.deepEqual(await numbers({ currency: 'usd' }), [103]);
+  assert.deepEqual(await numbers({ currency: 'EGP' }), [100, 101, 102]);
+  assert.deepEqual(await numbers({ currency: 'EUR' }), []);
+});
+
+test('sorts oldest-first and newest-first by date and by entry number across the whole (paginated) result', async () => {
+  const order = async sort => (await list({ sort, limit: '2', page: '1' })).body.data.map(e => e.entryNumber);
+  assert.deepEqual(await order(undefined), [100, 101], 'default: entry number ascending');
+  assert.deepEqual(await order('-entryNumber'), [102, 101], 'newest number first, from the whole set - not just the loaded page');
+  assert.deepEqual(await order('date'), [100, 101]);
+  assert.deepEqual(await order('-date'), [102, 101]);
+});

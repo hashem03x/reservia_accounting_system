@@ -10,22 +10,23 @@ const fs = require('fs').promises;
 // had no `type` column. Reuses the shared flat runner (csvImportRunner.js) exactly like the
 // Customer/Vendor importers - one CSV row is one Product document.
 //
-// Catalog hierarchy is Category -> Brand -> Model/Item Number/Specifications (brand replaced the
-// legacy subcategory as the required identification field - see productModel.js#brand).
+// Catalog hierarchy is Category -> Brand -> Model/Item Number/Specifications. BrandName is a
+// subcategory of CategoryName, saved as the product's `subcategory`.
 
 const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_test_product_import';
 
-let Product, Category, Brand, Warehouse, ChartOfAccount, JournalEntry;
+let Product, Category, SubCategory, Brand, Warehouse, ChartOfAccount, JournalEntry;
 let previewImport, commitImport;
 let productSchema;
 
-let category, brand, warehouse, pucAccount, cashAccount;
+let category, brandSub, warehouse, pucAccount, cashAccount;
 
 before(async () => {
   await mongoose.connect(DB_URI);
   await mongoose.connection.dropDatabase();
   Product = require('../../models/inventory/productModel');
   Category = require('../../models/categoryModel');
+  SubCategory = require('../../models/subCategoryModel');
   Brand = require('../../models/brandModel');
   Warehouse = require('../../models/inventory/warehouseModel');
   ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
@@ -44,6 +45,7 @@ beforeEach(async () => {
   await Promise.all([
     Product.deleteMany({}),
     Category.deleteMany({}),
+    SubCategory.deleteMany({}),
     Brand.deleteMany({}),
     Warehouse.deleteMany({}),
     ChartOfAccount.deleteMany({}),
@@ -51,7 +53,7 @@ beforeEach(async () => {
   ]);
 
   category = await Category.create({ name: { en: 'Electrical Materials', ar: 'مواد كهربائية' } });
-  brand = await Brand.create({ name: { en: 'ACME', ar: 'أكمي' } });
+  brandSub = await SubCategory.create({ name: { en: 'ACME', ar: 'أكمي' }, mainCategory: category._id });
   warehouse = await Warehouse.create({ name: 'Main Warehouse', location: 'Cairo' });
   // Eligible PUC account - active asset, not Cash & Cash Equivalents (isPucAccountEligible).
   pucAccount = await ChartOfAccount.create({ code: '11000009', name: 'PUC - Raw Materials', type: 'asset', isActive: true });
@@ -107,7 +109,8 @@ test('1. Successful physical product import: creates a real Product with cost/ca
   assert.equal(product.title.en, 'Copper Cable');
   assert.equal(product.cost, 90);
   assert.equal(String(product.category), String(category._id));
-  assert.equal(String(product.brand), String(brand._id));
+  assert.equal(String(product.subcategory), String(brandSub._id), 'Brand is saved as the subcategory');
+  assert.equal(product.brand ?? null, null, 'no flat brand');
   assert.equal(product.model, 'PX-200');
   assert.equal(product.specifications, 'Stainless steel');
   assert.equal(product.stock.length, 1);
@@ -182,7 +185,7 @@ test('7. Duplicate TitleEn within the uploaded file: the second occurrence is fl
 });
 
 test('8. Duplicate TitleEn/TitleAr against an EXISTING product is rejected at preview time, read-only', async () => {
-  await Product.create({ type: 'product', title: { en: 'Copper Cable', ar: 'كابل نحاس موجود' }, description: { en: 'd', ar: 'د' }, price: 100, cost: 50, category: category._id, brand: brand._id });
+  await Product.create({ type: 'product', title: { en: 'Copper Cable', ar: 'كابل نحاس موجود' }, description: { en: 'd', ar: 'د' }, price: 100, cost: 50, category: category._id, subcategory: brandSub._id });
   const countBefore = await Product.countDocuments({});
 
   const file = await writeTempCsv(`${HEADER}\n${productRow()}\n`);
@@ -193,9 +196,9 @@ test('8. Duplicate TitleEn/TitleAr against an EXISTING product is rejected at pr
 });
 
 test('9. Missing required CSV header is rejected', async () => {
-  const badHeader = HEADER.replace('Price,', '');
+  const badHeader = HEADER.replace('Type,', '');
   const file = await writeTempCsv(`${badHeader}\nCopper Cable,كابل نحاس,d,د,product,90,Electrical Materials,ACME,,,,,,,,,,,,\n`);
-  await assert.rejects(() => previewImport(file, productSchema), /missing required column.*Price/i);
+  await assert.rejects(() => previewImport(file, productSchema), /missing required column.*Type/i);
 });
 
 test('10. An empty CSV file (header only, no data rows) is rejected', async () => {
@@ -270,7 +273,7 @@ test('15a. Duplicate Barcode within the uploaded file is rejected on the second 
 });
 
 test('15b. Duplicate Barcode against an EXISTING product is rejected', async () => {
-  await Product.create({ type: 'product', title: { en: 'Existing Item', ar: 'عنصر موجود' }, description: { en: 'd', ar: 'د' }, price: 100, cost: 50, category: category._id, brand: brand._id, barcode: '222222222222' });
+  await Product.create({ type: 'product', title: { en: 'Existing Item', ar: 'عنصر موجود' }, description: { en: 'd', ar: 'د' }, price: 100, cost: 50, category: category._id, subcategory: brandSub._id, barcode: '222222222222' });
   const file = await writeTempCsv(`${HEADER}\n${productRow({ barcode: '222222222222' })}\n`);
   const { created, failed } = await commitImport(file, productSchema);
   assert.equal(created.length, 0);
@@ -307,6 +310,17 @@ test('18b. An unknown BrandName is rejected for a product', async () => {
   const { created, failed } = await commitImport(file, productSchema);
   assert.equal(created.length, 0);
   assert.ok(failed[0].errors.some(e => e.column === 'BrandName'));
+});
+
+test('18b2. A BrandName that is a subcategory of another category is rejected', async () => {
+  const plumbing = await Category.create({ name: { en: 'Plumbing', ar: 'سباكة' } });
+  await SubCategory.create({ name: { en: 'Pipes', ar: 'مواسير' }, mainCategory: plumbing._id });
+  const file = await writeTempCsv(`${HEADER}
+${productRow({ brandName: 'Pipes' })}
+`);
+  const { created, failed } = await commitImport(file, productSchema);
+  assert.equal(created.length, 0);
+  assert.ok(failed[0].errors.some(e => e.column === 'BrandName' && /under the category/.test(e.message)));
 });
 
 test('18c. An unknown WarehouseName is rejected', async () => {

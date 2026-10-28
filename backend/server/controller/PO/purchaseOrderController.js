@@ -46,10 +46,15 @@ const applyPurchaseToProducts = async (purchaseOrder, warehouseId, session) => {
     // calc new cost = (t_available + t_purchased) / (q_available + q_purchased), moving average cost
     const q_available = (product.stock || []).reduce((sum, stock) => sum + stock.quantity, 0);
     const q_purchased = items.reduce((total, item) => total + item.starterQuantity, 0);
-    const t_available = q_available * product.cost;
     const t_purchased = items.reduce((total, item) => total + item.starterQuantity * item.unitPriceAfterDiscount, 0);
+    // A product defined without a cost (cost is optional - productModel.js#cost) takes this
+    // purchase's own unit cost: its existing stock has no known value to average with, and
+    // treating it as cost 0 would understate every later issue.
+    const hasCost = typeof product.cost === 'number' && Number.isFinite(product.cost);
+    const t_available = hasCost ? q_available * product.cost : 0;
+    const q_basis = hasCost ? q_available + q_purchased : q_purchased;
 
-    product.cost = (t_available + t_purchased) / (q_available + q_purchased);
+    product.cost = q_basis > 0 ? (t_available + t_purchased) / q_basis : product.cost;
 
     const stockEntry = product.stock.find(s => s.warehouse.toString() === warehouseId);
     if (stockEntry) {

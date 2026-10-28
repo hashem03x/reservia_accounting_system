@@ -27,7 +27,10 @@ class ApiFeatures {
       ...queryStrParse,
     };
 
-    for (const key in parsedQuery) {
+    // Only the part that comes from the client's query string can carry an injected operator - the
+    // server-built `query` (req.filterObject) is trusted, and was already applied as-is by the
+    // caller's own Model.find()/countDocuments(), so it may use $and/$or itself.
+    for (const key in queryStrParse) {
       if (key.startsWith('$') && !['$gte', '$gt', '$lte', '$lt'].includes(key)) {
         throw new Error(`Invalid field name: ${key}`);
       }

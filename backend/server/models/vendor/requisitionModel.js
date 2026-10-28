@@ -1,5 +1,7 @@
 const { Schema, model } = require('mongoose');
 const { getNextRequisitionCode } = require('../../services/shared/orderNumberService');
+const { documentPaymentTermsSchema } = require('../shared/paymentTermsSchema');
+const { validateDocumentPaymentTerms, computeDocumentPaymentSchedule } = require('../../utils/documentPaymentTerms');
 
 // "Purchase Order" (user-facing name) - internally named Requisition because the Mongoose model
 // name `PurchaseOrder` is already taken by the EXISTING vendor/purchaseOrder.js model, which a
@@ -25,9 +27,13 @@ const { getNextRequisitionCode } = require('../../services/shared/orderNumberSer
 // under concurrent invoice creation.
 const requisitionItemSchema = new Schema(
   {
-    // Optional reuse of the existing Product/Service catalog - never a duplicate entity. Not
-    // required: a requisition line can describe something not yet catalogued.
+    // The catalog product/service this line is for. Required for every NEW line by the request
+    // validators and controller (client requirement "Purchase Orders - Product Search Instead of
+    // Free-Text Description"); not required here because Purchase Orders created before that rule
+    // (and CSV-imported description-only lines) have lines without one, and must stay readable.
     product: { type: Schema.Types.ObjectId, ref: 'Product', default: null },
+    // Line notes / purchase-specific details. For a line with a product it defaults to the product's
+    // name; for a legacy line without a product it is the line's only identification.
     description: { type: String, required: [true, 'Each line needs a description'], trim: true },
     quantity: { type: Number, required: [true, 'Each line needs a quantity'], min: [0.0001, 'Quantity must be greater than 0'] },
     unit: { type: String, trim: true, default: null },
@@ -50,6 +56,14 @@ const requisitionSchema = new Schema(
     },
     // = sum of items[].lineTotal - server-computed (docs section "Purchase Order fields").
     amount: { type: Number, default: 0, min: 0 },
+    // The date the Purchase Order was issued - the date every installment's tenor is counted from.
+    // Defaults to the creation date; Purchase Orders created before this field use createdAt.
+    issueDate: { type: Date, default: Date.now },
+    // Vendor payment terms of THIS Purchase Order (immediate / lump sum / installments) - see
+    // utils/documentPaymentTerms.js. Starts from the vendor's default terms when not given at
+    // creation. Contractual only: never creates a payment or marks anything paid. null on Purchase
+    // Orders created before this field existed.
+    paymentTerms: { type: documentPaymentTermsSchema, default: null },
     notes: { type: String, trim: true },
     // 'draft' - still being edited, not yet eligible for invoicing.
     // 'open' - finalized; eligible for Purchase Invoices to reference, until fully invoiced.
@@ -86,6 +100,9 @@ const requisitionSchema = new Schema(
         ret.executedPercentage = amount > 0 ? Math.round((invoiced / amount) * 10000) / 100 : 0;
         ret.effectiveStatus = ret.status === 'cancelled' ? 'cancelled' : invoiced <= 0 ? 'open' : invoiced >= amount ? 'fully_invoiced' : 'partially_invoiced';
         if (ret.status === 'draft') ret.effectiveStatus = 'draft';
+        // The concrete schedule (amounts, due dates, allocated / unallocated) is derived from the
+        // CURRENT value and issue date on every read, so it can never drift from them.
+        ret.paymentSchedule = ret.paymentTerms ? computeDocumentPaymentSchedule(ret.paymentTerms, { total: amount, issueDate: ret.issueDate || ret.createdAt }) : null;
         return ret;
       },
     },
@@ -109,6 +126,14 @@ requisitionSchema.pre('save', async function (next) {
     }
     this.amount = round2(this.items.reduce((sum, item) => sum + (item.lineTotal || 0), 0));
 
+    // Backstop for the payment terms against the (possibly just changed) Purchase Order value: a
+    // value change recalculates percentage installments, but fixed amounts can no longer exceed it.
+    if (this.paymentTerms && (this.isNew || this.isModified('paymentTerms') || this.isModified('items') || this.isModified('issueDate'))) {
+      const terms = typeof this.paymentTerms.toObject === 'function' ? this.paymentTerms.toObject() : this.paymentTerms;
+      const error = validateDocumentPaymentTerms(terms, { total: this.amount, issueDate: this.issueDate || this.createdAt || new Date() });
+      if (error) throw new Error(error);
+    }
+
     next();
   } catch (error) {
     next(error);
@@ -118,7 +143,7 @@ requisitionSchema.pre('save', async function (next) {
 requisitionSchema.pre(/^find/, function (next) {
   this.populate({ path: 'vendorId', select: 'name vendorNumber contact.phone contact.email' })
     .populate({ path: 'project', select: 'projectNumber name' })
-    .populate({ path: 'items.product', select: 'title type' })
+    .populate({ path: 'items.product', select: 'title type category subcategory brand model specifications sku' })
     .populate({ path: 'createdBy', select: 'name' });
   next();
 });

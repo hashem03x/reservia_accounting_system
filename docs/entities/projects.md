@@ -132,3 +132,36 @@ with a fabricated date would misrepresent real project data.
 journal history (now exclusively from manually-created entries, see "No automatic accounting"
 above) is queryable via `GET /projects/:id/journal-entries` without duplicating any journal data
 onto the Project document itself.
+
+## Customer payment terms
+
+`Project.customerPaymentTerms` has three modes: immediate, lump sum (100%, due date) or
+installments. Each installment has a description, a percentage or a fixed amount, and a tenor in
+days from the project start date. The shared rules are in `utils/documentPaymentTerms.js`, the same
+as Purchase Order vendor terms:
+- the allocation may be under 100% but never over 100% or over the contract value;
+- percentage rows follow the contract value; a contract value change that fixed amounts would
+  exceed is refused;
+- when all rows are percentages totalling 100%, the last row absorbs the rounding.
+
+The computed schedule is returned as `customerPaymentSchedule`. The cash-flow forecast uses the
+terms only for a project nothing has been invoiced against yet. A schedule is contractual only: it
+never creates a payment or marks anything paid.
+
+## BOQ and raw-material breakdown
+
+`Project.boqLines` holds one line per physical product: BOQ quantity, unit, unit price and currency.
+`GET /puc-transfers/project/:id/materials` returns each material with:
+- the **BOQ unit price**, converted to EGP with the rate in effect on the project start date;
+- the **actual purchase unit cost**, the weighted average of the project's Purchase Invoice lines,
+  with each source invoice listed;
+- the **committed cost** from open Purchase Orders, shown separately;
+- **contribution** = (BOQ unit price − unit cost) × BOQ quantity.
+
+A missing price, cost or currency is reported as missing, never as zero. A BOQ unit that differs
+from the Purchase Order unit is flagged, because Reservia has no unit-of-measure conversions. This
+is an analysis figure only: nothing is posted.
+
+The Warehouses → PUC – Raw Materials tab (`GET /puc-transfers/balances`) shows quantity and value
+per project and material from the PUC allocation records, beside the PUC – Raw Materials ledger.
+PUC ledger lines with no project are reported as data quality, never assigned.

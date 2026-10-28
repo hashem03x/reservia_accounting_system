@@ -1,6 +1,7 @@
 import { useLanguage } from "@/context/LanguageContext";
 import { useAbout } from "@/context/AboutContext";
 import { useSubcategories } from "@/context/SubcategoriesContext";
+import { useBrands } from "@/context/BrandsContext";
 import { BARCODE_HEIGHT, BARCODE_WIDTH } from "@/utils/constants";
 import { outlineIcons } from "@/components/icons";
 import PrintDocument from "@/components/ui/print-document";
@@ -14,11 +15,17 @@ export default function PrintProductBarcode({ product, buttonType }: { product: 
   const { data: aboutData } = useAbout();
   const { data: subcategories } = useSubcategories();
 
+  const { data: brands } = useBrands();
+
+  // Brand replaced Subcategory as the product's second catalog level: the barcode shows the brand
+  // (the existing "subcategory" barcode setting now controls it); a product that only has a legacy
+  // subcategory still shows that.
+  const brand = brands.find((b) => b._id === product.brand);
   const subcategory = subcategories.find((sub) => sub._id === product.subcategory);
 
   const infoParts: string[] = [];
-  if (aboutData?.barcodeSittings?.subcategory && subcategory) {
-    infoParts.push(subcategory.name.en);
+  if (aboutData?.barcodeSittings?.subcategory && (subcategory || brand)) {
+    infoParts.push((subcategory || brand)!.name.en);
   }
   const info = infoParts.join(" - ");
 

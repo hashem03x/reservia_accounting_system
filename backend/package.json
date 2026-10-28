@@ -10,6 +10,7 @@
     "db:reset": "node server/scripts/resetDb.js",
     "db:seed-accounts": "node server/scripts/seedChartOfAccounts.js",
     "db:seed-sectors": "node server/scripts/seedSectors.js",
+    "db:seed-currencies": "node server/scripts/seedCurrencies.js",
     "db:seed-industrial-categories": "node server/scripts/seedIndustrialCategories.js",
     "db:migrate-project-fields": "node server/scripts/migrateProjectFieldRenames.js",
     "db:migrate-variants-to-products": "node server/scripts/migrateVariantsToProducts.js",
@@ -26,7 +27,13 @@
     "db:migrate-subcategory-to-brand": "node server/scripts/migrateSubcategoryToBrand.js",
     "db:bootstrap-platform-admin": "node server/scripts/bootstrapPlatformAdmin.js",
     "db:repair-sub-accounts": "node server/scripts/repairUnassignedSubAccounts.js",
+<<<<<<< HEAD
     "db:seed-currencies": "node server/scripts/seedCurrencies.js",
+=======
+    "db:migrate-account-parent-groups": "node server/scripts/migrateAccountParentGroups.js",
+    "db:migrate-vendor-payment-accounts": "node server/scripts/migrateVendorPaymentAccounts.js",
+    "db:audit-ar-attribution": "node server/scripts/auditArCustomerAttribution.js",
+>>>>>>> origin/main
     "start": "node server.js",
     "dev": "cross-env NODE_ENV=development nodemon server.js",
     "staging": "cross-env NODE_ENV=staging nodemon server.js",

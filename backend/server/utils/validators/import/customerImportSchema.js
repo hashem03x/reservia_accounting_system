@@ -189,3 +189,143 @@ exports.createOne = async function createOne(value) {
     type: 'offline',
   });
 };
+
+// Format guide of every column (utils/csvImport/formatGuide.js - downloaded from the import screen as
+// a separate file, never mixed into the data template). Kept beside the validation above, and
+// test/import/importFormatGuides.test.js fails if these and the real columns ever disagree.
+// required: 'yes' (column and value required) | 'no' | 'conditional' (see the description).
+exports.fieldSpecs = [
+  {
+    column: "Name",
+    required: "yes",
+    description: "Customer name.",
+    format: "Text",
+    example: "Delta Construction"
+  },
+  {
+    column: "Phone",
+    required: "yes",
+    description: "Main phone number - must not already belong to another customer.",
+    format: "Egyptian mobile (01XXXXXXXXX, 11 digits) or international with + and country code",
+    example: "01012345678"
+  },
+  {
+    column: "Email",
+    required: "yes",
+    description: "Email address - must not already belong to another customer.",
+    format: "Valid email address",
+    example: "accounts@delta.example.com"
+  },
+  {
+    column: "AdditionalPhone",
+    required: "no",
+    description: "Second phone number.",
+    format: "Egyptian mobile (01XXXXXXXXX, 11 digits) or international with + and country code",
+    example: "01112345678"
+  },
+  {
+    column: "Street",
+    required: "no",
+    description: "Street address.",
+    format: "Text",
+    example: "12 Tahrir St"
+  },
+  {
+    column: "City",
+    required: "no",
+    description: "City.",
+    format: "Text",
+    example: "Cairo"
+  },
+  {
+    column: "State",
+    required: "no",
+    description: "Governorate / state.",
+    format: "Text",
+    example: "Cairo"
+  },
+  {
+    column: "Country",
+    required: "no",
+    description: "Country.",
+    format: "Text",
+    example: "Egypt"
+  },
+  {
+    column: "PostalCode",
+    required: "no",
+    description: "Postal code.",
+    format: "5 digits, or 5 digits-4 digits",
+    example: "11511"
+  },
+  {
+    column: "TaxRegistrationNumber",
+    required: "no",
+    description: "Tax registration number.",
+    format: "Text",
+    example: "321-654-987"
+  },
+  {
+    column: "CommercialRegistrationNumber",
+    required: "no",
+    description: "Commercial registration number.",
+    format: "Text",
+    example: "456789"
+  },
+  {
+    column: "BankName",
+    required: "no",
+    description: "Customer's bank.",
+    format: "Text",
+    example: "Banque Misr"
+  },
+  {
+    column: "BankBranch",
+    required: "no",
+    description: "Bank branch.",
+    format: "Text",
+    example: "Heliopolis"
+  },
+  {
+    column: "BankAccountNumber",
+    required: "no",
+    description: "Bank account number.",
+    format: "Text / digits",
+    example: "1234567890123"
+  },
+  {
+    column: "BankIBAN",
+    required: "no",
+    description: "IBAN of the bank account.",
+    format: "Egyptian IBAN: \"EG\" + 27 letters/digits (29 characters total)",
+    example: "EG380019000500000000263180099"
+  },
+  {
+    column: "BankSwiftCode",
+    required: "no",
+    description: "SWIFT/BIC of the bank.",
+    format: "SWIFT/BIC: 8 or 11 letters/digits",
+    example: "BMISEGCX"
+  },
+  {
+    column: "PaymentTerms",
+    required: "no",
+    description: "Default payment terms of the customer (decides a sales invoice due date).",
+    format: "One of: Immediate, Net 15, Net 30, Net 45, Net 60, Net 90, Custom",
+    example: "Net 30"
+  },
+  {
+    column: "CustomPaymentDays",
+    required: "conditional",
+    description: "Number of days - required when PaymentTerms is Custom.",
+    format: "Whole number >= 0",
+    example: "75"
+  },
+  {
+    column: "Balance",
+    required: "no",
+    description: "Opening balance.",
+    format: "Number (EGP), up to 2 decimals, no separators or currency symbol",
+    example: "0"
+  }
+];

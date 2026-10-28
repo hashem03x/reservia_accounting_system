@@ -13,12 +13,24 @@ const { applyEntryCurrencyToLines } = require('../../services/accounting/journal
 const { mirrorReverseEntry } = require('../../services/accounting/journalReversalCore');
 const { lineRules } = require('../../services/accounting/journalLinePartyService');
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
+const { resolveEntryCurrency } = require('../../services/accounting/currencyService');
+const { applyCurrencyToLines, storedLinesAsInput } = require('../../services/accounting/journalEntryCurrencyService');
 
 const createJournalEntry = asyncHandler(async (req, res) => {
   // `project` is guaranteed either present-and-valid, or absent-and-the-user-is-authorized for a
   // "General" entry (journalEntries:createGeneral) by createJournalEntryValidators (RULE 2) by the
   // time this handler runs - never silently defaulted to null here.
+<<<<<<< HEAD
   const { date, description, reference, project, lines, currency, exchangeRate } = req.body;
+=======
+  const { date, description, reference, project, classification, lines, currency, exchangeRate } = req.body;
+
+  // Transaction currency + applied rate, resolved and validated server-side (an omitted rate gets
+  // the currency's rate effective on the entry date). Line amounts in the request are in that
+  // currency and are converted to EGP here - see journalEntryCurrencyService.js.
+  const entryCurrency = await resolveEntryCurrency({ currency, exchangeRate, date: date || new Date() });
+  const convertedLines = applyCurrencyToLines(lines || [], entryCurrency);
+>>>>>>> origin/main
 
   const entryNumber = await getNextJournalEntryNumber();
   // Currency applied before Project: each line's EGP debit/credit must be computed from its
@@ -35,9 +47,18 @@ const createJournalEntry = asyncHandler(async (req, res) => {
     description,
     reference,
     project,
+    // Explicit Project / G&A choice (validated by createJournalEntryValidators#classificationRule);
+    // a request with a project and no classification is a Project entry.
+    classification: classification || (project ? 'project' : null),
     // Every line gets the entry's Project and that Project's real Project Number (a client-typed
     // projectNumber is never trusted) - see journalEntryProjectService.js.
+<<<<<<< HEAD
     lines: await applyEntryProjectToLines({ project, lines: currencyLines }),
+=======
+    lines: await applyEntryProjectToLines({ project, lines: convertedLines }),
+    currency: entryCurrency.code,
+    currencyUnitsPerBase: entryCurrency.unitsPerBase,
+>>>>>>> origin/main
     source: 'manual',
     status: 'draft',
     createdBy: req.user._id,
@@ -61,14 +82,19 @@ const createJournalEntry = asyncHandler(async (req, res) => {
 // Ledger view (services/accounting/generalLedgerService.js). `currency`/`rate` are read off the
 // first line that actually carries them (most entries are single-currency; a manual entry with no
 // currency recorded falls back to null so the frontend can show the local-currency default).
+//
+// Currency Manager: an entry recorded in a foreign transaction currency (entry.currency !== EGP)
+// reports that currency and its APPLIED rate. `rate` keeps its existing meaning - EGP per 1 unit
+// of the currency (the import convention) - i.e. 1 / currencyUnitsPerBase for such an entry.
 function withEntryListFields(entries) {
   return entries.map(entry => {
     const withCurrency = entry.lines.find(line => line.currency);
     const plain = typeof entry.toObject === 'function' ? entry.toObject() : entry;
+    const foreignEntry = entry.currency && entry.currency !== 'EGP';
     return {
       ...plain,
-      currency: withCurrency?.currency || null,
-      rate: withCurrency?.exchangeRate || null,
+      currency: foreignEntry ? entry.currency : withCurrency?.currency || null,
+      rate: foreignEntry ? 1 / entry.currencyUnitsPerBase : withCurrency?.exchangeRate || null,
       difference: Math.round(((entry.totalDebit || 0) - (entry.totalCredit || 0)) * 100) / 100,
     };
   });
@@ -104,7 +130,10 @@ function sanitizeSort(rawSort) {
 // documents (no document has a field by that name) and silently empties every result.
 const createJournalEntryFilterObject = asyncHandler(async (req, res, next) => {
   const filter = {};
-  const { entryNumber, dateFrom, dateTo, accountNumber, accountName, subAccount, projectNumber, description, debitMin, debitMax, creditMin, creditMax, status, isReversal } = req.query;
+  const { entryNumber, dateFrom, dateTo, accountNumber, accountName, subAccount, projectNumber, description, debitMin, debitMax, creditMin, creditMax, status, isReversal, classification, currency, module } = req.query;
+  // Clauses that need their own $or (classification, currency) - combined with $and so they never
+  // overwrite each other or the plain field filters.
+  const and = [];
 
   if (entryNumber) {
     filter.entryNumber = Number(entryNumber);
@@ -177,6 +206,35 @@ const createJournalEntryFilterObject = asyncHandler(async (req, res, next) => {
     filter.reversalOfEntry = isReversal === 'true' ? { $ne: null } : null;
     delete req.query.isReversal;
   }
+
+  // Project / G&A. An entry that predates the field reads as Project when it has a project; one
+  // without a project is "unclassified" - never counted as G&A.
+  if (classification) {
+    if (classification === 'project') and.push({ $or: [{ classification: 'project' }, { classification: null, project: { $ne: null } }] });
+    else if (classification === 'ga') and.push({ classification: 'ga' });
+    else if (classification === 'unclassified') and.push({ classification: null, project: null });
+    else and.push({ _id: null }); // unknown value: no rows, never every row
+    delete req.query.classification;
+  }
+
+  // Currency as the list shows it: the entry's transaction currency, or - for an entry recorded in
+  // EGP - the currency an imported line carries (legacy imported data, any letter case).
+  if (currency) {
+    const code = String(currency).trim().toUpperCase().replace(/[^A-Z]/g, '');
+    if (code === 'EGP') {
+      and.push({ currency: { $in: ['EGP', null] } }, { lines: { $not: { $elemMatch: { currency: { $nin: [null, '', 'EGP', 'egp'] } } } } });
+    } else {
+      and.push({ $or: [{ currency: code }, { currency: { $in: ['EGP', null] }, 'lines.currency': { $regex: '^' + code + '$', $options: 'i' } }] });
+    }
+    delete req.query.currency;
+  }
+
+  if (module) {
+    filter.module = module;
+    delete req.query.module;
+  }
+
+  if (and.length) filter.$and = and;
 
   // Defense in depth: apiFeatures.filter() (utils/apiFeatures.js) merges whatever is left in
   // req.query straight into the Mongo filter with NO field whitelist of its own - any leftover,
@@ -331,6 +389,7 @@ const updateJournalEntry = asyncHandler(async (req, res, next) => {
   if (description !== undefined) entry.description = description;
   if (reference !== undefined) entry.reference = reference;
   if (project !== undefined) entry.project = project || null;
+<<<<<<< HEAD
   // Re-applied whenever the lines, the entry's project OR its currency/rate change, so the lines
   // always follow the entry's current Project and currency (mirrors the project-only logic this
   // already did, extended the same way for currency - see journalEntryCurrencyService.js).
@@ -340,6 +399,32 @@ const updateJournalEntry = asyncHandler(async (req, res, next) => {
     const currentRate = exchangeRate !== undefined ? exchangeRate : entry.lines[0]?.exchangeRate ?? null;
     const currencyLines = await applyEntryCurrencyToLines({ currencyCode: currentCurrency, exchangeRate: currentRate, lines: rawLines });
     entry.lines = await applyEntryProjectToLines({ project: entry.project, lines: currencyLines });
+=======
+
+  // Currency: re-resolved (and the lines re-converted) when the currency, rate or lines change. The
+  // entry's own current currency stays selectable even if it was deactivated since. A request that
+  // changes the currency without a rate gets the new currency's rate for the entry date; one that
+  // only re-sends lines keeps the entry's applied rate (never silently re-priced at today's rate).
+  const currencyChanged = currency !== undefined || exchangeRate !== undefined;
+  let convertedLines;
+  if (currencyChanged || lines !== undefined) {
+    const sameCurrency = currency === undefined || String(currency || 'EGP').trim().toUpperCase() === (entry.currency || 'EGP');
+    const entryCurrency = await resolveEntryCurrency({
+      currency: currency !== undefined ? currency : entry.currency,
+      exchangeRate: exchangeRate !== undefined ? exchangeRate : sameCurrency ? entry.currencyUnitsPerBase : undefined,
+      date: entry.date,
+      currentCode: entry.currency,
+    });
+    convertedLines = applyCurrencyToLines(lines !== undefined ? lines : storedLinesAsInput(entry.lines), entryCurrency);
+    entry.currency = entryCurrency.code;
+    entry.currencyUnitsPerBase = entryCurrency.unitsPerBase;
+  }
+
+  // Re-applied whenever the lines OR the entry's project change, so the lines always follow the
+  // entry's current Project (a project change on an unchanged set of lines re-stamps them too).
+  if (convertedLines !== undefined || project !== undefined) {
+    entry.lines = await applyEntryProjectToLines({ project: entry.project, lines: convertedLines !== undefined ? convertedLines : entry.lines.map(l => l.toObject({ depopulate: true })) });
+>>>>>>> origin/main
   }
 
   await entry.save();

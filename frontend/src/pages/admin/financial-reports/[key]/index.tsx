@@ -64,11 +64,14 @@ export default function AccountingReport() {
   const [values, setValues] = useState<FilterValues>({});
   const [applied, setApplied] = useState<FilterValues | null>(null);
   const [page, setPage] = useState(1);
+  // Rows per page of paginated sections (e.g. the General Ledger) - empty = the backend default.
+  const [pageSize, setPageSize] = useState(searchParams.get("pageSize") || "");
   useEffect(() => {
     if (!entry) return;
     const fromUrl = Object.fromEntries(searchParams.entries());
     const initial = { ...defaultsFor(entry), ...fromUrl };
     delete initial.page;
+    delete initial.pageSize;
     setValues(initial);
     setApplied(initial);
     setPage(Number(fromUrl.page) || 1);
@@ -95,7 +98,7 @@ export default function AccountingReport() {
       async () => {
         const res = await privateRequest({
           url: `accounting-reports/${entry.key}`,
-          params: { ...clean(applied), page: String(page) },
+          params: { ...clean(applied), page: String(page), ...(pageSize ? { pageSize } : {}) },
           signal: controller.signal,
           language,
         });
@@ -110,9 +113,9 @@ export default function AccountingReport() {
   }
   useEffect(() => {
     if (!applied) return;
-    setSearchParams({ ...clean(applied), ...(page > 1 ? { page: String(page) } : {}) }, { replace: true });
+    setSearchParams({ ...clean(applied), ...(page > 1 ? { page: String(page) } : {}), ...(pageSize ? { pageSize } : {}) }, { replace: true });
     return load();
-  }, [applied, page]);
+  }, [applied, page, pageSize]);
 
   const title = entry ? (isArabic ? entry.title.ar : entry.title.en) : translations.pages.financialReports;
   useDocumentTitle(`${title} | ${translations.adminPanel}`);
@@ -320,6 +323,10 @@ export default function AccountingReport() {
                 <ReportTable
                   section={section}
                   onPageChange={setPage}
+                  onPageSizeChange={(size) => {
+                    setPage(1);
+                    setPageSize(String(size));
+                  }}
                   renderActions={
                     section.manual && canEditNotes
                       ? (row: ReportRow) => (

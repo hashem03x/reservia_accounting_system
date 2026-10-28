@@ -1,3 +1,4 @@
+import type { DocumentPaymentTerms, PaymentSchedule } from "@/utils/helpers/document-payment-terms";
 export type ProjectStatus = "active" | "completed" | "cancelled" | "on_hold";
 
 export interface ProjectContract {
@@ -24,6 +25,12 @@ export interface Project {
   // - every read site must now handle the missing case explicitly (see projects/index.tsx and
   // projects/[id]/index.tsx for the pattern), which is what TypeScript's `strict` mode is for.
   contractValue?: number;
+  // Customer payment terms of the project (tenor from the start date) and the schedule derived from
+  // the current contract value - see backend utils/documentPaymentTerms.js. null = not set.
+  customerPaymentTerms?: DocumentPaymentTerms | null;
+  customerPaymentSchedule?: PaymentSchedule | null;
+  // The project BOQ: per product its contract quantity and BOQ unit price (revenue-side price).
+  boqLines?: { _id: string; product: { _id: string; title: { en: string; ar: string }; model?: string } | null; quantity: number; unit?: string | null; unitPrice: number; currency: string }[];
   // Both computed by the backend from contractValue and executedPercentage (one calculation,
   // backend/server/utils/projectExecution.js): executedAmount = contractValue × executedPercentage
   // / 100, remainingMoney = contractValue − executedAmount. Absent when the project has no

@@ -364,7 +364,7 @@ test('createJournalEntryValidators: a "General" (no-project) entry is accepted o
   ];
 
   // An ERP admin (adminPermission grants journalEntries:createGeneral - see appConstant.js).
-  const adminResult = await runValidatorsAs({ role: 'admin', permissions: [] }, { lines: balancedLines });
+  const adminResult = await runValidatorsAs({ role: 'admin', permissions: [] }, { classification: 'ga', lines: balancedLines });
   assert.equal(adminResult.isEmpty(), true, 'an admin must be allowed to create a General (no-project) entry');
 
   // A moderator with the ordinary journalEntries create/read permissions but NOT createGeneral.
@@ -379,13 +379,82 @@ test('createJournalEntryValidators: a "General" (no-project) entry is accepted o
   // proves the check reads the permissions array, not just role === 'admin'.
   const grantedResult = await runValidatorsAs(
     { role: 'operator', permissions: [{ resource: 'journalEntries', actions: ['read', 'createGeneral'] }] },
-    { lines: balancedLines },
+    { classification: 'ga', lines: balancedLines },
   );
   assert.equal(grantedResult.isEmpty(), true, 'a user explicitly granted journalEntries:createGeneral must be allowed to create a General entry');
 
   // No req.user at all (should never happen behind `protect`, but must still fail closed).
-  const noUserResult = await runValidatorsAs(undefined, { lines: balancedLines });
+  const noUserResult = await runValidatorsAs(undefined, { classification: 'ga', lines: balancedLines });
   assert.equal(noUserResult.isEmpty(), false, 'with no authenticated user at all, a no-project entry must be rejected, never silently allowed');
+});
+
+test('createJournalEntryValidators: Project or G&A must be chosen explicitly and must agree with the project', async () => {
+  const { validationResult } = require('express-validator');
+  const { createJournalEntryValidators } = require('../../utils/validators/journalEntryValidators');
+  const admin = { role: 'admin', permissions: [] };
+  const lines = [
+    { account: cash._id.toString(), description: 'Line', debit: 100, credit: 0 },
+    { account: revenue._id.toString(), description: 'Line', debit: 0, credit: 100 },
+  ];
+  async function errorsFor(body) {
+    const req = { body, params: {}, query: {}, user: admin };
+    for (const middleware of createJournalEntryValidators) {
+      if (typeof middleware.run === 'function') await middleware.run(req);
+    }
+    return validationResult(req)
+      .array()
+      .map(e => e.msg);
+  }
+  const projectId = project._id.toString();
+
+  // Neither a project nor a classification: refused even for an admin - G&A is never inferred.
+  assert.ok((await errorsFor({ lines })).some(m => /Project or G&A/.test(m)));
+  // G&A: no project needed.
+  assert.deepEqual(await errorsFor({ classification: 'ga', lines }), []);
+  // Project: a project is required.
+  assert.ok((await errorsFor({ classification: 'project', lines })).some(m => /requires a project/.test(m)));
+  assert.deepEqual(await errorsFor({ classification: 'project', project: projectId, lines }), []);
+  // A project with no classification is a Project entry (existing API clients keep working).
+  assert.deepEqual(await errorsFor({ project: projectId, lines }), []);
+  // Contradictions and unknown values are refused.
+  assert.ok((await errorsFor({ classification: 'ga', project: projectId, lines })).some(m => /G&A journal entry cannot have a project/.test(m)));
+  assert.ok((await errorsFor({ classification: 'overhead', project: projectId, lines })).some(m => /must be "project" or "ga"/.test(m)));
+});
+
+test('journalEntryModel: classification is stored, defaults to Project when there is a project, and can never contradict the project', async () => {
+  const base = () => ({
+    entryNumber: 0,
+    date: new Date('2026-05-02'),
+    description: 'Classification',
+    source: 'manual',
+    status: 'draft',
+  });
+  const withProject = new JournalEntry({
+    ...base(),
+    entryNumber: await getNextJournalEntryNumber(),
+    project: project._id,
+    lines: projectLines([
+      { account: cash._id, description: 'x', debit: 50, credit: 0 },
+      { account: revenue._id, description: 'x', debit: 0, credit: 50 },
+    ]),
+  });
+  await withProject.save();
+  assert.equal(withProject.classification, 'project');
+
+  const gaWithProject = new JournalEntry({ ...base(), entryNumber: await getNextJournalEntryNumber(), project: project._id, classification: 'ga', lines: withProject.lines });
+  await assert.rejects(() => gaWithProject.save(), /G&A journal entry cannot have a project/);
+
+  const projectWithout = new JournalEntry({
+    ...base(),
+    entryNumber: await getNextJournalEntryNumber(),
+    classification: 'project',
+    lines: [
+      { account: cash._id, description: 'x', debit: 50, credit: 0 },
+      { account: revenue._id, description: 'x', debit: 0, credit: 50 },
+    ],
+  });
+  projectWithout.$locals.generalEntryAuthorized = true;
+  await assert.rejects(() => projectWithout.save(), /requires a project/);
 });
 
 test('journalEntryModel: a new manual entry with no project is rejected UNLESS $locals.generalEntryAuthorized is set (the validator-controlled backstop)', async () => {
@@ -414,7 +483,11 @@ test('journalEntryModel: a new manual entry with no project is rejected UNLESS $
     ],
   });
   authorized.$locals.generalEntryAuthorized = true;
+  // Authorized, but not explicitly classified: still refused - never inferred G&A from no project.
+  await assert.rejects(() => authorized.save(), /Project or G&A/);
+  authorized.classification = 'ga';
   await authorized.save();
+  assert.equal(authorized.classification, 'ga');
   assert.equal(authorized.project, null, 'a General entry is stored with a plain null project reference');
 
   const reloaded = await JournalEntry.findById(authorized._id);

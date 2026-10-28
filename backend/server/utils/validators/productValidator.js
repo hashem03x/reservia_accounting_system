@@ -18,7 +18,9 @@ function validateTypeSpecificFields(value, { req }) {
     type: req.body.type || 'product',
     cost: req.body.cost,
     category: req.body.category,
-    brand: req.body.brand,
+    // A product's Brand is a subcategory of its Main Category (`subcategory`); the old flat
+    // `brand` is still accepted from older clients.
+    brand: req.body.subcategory || req.body.brand,
     durationValue: req.body.durationValue,
     durationUnit: req.body.durationUnit,
     pucAccount: req.body.pucAccount,
@@ -26,6 +28,19 @@ function validateTypeSpecificFields(value, { req }) {
     requirePucAccount: true,
   });
   if (error) throw new Error(error);
+  return true;
+}
+
+// The Subcategory must belong to the product's Main Category - the one in this request, or (on an
+// update that leaves the category unchanged) the stored one.
+async function subcategoryBelongsToCategory(subcategoryId, { req }) {
+  const subcategory = await SubCategory.findById(subcategoryId).lean();
+  if (!subcategory) throw new Error(`No subcategory for this id ${subcategoryId}`);
+  let categoryId = req.body.category;
+  if (!categoryId && req.params?.id) categoryId = (await Product.findById(req.params.id).select('category').lean())?.category;
+  if (!categoryId) throw new Error('Choose the Main Category before its Subcategory');
+  const parent = subcategory.mainCategory?._id || subcategory.mainCategory;
+  if (String(parent) !== String(categoryId?._id || categoryId)) throw new Error('The selected Subcategory does not belong to the selected Main Category');
   return true;
 }
 
@@ -57,13 +72,16 @@ exports.createProductValidator = [
   check('type').custom(validateTypeSpecificFields),
   // check('quantity').notEmpty().withMessage('product quantity is is required').isNumeric().withMessage('Product quantity must be number'),
   check('sold').optional().isNumeric().withMessage('product sales must be number'),
-  check('price').notEmpty().withMessage('Product price is required ').isNumeric().withMessage('Product price must be number').isLength({ max: 20 }).withMessage('Too long price'),
+  // Cost and price are optional (productModel.js#cost) - but never negative or non-numeric.
+  check('price').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0, max: 250000 }).withMessage('Product price must be a number between 0 and 250000'),
+  check('cost').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0 }).withMessage('Product cost must be a non-negative number'),
   check('priceAfterDiscount')
     .optional()
     .isFloat()
     .isNumeric()
     .withMessage('priceAfterDiscount must be a number')
     .custom((value, { req }) => {
+      if (req.body.price === undefined || req.body.price === null || req.body.price === '') throw new Error('A discounted price needs a price');
       if (req.body.price <= value) {
         throw new Error('priceAfterDiscount must be lower than price');
       }
@@ -81,19 +99,11 @@ exports.createProductValidator = [
         if (!category) return Promise.reject(new Error(`No category for this id ${categoryId}`));
       });
     }),
-  // Legacy, optional - no longer the required identification field (see productModel.js#brand).
-  check('subcategory')
-    .optional()
-    .isMongoId()
-    .withMessage('Invalid subcategory id formate')
-    .custom(async subcategoryId => {
-      await SubCategory.findById(subcategoryId).then(category => {
-        if (!category) return Promise.reject(new Error(`No subcategory for this id ${subcategoryId}`));
-      });
-    }),
+  // Second level of the hierarchy (shown as Brand) - must belong to the selected Main Category.
+  check('subcategory').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Invalid subcategory id formate').custom(subcategoryBelongsToCategory),
 
-  // Required for products (enforced by validateTypeSpecificFields above); optional here only so
-  // a service (which never has one) isn't forced through this check.
+  // Legacy flat brand - a product's Brand is now its `subcategory` (above). Still accepted (and
+  // satisfies the Brand requirement in validateTypeSpecificFields) so older clients keep working.
   check('brand')
     .optional()
     .isMongoId()
@@ -177,6 +187,9 @@ exports.updateProductValidator = [
     }),
   check('capacity.value').optional({ nullable: true }).isNumeric().withMessage('Capacity value must be a number'),
   check('capacity.unit').optional({ nullable: true }).isString().withMessage('Capacity unit must be a string'),
+  check('price').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0, max: 250000 }).withMessage('Product price must be a number between 0 and 250000'),
+  check('cost').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0 }).withMessage('Product cost must be a non-negative number'),
+  check('subcategory').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Invalid subcategory id formate').custom(subcategoryBelongsToCategory),
   check('brand')
     .optional()
     .isMongoId()
