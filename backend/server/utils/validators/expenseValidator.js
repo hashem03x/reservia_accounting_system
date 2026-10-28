@@ -23,7 +23,12 @@ const warehouseExists = async value => {
 };
 
 exports.createExpenseValidator = [
-  check('vendor').notEmpty().withMessage('Vendor is required').isMongoId().withMessage('Invalid vendor id').custom(vendorExists),
+  check('expenseType').optional({ nullable: true }).isIn(['vendor', 'salary']).withMessage('Expense type must be "vendor" or "salary"'),
+  // A salary expense is not a vendor purchase - no vendor is required (or used) for it. Every other
+  // expense type keeps the existing, unconditional requirement.
+  check('vendor')
+    .if((value, { req }) => req.body.expenseType !== 'salary')
+    .notEmpty().withMessage('Vendor is required').isMongoId().withMessage('Invalid vendor id').custom(vendorExists),
   check('expenseAccount')
     .notEmpty()
     .withMessage('Expense account is required')

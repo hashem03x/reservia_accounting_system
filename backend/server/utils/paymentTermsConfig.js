@@ -12,6 +12,8 @@
  * Returns an error message string, or null when the config is valid.
  */
 
+const { PaymentTerms } = require('./paymentTerms');
+
 const PERCENTAGE_TOLERANCE = 0.01; // Explicit, small floating-point tolerance for the 100% sum check.
 
 function isNonNegativeInteger(value) {
@@ -75,4 +77,30 @@ function validatePaymentTermsConfig(config) {
   return null;
 }
 
-module.exports = { validatePaymentTermsConfig, PERCENTAGE_TOLERANCE };
+/**
+ * Cross-field rule: whenever installments are enabled (paymentTermsConfig.kind ===
+ * 'installments'), the vendor's own Payment Terms (paymentTerms / customPaymentDays) become
+ * mandatory - the installment schedule's own validation (above) only checks the installment rows
+ * themselves, it never looks at the sibling paymentTerms field, so this is deliberately separate.
+ * Pure, DB-free - callers (vendor.js's pre-save hook, vendorValidators.js) are responsible for
+ * resolving the EFFECTIVE values first (e.g. falling back to the stored document on a partial
+ * update that doesn't touch these fields).
+ *
+ * Returns an error message, or null when the rule doesn't apply / is satisfied.
+ */
+function validateInstallmentsRequirePaymentTerms(paymentTermsConfig, paymentTerms, customPaymentDays) {
+  if (!paymentTermsConfig || paymentTermsConfig.kind !== 'installments') return null;
+
+  if (!paymentTerms) {
+    return 'Payment terms are required when installments are enabled.';
+  }
+  if (!PaymentTerms.includes(paymentTerms)) {
+    return `Invalid payment term. Choose from ${PaymentTerms.map(t => `"${t}"`).join(', ')}`;
+  }
+  if (paymentTerms === 'Custom' && (customPaymentDays === undefined || customPaymentDays === null || customPaymentDays === '')) {
+    return 'customPaymentDays is required when paymentTerms is "Custom" and installments are enabled.';
+  }
+  return null;
+}
+
+module.exports = { validatePaymentTermsConfig, validateInstallmentsRequirePaymentTerms, PERCENTAGE_TOLERANCE };

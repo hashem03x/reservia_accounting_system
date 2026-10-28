@@ -6,10 +6,17 @@ require('./expenseCategoryModel');
 //   - a vendor expense (the Expenses module - services/expenses/expenseService.js): a vendor, a
 //     Chart of Accounts expense account, amount + VAT, posted Dr expense / Cr Suppliers (vendor),
 //     and paid later (or at once) through the existing Payment model; or
+//   - a salary expense (`expenseType: 'salary'`, no `vendor`): an employee salary accrual, posted
+//     Dr expense / Cr Salaries Payable (see utils/accountingConstants.js#SalariesPayableAccountName)
+//     instead of Suppliers - salaries are not vendor purchases, so no vendor/vendor account is ever
+//     involved; or
 //   - a legacy expense (no `vendor`): a category paid in cash immediately via `paymentId` - still
 //     created by paymentModel.js's finance-charges flow and kept for existing documents/reports.
+// A salary expense also has no `vendor` (same as a legacy expense) - `expenseType` is what tells
+// the two apart, so a salary expense is never mistaken for a legacy one and wrongly forced to carry
+// legacy-only fields (`expenseCategory`, `paymentId`) it was never given.
 const isLegacy = function () {
-  return !this.vendor;
+  return !this.vendor && this.expenseType !== 'salary';
 };
 
 // One payment made against a vendor expense.
@@ -33,6 +40,11 @@ const expenseSchema = new Schema(
     expenseCategory: { type: String, enum: [...expensesCategories, null], required: isLegacy },
     paymentId: { type: Schema.Types.ObjectId, ref: 'Payment', required: isLegacy }, // Payment associated with a legacy expense
 
+    // 'vendor' (default - every expense created before this field existed is one): requires
+    // `vendor`, posts Dr expense / Cr Suppliers (the vendor's control account).
+    // 'salary': no vendor - posts Dr expense / Cr Salaries Payable instead (see
+    // services/expenses/expenseService.js and utils/accountingConstants.js#SalariesPayableAccountName).
+    expenseType: { type: String, enum: ['vendor', 'salary'], default: 'vendor' },
     vendor: { type: Schema.Types.ObjectId, ref: 'Vendor' },
     expenseAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount' },
     // Analysis grouping (Expense Categories - models/expense/expenseCategoryModel.js). Optional:

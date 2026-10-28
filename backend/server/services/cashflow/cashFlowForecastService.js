@@ -2,9 +2,12 @@ const Project = require('../../models/project/projectModel');
 const SalesOrder = require('../../models/sales/salesOrderModel');
 const Requisition = require('../../models/vendor/requisitionModel');
 const PurchaseOrder = require('../../models/vendor/purchaseOrder');
+const Vendor = require('../../models/vendor/vendor');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { getTrialBalanceAsOf } = require('../accounting/generalLedgerService');
 const { CashEquivalentParentGroupName } = require('../../utils/accountingConstants');
+const { calculateDueDate } = require('../../utils/helpers/dueDate');
+const { buildPaymentSchedule } = require('../../utils/helpers/paymentSchedule');
 
 // Projected Cash Flow - Phase 1 (docs section "Projected Cash Flow Forecasting and PO Cash-Out
 // Forecast"). Purely a READ-ONLY aggregation over data that already exists - no new field on any
@@ -13,10 +16,18 @@ const { CashEquivalentParentGroupName } = require('../../utils/accountingConstan
 // that other, already-existing flows create and maintain; this service never writes to any of
 // them.
 //
-// No payment-schedule/milestone model exists yet (confirmed: nothing in this codebase models an
-// installment plan). Until Phase 2 introduces one, any amount that doesn't already have a real
-// due date (an issued Sales/Purchase Invoice's own `dueDate`) is reported as "unscheduled" with no
-// invented date - never guessed, per the project's own explicit decision.
+// Phase 2 ("PO Cash-Out Forecast" due-dating): an open (non-draft, non-cancelled) Requisition's
+// own uninvoiced remainder is now dated from its vendor's Payment Terms
+// (utils/helpers/dueDate.js#calculateDueDate for a flat due date, or
+// utils/helpers/paymentSchedule.js#buildPaymentSchedule for one row per installment when the
+// vendor has installments configured) - reusing the exact same helpers the Purchase Invoice's own
+// `dueDate`/`paymentSchedule` snapshot already calls, never new date math. A vendor with no usable
+// terms (missing, or Custom with no customPaymentDays, or installments with no rows) still falls
+// back to `unscheduled`/`date: null` - never an invented date - so it stays identifiable for
+// correction (reason: 'vendor_missing_payment_terms'). Once a Purchase Invoice exists against a
+// Requisition, double counting is already prevented arithmetically: the invoice's own
+// `invoicedAmount` increment (purchaseOrder.js) shrinks `amount - invoicedAmount` below by the same
+// amount the invoice itself now separately (and correctly) contributes via its own `dueDate`.
 
 const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -226,6 +237,23 @@ async function getVendorOutflowObligations({ projectIds = null, vendorId = null 
   const scheduled = [];
   const unscheduled = [];
 
+  // Payment terms for every requisition's vendor, batch-fetched once (the Requisition model's own
+  // `pre(/^find/)` auto-populate only ever selects `name vendorNumber contact.phone contact.email`
+  // for display elsewhere - never these accounting fields, and that global hook is intentionally
+  // left untouched here rather than widened for every other caller).
+  const vendorIds = [...new Set(requisitions.map(r => r.vendorId?._id).filter(Boolean).map(id => id.toString()))];
+  const vendorTermsDocs = vendorIds.length
+    ? await Vendor.find({ _id: { $in: vendorIds } }).select('paymentTerms customPaymentDays paymentTermsConfig').lean()
+    : [];
+  const vendorTermsById = new Map(vendorTermsDocs.map(v => [v._id.toString(), v]));
+
+  function hasUsablePaymentTerms(vendorTerms) {
+    if (!vendorTerms || !vendorTerms.paymentTerms) return false;
+    if (vendorTerms.paymentTerms === 'Custom' && (vendorTerms.customPaymentDays === null || vendorTerms.customPaymentDays === undefined)) return false;
+    if (vendorTerms.paymentTermsConfig?.kind === 'installments' && !(vendorTerms.paymentTermsConfig.installments || []).length) return false;
+    return true;
+  }
+
   for (const inv of openInvoices) {
     const amount = round2(inv.remainingAmount);
     const base = {
@@ -248,22 +276,50 @@ async function getVendorOutflowObligations({ projectIds = null, vendorId = null 
 
   for (const req of requisitions) {
     // amount - invoicedAmount, the exact same guarded figure the Purchase Invoice's own atomic
-    // increment maintains (purchaseOrder.js) - never recomputed here, just read.
+    // increment maintains (purchaseOrder.js) - never recomputed here, just read. This is also what
+    // prevents double counting once an invoice exists: as soon as any amount is invoiced, this
+    // remainder shrinks by exactly that amount, while the invoice itself separately (and only
+    // then) contributes its own remainingAmount via `openInvoices` above.
     const remainder = Math.max(0, round2((req.amount || 0) - (req.invoicedAmount || 0)));
-    if (remainder > 0) {
-      unscheduled.push({
-        direction: 'out',
-        source: 'requisition',
-        sourceId: req._id,
-        code: req.code || null,
-        project: req.project || null,
-        party: req.vendorId || null,
-        requisition: req._id,
-        amount: remainder,
-        date: null,
-        status: req.status === 'draft' ? 'draft' : 'unscheduled',
-        reason: req.status === 'draft' ? 'purchase_order_still_draft' : 'uninvoiced_po_commitment',
-      });
+    if (remainder <= 0) continue;
+
+    const base = {
+      direction: 'out',
+      source: 'requisition',
+      sourceId: req._id,
+      code: req.code || null,
+      project: req.project || null,
+      party: req.vendorId || null,
+      requisition: req._id,
+    };
+
+    // A draft Purchase Order isn't finalized yet - never date it (unchanged from before).
+    if (req.status === 'draft') {
+      unscheduled.push({ ...base, amount: remainder, date: null, status: 'draft', reason: 'purchase_order_still_draft' });
+      continue;
+    }
+
+    const vendorTerms = req.vendorId?._id ? vendorTermsById.get(req.vendorId._id.toString()) : null;
+    if (!hasUsablePaymentTerms(vendorTerms)) {
+      // No payment terms or no usable due date exists - never invent one (docs decision), but
+      // still identifiable for correction via `reason`.
+      unscheduled.push({ ...base, amount: remainder, date: null, status: 'unscheduled', reason: 'vendor_missing_payment_terms' });
+      continue;
+    }
+
+    // The Requisition has no date field of its own besides `createdAt` (by design - see this
+    // model's header comment) - the same base date the Purchase Invoice's pre-save hook uses
+    // (`new Date()` at invoice-creation time) would use if this PO were invoiced today.
+    const baseDate = req.createdAt;
+
+    if (vendorTerms.paymentTermsConfig?.kind === 'installments') {
+      const rows = buildPaymentSchedule(vendorTerms.paymentTermsConfig, baseDate, remainder);
+      for (const row of rows) {
+        scheduled.push({ ...base, amount: row.amount, date: row.dueDate, status: deriveScheduledStatus(row.dueDate) });
+      }
+    } else {
+      const dueDate = calculateDueDate(baseDate, vendorTerms.paymentTerms, vendorTerms.customPaymentDays);
+      scheduled.push({ ...base, amount: remainder, date: dueDate, status: deriveScheduledStatus(dueDate) });
     }
   }
 

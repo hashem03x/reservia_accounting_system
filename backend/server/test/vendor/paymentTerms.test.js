@@ -2,7 +2,7 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 
-const { validatePaymentTermsConfig } = require('../../utils/paymentTermsConfig');
+const { validatePaymentTermsConfig, validateInstallmentsRequirePaymentTerms } = require('../../utils/paymentTermsConfig');
 const { buildPaymentSchedule, round2 } = require('../../utils/helpers/paymentSchedule');
 
 // ===================== Pure validation (no DB) =====================
@@ -71,6 +71,35 @@ test('validatePaymentTermsConfig: an empty installments array is rejected', () =
 
 test('validatePaymentTermsConfig: an unknown kind is rejected', () => {
   assert.match(validatePaymentTermsConfig({ kind: 'bogus' }), /lump_sum.*installments/);
+});
+
+// ===================== Cross-field: installments require payment terms (no DB) =====================
+
+test('validateInstallmentsRequirePaymentTerms: lump-sum configs are never subject to the rule', () => {
+  assert.equal(validateInstallmentsRequirePaymentTerms({ kind: 'lump_sum' }, undefined, undefined), null);
+  assert.equal(validateInstallmentsRequirePaymentTerms(null, undefined, undefined), null);
+});
+
+test('validateInstallmentsRequirePaymentTerms: installments enabled with a valid Net term and no custom days needed', () => {
+  assert.equal(validateInstallmentsRequirePaymentTerms({ kind: 'installments' }, 'Net 30', null), null);
+  assert.equal(validateInstallmentsRequirePaymentTerms({ kind: 'installments' }, 'Immediate', null), null);
+});
+
+test('validateInstallmentsRequirePaymentTerms: installments enabled but payment terms missing is rejected', () => {
+  assert.match(validateInstallmentsRequirePaymentTerms({ kind: 'installments' }, undefined, undefined), /Payment terms are required/);
+  assert.match(validateInstallmentsRequirePaymentTerms({ kind: 'installments' }, '', undefined), /Payment terms are required/);
+  assert.match(validateInstallmentsRequirePaymentTerms({ kind: 'installments' }, null, undefined), /Payment terms are required/);
+});
+
+test('validateInstallmentsRequirePaymentTerms: installments enabled with an invalid payment term value is rejected', () => {
+  assert.match(validateInstallmentsRequirePaymentTerms({ kind: 'installments' }, 'Net 90', null), /Invalid payment term/);
+});
+
+test('validateInstallmentsRequirePaymentTerms: installments enabled with Custom terms still requires customPaymentDays', () => {
+  assert.match(validateInstallmentsRequirePaymentTerms({ kind: 'installments' }, 'Custom', undefined), /customPaymentDays is required/);
+  assert.match(validateInstallmentsRequirePaymentTerms({ kind: 'installments' }, 'Custom', null), /customPaymentDays is required/);
+  assert.match(validateInstallmentsRequirePaymentTerms({ kind: 'installments' }, 'Custom', ''), /customPaymentDays is required/);
+  assert.equal(validateInstallmentsRequirePaymentTerms({ kind: 'installments' }, 'Custom', 45), null);
 });
 
 // ===================== Pure schedule building (no DB) =====================
@@ -183,4 +212,36 @@ test('Vendor: re-saving a vendor for an unrelated reason never re-validates an u
   reloaded.isActive = false;
   await reloaded.save();
   assert.equal(reloaded.isActive, false);
+});
+
+test('Vendor: enabling installments with the default payment terms (Net 30) is saved without error', async () => {
+  const vendor = await Vendor.create(
+    vendorFields({ paymentTermsConfig: { kind: 'installments', installments: [{ durationDays: 30, percentage: 100 }] } }),
+  );
+  assert.equal(vendor.paymentTerms, 'Net 30');
+  assert.equal(vendor.paymentTermsConfig.kind, 'installments');
+});
+
+test('Vendor: enabling installments with Custom payment terms but no customPaymentDays is rejected at save time (model backstop)', async () => {
+  await assert.rejects(
+    () =>
+      Vendor.create(
+        vendorFields({
+          paymentTerms: 'Custom',
+          paymentTermsConfig: { kind: 'installments', installments: [{ durationDays: 30, percentage: 100 }] },
+        }),
+      ),
+    /customPaymentDays is required/,
+  );
+});
+
+test('Vendor: enabling installments with Custom payment terms and a valid customPaymentDays is saved', async () => {
+  const vendor = await Vendor.create(
+    vendorFields({
+      paymentTerms: 'Custom',
+      customPaymentDays: 45,
+      paymentTermsConfig: { kind: 'installments', installments: [{ durationDays: 30, percentage: 100 }] },
+    }),
+  );
+  assert.equal(vendor.customPaymentDays, 45);
 });

@@ -62,6 +62,15 @@ export default function VendorModal({
   const [paymentTermsConfig, setPaymentTermsConfig] = useState<PaymentTermsConfig>(vendorToUpdate?.paymentTermsConfig || defaultPaymentTermsConfig);
   const paymentTermsConfigError = validatePaymentTermsConfigClientSide(paymentTermsConfig, translate);
 
+  // Cross-field rule (mirrors backend/server/utils/paymentTermsConfig.js#validateInstallmentsRequirePaymentTerms):
+  // whenever installments are enabled, Payment Terms become mandatory - caught here too so the Save
+  // button disables for the same reason the backend would reject the request.
+  const installmentsEnabled = paymentTermsConfig.kind === "installments";
+  const paymentTermsMissingForInstallments = installmentsEnabled && !paymentTerms;
+  const paymentTermsError = paymentTermsMissingForInstallments
+    ? translate("Payment terms are required when installments are enabled.", "شروط الدفع مطلوبة عند تفعيل الدفعات المتعددة.")
+    : undefined;
+
   // Mirrors the backend's conditional validator (vendorValidators.js#paymentInfoValidators) -
   // whichever mode is selected, its required sub-fields must be filled before submitting.
   const paymentInfoIncomplete =
@@ -298,6 +307,7 @@ export default function VendorModal({
               ]}
               label={translate("Payment Terms", "شروط الدفع")}
               allowDeselect={false}
+              error={paymentTermsError}
               flex={1}
             />
             {paymentTerms === "Custom" && (
@@ -485,6 +495,7 @@ export default function VendorModal({
               !!emailError ||
               paymentInfoIncomplete ||
               paymentTermsIncomplete ||
+              paymentTermsMissingForInstallments ||
               !!paymentTermsConfigError
             }
             fullWidth

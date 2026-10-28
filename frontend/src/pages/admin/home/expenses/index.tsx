@@ -175,13 +175,19 @@ export default function Expenses() {
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedExpenses.data.map((expense) =>
-                    expense.vendor ? (
+                    expense.vendor || expense.expenseType === "salary" ? (
                       <ClickableRow key={expense._id} className="cursor-pointer" onClick={() => navigate(expense._id)}>
                         <Table.Td className="whitespace-nowrap">
                           {formatDate(expense.date || expense.createdAt, language)}
                         </Table.Td>
                         <Table.Td className="font-medium">
-                          <TruncatedText text={expense.vendor.name} maxWidthClassName="max-w-[160px]" />
+                          {expense.vendor ? (
+                            <TruncatedText text={expense.vendor.name} maxWidthClassName="max-w-[160px]" />
+                          ) : (
+                            <Badge color="grape" variant="light">
+                              {translate("Salary", "رواتب")}
+                            </Badge>
+                          )}
                         </Table.Td>
                         <Table.Td className="whitespace-nowrap">
                           {expense.expenseAccount ? `${expense.expenseAccount.code} - ${expense.expenseAccount.name}` : "-"}

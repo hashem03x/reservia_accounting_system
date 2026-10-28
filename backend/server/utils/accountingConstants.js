@@ -179,6 +179,14 @@ exports.FixedAssetAccountGroups = {
   depreciationExpense: 'Depreciation & Amortization',
 };
 
+// Salary Expenses (docs section "Salary Expenses") - the existing Chart of Accounts liability
+// account a salary expense's accrual is credited to, resolved by NAME
+// (services/accounting/accountingEventService.js#getAccountIdByName), never by a hardcoded code:
+// this account isn't part of this repo's seeded/imported Chart of Accounts (unlike `suppliers`
+// etc. in AutomaticJournalAccountCodes below), so no stable code can be assumed across
+// deployments - the same name-based convention FixedAssetAccountGroups above uses.
+exports.SalariesPayableAccountName = 'Salaries Payable';
+
 // Well-known account codes the automatic accounting entries (project creation, fixed asset
 // purchase) look up by code rather than by a hardcoded ObjectId. Overridable via env so a
 // deployment can point at differently-coded accounts without a code change. These codes are only

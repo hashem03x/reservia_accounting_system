@@ -4,7 +4,7 @@ const { taxInfoSchema, bankInfoSchema, paymentInfoSchema, businessDocumentSchema
 const { getNextVendorNumber } = require('../../services/vendor/vendorNumberService');
 const { isValidPhone } = require('../../utils/validators/phoneValidator');
 const { PaymentTerms } = require('../../utils/paymentTerms');
-const { validatePaymentTermsConfig } = require('../../utils/paymentTermsConfig');
+const { validatePaymentTermsConfig, validateInstallmentsRequirePaymentTerms } = require('../../utils/paymentTermsConfig');
 
 const vendorSchema = new Schema(
   {
@@ -178,7 +178,20 @@ vendorSchema.pre('save', async function (next) {
 // is never re-validated against a rule it predates.
 vendorSchema.pre('save', function (next) {
   if (!this.isModified('paymentTermsConfig')) return next();
-  const error = validatePaymentTermsConfig(this.paymentTermsConfig?.toObject ? this.paymentTermsConfig.toObject() : this.paymentTermsConfig);
+  const config = this.paymentTermsConfig?.toObject ? this.paymentTermsConfig.toObject() : this.paymentTermsConfig;
+  const error = validatePaymentTermsConfig(config);
+  if (error) return next(new Error(error));
+  next();
+});
+
+// Cross-field backstop (the request validator - vendorValidators.js - is only the fast pre-check):
+// whenever installments are enabled, paymentTerms/customPaymentDays must be mandatory and valid.
+// Only re-checked when any of the three fields actually changed, same "don't re-validate a legacy
+// document against a rule it predates" convention as the backstop above.
+vendorSchema.pre('save', function (next) {
+  if (!this.isModified('paymentTermsConfig') && !this.isModified('paymentTerms') && !this.isModified('customPaymentDays')) return next();
+  const config = this.paymentTermsConfig?.toObject ? this.paymentTermsConfig.toObject() : this.paymentTermsConfig;
+  const error = validateInstallmentsRequirePaymentTerms(config, this.paymentTerms, this.customPaymentDays);
   if (error) return next(new Error(error));
   next();
 });

@@ -5,7 +5,7 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX, PaymentModes, WalletProviders } = require('../../models/shared/businessPartnerSchemas');
 const { isValidPhone } = require('./phoneValidator');
 const { PaymentTerms } = require('../paymentTerms');
-const { validatePaymentTermsConfig } = require('../paymentTermsConfig');
+const { validatePaymentTermsConfig, validateInstallmentsRequirePaymentTerms } = require('../paymentTermsConfig');
 
 // Payment Terms (docs section "Payment Terms for Customers and Vendors") - optional (defaults to
 // 'Net 30' at the schema level if omitted entirely), but `customPaymentDays` is required exactly
@@ -30,6 +30,39 @@ const paymentTermsValidators = [
 const paymentTermsConfigValidators = [
     check('paymentTermsConfig').custom((value) => {
         const error = validatePaymentTermsConfig(value);
+        if (error) throw new Error(error);
+        return true;
+    }),
+    // Cross-field rule (docs section "Vendor Payment Terms"): whenever installments are enabled,
+    // paymentTerms/customPaymentDays become mandatory. Resolved against the EFFECTIVE state (this
+    // request's body first, the already-stored vendor second) so a PATCH that enables installments
+    // without re-sending paymentTerms is judged by its real resulting value - and so an unrelated
+    // update (e.g. renaming a vendor) that never touches any of these three fields is never
+    // re-validated against this rule at all, never re-checked against a value it isn't changing.
+    check('paymentTermsConfig').custom(async (value, { req }) => {
+        const touchesPaymentTerms = value !== undefined || req.body.paymentTerms !== undefined || req.body.customPaymentDays !== undefined;
+        if (!touchesPaymentTerms) return true;
+
+        let kind = value?.kind;
+        let paymentTerms = req.body.paymentTerms;
+        let customPaymentDays = req.body.customPaymentDays;
+
+        if (req.params?.id && (kind === undefined || paymentTerms === undefined || customPaymentDays === undefined)) {
+            const existing = await Vendor.findById(req.params.id).select('paymentTerms customPaymentDays paymentTermsConfig.kind').lean();
+            if (existing) {
+                if (kind === undefined) kind = existing.paymentTermsConfig?.kind;
+                if (paymentTerms === undefined) paymentTerms = existing.paymentTerms;
+                if (customPaymentDays === undefined) customPaymentDays = existing.customPaymentDays;
+            }
+        }
+        // Still-unresolved fields (a brand-new vendor, nothing to look up) default exactly like the
+        // Mongoose schema itself (vendor.js) would - an omitted field is judged as what it will
+        // actually become, never as "missing".
+        if (kind === undefined) kind = 'lump_sum';
+        if (paymentTerms === undefined) paymentTerms = 'Net 30';
+        if (customPaymentDays === undefined) customPaymentDays = null;
+
+        const error = validateInstallmentsRequirePaymentTerms({ kind }, paymentTerms, customPaymentDays);
         if (error) throw new Error(error);
         return true;
     }),

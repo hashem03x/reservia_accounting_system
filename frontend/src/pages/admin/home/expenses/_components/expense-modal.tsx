@@ -32,6 +32,7 @@ export default function ExpenseModal({
   const { data: warehouses } = useWarehouses();
   const { updateWarehouseBalanceById } = useWarehouseHelpers();
 
+  const [expenseType, setExpenseType] = useState<"vendor" | "salary">("vendor");
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [expenseAccount, setExpenseAccount] = useState("");
   const [category, setCategory] = useState("");
@@ -71,7 +72,8 @@ export default function ExpenseModal({
         method: "POST",
         url: "expenses",
         data: {
-          vendor: vendor?._id,
+          expenseType,
+          vendor: expenseType === "salary" ? undefined : vendor?._id,
           expenseAccount,
           category: category || undefined,
           amount,
@@ -92,6 +94,7 @@ export default function ExpenseModal({
   function handleClose() {
     close();
     setTimeout(() => {
+      setExpenseType("vendor");
       setVendor(null);
       setExpenseAccount("");
       setAmount("");
@@ -106,20 +109,37 @@ export default function ExpenseModal({
     }, 250);
   }
 
-  const canSubmit = !!vendor && !!expenseAccount && base > 0 && !!date && (!payNow || (!!paymentAccount && !!warehouseId));
+  const canSubmit =
+    (expenseType === "salary" || !!vendor) && !!expenseAccount && base > 0 && !!date && (!payNow || (!!paymentAccount && !!warehouseId));
 
   return (
     <Modal opened={opened} onClose={handleClose} title={translate("Add Expense", "إضافة نفقة")} size="lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {error && <ErrorAlert error={error} />}
 
-        <VendorSearch
-          vendor={vendor}
-          setVendor={setVendor}
-          label={translate("Vendor", "البائع")}
-          placeholder={translate("Search for a vendor", "ابحث عن بائع")}
-          required
+        <Select
+          label={translate("Expense Type", "نوع المصروف")}
+          value={expenseType}
+          onChange={(v) => {
+            setExpenseType((v as "vendor" | "salary") || "vendor");
+            if (v === "salary") setVendor(null);
+          }}
+          data={[
+            { value: "vendor", label: translate("Vendor Expense", "مصروف لمورد") },
+            { value: "salary", label: translate("Salary Expense", "مصروف رواتب") },
+          ]}
+          allowDeselect={false}
         />
+
+        {expenseType === "vendor" && (
+          <VendorSearch
+            vendor={vendor}
+            setVendor={setVendor}
+            label={translate("Vendor", "البائع")}
+            placeholder={translate("Search for a vendor", "ابحث عن بائع")}
+            required
+          />
+        )}
 
         <Select
           label={translate("Expense Account", "حساب المصروف")}

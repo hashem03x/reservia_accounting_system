@@ -61,6 +61,8 @@ beforeEach(async () => {
   };
   vendor = await Vendor.create({ name: 'Landlord', contact: { phone: `010${Date.now()}`.slice(0, 11) } });
   warehouse = await Warehouse.create({ name: 'Head Office', location: 'Cairo', balance: 50000 });
+  accounts.salary = await ChartOfAccount.create({ code: '61000002', name: 'Salaries Expense', type: 'expense' });
+  accounts.salariesPayable = await ChartOfAccount.create({ code: 'SAL-PAY-1', name: 'Salaries Payable', type: 'liability' });
 });
 
 async function inTx(work) {
@@ -77,6 +79,7 @@ async function inTx(work) {
 }
 
 const RENT = (overrides = {}) => ({ vendor: vendor._id, expenseAccount: accounts.rent._id, amount: 10000, vatPercentage: 14, date: new Date('2026-09-01'), reference: 'SEP-RENT', notes: 'September rent', ...overrides });
+const SALARY = (overrides = {}) => ({ expenseType: 'salary', expenseAccount: accounts.salary._id, amount: 8000, date: new Date('2026-09-01'), reference: 'SEP-SALARY', notes: 'September salary', ...overrides });
 const create = data => inTx(session => createExpense(data, null, session));
 const pay = (expense, data) => inTx(session => addExpensePayment(expense._id, { paymentAccount: accounts.cash._id, warehouseId: warehouse._id, ...data }, null, session));
 const vendorBalance = async () => (await Vendor.findById(vendor._id).lean()).balance;
@@ -93,7 +96,7 @@ function assertVendorLines(entry) {
 }
 
 test('expense account options are the active Chart of Accounts expense accounts', async () => {
-  assert.deepEqual((await getExpenseAccountOptions()).map(a => a.name), ['Office Rent']);
+  assert.deepEqual((await getExpenseAccountOptions()).map(a => a.name), ['Office Rent', 'Salaries Expense']);
 });
 
 test('creating an expense posts Dr expense + input VAT / Cr Suppliers (vendor) and touches no inventory', async t => {
@@ -230,4 +233,83 @@ test('editing changes only reference/notes; legacy category expenses stay valid'
   const legacy = await Expense.create({ description: 'Water', expenseCategory: 'finance-charges', paymentId: payment._id });
   assert.ok(legacy._id);
   await assert.rejects(() => Expense.create({ description: 'No category' }), /expenseCategory|paymentId/);
+});
+
+// ===================== Salary expenses (Salaries Payable instead of a vendor) =====================
+
+test('creating a salary expense posts Dr salary expense / Cr Salaries Payable, with no vendor at all', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const expense = await create(SALARY());
+  const stored = await Expense.findById(expense._id).lean();
+  assert.equal(stored.expenseType, 'salary');
+  assert.ok(!stored.vendor, 'a salary expense must never carry a vendor reference');
+  assert.deepEqual(
+    { amount: stored.amount, vat: stored.vatAmount, total: stored.totalAmount, paid: stored.paidAmount, status: stored.paymentStatus },
+    { amount: 8000, vat: 0, total: 8000, paid: 0, status: 'unpaid' }
+  );
+
+  const entry = await JournalEntry.findById(stored.journalEntry).lean();
+  assert.equal(entry.accountingAction, 'EXPENSE_RECORDED');
+  assert.equal(entry.description, 'Salary - Salaries Expense (SEP-SALARY)');
+  assert.deepEqual(linesOf(entry), [
+    ['salary', 8000, 0],
+    ['salariesPayable', 0, 8000],
+  ]);
+  // No vendor sub-account on a salary entry - Salaries Payable is not a vendor-control account.
+  for (const line of entry.lines) {
+    assert.ok(!line.partyNumber);
+    assert.ok(!line.partyType);
+  }
+  assert.equal(await vendorBalance(), 0, 'a salary expense must never touch any vendor balance');
+});
+
+test('submitting and paying a salary expense clears Salaries Payable, Dr Salaries Payable / Cr the payment account', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const expense = await create(SALARY());
+  await pay(expense, { amount: 8000, notes: 'September salary payment' });
+
+  const stored = await Expense.findById(expense._id).lean();
+  assert.equal(stored.paymentStatus, 'paid');
+  assert.equal(stored.paidAmount, 8000);
+
+  const payment = await Payment.findById(stored.payments[0].payment).lean();
+  assert.equal(payment.vendorId, undefined, 'a salary payment must never carry a vendor reference');
+  assert.equal(payment.paymentCategory, 'expense');
+
+  const entry = await JournalEntry.findById(stored.payments[0].journalEntry).lean();
+  assert.equal(entry.accountingAction, 'EXPENSE_PAYMENT_RECORDED');
+  assert.deepEqual(linesOf(entry), [
+    ['salariesPayable', 8000, 0],
+    ['cash', 0, 8000],
+  ]);
+  assert.equal(await warehouseBalance(), 42000);
+  assert.equal(await vendorBalance(), 0);
+});
+
+test('a salary expense can be edited (not treated as a legacy, vendor-less expense)', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const expense = await create(SALARY());
+  await inTx(session => updateExpense(expense._id, { notes: 'Revised note' }, session));
+  const stored = await Expense.findById(expense._id).lean();
+  assert.equal(stored.notes, 'Revised note');
+});
+
+test('a normal vendor expense still requires a vendor (unaffected by the salary path)', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await assert.rejects(() => create(RENT({ vendor: undefined })), /vendor/i);
+  assert.equal(await Expense.countDocuments({}), 0);
+});
+
+test('a missing/inactive Salaries Payable account aborts the posting with a clear error, never falling back to Suppliers/a vendor account', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await ChartOfAccount.deleteOne({ _id: accounts.salariesPayable._id });
+  await assert.rejects(() => create(SALARY()), /Salaries Payable/);
+  assert.equal(await Expense.countDocuments({}), 0, 'nothing is created when the payable account cannot be resolved');
+  assert.equal(await JournalEntry.countDocuments({}), 0);
+
+  // Recreate it, but inactive - same outcome.
+  const inactive = await ChartOfAccount.create({ code: 'SAL-PAY-2', name: 'Salaries Payable', type: 'liability', isActive: false });
+  await assert.rejects(() => create(SALARY()), /Salaries Payable/);
+  assert.equal(await Expense.countDocuments({}), 0);
+  await ChartOfAccount.deleteOne({ _id: inactive._id });
 });

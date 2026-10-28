@@ -27,10 +27,14 @@ export type ExpensePayment = {
   journalEntry: string | JournalEntryRef;
 };
 
-// A vendor expense (has `vendor`, Dr expense account / Cr Suppliers, paid later) or a legacy
+// A vendor expense (has `vendor`, Dr expense account / Cr Suppliers, paid later), a salary expense
+// (`expenseType: 'salary'`, no vendor, Dr expense account / Cr Salaries Payable), or a legacy
 // category expense (`expenseCategory` + `payment`, paid in cash at once).
 export type Expense = {
   _id: string;
+  // 'vendor' (default) requires `vendor`; 'salary' never has one - see
+  // backend/server/models/expense/expenseModel.js.
+  expenseType?: "vendor" | "salary";
   // Vendor expense
   vendor?: { _id: string; name: string; vendorNumber?: number | null } | null;
   expenseAccount?: ChartOfAccountRef | null;

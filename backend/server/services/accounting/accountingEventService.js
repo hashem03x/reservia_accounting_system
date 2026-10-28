@@ -49,6 +49,25 @@ async function getAccountIdByCode(code, session) {
   return account._id;
 }
 
+// Same contract as getAccountIdByCode above (throws loudly, never fabricates/guesses an id), but
+// resolves by the account's own NAME (case-insensitive, exact match) instead of a fixed code - for
+// an account with no stable code of its own, the same convention
+// services/fixedAssets/fixedAssetAccounts.js already uses for the Fixed Assets groups. Used for
+// Salaries Payable (see utils/accountingConstants.js#SalariesPayableAccountName), since that
+// account isn't part of this repo's seeded/imported Chart of Accounts and so has no reliable code
+// to key off of across deployments.
+async function getAccountIdByName(name, { type } = {}, session) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const account = await ChartOfAccount.findOne({ name: new RegExp(`^${escaped}$`, 'i'), isActive: { $ne: false } }).session(session || null);
+  if (!account) {
+    throw new ApiError(`Automatic accounting: required Chart of Accounts account "${name}" was not found or is inactive. Posting aborted.`, 500);
+  }
+  if (type && account.type !== type) {
+    throw new ApiError(`Automatic accounting: Chart of Accounts account "${name}" must be of type "${type}" (found "${account.type}"). Posting aborted.`, 500);
+  }
+  return account._id;
+}
+
 // Resolves a Vendor/Customer reference (raw id OR an already-populated object - every caller here
 // normalizes via `?._id || ref` first, mirroring generalLedgerService.js's established `idOf()`
 // pattern) down to that party's real Vendor Number / Customer Number, for stamping onto the one JE
@@ -1045,6 +1064,7 @@ async function postProjectExecutionRecognitionJEs(project, session, triggeredByS
 module.exports = {
   deterministicSourceId,
   getAccountIdByCode,
+  getAccountIdByName,
   resolveVendorNumber,
   resolveCustomerNumber,
   pucAccountBalance,

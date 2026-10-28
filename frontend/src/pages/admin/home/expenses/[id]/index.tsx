@@ -87,9 +87,9 @@ export default function ExpenseDetail() {
     <AdminLayoutBox
       header={{
         title: translate("Expense", "نفقة"),
-        subTitle: expense.vendor?.name,
+        subTitle: expense.vendor?.name || (expense.expenseType === "salary" ? translate("Salary", "رواتب") : undefined),
         backLink: `/${paths.admin}/${paths.home}/${paths.expenses}`,
-        sideElements: expense.vendor && (
+        sideElements: (expense.vendor || expense.expenseType === "salary") && (
           <div className="flex flex-wrap gap-2">
             {canUpdate && (
               <Button variant="light" onClick={openEdit}>
@@ -120,7 +120,9 @@ export default function ExpenseDetail() {
           value={
             expense.vendor
               ? `${expense.vendor.name}${expense.vendor.vendorNumber != null ? ` (${expense.vendor.vendorNumber})` : ""}`
-              : "-"
+              : expense.expenseType === "salary"
+                ? translate("Salary Expense (no vendor)", "مصروف رواتب (بدون مورد)")
+                : "-"
           }
         />
         <InfoItem label={translate("Expense Account", "حساب المصروف")} value={accountText(expense.expenseAccount)} />
