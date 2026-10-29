@@ -12,6 +12,12 @@ const {
 
 const router = express.Router();
 
+// GET /crm/leads/export-cron - the weekly Marketing Dashboard export (Developer Brief), for an
+// external scheduler (Vercel Cron) rather than a logged-in user - same CRON_SECRET bearer-token
+// pattern as backup.controller.js#cronBackup. Registered BEFORE the protect/requireCrmAccess gate
+// below so it is never subject to it; it has its own, equally strict check.
+router.get('/export-cron', leadController.exportLeadsCron);
+
 // Central Business Portal SSO (docs section "Central Business Portal"): the SAME JWT session as
 // the rest of the app - authController.protect loads the real user and its systemMemberships from
 // the database on every request; requireCrmAccess then checks THAT, never anything the client

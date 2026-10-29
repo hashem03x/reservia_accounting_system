@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const asyncHandler = require('express-async-handler');
 const Lead = require('../../models/crm/leadModel');
@@ -75,10 +76,22 @@ exports.recordActivity = asyncHandler(async (req, res) => {
   res.status(201).json(apiResponse('Activity recorded successfully', true, activity));
 });
 
-// GET /leads/export - the Marketing Dashboard's weekly CSV (services/crm/leadExportService.js).
-// On-demand here (run whenever a user downloads it); a scheduled weekly run is just this same
-// endpoint called by a cron hitting it with CRON_SECRET, not a separate code path.
+// GET /leads/export - the Marketing Dashboard's weekly CSV (services/crm/leadExportService.js),
+// on-demand for a logged-in CRM user (gated by requireCrmAccess on this router).
 exports.exportLeads = asyncHandler(async (req, res) => {
+  const rows = await buildLeadExportRows();
+  await exportToCsv(res, `reservia-crm-leads-${new Date().toISOString().slice(0, 10)}.csv`, EXPORT_HEADERS, rows);
+});
+
+// GET /leads/export-cron - the SAME export for an external scheduler (Vercel Cron), authenticated
+// with `Authorization: Bearer <CRON_SECRET>` instead of a user session - mirrors
+// backup.controller.js#cronBackup's exact check (length-matched, constant-time compare; disabled
+// entirely unless CRON_SECRET is at least 16 characters).
+exports.exportLeadsCron = asyncHandler(async (req, res, next) => {
+  const secret = process.env.CRON_SECRET || '';
+  const given = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const ok = secret.length >= 16 && given.length === secret.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(secret));
+  if (!ok) return next(new ApiError('Not allowed.', 401));
   const rows = await buildLeadExportRows();
   await exportToCsv(res, `reservia-crm-leads-${new Date().toISOString().slice(0, 10)}.csv`, EXPORT_HEADERS, rows);
 });
