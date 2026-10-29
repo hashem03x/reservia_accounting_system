@@ -92,7 +92,7 @@ test('validateInstallmentsRequirePaymentTerms: installments enabled but payment 
 });
 
 test('validateInstallmentsRequirePaymentTerms: installments enabled with an invalid payment term value is rejected', () => {
-  assert.match(validateInstallmentsRequirePaymentTerms({ kind: 'installments' }, 'Net 90', null), /Invalid payment term/);
+  assert.match(validateInstallmentsRequirePaymentTerms({ kind: 'installments' }, 'Net 100', null), /Invalid payment term/);
 });
 
 test('validateInstallmentsRequirePaymentTerms: installments enabled with Custom terms still requires customPaymentDays', () => {
@@ -215,7 +215,6 @@ test('Vendor: re-saving a vendor for an unrelated reason never re-validates an u
   assert.equal(reloaded.isActive, false);
 });
 
-<<<<<<< HEAD
 test('Vendor: enabling installments with the default payment terms (Net 30) is saved without error', async () => {
   const vendor = await Vendor.create(
     vendorFields({ paymentTermsConfig: { kind: 'installments', installments: [{ durationDays: 30, percentage: 100 }] } }),
@@ -246,7 +245,8 @@ test('Vendor: enabling installments with Custom payment terms and a valid custom
     }),
   );
   assert.equal(vendor.customPaymentDays, 45);
-=======
+});
+
 // ===================== Schedule vs Payment Terms (request validators) =====================
 
 async function runVendorValidators(validators, body, params = {}) {
@@ -289,5 +289,4 @@ test('vendor API: Immediate always saves Lump Sum + Immediate (stale schedules r
   const toImmediate = await runVendorValidators(updateVendorValidators, { paymentTerms: 'Immediate' }, params);
   assert.deepEqual(toImmediate.errors, []);
   assert.equal(toImmediate.req.body.paymentTermsConfig.kind, 'lump_sum');
->>>>>>> origin/main
 });

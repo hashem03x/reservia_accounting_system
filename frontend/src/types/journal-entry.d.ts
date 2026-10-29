@@ -32,17 +32,6 @@ export interface JournalLine {
   // Always the EGP (base-currency) amount - see journalEntryModel.js.
   debit: number;
   credit: number;
-<<<<<<< HEAD
-  // `currency` + `exchangeRate` (EGP per 1 unit of that currency - predates Currency Management)
-  // together with `transactionDebit`/`transactionCredit` (the ORIGINAL transaction-currency
-  // amount this line's EGP debit/credit was computed from - added by Currency Management) record
-  // the foreign-currency side of a line. All four are null for a plain EGP line (the default, and
-  // every line created before this feature existed) - see utils/helpers/exchange-rate.ts.
-  currency?: string | null;
-  exchangeRate?: number | null;
-  transactionDebit?: number | null;
-  transactionCredit?: number | null;
-=======
   // Audit-trail only - debit/credit above always hold the local-currency (EGP) amount. These
   // preserve the line's original currency and rate (the accounting CSV import, and manual entries
   // in a foreign currency). `exchangeRate` here is EGP PER 1 UNIT of the currency - the inverse of
@@ -53,7 +42,6 @@ export interface JournalLine {
   // not EGP (debit/credit above stay the EGP amounts).
   currencyDebit?: number | null;
   currencyCredit?: number | null;
->>>>>>> origin/main
   description?: string;
   // Historical data field - kept on the type for compatibility, no longer displayed anywhere.
   unearnedRevenue?: number;

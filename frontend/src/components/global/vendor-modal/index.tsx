@@ -65,7 +65,6 @@ export default function VendorModal({
     paymentTerms === "Custom" && customPaymentDays !== "" && Number.isInteger(Number(customPaymentDays)) && Number(customPaymentDays) >= 0 ? Number(customPaymentDays) : null;
   const paymentTermsConfigError = validatePaymentTermsConfigClientSide(effectivePaymentTermsConfig, translate, customTermDays);
 
-<<<<<<< HEAD
   // Cross-field rule (mirrors backend/server/utils/paymentTermsConfig.js#validateInstallmentsRequirePaymentTerms):
   // whenever installments are enabled, Payment Terms become mandatory - caught here too so the Save
   // button disables for the same reason the backend would reject the request.
@@ -75,28 +74,8 @@ export default function VendorModal({
     ? translate("Payment terms are required when installments are enabled.", "شروط الدفع مطلوبة عند تفعيل الدفعات المتعددة.")
     : undefined;
 
-  // Mirrors the backend's conditional validator (vendorValidators.js#paymentInfoValidators) -
-  // whichever mode is selected, its required sub-fields must be filled before submitting.
-  const paymentInfoIncomplete =
-    paymentMode === "instapay"
-      ? !instapayIdentifier
-      : paymentMode === "wallet"
-        ? !walletProvider || !walletIdentifier
-        : paymentMode === "bank"
-          ? !bankName || !bankAccountNumber
-          : false;
-
-  const ibanError =
-    bankIbanNumber && !isValidEgyptianIban(bankIbanNumber)
-      ? translate(
-          'IBAN must start with "EG" and be exactly 29 characters (letters and numbers only).',
-          'يجب أن يبدأ رقم الآيبان بـ "EG" ويتكون من 29 حرفًا بالضبط (حروف وأرقام فقط).',
-        )
-      : undefined;
-=======
   // Same rules as the backend (utils/helpers/vendor-payment-accounts.ts).
   const paymentAccountsError = validatePaymentAccounts(paymentAccounts);
->>>>>>> origin/main
 
   const emailError =
     email && !/\S+@\S+\.\S+/.test(email)

@@ -203,16 +203,6 @@ const resources: LocalizedEntity<Resource> = {
       ar: "التدفق النقدي المتوقع",
     },
   },
-  // Currency Management master data (multi-currency Journal Entries) - deliberately distinct from
-  // the pre-existing `currencies` resource above, which the unrelated warehouse petty-cash page
-  // (pages/admin/currencies/index.tsx) references but which has no backend permission behind it.
-  currencyManagement: {
-    value: "currencyManagement",
-    label: {
-      en: "Currency Management",
-      ar: "إدارة العملات",
-    },
-  },
 };
 
 export default resources;

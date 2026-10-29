@@ -80,7 +80,6 @@ function validatePaymentTermsConfig(config) {
   return null;
 }
 
-<<<<<<< HEAD
 /**
  * Cross-field rule: whenever installments are enabled (paymentTermsConfig.kind ===
  * 'installments'), the vendor's own Payment Terms (paymentTerms / customPaymentDays) become
@@ -107,8 +106,6 @@ function validateInstallmentsRequirePaymentTerms(paymentTermsConfig, paymentTerm
   return null;
 }
 
-module.exports = { validatePaymentTermsConfig, validateInstallmentsRequirePaymentTerms, PERCENTAGE_TOLERANCE };
-=======
 // Immediate payment terms always mean one payment due at once - whatever schedule was sent.
 const IMMEDIATE_PAYMENT_TERMS_CONFIG = Object.freeze({ kind: 'lump_sum', lumpSum: { timing: 'immediate', durationDays: 0 }, installments: [] });
 
@@ -127,5 +124,10 @@ function validateScheduleAgainstPaymentTerms(paymentTerms, customPaymentDays, co
   return null;
 }
 
-module.exports = { validatePaymentTermsConfig, validateScheduleAgainstPaymentTerms, IMMEDIATE_PAYMENT_TERMS_CONFIG, PERCENTAGE_TOLERANCE };
->>>>>>> origin/main
+module.exports = {
+  validatePaymentTermsConfig,
+  validateInstallmentsRequirePaymentTerms,
+  validateScheduleAgainstPaymentTerms,
+  IMMEDIATE_PAYMENT_TERMS_CONFIG,
+  PERCENTAGE_TOLERANCE,
+};

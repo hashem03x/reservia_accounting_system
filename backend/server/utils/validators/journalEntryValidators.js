@@ -99,14 +99,6 @@ const projectRequired = check('project').custom((value, { req }) => {
   return true;
 });
 
-<<<<<<< HEAD
-// Currency Management: the entry-level currency selector/rate override - applied to every line by
-// journalEntryCurrencyService.js, which also validates the code actually exists and is active (a
-// DB lookup, not duplicated here).
-const currencyFields = [
-  check('currency').optional({ nullable: true }).isString().trim().isLength({ min: 3, max: 3 }).withMessage('Invalid currency code'),
-  check('exchangeRate').optional({ nullable: true }).isFloat({ gt: 0 }).withMessage('Exchange rate must be a number greater than zero'),
-=======
 // Project / G&A classification (client requirement "Create Journal Entry - Project or G&A"): the
 // user chooses explicitly. 'project' needs a project (checked above); 'ga' must not have one. A
 // request with a project and no classification is a Project entry; a request with NEITHER is
@@ -138,7 +130,6 @@ const currencyValidators = [
     }),
   // Line currency fields (currency, exchangeRate, currencyDebit, currencyCredit) are always derived
   // by the server - any client value is discarded by journalEntryCurrencyService.js.
->>>>>>> origin/main
 ];
 
 const createJournalEntryValidators = [
@@ -147,11 +138,7 @@ const createJournalEntryValidators = [
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('reference').optional().isString().trim().isLength({ max: 100 }),
   projectRequired,
-<<<<<<< HEAD
-  ...currencyFields,
-=======
   classificationRule,
->>>>>>> origin/main
   check('lines').isArray({ min: 1 }).withMessage('A journal entry needs at least one line'),
   linesAreBalanced,
   ...lineValidators(),
@@ -167,13 +154,9 @@ const updateJournalEntryValidators = [
   // Existing Journal Entries": the new mandatory rule applies to new creation, not to editing a
   // pre-existing entry that may predate it.
   check('project').optional({ nullable: true }).isMongoId().withMessage('Invalid project id'),
-<<<<<<< HEAD
-  ...currencyFields,
-=======
   // The classification of an existing entry is not changed through an edit (the model refuses one
   // that contradicts the entry's project either way).
   check('classification').not().exists().withMessage('The Project / G&A classification cannot be changed after creation'),
->>>>>>> origin/main
   check('lines').optional().isArray({ min: 1 }).withMessage('A journal entry needs at least one line'),
   linesAreBalanced,
   ...lineValidators(),

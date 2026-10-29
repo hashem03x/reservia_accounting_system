@@ -5,13 +5,9 @@ const validatorMiddleware = require('../../middleware/validatorMiddleware');
 const { EGYPTIAN_IBAN_REGEX, SWIFT_CODE_REGEX, PaymentModes, WalletProviders } = require('../../models/shared/businessPartnerSchemas');
 const { isValidPhone } = require('./phoneValidator');
 const { PaymentTerms } = require('../paymentTerms');
-<<<<<<< HEAD
-const { validatePaymentTermsConfig, validateInstallmentsRequirePaymentTerms } = require('../paymentTermsConfig');
-=======
-const { validatePaymentTermsConfig, validateScheduleAgainstPaymentTerms, IMMEDIATE_PAYMENT_TERMS_CONFIG } = require('../paymentTermsConfig');
+const { validatePaymentTermsConfig, validateInstallmentsRequirePaymentTerms, validateScheduleAgainstPaymentTerms, IMMEDIATE_PAYMENT_TERMS_CONFIG } = require('../paymentTermsConfig');
 const mongoose = require('mongoose');
 const { normalizeVendorPaymentAccounts, paymentInfoFromAccounts } = require('../vendorPaymentAccounts');
->>>>>>> origin/main
 
 // Payment Terms (docs section "Payment Terms for Customers and Vendors") - optional (defaults to
 // 'Net 30' at the schema level if omitted entirely), but `customPaymentDays` is required exactly

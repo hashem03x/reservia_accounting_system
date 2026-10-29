@@ -203,8 +203,15 @@ test('6. A cancelled Sales Order is excluded entirely from the forecast', async 
 
 // ===================== Vendor outflow forecast (the spec's own worked example) =====================
 
-test('3+4. PO outflow: the spec\'s own worked example (100,000 PO, 60,000 invoiced via two invoices, 20,000 paid) -> 80,000 outstanding, split 40k dated-by-vendor-terms + 40k scheduled-unpaid', async () => {
-  const requisition = await openRequisition(100000);
+test('3+4. PO outflow: the spec\'s own worked example (100,000 PO, 60,000 invoiced via two invoices, 20,000 paid) -> 80,000 outstanding, split 40k unscheduled + 40k scheduled-unpaid', async () => {
+  // The PO's own payment-terms dating (tested separately below in 3b/3c/3d) only applies while
+  // NOTHING has been invoiced against it yet - once any invoice exists, the remainder reverts to
+  // plain unscheduled, since the invoice's own due date/schedule is what the forecast reflects
+  // from then on (never double-counted against the PO's own terms).
+  const requisition = await openRequisition(100000, {
+    issueDate: new Date('2026-01-01'),
+    paymentTerms: { mode: 'lump_sum', lumpSumDueDate: new Date('2026-01-16') },
+  });
 
   const invoice1 = await PurchaseOrder.create({
     vendorId: vendor._id,
@@ -236,16 +243,10 @@ test('3+4. PO outflow: the spec\'s own worked example (100,000 PO, 60,000 invoic
 
   const { requisitions, scheduled, unscheduled } = await forecastService.getVendorOutflowObligations({ projectIds: [project._id] });
 
-  // Phase 2 fix: the uninvoiced PO commitment (40,000) is now DATED using the vendor's own payment
-  // terms (Net 15, from the Requisition's own createdAt) instead of being left unscheduled.
-  const reqLine = scheduled.find(i => i.source === 'requisition' && i.sourceId.toString() === requisition._id.toString());
-  assert.ok(reqLine, 'the uninvoiced PO commitment must now be dated via the vendor\'s payment terms, not left unscheduled');
+  const reqLine = unscheduled.find(i => i.source === 'requisition' && i.sourceId.toString() === requisition._id.toString());
+  assert.ok(reqLine, 'the uninvoiced PO commitment (40,000) must appear as unscheduled - it has already been partially invoiced');
   assert.equal(reqLine.amount, 40000);
-  assert.ok(reqLine.date, 'must carry a computed due date');
-  const expectedDue = new Date(requisition.createdAt);
-  expectedDue.setUTCDate(expectedDue.getUTCDate() + 15); // vendor.paymentTerms === 'Net 15'
-  assert.equal(new Date(reqLine.date).toISOString().slice(0, 10), expectedDue.toISOString().slice(0, 10));
-  assert.ok(!unscheduled.some(i => i.source === 'requisition' && i.sourceId.toString() === requisition._id.toString()), 'must no longer also appear as unscheduled');
+  assert.ok(!scheduled.some(i => i.source === 'requisition' && i.sourceId.toString() === requisition._id.toString()));
 
   const inv1Line = scheduled.find(i => i.sourceId.toString() === invoice1._id.toString());
   const inv2Line = scheduled.find(i => i.sourceId.toString() === invoice2._id.toString());
@@ -254,86 +255,58 @@ test('3+4. PO outflow: the spec\'s own worked example (100,000 PO, 60,000 invoic
   assert.equal(inv2Line.amount, 35000, 'invoice2: untouched, fully remaining');
 
   const totalOutstanding = round2(reqLine.amount + inv1Line.amount + inv2Line.amount);
-  assert.equal(totalOutstanding, 80000, 'matches the spec\'s own worked example exactly - dating the PO remainder never changes the total');
+  assert.equal(totalOutstanding, 80000, 'matches the spec\'s own worked example exactly');
   assert.equal(requisitions.length, 1);
 });
 
-test('3b. PO created without any Purchase Invoice yet: the full amount is dated via the vendor\'s Net 30 terms', async () => {
-  const net30Vendor = await Vendor.create({ name: 'CF Net Thirty Vendor', contact: { phone: `011${Date.now()}${seq}`.slice(0, 11) }, paymentTerms: 'Net 30' });
-  const requisition = await Requisition.create({
-    vendorId: net30Vendor._id,
-    project: project._id,
-    items: [{ description: 'x', quantity: 1, unitPrice: 60000 }],
+test('3b. PO created without any Purchase Invoice yet, with its own lump-sum due date: the full amount is dated accordingly', async () => {
+  const requisition = await openRequisition(60000, {
+    issueDate: new Date('2026-02-01'),
+    paymentTerms: { mode: 'lump_sum', lumpSumDueDate: new Date('2026-03-03') }, // 30 days
   });
-  requisition.status = 'open';
-  await requisition.save();
 
-  const { scheduled, unscheduled } = await forecastService.getVendorOutflowObligations({ vendorId: net30Vendor._id });
+  const { scheduled, unscheduled } = await forecastService.getVendorOutflowObligations({ projectIds: [project._id] });
   const line = scheduled.find(i => i.source === 'requisition' && i.sourceId.toString() === requisition._id.toString());
   assert.ok(line, 'a brand-new, uninvoiced PO must be dated, not left unscheduled');
   assert.equal(line.amount, 60000, 'the entire PO amount - no invoice exists yet to split it');
-  const expectedDue = new Date(requisition.createdAt);
-  expectedDue.setUTCDate(expectedDue.getUTCDate() + 30);
-  assert.equal(new Date(line.date).toISOString().slice(0, 10), expectedDue.toISOString().slice(0, 10));
+  assert.equal(new Date(line.date).toISOString().slice(0, 10), '2026-03-03');
   assert.ok(!unscheduled.some(i => i.sourceId?.toString() === requisition._id.toString()));
 });
 
-test('3c. PO created without any Purchase Invoice yet, vendor on Custom terms: dated using customPaymentDays', async () => {
-  const customVendor = await Vendor.create({
-    name: 'CF Custom Vendor',
-    contact: { phone: `012${Date.now()}${seq}`.slice(0, 11) },
-    paymentTerms: 'Custom',
-    customPaymentDays: 50,
+test('3c. PO created without any Purchase Invoice yet, with Immediate payment terms: dated to the issue date itself', async () => {
+  const requisition = await openRequisition(12000, {
+    issueDate: new Date('2026-04-01'),
+    paymentTerms: { mode: 'immediate' },
   });
-  const requisition = await Requisition.create({
-    vendorId: customVendor._id,
-    project: project._id,
-    items: [{ description: 'x', quantity: 1, unitPrice: 12000 }],
-  });
-  requisition.status = 'open';
-  await requisition.save();
 
-  const { scheduled } = await forecastService.getVendorOutflowObligations({ vendorId: customVendor._id });
+  const { scheduled } = await forecastService.getVendorOutflowObligations({ projectIds: [project._id] });
   const line = scheduled.find(i => i.source === 'requisition' && i.sourceId.toString() === requisition._id.toString());
-  assert.ok(line, 'a Custom-terms vendor with a valid customPaymentDays must be dated');
-  const expectedDue = new Date(requisition.createdAt);
-  expectedDue.setUTCDate(expectedDue.getUTCDate() + 50);
-  assert.equal(new Date(line.date).toISOString().slice(0, 10), expectedDue.toISOString().slice(0, 10));
+  assert.ok(line, 'an Immediate-terms PO must be dated');
+  assert.equal(line.amount, 12000);
+  assert.equal(new Date(line.date).toISOString().slice(0, 10), '2026-04-01');
 });
 
-test('3d. PO created without any Purchase Invoice yet, vendor on Installments: one dated row per installment, amounts split by percentage, never one lump date', async () => {
-  const installmentVendor = await Vendor.create({
-    name: 'CF Installment Vendor',
-    contact: { phone: `015${Date.now()}${seq}`.slice(0, 11) },
-    paymentTermsConfig: {
-      kind: 'installments',
+test('3d. PO created without any Purchase Invoice yet, with Installment payment terms: one dated row per installment, amounts split by percentage, never one lump date', async () => {
+  const requisition = await openRequisition(10000, {
+    issueDate: new Date('2026-05-01'),
+    paymentTerms: {
+      mode: 'installments',
       installments: [
-        { durationDays: 10, percentage: 40 },
-        { durationDays: 40, percentage: 60 },
+        { description: 'First', basis: 'percentage', percentage: 40, tenorDays: 10 },
+        { description: 'Second', basis: 'percentage', percentage: 60, tenorDays: 40 },
       ],
     },
   });
-  const requisition = await Requisition.create({
-    vendorId: installmentVendor._id,
-    project: project._id,
-    items: [{ description: 'x', quantity: 1, unitPrice: 10000 }],
-  });
-  requisition.status = 'open';
-  await requisition.save();
 
-  const { scheduled, unscheduled } = await forecastService.getVendorOutflowObligations({ vendorId: installmentVendor._id });
+  const { scheduled, unscheduled } = await forecastService.getVendorOutflowObligations({ projectIds: [project._id] });
   const lines = scheduled.filter(i => i.source === 'requisition' && i.sourceId.toString() === requisition._id.toString());
   assert.equal(lines.length, 2, 'one scheduled row per installment, never one row for the whole PO');
   assert.deepEqual(lines.map(l => l.amount).sort((a, b) => a - b), [4000, 6000]);
   assert.equal(round2(lines.reduce((sum, l) => sum + l.amount, 0)), 10000, 'the installment rows must reconcile exactly to the PO amount - never duplicated or short');
   assert.ok(!unscheduled.some(i => i.sourceId?.toString() === requisition._id.toString()));
 
-  const day10 = new Date(requisition.createdAt);
-  day10.setUTCDate(day10.getUTCDate() + 10);
-  const day40 = new Date(requisition.createdAt);
-  day40.setUTCDate(day40.getUTCDate() + 40);
   const dates = lines.map(l => new Date(l.date).toISOString().slice(0, 10)).sort();
-  assert.deepEqual(dates, [day10.toISOString().slice(0, 10), day40.toISOString().slice(0, 10)].sort());
+  assert.deepEqual(dates, ['2026-05-11', '2026-06-10']); // issueDate + 10 / + 40 days
 });
 
 test('3e. PO fully invoiced: the Requisition contributes nothing at all (no stale/zero unscheduled line, no double counting)', async () => {
@@ -355,27 +328,16 @@ test('3e. PO fully invoiced: the Requisition contributes nothing at all (no stal
   assert.equal(invLine.amount, 15000);
 });
 
-test('3f. PO created, vendor has no usable payment terms (Custom with no customPaymentDays - a legacy/inconsistent record): stays unscheduled with an identifiable reason, never an invented date', async () => {
-  const brokenVendor = await Vendor.create({ name: 'CF Broken Terms Vendor', contact: { phone: `012${Date.now()}${seq}`.slice(0, 11) } });
-  // Simulate a pre-existing/legacy record whose Custom terms never got a customPaymentDays -
-  // bypassing application-level validation entirely, same technique paymentTerms.test.js uses.
-  await mongoose.connection.collection('vendors').updateOne({ _id: brokenVendor._id }, { $set: { paymentTerms: 'Custom', customPaymentDays: null } });
+test('3f. PO created with no payment terms of its own: stays unscheduled with an identifiable reason, never an invented date', async () => {
+  const requisition = await openRequisition(8000); // no paymentTerms override - defaults to null
 
-  const requisition = await Requisition.create({
-    vendorId: brokenVendor._id,
-    project: project._id,
-    items: [{ description: 'x', quantity: 1, unitPrice: 8000 }],
-  });
-  requisition.status = 'open';
-  await requisition.save();
-
-  const { scheduled, unscheduled } = await forecastService.getVendorOutflowObligations({ vendorId: brokenVendor._id });
-  assert.ok(!scheduled.some(i => i.sourceId?.toString() === requisition._id.toString()), 'must never invent a date (e.g. falling back to 0 days)');
+  const { scheduled, unscheduled } = await forecastService.getVendorOutflowObligations({ projectIds: [project._id] });
+  assert.ok(!scheduled.some(i => i.sourceId?.toString() === requisition._id.toString()), 'must never invent a date');
   const line = unscheduled.find(i => i.sourceId?.toString() === requisition._id.toString());
   assert.ok(line, 'must still appear, flagged as unscheduled');
   assert.equal(line.amount, 8000);
   assert.equal(line.date, null);
-  assert.equal(line.reason, 'vendor_missing_payment_terms', 'must be identifiable for correction');
+  assert.equal(line.reason, 'uninvoiced_po_commitment', 'must be identifiable for correction');
 });
 
 test('5. A Purchase Return (reversal) reduces both the invoice\'s remainingAmount and the linked Requisition\'s invoicedAmount - the forecast reflects the reduction with no residual/negative amount', async () => {
@@ -400,9 +362,9 @@ test('5. A Purchase Return (reversal) reduces both the invoice\'s remainingAmoun
   await mongoose.connection.collection('requisitions').updateOne({ _id: requisition._id }, { $inc: { invoicedAmount: -25000 } });
 
   const { scheduled, unscheduled } = await forecastService.getVendorOutflowObligations({ projectIds: [project._id] });
-  // Phase 2 fix: the vendor has usable payment terms (Net 15), so its reopened remainder is now
-  // dated/scheduled rather than unscheduled.
-  const reqLine = scheduled.find(i => i.source === 'requisition' && i.sourceId.toString() === requisition._id.toString());
+  // This Requisition has no payment terms of its own (openRequisition's default), so its reopened
+  // remainder stays unscheduled - this test is about the amount reconciling correctly, not dating.
+  const reqLine = unscheduled.find(i => i.source === 'requisition' && i.sourceId.toString() === requisition._id.toString());
   const invLine = scheduled.find(i => i.sourceId.toString() === invoice._id.toString());
 
   // Returned half (25,000) of the invoice's total -> invoice remaining drops to 25,000, and the
@@ -413,7 +375,7 @@ test('5. A Purchase Return (reversal) reduces both the invoice\'s remainingAmoun
   assert.ok(reqLine);
   assert.equal(reqLine.amount, 25000);
   assert.ok(reqLine.amount >= 0 && invLine.amount >= 0);
-  assert.ok(!unscheduled.some(i => i.source === 'requisition' && i.sourceId.toString() === requisition._id.toString()));
+  assert.ok(!scheduled.some(i => i.source === 'requisition' && i.sourceId.toString() === requisition._id.toString()));
 });
 
 test('6b. A cancelled Requisition (Purchase Order) is excluded entirely from the forecast', async () => {

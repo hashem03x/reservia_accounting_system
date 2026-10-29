@@ -1,14 +1,4 @@
 /**
-<<<<<<< HEAD
- * Safe initialization of the Currency master (Currency Management): creates EGP as the base
- * currency (rate 1, isBaseCurrency true, isActive true) if it does not already exist. Additive and
- * idempotent, like db:seed-sectors - never edits, deactivates or deletes an existing currency, and
- * never touches EGP if it already exists (its immutability is also enforced at the model layer -
- * see currencyModel.js - this script is just the one-time bootstrap).
- *
- * Usage:
- *   npm run db:seed-currencies            # create EGP if missing
-=======
  * Creates the EGP base currency of the Currency Manager (Accounting -> Currencies) if it does not
  * exist yet. Additive and idempotent: an existing EGP record is never edited, and no foreign
  * currency or exchange rate is invented - foreign currencies and their rates are entered by an
@@ -19,7 +9,6 @@
  *
  * Usage:
  *   npm run db:seed-currencies
->>>>>>> origin/main
  *   npm run db:seed-currencies -- --dry-run   # report only
  */
 const mongoose = require('mongoose');
@@ -31,31 +20,6 @@ async function seedCurrencies({ dryRun = process.argv.includes('--dry-run'), con
     assertDbUriConfigured();
     console.log('Connecting to database...');
     await mongoose.connect(process.env.DB_URI);
-<<<<<<< HEAD
-  }
-  const { connection } = mongoose;
-  if (connect) {
-    const dbName = assertSafeDatabaseName(connection);
-    console.log(`Connected (host: ${connection.host}, db: ${dbName}).`);
-    await assertNotLeopardDatabase(connection);
-  }
-
-  const Currency = require('../models/accounting/currencyModel'); // eslint-disable-line global-require
-  await Currency.init(); // unique indexes (code, partial base-currency) must exist before inserting
-
-  const existing = await Currency.findOne({ code: 'EGP' }).lean();
-  if (existing) {
-    console.log('EGP already exists - nothing to do.');
-    return { created: false };
-  }
-
-  console.log(dryRun ? 'Would create EGP as the base currency (rate 1).' : 'Creating EGP as the base currency (rate 1)...');
-  if (!dryRun) {
-    await Currency.create({ code: 'EGP', name: 'Egyptian Pound', symbol: 'ج.م', isBaseCurrency: true, rate: 1, isActive: true });
-  }
-  if (dryRun) console.log('\n--dry-run: no changes made.');
-  return { created: !dryRun };
-=======
     const dbName = assertSafeDatabaseName(mongoose.connection);
     console.log(`Connected (host: ${mongoose.connection.host}, db: ${dbName}).`);
     await assertNotLeopardDatabase(mongoose.connection);
@@ -78,7 +42,6 @@ async function seedCurrencies({ dryRun = process.argv.includes('--dry-run'), con
   await require('../services/accounting/currencyService').ensureBaseCurrency();
   console.log('Created the EGP base currency (rate 1).');
   return { created: true };
->>>>>>> origin/main
 }
 
 if (require.main === module) {

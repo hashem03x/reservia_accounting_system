@@ -84,7 +84,7 @@ test('createVendorValidators: installments enabled with Custom terms and a valid
     vendorFields({
       paymentTerms: 'Custom',
       customPaymentDays: 45,
-      paymentTermsConfig: { kind: 'installments', installments: [{ durationDays: 30, percentage: 100 }] },
+      paymentTermsConfig: { kind: 'installments', installments: [{ durationDays: 45, percentage: 100 }] },
     }),
   );
   assert.equal(result.isEmpty(), true, JSON.stringify(result.array()));

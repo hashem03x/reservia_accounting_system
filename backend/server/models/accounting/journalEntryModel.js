@@ -48,21 +48,6 @@ const journalLineSchema = new Schema(
     // fields mean, on purpose (see utils/exchangeRate.js's header comment for the full reasoning).
     debit: { type: Number, default: 0, min: 0 },
     credit: { type: Number, default: 0, min: 0 },
-<<<<<<< HEAD
-    // `currency` + `exchangeRate` (EGP per 1 unit of that currency - the existing convention,
-    // predates Currency Management, see utils/exchangeRate.js) together with `transactionDebit`/
-    // `transactionCredit` below record the ORIGINAL transaction-currency amount this line's EGP
-    // debit/credit was converted from - null/null/null for an EGP-only line (the default, and every
-    // line created before this feature existed). `transactionDebit`/`transactionCredit` are the one
-    // genuinely NEW field this feature adds to this schema (docs section "Journal Entry amounts" -
-    // "if the existing system does not [separately track transaction-currency amounts], implement
-    // the required fields compatibly" - debit/credit could not safely be repurposed to hold a
-    // foreign amount without corrupting every existing EGP-denominated aggregate).
-    currency: { type: String, trim: true, default: null },
-    exchangeRate: { type: Number, default: null },
-    transactionDebit: { type: Number, default: null, min: 0 },
-    transactionCredit: { type: Number, default: null, min: 0 },
-=======
     // Audit-trail only - debit/credit above always hold the local-currency (EGP) amount (every
     // existing balance/report calculation keeps assuming a single reporting currency). These two
     // fields preserve the line's original currency and rate: written by the CSV accounting import
@@ -75,7 +60,6 @@ const journalLineSchema = new Schema(
     // entries whose currency is not EGP. debit/credit above remain the EGP amounts.
     currencyDebit: { type: Number, default: null, min: 0 },
     currencyCredit: { type: Number, default: null, min: 0 },
->>>>>>> origin/main
     description: { type: String, trim: true },
     // Populated only for lines that represent unearned/deferred revenue (e.g. the Cr line of the
     // automatic project-creation entry) - see projectAccountingService.js.

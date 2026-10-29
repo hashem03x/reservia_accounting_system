@@ -9,7 +9,6 @@ const apiResponse = require('../../utils/apiResponse');
 const { getNextJournalEntryNumber } = require('../../services/accounting/journalEntryNumberService');
 const { getGeneralLedgerLines, resolveSubAccountsForEntries } = require('../../services/accounting/generalLedgerService');
 const { applyEntryProjectToLines } = require('../../services/accounting/journalEntryProjectService');
-const { applyEntryCurrencyToLines } = require('../../services/accounting/journalEntryCurrencyService');
 const { mirrorReverseEntry } = require('../../services/accounting/journalReversalCore');
 const { lineRules } = require('../../services/accounting/journalLinePartyService');
 const { logAccountingEvent, logAccountingError } = require('../../utils/accountingLogger');
@@ -20,9 +19,6 @@ const createJournalEntry = asyncHandler(async (req, res) => {
   // `project` is guaranteed either present-and-valid, or absent-and-the-user-is-authorized for a
   // "General" entry (journalEntries:createGeneral) by createJournalEntryValidators (RULE 2) by the
   // time this handler runs - never silently defaulted to null here.
-<<<<<<< HEAD
-  const { date, description, reference, project, lines, currency, exchangeRate } = req.body;
-=======
   const { date, description, reference, project, classification, lines, currency, exchangeRate } = req.body;
 
   // Transaction currency + applied rate, resolved and validated server-side (an omitted rate gets
@@ -30,13 +26,8 @@ const createJournalEntry = asyncHandler(async (req, res) => {
   // currency and are converted to EGP here - see journalEntryCurrencyService.js.
   const entryCurrency = await resolveEntryCurrency({ currency, exchangeRate, date: date || new Date() });
   const convertedLines = applyCurrencyToLines(lines || [], entryCurrency);
->>>>>>> origin/main
 
   const entryNumber = await getNextJournalEntryNumber();
-  // Currency applied before Project: each line's EGP debit/credit must be computed from its
-  // transaction-currency amount (journalEntryCurrencyService.js) before anything else touches the
-  // line - Project propagation only ever adds project/projectNumber, never reads debit/credit.
-  const currencyLines = await applyEntryCurrencyToLines({ currencyCode: currency, exchangeRate, lines: lines || [] });
   // Manual journal entries always start as a draft - posting is a separate, explicit action
   // (POST /:id/post). Any `status` sent in the body is ignored. The balance check (RULE 1) is
   // enforced unconditionally for every status by the model's own pre('save') hook - drafts are not
@@ -52,13 +43,9 @@ const createJournalEntry = asyncHandler(async (req, res) => {
     classification: classification || (project ? 'project' : null),
     // Every line gets the entry's Project and that Project's real Project Number (a client-typed
     // projectNumber is never trusted) - see journalEntryProjectService.js.
-<<<<<<< HEAD
-    lines: await applyEntryProjectToLines({ project, lines: currencyLines }),
-=======
     lines: await applyEntryProjectToLines({ project, lines: convertedLines }),
     currency: entryCurrency.code,
     currencyUnitsPerBase: entryCurrency.unitsPerBase,
->>>>>>> origin/main
     source: 'manual',
     status: 'draft',
     createdBy: req.user._id,
@@ -389,17 +376,6 @@ const updateJournalEntry = asyncHandler(async (req, res, next) => {
   if (description !== undefined) entry.description = description;
   if (reference !== undefined) entry.reference = reference;
   if (project !== undefined) entry.project = project || null;
-<<<<<<< HEAD
-  // Re-applied whenever the lines, the entry's project OR its currency/rate change, so the lines
-  // always follow the entry's current Project and currency (mirrors the project-only logic this
-  // already did, extended the same way for currency - see journalEntryCurrencyService.js).
-  if (lines !== undefined || project !== undefined || currency !== undefined || exchangeRate !== undefined) {
-    const rawLines = lines !== undefined ? lines : entry.lines.map(l => l.toObject({ depopulate: true }));
-    const currentCurrency = currency !== undefined ? currency : entry.lines[0]?.currency || null;
-    const currentRate = exchangeRate !== undefined ? exchangeRate : entry.lines[0]?.exchangeRate ?? null;
-    const currencyLines = await applyEntryCurrencyToLines({ currencyCode: currentCurrency, exchangeRate: currentRate, lines: rawLines });
-    entry.lines = await applyEntryProjectToLines({ project: entry.project, lines: currencyLines });
-=======
 
   // Currency: re-resolved (and the lines re-converted) when the currency, rate or lines change. The
   // entry's own current currency stays selectable even if it was deactivated since. A request that
@@ -424,7 +400,6 @@ const updateJournalEntry = asyncHandler(async (req, res, next) => {
   // entry's current Project (a project change on an unchanged set of lines re-stamps them too).
   if (convertedLines !== undefined || project !== undefined) {
     entry.lines = await applyEntryProjectToLines({ project: entry.project, lines: convertedLines !== undefined ? convertedLines : entry.lines.map(l => l.toObject({ depopulate: true })) });
->>>>>>> origin/main
   }
 
   await entry.save();

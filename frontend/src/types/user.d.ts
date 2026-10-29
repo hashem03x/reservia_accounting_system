@@ -63,8 +63,7 @@ export type Resource =
   | "journalEntries"
   | "advancedPayments"
   | "shareholders"
-  | "cashFlowForecast"
-  | "currencyManagement";
+  | "cashFlowForecast";
 
 export type Action = "create" | "read" | "update" | "delete";
 

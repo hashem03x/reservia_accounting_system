@@ -45,7 +45,6 @@ const paths = {
   accounts: "accounts",
   accountParentGroups: "account-parent-groups",
   journalEntries: "journal-entries",
-  currencyManagement: "currency-management",
   advancedPayments: "advanced-payments",
   shareholders: "shareholders",
   financialReports: "financial-reports",

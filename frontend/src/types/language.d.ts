@@ -83,7 +83,6 @@ export interface LanguageContextProps {
       sectors: string;
       projectManagers: string;
       cashFlowForecast: string;
-      currencyManagement: string;
     };
   };
 }

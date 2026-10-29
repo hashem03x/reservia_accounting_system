@@ -53,17 +53,6 @@ async function mirrorReverseEntry({ entryId, date, reference, reason, userId, se
             projectNumber: line.projectNumber,
             debit: line.credit,
             credit: line.debit,
-<<<<<<< HEAD
-            // Currency Management: a reversal mirrors the original line's currency/rate verbatim,
-            // with transactionDebit/transactionCredit swapped the same way debit/credit are above
-            // (a line that WAS a transaction debit becomes a transaction credit in the mirror) -
-            // otherwise reversing a foreign-currency entry would silently lose its currency
-            // annotation even though the EGP debit/credit themselves are already correctly swapped.
-            currency: line.currency ?? null,
-            exchangeRate: line.exchangeRate ?? null,
-            transactionDebit: line.transactionCredit ?? null,
-            transactionCredit: line.transactionDebit ?? null,
-=======
             // The original's currency, rate and transaction-currency amounts are mirrored too, so
             // the reversal shows the same foreign amounts (swapped) at the SAME applied rate - a
             // reversal never re-prices an entry at a newer rate.
@@ -71,7 +60,6 @@ async function mirrorReverseEntry({ entryId, date, reference, reason, userId, se
             exchangeRate: line.exchangeRate ?? null,
             currencyDebit: line.currencyCredit ?? null,
             currencyCredit: line.currencyDebit ?? null,
->>>>>>> origin/main
             description: line.description,
             unearnedRevenue: 0,
           })),
