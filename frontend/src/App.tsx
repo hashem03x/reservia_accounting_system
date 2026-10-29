@@ -8,6 +8,7 @@ import actions from "@/utils/constants/actions";
 // Routing Pages
 import Layout from "@/pages/routes/layout";
 import AdminLayout from "@/pages/routes/layout-admin";
+import CrmLayout from "@/pages/routes/layout-crm";
 import NotFound from "@/pages/routes/not-found";
 import AuthGaurd from "@/pages/routes/auth-gaurd";
 import RoleGuard from "@/pages/routes/role-guard";
@@ -107,6 +108,12 @@ import AP_Shareholders from "@/pages/admin/shareholders";
 import AP_FinancialReports from "@/pages/admin/financial-reports";
 import AP_FinancialReport from "@/pages/admin/financial-reports/[key]";
 import AP_Shareholder from "@/pages/admin/shareholders/[id]";
+
+// Reservia CRM Pages
+import Crm from "@/pages/crm";
+import CRM_Pipeline from "@/pages/crm/pipeline";
+import CRM_Leads from "@/pages/crm/leads";
+import CRM_Lead from "@/pages/crm/leads/[id]";
 
 export default function App() {
   useColorScheme();
@@ -306,6 +313,26 @@ export default function App() {
                 {/* Catch All Admin Routes */}
                 <Route path={paths.admin + "/*"} element={<NotFound />} />
               </Route>
+              </Route>
+            </Route>
+          </Route>
+
+          {/* Reservia CRM (Developer Brief) - a separate system from ERP, gated the same way
+              (staff-only RoleGuard, then SystemGuard on the "CRM" system id/active membership) but
+              with its own layout/nav (layout-crm.tsx) since the CRM's role vocabulary
+              (md/admin/sales/technical) and section count have nothing to do with the ERP's
+              resource:action permission matrix. */}
+          <Route element={<AuthGaurd requireLoggedIn={true} />}>
+            <Route element={<RoleGuard allowedRoles={[roles.admin.value, roles.moderator.value, roles.operator.value]} />}>
+              <Route element={<SystemGuard systemId="CRM" />}>
+                <Route element={<CrmLayout />}>
+                  <Route path={paths.crm} element={<Crm />}>
+                    <Route path={paths.pipeline} element={<CRM_Pipeline />} />
+                    <Route path={paths.leads} element={<CRM_Leads />} />
+                    <Route path={paths.leads + "/:id"} element={<CRM_Lead />} />
+                  </Route>
+                  <Route path={paths.crm + "/*"} element={<NotFound />} />
+                </Route>
               </Route>
             </Route>
           </Route>

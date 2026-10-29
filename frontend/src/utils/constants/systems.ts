@@ -42,7 +42,7 @@ const systems: {
       en: "Customer relationships, leads, interactions, and customer lifecycle management.",
       ar: "علاقات العملاء، العملاء المحتملين، التفاعلات، وإدارة دورة حياة العميل.",
     },
-    entryRoute: null,
+    entryRoute: `/${paths.crm}`,
   },
   {
     id: "COMMERCIAL",

@@ -32,12 +32,19 @@ exports.SYSTEMS = {
     implemented: false,
     roles: ['MEMBER'],
   },
+  // Reservia CRM (Developer Brief "Website, Amplitude and CRM") - lead-to-contract pipeline.
+  // Roles are the brief's own four: md (Managing Director - the only role that can approve >EGP 1M
+  // contracts, reopen a lost lead together with admin, and set targets), admin (admin officer -
+  // reassigns leads, reopens lost leads), sales (sales engineer - the default working role), and
+  // technical (technical engineer - restricted to moving a lead to Site survey or Proposal sent
+  // only, per utils/crm/stageRules.js). Deliberately NOT the ERP's role enum - see this file's own
+  // header comment on why the unimplemented systems never borrow ERP's vocabulary.
   CRM: {
     id: 'CRM',
     name: 'CRM',
     description: 'Customer relationships, leads, interactions, and customer lifecycle management.',
-    implemented: false,
-    roles: ['MEMBER'],
+    implemented: true,
+    roles: ['md', 'admin', 'sales', 'technical'],
   },
   COMMERCIAL: {
     id: 'COMMERCIAL',

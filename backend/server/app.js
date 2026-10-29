@@ -58,7 +58,12 @@ app.use(
 
 app.use(compression());
 app.use(cookieParser());
-app.use(express.json({ limit: '20mb' }));
+// `verify` stashes the exact raw bytes on req.rawBody - needed by the WhatsApp webhook
+// (routes/crm/whatsappRoute.js) to check Meta's HMAC payload signature, which must be computed
+// over the untouched body, not a re-serialization of the parsed JSON. Every other route ignores
+// req.rawBody; capturing it here costs one buffer reference per request and avoids mounting a
+// second, path-conditional body parser just for one webhook.
+app.use(express.json({ limit: '20mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
 morgan.token('x-forwarded-for', req => req.headers['x-forwarded-for'] || req.socket.remoteAddress);
 const morganFmt = (tokens, req, res) => {

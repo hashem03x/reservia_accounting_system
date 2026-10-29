@@ -56,6 +56,10 @@ const paths = {
   // Central Business Portal
   portal: "portal",
   platformAdmin: "platform-admin",
+  // Reservia CRM
+  crm: "crm",
+  pipeline: "pipeline",
+  leads: "leads",
 };
 
 export default paths;

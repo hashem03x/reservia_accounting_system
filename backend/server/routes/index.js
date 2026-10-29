@@ -142,6 +142,12 @@ const mountRoutes = app => {
   app.use('/api/v1/me', require('./portal/portalRoute'));
   app.use('/api/v1/admin/platform', require('./portal/platformAdminRoute'));
 
+  // Reservia CRM (Developer Brief) - leads, pipeline, activity timeline (services/crm/leadService.js).
+  app.use('/api/v1/crm/leads', require('./crm/leadRoute'));
+  app.use('/api/v1/crm/whatsapp', require('./crm/whatsappRoute'));
+  // Phase 2 (due 2026-12-10) - quotations (services/crm/quotationService.js).
+  app.use('/api/v1/crm/quotations', require('./crm/quotationRoute'));
+
   app.all('/api/v1', (req, res) => {
     res.status(200).json({ message: 'App is running 🚀' });
   });
