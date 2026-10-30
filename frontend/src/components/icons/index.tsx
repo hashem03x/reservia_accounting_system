@@ -27,6 +27,7 @@ import {
   HiOutlineDocumentText,
   HiOutlineSun,
   HiOutlineMoon,
+  HiOutlineListBullet,
 } from "react-icons/hi2";
 import {
   FaCircleExclamation,
@@ -145,6 +146,7 @@ export const outlineIcons = {
   Projects: FaBuilding,
   Accounts: IoDocumentText,
   JournalEntries: FaReceipt,
+  List: HiOutlineListBullet,
 };
 
 export const solidIcons = {
