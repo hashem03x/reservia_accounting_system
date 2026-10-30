@@ -145,6 +145,9 @@ const mountRoutes = app => {
   // Reservia CRM (Developer Brief) - leads, pipeline, activity timeline (services/crm/leadService.js).
   app.use('/api/v1/crm/leads', require('./crm/leadRoute'));
   app.use('/api/v1/crm/whatsapp', require('./crm/whatsappRoute'));
+  // Public website lead-capture (no auth; its own CORS/rate-limit/honeypot - see the route's own
+  // header comment for why this is intentionally separate from the authenticated crm/leads above).
+  app.use('/api/v1/crm/public', require('./crm/publicLeadRoute'));
   // Phase 2 (due 2026-12-10) - quotations (services/crm/quotationService.js).
   app.use('/api/v1/crm/quotations', require('./crm/quotationRoute'));
 

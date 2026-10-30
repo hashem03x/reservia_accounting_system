@@ -43,6 +43,8 @@ const leadSchema = new Schema(
     // channel (e.g. a later WhatsApp message on the same phone keeps the website's own first-touch
     // campaign, matching the reference sample's `intake()`, which only sets these on a brand-new
     // lead).
+    utmSource: { type: String, trim: true, maxlength: 150, default: null },
+    utmMedium: { type: String, trim: true, maxlength: 150, default: null },
     utmCampaign: { type: String, trim: true, maxlength: 150, default: null },
     landingPage: { type: String, trim: true, maxlength: 300, default: null },
 
@@ -64,7 +66,13 @@ const leadSchema = new Schema(
     firstReplyAt: { type: Date, default: null },
 
     // Amplitude correlation id (brief section 4H: "safe, pseudonymous identifiers... only") - a
-    // random, non-personal device id generated once per lead, never derived from the phone/name.
+    // random, non-personal device id. For a website-originated lead this IS the visitor's own
+    // Amplitude Browser SDK device id (sent by the website - see
+    // services/crm/leadService.js#intakeLead's `ampDeviceId` input), so the CRM's own
+    // `crm_lead_created` event and the website's `page_view`/`quote_form_submitted` events
+    // correlate as the same Amplitude user without any PII changing hands. For every other
+    // channel (manual entry, WhatsApp, CSV import) there is no website visit to correlate with,
+    // so one is generated fresh per lead instead.
     ampDeviceId: { type: String, required: true },
 
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },

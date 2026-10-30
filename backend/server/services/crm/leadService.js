@@ -24,6 +24,17 @@ const SLA_WORKING_HOURS = 8;
 /** A random, non-personal id for Amplitude correlation - never derived from phone/name/email. */
 const newAmpDeviceId = () => crypto.randomUUID();
 
+// A website-supplied Amplitude device id is just a correlation token, never trusted as an
+// identity/auth value - but it IS stored and later replayed back to Amplitude as `device_id`
+// (amplitudeService.js), so it is shape-checked rather than accepted as arbitrary attacker input:
+// plain alphanumeric/hyphen/underscore/dot, a sane length. Anything else (empty, too long, or
+// containing characters that have no business in a device id) falls back to a fresh random one -
+// the correlation is simply lost for that one lead, never an error the visitor sees.
+const AMP_DEVICE_ID_PATTERN = /^[A-Za-z0-9._-]{8,100}$/;
+function resolveAmpDeviceId(candidate) {
+  return typeof candidate === 'string' && AMP_DEVICE_ID_PATTERN.test(candidate) ? candidate : newAmpDeviceId();
+}
+
 function shapeLead(lead) {
   if (!lead) return null;
   const obj = typeof lead.toObject === 'function' ? lead.toObject() : lead;
@@ -80,10 +91,12 @@ async function intakeLead(input, { userId = null } = {}) {
             systemSizeKwp: input.systemSizeKwp ?? null,
             valueEgp: input.valueEgp ?? null,
             owner: input.owner || userId || null,
+            utmSource: input.utmSource || null,
+            utmMedium: input.utmMedium || null,
             utmCampaign: input.utmCampaign || null,
             landingPage: input.landingPage || null,
             replyDueAt: addWorkingHours(now, SLA_WORKING_HOURS),
-            ampDeviceId: newAmpDeviceId(),
+            ampDeviceId: resolveAmpDeviceId(input.ampDeviceId),
             createdBy: userId,
           },
         ],
