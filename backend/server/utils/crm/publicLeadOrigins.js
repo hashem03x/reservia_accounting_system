@@ -12,7 +12,12 @@
 // (reserviawebsite.vercel.app -> https://reservia-energy.com) plus its apex/www variants and
 // local dev, so the endpoint works out of the box without requiring the env var to be set first -
 // override it if the real production domain ever changes.
+// Exported on its own (not just used internally) so app.js's SEPARATE, credentialed global CORS
+// policy can allow the same two real domains for the authenticated API without being coupled to
+// WEBSITE_ALLOWED_ORIGINS below - that env var is scoped to this public, uncredentialed route
+// only; overriding it must never silently also change what can make cookie-bearing requests.
 const DEFAULT_ORIGINS = ['https://reservia-energy.com', 'https://www.reservia-energy.com'];
+exports.WEBSITE_PRODUCTION_ORIGINS = DEFAULT_ORIGINS;
 const DEV_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
 
 function parseConfiguredOrigins() {

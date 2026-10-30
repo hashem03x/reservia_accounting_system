@@ -21,6 +21,7 @@ const ApiError = require('./utils/apiError');
 const globalError = require('./middleware/errorMiddleware');
 const ensureDbConnected = require('./middleware/ensureDbConnected');
 const mountRoutes = require('./routes');
+const { WEBSITE_PRODUCTION_ORIGINS } = require('./utils/crm/publicLeadOrigins');
 
 console.log('[STARTUP] Building Express application...');
 
@@ -32,9 +33,20 @@ console.log('[STARTUP] Building Express application...');
 // FRONTEND_URL is the one production origin that must be allowed; local dev origins are added
 // unconditionally since they only ever originate from a developer's own machine.
 // 5173 = the Vite dev server (frontend/vite.config.ts), reachable as localhost or 127.0.0.1.
+//
+// The real reservia-energy.com marketing website (apex + www - utils/crm/publicLeadOrigins.js's
+// own WEBSITE_PRODUCTION_ORIGINS, so the two CORS boundaries never list that domain differently)
+// is ALSO allowed here, on top of FRONTEND_URL: its own quote form calls the CRM's authenticated
+// /api/v1/crm/leads with an `Idempotency-Key` header (see leadRoute.js), and a disallowed origin
+// fails the browser's preflight before the request ever reaches that route's own auth check.
+// Allowing the origin only lets the preflight succeed and, if the site's own fetch ever opts in
+// with `credentials: 'include'`, lets the browser attach cookies - it does NOT grant access by
+// itself; requireCrmAccess/authController.protect still reject any request without a valid staff
+// session exactly as before. This is a deliberate, informed trust decision for Reservia's own
+// first-party domain, not a wildcard.
 const DEV_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'];
 const productionOrigin = process.env.FRONTEND_URL?.replace(/\/$/, ''); // trailing slash would never match a real Origin header
-const allowedOrigins = [...(productionOrigin ? [productionOrigin] : []), ...DEV_ORIGINS];
+const allowedOrigins = [...(productionOrigin ? [productionOrigin] : []), ...WEBSITE_PRODUCTION_ORIGINS, ...DEV_ORIGINS];
 
 console.log(`[STARTUP] CORS allowed origins: ${allowedOrigins.join(', ')}${productionOrigin ? '' : ' (FRONTEND_URL is not set - production frontend origin will be REJECTED)'}`);
 
@@ -51,7 +63,11 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    // Idempotency-Key: the website's quote form sends this (src/services/leadService.ts) so a
+    // retried submission is never processed twice - must be explicitly allowed, exactly like
+    // Content-Type/Authorization, or the browser blocks the request at the preflight stage before
+    // it ever reaches the server.
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
     exposedHeaders: ['set-cookie', 'Content-Disposition'],
   })
 );
