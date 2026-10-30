@@ -45,10 +45,20 @@ console.log('[STARTUP] Building Express application...');
 // session exactly as before. This is a deliberate, informed trust decision for Reservia's own
 // first-party domain, not a wildcard.
 const DEV_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'];
-const productionOrigin = process.env.FRONTEND_URL?.replace(/\/$/, ''); // trailing slash would never match a real Origin header
-const allowedOrigins = [...(productionOrigin ? [productionOrigin] : []), ...WEBSITE_PRODUCTION_ORIGINS, ...DEV_ORIGINS];
+// Falls back to the real, known Central Portal (ERP/CRM) frontend domain when FRONTEND_URL isn't
+// set in the deployment's own environment variables - mirrors WEBSITE_PRODUCTION_ORIGINS' own
+// "work correctly out of the box, override only if the real domain changes" reasoning, so a
+// missing/misconfigured env var (e.g. PROD_URL being set instead, which is a wholly unrelated
+// variable - see controller/inventory/productController.js, used for product/brand image URLs,
+// not CORS) can no longer silently lock the ERP/CRM frontend itself out of its own API. An
+// explicit FRONTEND_URL still always wins.
+const DEFAULT_FRONTEND_ORIGIN = 'https://reserviafrontend.vercel.app';
+const productionOrigin = (process.env.FRONTEND_URL?.replace(/\/$/, '')) || DEFAULT_FRONTEND_ORIGIN;
+const allowedOrigins = [productionOrigin, ...WEBSITE_PRODUCTION_ORIGINS, ...DEV_ORIGINS];
 
-console.log(`[STARTUP] CORS allowed origins: ${allowedOrigins.join(', ')}${productionOrigin ? '' : ' (FRONTEND_URL is not set - production frontend origin will be REJECTED)'}`);
+console.log(
+  `[STARTUP] CORS allowed origins: ${allowedOrigins.join(', ')}${process.env.FRONTEND_URL ? '' : ` (FRONTEND_URL is not set - defaulting the ERP/CRM frontend origin to ${DEFAULT_FRONTEND_ORIGIN})`}`
+);
 
 const app = express();
 

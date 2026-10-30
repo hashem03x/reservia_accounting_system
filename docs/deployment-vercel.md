@@ -114,17 +114,30 @@ pattern used for MongoDB-on-serverless generally. Cold starts still pay the conn
 the previous behavior) and not `'*'`:
 
 ```js
-const allowedOrigins = [FRONTEND_URL, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'];
+const allowedOrigins = [FRONTEND_URL /* or its built-in default */, ...WEBSITE_PRODUCTION_ORIGINS, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'];
 ```
 
 This matters because auth uses cross-site cookies (`sameSite: 'none'`, `secure: true` in
 production - see `server/utils/cookieOptions.js`), so `credentials: true` is genuinely required -
 but combining `credentials: true` with "allow any origin" (whether via `origin: true` or `'*'`)
 would let any website make authenticated, cookie-bearing requests on behalf of a logged-in user.
-The allow-list closes that gap. **`FRONTEND_URL` must be set to `https://reserviafrontend.vercel.app`
-(no trailing slash) in the Vercel project's environment variables** - without it, the app still
-boots and serves `/` and `/api/v1/health`, but every cross-origin request from the real frontend
-will be correctly rejected (verified locally - see below).
+The allow-list closes that gap. **`FRONTEND_URL` should still be set to
+`https://reserviafrontend.vercel.app` (no trailing slash) in the Vercel project's environment
+variables** - but as of the fix below, it no longer HAS to be: if it's unset (or the deployment's
+env vars accidentally set an unrelated variable instead, e.g. `PROD_URL` - that one only builds
+product/brand image URLs in `controller/inventory/productController.js`, nothing to do with CORS),
+`app.js` falls back to that same real `reserviafrontend.vercel.app` origin by default, so the
+ERP/CRM frontend's own requests are never silently rejected just because this one env var was
+missed. An explicit `FRONTEND_URL` still always takes precedence over the default.
+
+The real public marketing website (`https://reservia-energy.com` and `https://www.reservia-energy.com`
+- `utils/crm/publicLeadOrigins.js`'s `WEBSITE_PRODUCTION_ORIGINS`) is also in this allow-list
+unconditionally, so its own `Idempotency-Key`-bearing quote-form requests to the authenticated
+`/api/v1/crm/leads` preflight successfully; `requireCrmAccess`/`authController.protect` still
+reject the actual request without a valid staff session exactly as before - allowing the origin
+only lets the preflight through, it does not grant access. (The website's own PUBLIC lead
+endpoint, `/api/v1/crm/public/leads`, is unauthenticated by design and has its own, separate,
+non-credentialed CORS policy - see `routes/crm/publicLeadRoute.js`.)
 
 ## Local verification actually performed
 
