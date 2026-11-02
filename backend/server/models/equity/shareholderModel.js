@@ -1,5 +1,6 @@
 const { Schema, model } = require('mongoose');
 const { getNextShareholderNumber } = require('../../services/equity/shareholderNumberService');
+const { isValidEgyptianNationalId } = require('../../utils/egyptianNationalId');
 // Explicit require (not just the string `ref:` name) - the hooks below look it up.
 require('../accounting/chartOfAccountModel');
 
@@ -14,6 +15,12 @@ const contributionSchema = new Schema(
     journalEntry: { type: Schema.Types.ObjectId, ref: 'JournalEntry', required: true },
     reference: { type: String, trim: true },
     notes: { type: String, trim: true },
+    // The "Add Payment" dialog generates one key per open (not per click) - a retried/double-click
+    // submission carries the SAME key, which services/equity/shareholderService.js#addContribution
+    // checks against this shareholder's own contributions before creating anything new, so a
+    // network retry or a double-click can never post the same payment twice. Optional (legacy
+    // contributions, and any created without a client-supplied key, simply aren't deduped this way).
+    idempotencyKey: { type: String, trim: true, maxlength: 100, default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
@@ -21,7 +28,15 @@ const contributionSchema = new Schema(
 
 const shareholderSchema = new Schema(
   {
+    // The shareholder's English/primary name - already used as-is throughout the app (journal
+    // entry descriptions, the shareholders list/detail pages) long before an Arabic name existed,
+    // so it stays the one required name field rather than being renamed. `nameAr` below is
+    // additive, OPTIONAL at the schema level (existing shareholders predate it) - new creations
+    // are required to send it by the API validator layer (utils/validators/shareholderValidators.js),
+    // which is where "required going forward, without invalidating history" belongs.
     name: { type: String, required: [true, 'Shareholder name is required'], trim: true },
+    nameAr: { type: String, trim: true, maxlength: 200, default: null },
+    address: { type: String, trim: true, maxlength: 500, default: null },
     // Sub Account of the shareholder's equity entries - assigned on creation, never changed.
     shareholderNumber: { type: Number, unique: true, sparse: true, immutable: true },
     ownershipPercentage: {
@@ -38,6 +53,14 @@ const shareholderSchema = new Schema(
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
     phone: { type: String, trim: true },
     email: { type: String, trim: true, lowercase: true },
+    // Optional at the schema level (legacy records), format-checked and unique whenever present -
+    // see the pre('validate') hook below for both. No `default` on purpose: the sparse unique
+    // index below only excludes documents where the field is genuinely ABSENT, not ones explicitly
+    // set to `null` - a `default: null` would make every shareholder without a National ID
+    // collide on that same stored null (see activityModel.js's whatsappMessageId for the same
+    // gotcha, and userModel.js's own partialFilterExpression comment for the general pattern).
+    // utils/egyptianNationalId.js's own header comment explains exactly what "valid" does and does
+    // not check here.
     nationalId: { type: String, trim: true },
     notes: { type: String, trim: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -46,6 +69,10 @@ const shareholderSchema = new Schema(
 );
 
 shareholderSchema.index({ status: 1 });
+// A real National ID identifies one person - never two shareholder rows. Sparse: many legacy rows
+// (and any shareholder who simply hasn't supplied one yet) have no nationalId at all, and those
+// must never collide with each other on this index.
+shareholderSchema.index({ nationalId: 1 }, { unique: true, sparse: true });
 
 // Active shareholders can never own more than 100% together.
 shareholderSchema.pre('validate', async function (next) {
@@ -64,6 +91,9 @@ shareholderSchema.pre('validate', async function (next) {
       if (!account || account.isActive === false || account.type !== 'equity') {
         return next(new Error('The equity account must be an active Chart of Accounts equity account.'));
       }
+    }
+    if (this.nationalId && this.isModified('nationalId') && !isValidEgyptianNationalId(this.nationalId)) {
+      return next(new Error('National ID must be a valid 14-digit Egyptian National ID.'));
     }
     next();
   } catch (err) {

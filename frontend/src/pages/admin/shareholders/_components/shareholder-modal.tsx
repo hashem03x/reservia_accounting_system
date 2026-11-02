@@ -30,6 +30,8 @@ export default function ShareholderModal({
   const isEdit = !!shareholder;
 
   const [name, setName] = useState("");
+  const [nameAr, setNameAr] = useState("");
+  const [address, setAddress] = useState("");
   const [ownershipPercentage, setOwnershipPercentage] = useState<string | number>("");
   const [equityAccount, setEquityAccount] = useState("");
   const [status, setStatus] = useState<ShareholderStatus>("active");
@@ -47,6 +49,8 @@ export default function ShareholderModal({
   useEffect(() => {
     if (!opened) return;
     setName(shareholder?.name || "");
+    setNameAr(shareholder?.nameAr || "");
+    setAddress(shareholder?.address || "");
     setOwnershipPercentage(shareholder?.ownershipPercentage ?? "");
     setEquityAccount(shareholder?.equityAccount?._id || "");
     setStatus(shareholder?.status || "active");
@@ -66,6 +70,8 @@ export default function ShareholderModal({
     handleRequest(language, setLoading, setError, async () => {
       const data = {
         name,
+        nameAr,
+        address,
         ownershipPercentage,
         equityAccount,
         status,
@@ -73,7 +79,7 @@ export default function ShareholderModal({
         email,
         nationalId,
         notes,
-        ...(!isEdit && withContribution ? { contribution: { amount, paymentAccount, date: date ? toDateOnly(date) : undefined } } : {}),
+        ...(!isEdit && withContribution ? { contribution: { amount, paymentAccount, date: date ? toDateOnly(date) : undefined, idempotencyKey: crypto.randomUUID() } } : {}),
       };
       const res = await privateRequest({ language, method: isEdit ? "PATCH" : "POST", url: isEdit ? `shareholders/${shareholder._id}` : "shareholders", data });
       onSaved(res.data);
@@ -81,14 +87,28 @@ export default function ShareholderModal({
     });
   }
 
+  // Full client-side National ID checksum validation isn't attempted (the backend's own comment
+  // on this explains why - no publicly-published check-digit algorithm); this is just the same
+  // length/shape pre-check as a quick form-level signal before the backend's real validation runs.
+  const nationalIdLooksValid = /^[23]\d{13}$/.test(nationalId.trim());
   const pct = typeof ownershipPercentage === "number" ? ownershipPercentage : -1;
-  const canSubmit = !!name && pct >= 0 && pct <= 100 && !!equityAccount && (!withContribution || (typeof amount === "number" && amount > 0 && !!paymentAccount));
+  const canSubmit =
+    !!name &&
+    (isEdit || (!!nameAr && !!address && nationalIdLooksValid)) &&
+    pct > 0 &&
+    pct <= 100 &&
+    !!equityAccount &&
+    (!withContribution || (typeof amount === "number" && amount > 0 && !!paymentAccount));
 
   return (
     <Modal opened={opened} onClose={close} title={isEdit ? translate("Edit Shareholder", "تعديل المساهم") : translate("Add Shareholder", "إضافة مساهم")} size="lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {error && <ErrorAlert error={error} />}
-        <TextInput label={translate("Name", "الاسم")} value={name} onChange={(e) => setName(e.target.value)} required />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <TextInput label={translate("Full Name (English)", "الاسم بالكامل (إنجليزي)")} value={name} onChange={(e) => setName(e.target.value)} required />
+          <TextInput label={translate("Full Name (Arabic)", "الاسم بالكامل (عربي)")} value={nameAr} onChange={(e) => setNameAr(e.target.value)} dir="rtl" required={!isEdit} />
+        </div>
+        <TextInput label={translate("Address", "العنوان")} value={address} onChange={(e) => setAddress(e.target.value)} required={!isEdit} />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <NumberInput
             label={translate("Ownership %", "نسبة الملكية %")}
@@ -123,7 +143,13 @@ export default function ShareholderModal({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <TextInput label={translate("Phone", "الهاتف")} value={phone} onChange={(e) => setPhone(e.target.value)} />
           <TextInput label={translate("Email", "البريد الإلكتروني")} value={email} onChange={(e) => setEmail(e.target.value)} />
-          <TextInput label={translate("National ID", "الرقم القومي")} value={nationalId} onChange={(e) => setNationalId(e.target.value)} />
+          <TextInput
+            label={translate("National ID", "الرقم القومي")}
+            value={nationalId}
+            onChange={(e) => setNationalId(e.target.value)}
+            error={nationalId && !nationalIdLooksValid ? translate("Must be a 14-digit Egyptian National ID", "يجب أن يكون رقمًا قوميًا مصريًا من 14 رقمًا") : undefined}
+            required={!isEdit}
+          />
         </div>
         <Textarea label={translate("Notes", "ملاحظات")} value={notes} onChange={(e) => setNotes(e.target.value)} autosize minRows={2} />
 

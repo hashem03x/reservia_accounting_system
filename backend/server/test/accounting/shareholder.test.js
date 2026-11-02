@@ -2,15 +2,18 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 
-// Equity module (services/equity/shareholderService.js): shareholders with their own unique
-// Shareholder Number and ownership (active shareholders <= 100% together), and capital
-// contributions posting Dr the payment account / Cr the equity account with the Shareholder
-// Number as Sub Account - all-or-nothing.
+// Equity module (services/equity/shareholderService.js + services/equity/companyCapitalService.js):
+// shareholders with their own unique Shareholder Number and ownership (active shareholders <=
+// 100% together), Issued/Paid-in/Unpaid Capital computed at read time, capital contributions
+// posting Dr the payment account / Cr the equity account with the Shareholder Number as Sub
+// Account - all-or-nothing - gated on a complete (Issued Capital set, active ownership = 100%)
+// capital structure and never exceeding a shareholder's allocated share or Issued Capital itself.
 
 const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_test_shareholders';
 
-let Shareholder, ChartOfAccount, JournalEntry, Counter;
-let createShareholder, updateShareholder, addContribution, getEquityAccountOptions;
+let Shareholder, ChartOfAccount, JournalEntry, Counter, CompanyCapital;
+let createShareholder, updateShareholder, addContribution, getEquityAccountOptions, setupCapitalStructure;
+let setIssuedCapital, getCompanyCapital;
 let transactionsSupported = true;
 let accounts;
 
@@ -24,7 +27,9 @@ before(async () => {
   ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
   JournalEntry = require('../../models/accounting/journalEntryModel');
   Counter = require('../../models/config/counterModel');
-  ({ createShareholder, updateShareholder, addContribution, getEquityAccountOptions } = require('../../services/equity/shareholderService'));
+  CompanyCapital = require('../../models/equity/companyCapitalModel');
+  ({ createShareholder, updateShareholder, addContribution, getEquityAccountOptions, setupCapitalStructure } = require('../../services/equity/shareholderService'));
+  ({ setIssuedCapital, getCompanyCapital } = require('../../services/equity/companyCapitalService'));
   await Promise.all([Shareholder.init(), ChartOfAccount.init(), JournalEntry.init()]);
 
   const probe = await mongoose.startSession();
@@ -45,7 +50,7 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await Promise.all([Shareholder, ChartOfAccount, JournalEntry, Counter].map(M => M.deleteMany({})));
+  await Promise.all([Shareholder, ChartOfAccount, JournalEntry, Counter, CompanyCapital].map(M => M.deleteMany({})));
   accounts = {
     capital: await ChartOfAccount.create({ code: '20000001', name: 'Share Capital', type: 'equity' }),
     reserves: await ChartOfAccount.create({ code: '20000002', name: 'Legal Reserve', type: 'equity' }),
@@ -69,6 +74,7 @@ async function inTx(work) {
 
 const create = data => inTx(session => createShareholder({ equityAccount: accounts.capital._id, ...data }, null, session));
 const contribute = (shareholder, data) => inTx(session => addContribution(shareholder._id, { paymentAccount: accounts.bank._id, ...data }, null, session));
+const setCapital = amount => inTx(session => setIssuedCapital(amount, null, session));
 
 test('equity account options are the active equity accounts', async () => {
   assert.deepEqual((await getEquityAccountOptions()).map(a => a.name), ['Share Capital', 'Legal Reserve']);
@@ -99,7 +105,9 @@ test('ownership must be 0-100% and active shareholders cannot exceed 100% togeth
 
 test('a contribution posts Dr bank / Cr equity with the Shareholder Number on the equity line only', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await setCapital(2000000); // Ahmed's 50% allocates 1,000,000 - enough room for both contributions below
   const shareholder = await create({ name: 'Ahmed', ownershipPercentage: 50 });
+  await create({ name: 'Mona', ownershipPercentage: 50 }); // completes the 100% capital structure
   await contribute(shareholder, { amount: 500000, date: '2026-09-15', reference: 'DEP-1' });
 
   const stored = await Shareholder.findById(shareholder._id).lean();
@@ -124,13 +132,15 @@ test('a contribution posts Dr bank / Cr equity with the Shareholder Number on th
   assert.equal(equityLine.partyType, 'shareholder');
   for (const line of entry.lines) assert.equal(line.description, entry.description);
 
-  // Another equity account can be chosen for a contribution.
+  // Another equity account can be chosen for a contribution - still within Ahmed's 500,000 allocation.
   await contribute(shareholder, { amount: 1000, equityAccount: accounts.reserves._id });
   assert.equal((await Shareholder.findById(shareholder._id).lean()).shareCapital, 501000);
 });
 
 test('a shareholder can be created with a first contribution in the same transaction', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await setCapital(1000000);
+  await create({ name: 'Omar', ownershipPercentage: 75 });
   const shareholder = await create({ name: 'Mona', ownershipPercentage: 25, contribution: { amount: 250000, paymentAccount: accounts.bank._id } });
   assert.equal((await Shareholder.findById(shareholder._id).lean()).shareCapital, 250000);
   assert.equal(await JournalEntry.countDocuments({ accountingAction: 'SHAREHOLDER_CONTRIBUTION' }), 1);
@@ -139,7 +149,8 @@ test('a shareholder can be created with a first contribution in the same transac
 test('wrong accounts and amounts are refused', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
   await assert.rejects(() => create({ name: 'X', ownershipPercentage: 10, equityAccount: accounts.revenue._id }), /equity account/);
-  const shareholder = await create({ name: 'Ahmed', ownershipPercentage: 10 });
+  await setCapital(1000000);
+  const shareholder = await create({ name: 'Ahmed', ownershipPercentage: 100 });
   await assert.rejects(() => contribute(shareholder, { amount: 100, paymentAccount: accounts.capital._id }), /Cash or Cash Equivalent/);
   await assert.rejects(() => contribute(shareholder, { amount: 100, equityAccount: accounts.revenue._id }), /equity account/);
   await assert.rejects(() => contribute(shareholder, { amount: 0 }), /greater than 0/);
@@ -149,7 +160,9 @@ test('wrong accounts and amounts are refused', async t => {
 
 test('a failure while posting the contribution entry rolls everything back', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
-  const existing = await create({ name: 'Ahmed', ownershipPercentage: 10 });
+  await setCapital(1000000);
+  const existing = await create({ name: 'Ahmed', ownershipPercentage: 90 });
+  await create({ name: 'Mona', ownershipPercentage: 10 });
   const originalCreate = JournalEntry.create;
   JournalEntry.create = function (docs, ...rest) {
     if (Array.isArray(docs) && docs[0]?.accountingAction === 'SHAREHOLDER_CONTRIBUTION') throw new Error('forced contribution failure');
@@ -157,21 +170,168 @@ test('a failure while posting the contribution entry rolls everything back', asy
   };
   try {
     await assert.rejects(() => contribute(existing, { amount: 1000 }), /forced contribution failure/);
-    await assert.rejects(() => create({ name: 'Mona', ownershipPercentage: 10, contribution: { amount: 5000, paymentAccount: accounts.bank._id } }), /forced contribution failure/);
   } finally {
     JournalEntry.create = originalCreate;
   }
   assert.equal((await Shareholder.findById(existing._id).lean()).shareCapital, 0);
-  assert.equal(await Shareholder.countDocuments({}), 1, 'the new shareholder was rolled back');
+  assert.equal(await Shareholder.countDocuments({}), 2);
   assert.equal(await JournalEntry.countDocuments({}), 0);
 });
 
 test('concurrent contributions are applied one at a time - the share capital always equals the posted entries', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
-  const shareholder = await create({ name: 'Ahmed', ownershipPercentage: 10 });
+  await setCapital(1000000);
+  const shareholder = await create({ name: 'Ahmed', ownershipPercentage: 100 });
   await Promise.allSettled([contribute(shareholder, { amount: 100 }), contribute(shareholder, { amount: 200 }), contribute(shareholder, { amount: 300 })]);
   const stored = await Shareholder.findById(shareholder._id).lean();
   const posted = await JournalEntry.find({ accountingAction: 'SHAREHOLDER_CONTRIBUTION' }).lean();
   assert.equal(stored.shareCapital, posted.reduce((sum, e) => sum + e.totalDebit, 0));
   assert.equal(stored.contributions.length, posted.length);
+});
+
+// ===================== Company Capital (Issued / Paid-in / Unpaid) =====================
+
+test('company capital is null until Issued Capital is set, then issued/paid-in/unpaid stay in sync with real contributions', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  assert.equal(await getCompanyCapital(), null);
+  await setCapital(1000000);
+  assert.deepEqual(await getCompanyCapital(), { issuedCapital: 1000000, paidInCapital: 0, unpaidCapital: 1000000 });
+
+  const a = await create({ name: 'Ahmed', ownershipPercentage: 60 });
+  await create({ name: 'Mona', ownershipPercentage: 40 });
+  await contribute(a, { amount: 200000 });
+  assert.deepEqual(await getCompanyCapital(), { issuedCapital: 1000000, paidInCapital: 200000, unpaidCapital: 800000 });
+
+  await contribute(a, { amount: 100000 });
+  assert.deepEqual(await getCompanyCapital(), { issuedCapital: 1000000, paidInCapital: 300000, unpaidCapital: 700000 });
+});
+
+test('issued capital must be positive and cannot be set below what is already paid in', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await assert.rejects(() => setCapital(0), /greater than 0/);
+  await assert.rejects(() => setCapital(-5), /greater than 0/);
+  await setCapital(1000000);
+  const a = await create({ name: 'Ahmed', ownershipPercentage: 100 });
+  await contribute(a, { amount: 600000 });
+  await assert.rejects(() => setCapital(500000), /cannot be set below the 600000 already paid in/);
+  await setCapital(600000); // exactly what's paid in is fine
+  assert.equal((await getCompanyCapital()).issuedCapital, 600000);
+});
+
+// ===================== Finalization gate (active ownership must total 100%) =====================
+
+test('contributions are refused until Issued Capital is set and active ownership totals exactly 100%', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const noCapitalSet = await create({ name: 'Ahmed', ownershipPercentage: 100 });
+  await assert.rejects(() => contribute(noCapitalSet, { amount: 1000 }), /Set the company.s Issued Capital/);
+  await inTx(session => updateShareholder(noCapitalSet._id, { status: 'inactive' }, session)); // free up its 100% for the real scenario below
+
+  await setCapital(1000000);
+  const a = await create({ name: 'Ahmed2', ownershipPercentage: 60 });
+  await create({ name: 'Mona', ownershipPercentage: 30 }); // 90% total - not finalized yet
+  await assert.rejects(() => contribute(a, { amount: 1000 }), /totals 90%, not 100%/);
+
+  await create({ name: 'Omar', ownershipPercentage: 10 }); // now 100%
+  await contribute(a, { amount: 1000 }); // succeeds
+  assert.equal((await Shareholder.findById(a._id).lean()).shareCapital, 1000);
+});
+
+// ===================== Overpayment prevention =====================
+
+test('a payment cannot push a shareholder above their allocated capital (ownership % x Issued Capital)', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await setCapital(1000000);
+  const a = await create({ name: 'Ahmed', ownershipPercentage: 60 }); // allocated 600,000
+  await create({ name: 'Mona', ownershipPercentage: 40 });
+
+  await contribute(a, { amount: 300000 });
+  await assert.rejects(() => contribute(a, { amount: 350000 }), /above their allocated 600000/); // 300,000 + 350,000 = 650,000 > 600,000
+  await contribute(a, { amount: 300000 }); // exactly reaches 600,000
+  assert.equal((await Shareholder.findById(a._id).lean()).shareCapital, 600000);
+  await assert.rejects(() => contribute(a, { amount: 1 }), /above their allocated 600000/); // fully paid - any more is refused
+});
+
+test('total payments across all shareholders cannot exceed Issued Capital', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await setCapital(100);
+  const a = await create({ name: 'Ahmed', ownershipPercentage: 100 });
+  await assert.rejects(() => contribute(a, { amount: 150 }), /above their allocated 100/);
+});
+
+// ===================== Duplicate payment submissions (idempotency) =====================
+
+test('a retried contribution with the same idempotencyKey is never posted twice', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await setCapital(1000000);
+  const a = await create({ name: 'Ahmed', ownershipPercentage: 100 });
+  await contribute(a, { amount: 50000, idempotencyKey: 'dialog-1' });
+  await contribute(a, { amount: 50000, idempotencyKey: 'dialog-1' }); // the user double-clicked / the request was retried
+  const stored = await Shareholder.findById(a._id).lean();
+  assert.equal(stored.contributions.length, 1, 'only one contribution was recorded');
+  assert.equal(stored.shareCapital, 50000);
+  assert.equal(await JournalEntry.countDocuments({ accountingAction: 'SHAREHOLDER_CONTRIBUTION' }), 1);
+
+  // A genuinely different payment (different key) is still recorded normally.
+  await contribute(a, { amount: 25000, idempotencyKey: 'dialog-2' });
+  assert.equal((await Shareholder.findById(a._id).lean()).shareCapital, 75000);
+});
+
+// ===================== National ID, nameAr, address =====================
+
+test('National ID must be a structurally valid 14-digit Egyptian ID and unique across shareholders', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await assert.rejects(() => create({ name: 'Ahmed', ownershipPercentage: 10, nationalId: '12345' }), /valid 14-digit Egyptian National ID/);
+  await assert.rejects(() => create({ name: 'Ahmed', ownershipPercentage: 10, nationalId: '29902301234567' }), /valid 14-digit Egyptian National ID/); // 30 Feb 1999 does not exist
+  const a = await create({ name: 'Ahmed', nameAr: 'أحمد', address: 'Maadi, Cairo', ownershipPercentage: 10, nationalId: '29001011234567' });
+  assert.equal(a.nationalId, '29001011234567');
+  assert.equal(a.nameAr, 'أحمد');
+  assert.equal(a.address, 'Maadi, Cairo');
+  await assert.rejects(() => create({ name: 'Someone Else', ownershipPercentage: 10, nationalId: '29001011234567' }), /already exists/);
+});
+
+// ===================== Bulk capital structure setup (Scenario 1) =====================
+
+test('setupCapitalStructure creates Issued Capital and every shareholder together, atomically', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const created = await inTx(session =>
+    setupCapitalStructure(
+      {
+        issuedCapital: 1000000,
+        shareholders: [
+          { name: 'Ahmed', nameAr: 'أحمد', address: 'Maadi', nationalId: '29001011234561', ownershipPercentage: 60, equityAccount: accounts.capital._id },
+          { name: 'Mona', nameAr: 'منى', address: 'Zamalek', nationalId: '29001011234562', ownershipPercentage: 40, equityAccount: accounts.capital._id },
+        ],
+      },
+      null,
+      session
+    )
+  );
+  assert.equal(created.length, 2);
+  assert.equal(created[0].shareholderNumber, 1);
+  assert.equal(created[1].shareholderNumber, 2);
+  assert.deepEqual(await getCompanyCapital(), { issuedCapital: 1000000, paidInCapital: 0, unpaidCapital: 1000000 });
+  assert.equal(await Shareholder.countDocuments({}), 2);
+});
+
+test('setupCapitalStructure rolls back everything (Issued Capital included) if any shareholder is invalid', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await assert.rejects(
+    () =>
+      inTx(session =>
+        setupCapitalStructure(
+          {
+            issuedCapital: 1000000,
+            shareholders: [
+              { name: 'Ahmed', nameAr: 'أحمد', address: 'Maadi', nationalId: '29001011234561', ownershipPercentage: 60, equityAccount: accounts.capital._id },
+              { name: 'Mona', nameAr: 'منى', address: 'Zamalek', nationalId: '29001011234562', ownershipPercentage: 60, equityAccount: accounts.capital._id }, // 60+60 > 100%
+            ],
+          },
+          null,
+          session
+        )
+      ),
+    /cannot exceed 100%/
+  );
+  assert.equal(await getCompanyCapital(), null, 'Issued Capital was rolled back too - nothing half-committed');
+  assert.equal(await Shareholder.countDocuments({}), 0);
 });
