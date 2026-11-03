@@ -116,7 +116,7 @@ export default function Shareholders() {
         )
       )}
 
-      <CapitalStructureSetupModal opened={setupOpened} close={closeSetup} onSaved={load} />
+      <CapitalStructureSetupModal opened={setupOpened} close={closeSetup} onSaved={load} existingShareholders={data?.shareholders ?? []} />
       <IssuedCapitalModal opened={issuedCapitalOpened} close={closeIssuedCapital} capital={data?.capital ?? null} onSaved={load} />
       <ShareholderModal opened={addOpened} close={closeAdd} onSaved={load} />
     </AdminLayoutBox>

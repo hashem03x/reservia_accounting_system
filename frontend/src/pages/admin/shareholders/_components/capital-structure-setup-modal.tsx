@@ -8,6 +8,8 @@ import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
 import { outlineIcons } from "@/components/icons";
 import useEquityAccounts from "./use-equity-accounts";
+import { activeOwnershipTotal, combinedOwnershipTotal, isOwnershipFinalized } from "./ownership-math";
+import { Shareholder } from "@/types/shareholder";
 
 type Row = {
   name: string;
@@ -25,7 +27,25 @@ const blankRow: Row = { name: "", nameAr: "", address: "", nationalId: "", owner
 // (ownership % x Issued Capital). Submits once, to the dedicated POST /shareholders/capital-structure
 // endpoint, which creates Issued Capital and every shareholder together in ONE transaction (see
 // that endpoint's own comment for why this isn't a client-side loop of separate requests).
-export default function CapitalStructureSetupModal({ opened, close, onSaved }: { opened: boolean; close: () => void; onSaved: () => void }) {
+//
+// `existingShareholders` (the dashboard page's own already-loaded list - no extra request here):
+// the backend's own 100%-ownership rule (backend/server/models/equity/shareholderModel.js) counts
+// EVERY active shareholder, not just the ones being entered in this dialog - a shareholder added
+// earlier via the separate "Add Shareholder" action (always available, independent of this wizard)
+// is real and must be counted here too, or this dialog's own "100% - ready" claim can be wrong in
+// a way the backend then (correctly) rejects. See ownership-math.ts for the fixed calculation and
+// its own root-cause comment.
+export default function CapitalStructureSetupModal({
+  opened,
+  close,
+  onSaved,
+  existingShareholders,
+}: {
+  opened: boolean;
+  close: () => void;
+  onSaved: () => void;
+  existingShareholders: Shareholder[];
+}) {
   const { language, translate, translations } = useLanguage();
   const equityAccounts = useEquityAccounts(opened);
   const [issuedCapital, setIssuedCapital] = useState<string | number>("");
@@ -56,9 +76,9 @@ export default function CapitalStructureSetupModal({ opened, close, onSaved }: {
   }
 
   const issuedNum = typeof issuedCapital === "number" ? issuedCapital : 0;
-  const totalPct = rows.reduce((sum, r) => sum + (typeof r.ownershipPercentage === "number" ? r.ownershipPercentage : 0), 0);
-  const totalPctRounded = Math.round(totalPct * 10000) / 10000;
-  const isFinalized = totalPctRounded === 100;
+  const existingActiveTotal = activeOwnershipTotal(existingShareholders);
+  const combinedTotal = combinedOwnershipTotal(existingActiveTotal, rows);
+  const isFinalized = isOwnershipFinalized(combinedTotal);
   const nationalIdValid = (id: string) => /^[23]\d{13}$/.test(id.trim());
 
   const rowsValid = rows.length > 0 && rows.every((r) => r.name && r.nameAr && r.address && nationalIdValid(r.nationalId) && typeof r.ownershipPercentage === "number" && r.ownershipPercentage > 0 && r.equityAccount);
@@ -148,18 +168,35 @@ export default function CapitalStructureSetupModal({ opened, close, onSaved }: {
           ))}
         </div>
 
+        {existingActiveTotal > 0 && (
+          <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950">
+            <span className="text-sm text-amber-700 dark:text-amber-400">
+              {translate("Already allocated by existing active shareholders", "مخصص بالفعل لمساهمين نشطين موجودين")}
+            </span>
+            <Badge size="lg" color="orange" variant="light">
+              {existingActiveTotal}%
+            </Badge>
+          </div>
+        )}
         <div className="flex items-center justify-between rounded-lg border border-gray-100 p-3 dark:border-gray-700">
-          <span className="text-sm text-gray-600 dark:text-gray-300">{translate("Total ownership", "إجمالي نسبة الملكية")}</span>
+          <span className="text-sm text-gray-600 dark:text-gray-300">
+            {existingActiveTotal > 0 ? translate("Combined total (existing + new)", "الإجمالي (الموجود + الجديد)") : translate("Total ownership", "إجمالي نسبة الملكية")}
+          </span>
           <Badge size="lg" color={isFinalized ? "teal" : "orange"} variant="light">
-            {totalPctRounded}%
+            {combinedTotal}%
           </Badge>
         </div>
         {!isFinalized && (
           <p className="text-sm text-amber-600 dark:text-amber-400">
-            {translate(
-              `Total ownership must equal 100% before the capital structure can be finalized (currently ${totalPctRounded}%).`,
-              `يجب أن يكون إجمالي نسبة الملكية 100% قبل إمكانية اعتماد هيكل رأس المال (حاليًا ${totalPctRounded}%).`,
-            )}
+            {existingActiveTotal > 0
+              ? translate(
+                  `Combined ownership must equal 100% before the capital structure can be finalized (currently ${combinedTotal}% = ${existingActiveTotal}% existing + the new rows below).`,
+                  `يجب أن يكون إجمالي نسبة الملكية 100% قبل إمكانية اعتماد هيكل رأس المال (حاليًا ${combinedTotal}% = ${existingActiveTotal}% موجود + الصفوف الجديدة أدناه).`,
+                )
+              : translate(
+                  `Total ownership must equal 100% before the capital structure can be finalized (currently ${combinedTotal}%).`,
+                  `يجب أن يكون إجمالي نسبة الملكية 100% قبل إمكانية اعتماد هيكل رأس المال (حاليًا ${combinedTotal}%).`,
+                )}
           </p>
         )}
 

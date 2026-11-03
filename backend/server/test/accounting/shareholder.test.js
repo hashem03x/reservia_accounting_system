@@ -335,3 +335,103 @@ test('setupCapitalStructure rolls back everything (Issued Capital included) if a
   assert.equal(await getCompanyCapital(), null, 'Issued Capital was rolled back too - nothing half-committed');
   assert.equal(await Shareholder.countDocuments({}), 0);
 });
+
+// Regression coverage for a reported bug: entering 15%/40%/45% (which sum to exactly 100%) in the
+// Capital Structure Setup wizard produced "ownership would total 130%". Root cause: the FRONTEND
+// wizard's own "is this 100% yet" calculation only summed the rows being entered and ignored any
+// shareholder already created earlier via the separate "Add Shareholder" action (always available,
+// independent of the wizard) - so its "100%, ready to finalize" claim could be wrong in a way the
+// backend then (correctly) rejected. Fixed in frontend/.../ownership-math.ts +
+// capital-structure-setup-modal.tsx (now sums existing active shareholders too, same as the
+// backend). These tests prove the BACKEND side of that calculation was always correct - every
+// combination below gives the exact total a human would expect, with no double-counting, no
+// accumulation across separate submissions, and inactive shareholders excluded.
+const ownershipScenarios = [
+  { pcts: [15, 40, 45], expectRejected: false, label: '15/40/45 = 100%' },
+  { pcts: [20, 30, 50], expectRejected: false, label: '20/30/50 = 100%' },
+  { pcts: [25, 25, 25], expectRejected: false, label: '25/25/25 = 75% (partial, allowed)' },
+  { pcts: [50, 40, 20], expectRejected: true, expectedTotal: 110, label: '50/40/20 = 110% (rejected)' },
+  { pcts: [10, 40, 30, 20], expectRejected: false, label: '10/40/30/20 = 100%' },
+];
+
+for (const scenario of ownershipScenarios) {
+  test(`ownership scenario table: ${scenario.label}`, async t => {
+    if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+    const shareholders = scenario.pcts.map((pct, i) => ({
+      name: `S${i}`,
+      nameAr: `م${i}`,
+      address: 'Cairo',
+      nationalId: `2900101123456${i}`,
+      ownershipPercentage: pct,
+      equityAccount: accounts.capital._id,
+    }));
+    if (scenario.expectRejected) {
+      await assert.rejects(
+        () => inTx(session => setupCapitalStructure({ issuedCapital: 1000000, shareholders }, null, session)),
+        new RegExp(`would total ${scenario.expectedTotal}%`)
+      );
+      assert.equal(await Shareholder.countDocuments({}), 0, 'nothing was left behind by the rejected attempt');
+    } else {
+      const created = await inTx(session => setupCapitalStructure({ issuedCapital: 1000000, shareholders }, null, session));
+      assert.equal(created.length, scenario.pcts.length);
+      const stored = await Shareholder.find({}).lean();
+      const sum = Math.round(stored.reduce((s, sh) => s + sh.ownershipPercentage, 0) * 10000) / 10000;
+      assert.equal(sum, scenario.pcts.reduce((s, p) => s + p, 0));
+    }
+  });
+}
+
+test('the exact reported repro: a pre-existing active shareholder (30%) is correctly counted when a new 15/40/45 bulk setup is attempted, giving 130% - not a bug, the backend math was always right', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await create({ name: 'Pre-existing', nameAr: 'موجود', address: 'Cairo', nationalId: '29001011234599', ownershipPercentage: 30 });
+  await assert.rejects(
+    () =>
+      inTx(session =>
+        setupCapitalStructure(
+          {
+            issuedCapital: 1000000,
+            shareholders: [
+              { name: 'A', nameAr: 'أ', address: 'C', nationalId: '29001011234561', ownershipPercentage: 15, equityAccount: accounts.capital._id },
+              { name: 'B', nameAr: 'ب', address: 'C', nationalId: '29001011234562', ownershipPercentage: 40, equityAccount: accounts.capital._id },
+              { name: 'C', nameAr: 'ج', address: 'C', nationalId: '29001011234563', ownershipPercentage: 45, equityAccount: accounts.capital._id },
+            ],
+          },
+          null,
+          session
+        )
+      ),
+    /would total 130%/
+  );
+  assert.equal(await Shareholder.countDocuments({}), 1, 'only the pre-existing shareholder remains - the rejected bulk attempt left nothing behind');
+});
+
+test('editing an existing shareholder REPLACES their ownership percentage, never adds to it', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const a = await create({ name: 'Ahmed', ownershipPercentage: 40 });
+  await create({ name: 'Mona', ownershipPercentage: 50 });
+  // 40 -> 60 with Mona still at 50 would total 110% - correctly rejected, and Ahmed's stored
+  // percentage must stay at its old value (40%), not somehow end up added/blended.
+  await assert.rejects(() => inTx(session => updateShareholder(a._id, { ownershipPercentage: 60 }, session)), /would total 110%/);
+  assert.equal((await Shareholder.findById(a._id).lean()).ownershipPercentage, 40);
+  // A change that fits (40 -> 10, total becomes 10+50=60%) is accepted and REPLACES the old value.
+  await inTx(session => updateShareholder(a._id, { ownershipPercentage: 10 }, session));
+  assert.equal((await Shareholder.findById(a._id).lean()).ownershipPercentage, 10);
+  const all = await Shareholder.find({}).lean();
+  assert.equal(
+    Math.round(all.reduce((s, sh) => s + sh.ownershipPercentage, 0) * 10000) / 10000,
+    60,
+    'Ahmed counts once, at his NEW percentage - never his old one plus the new one'
+  );
+});
+
+test('adding and removing shareholders updates the active ownership total correctly, with no stale leftovers', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const a = await create({ name: 'Ahmed', ownershipPercentage: 50 });
+  const b = await create({ name: 'Mona', ownershipPercentage: 50 });
+  // Deactivating Mona frees her 50% - a new shareholder can now take it without exceeding 100%.
+  await inTx(session => updateShareholder(b._id, { status: 'inactive' }, session));
+  const c = await create({ name: 'Omar', ownershipPercentage: 50 });
+  const activeTotal = (await Shareholder.find({ status: 'active' }).lean()).reduce((s, sh) => s + sh.ownershipPercentage, 0);
+  assert.equal(activeTotal, 100, 'Ahmed (50) + Omar (50) = 100% - Mona (inactive) is correctly excluded');
+  assert.equal(await Shareholder.countDocuments({}), 3, 'Mona still exists, just inactive - removing/deactivating never deletes history');
+});
