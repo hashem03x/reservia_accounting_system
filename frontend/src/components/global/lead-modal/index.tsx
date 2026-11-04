@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
-import { CRM_CHANNELS, CRM_SEGMENTS, CrmChannel, CrmLead, CrmSegment } from "@/types/crm";
+import { CRM_CHANNELS, CRM_FORM_SEGMENTS, CRM_GOVERNORATES, CRM_SOURCES, CrmChannel, CrmLead, CrmSegment, CrmSource } from "@/types/crm";
 import { Button, NumberInput, Select, TextInput } from "@mantine/core";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
+import { segmentLabel } from "@/pages/crm/_shared/lead-display";
 
 const CHANNEL_LABELS: Record<CrmChannel, { en: string; ar: string }> = {
   phone: { en: "Phone", ar: "هاتف" },
@@ -18,17 +19,6 @@ const CHANNEL_LABELS: Record<CrmChannel, { en: string; ar: string }> = {
   whatsapp: { en: "WhatsApp", ar: "واتساب" },
   web_form: { en: "Website form", ar: "نموذج الموقع" },
   landing_page: { en: "Landing page", ar: "صفحة هبوط" },
-};
-
-const SEGMENT_LABELS: Record<CrmSegment, { en: string; ar: string }> = {
-  villa: { en: "Villa", ar: "فيلا" },
-  compound: { en: "Compound", ar: "كمبوند" },
-  farm: { en: "Farm", ar: "مزرعة" },
-  oil_gas: { en: "Oil & gas", ar: "نفط وغاز" },
-  factory: { en: "Factory", ar: "مصنع" },
-  services: { en: "Services", ar: "خدمات" },
-  other: { en: "Other", ar: "أخرى" },
-  unknown: { en: "Unknown", ar: "غير محدد" },
 };
 
 export default function LeadModal({
@@ -46,7 +36,7 @@ export default function LeadModal({
   const [phone, setPhone] = useState("");
   const [channel, setChannel] = useState<CrmChannel | "">("");
   const [segment, setSegment] = useState<CrmSegment | "">("");
-  const [source, setSource] = useState("");
+  const [source, setSource] = useState<CrmSource | "">("");
   const [governorate, setGovernorate] = useState("");
   const [valueEgp, setValueEgp] = useState<string | number>("");
 
@@ -119,20 +109,25 @@ export default function LeadModal({
         <Select
           value={segment || null}
           onChange={(v) => setSegment((v as CrmSegment) || "")}
-          data={CRM_SEGMENTS.map((s) => ({ value: s, label: translate(SEGMENT_LABELS[s].en, SEGMENT_LABELS[s].ar) }))}
+          data={CRM_FORM_SEGMENTS.map((s) => ({ value: s, label: segmentLabel(translate)(s) }))}
           label={translate("Segment (optional)", "القطاع (اختياري)")}
           clearable
         />
-        <TextInput
-          value={source}
-          onChange={(e) => setSource(e.target.value)}
+        <Select
+          value={source || null}
+          onChange={(v) => setSource((v as CrmSource) || "")}
+          data={CRM_SOURCES.map((s) => ({ value: s, label: s }))}
           label={translate("Source (optional)", "المصدر (اختياري)")}
-          placeholder={translate("e.g. Google ads", "مثال: إعلانات جوجل")}
+          placeholder={translate("Where did this lead come from?", "من أين جاء هذا العميل المحتمل؟")}
+          clearable
         />
-        <TextInput
-          value={governorate}
-          onChange={(e) => setGovernorate(e.target.value)}
+        <Select
+          value={governorate || null}
+          onChange={(v) => setGovernorate(v || "")}
+          data={CRM_GOVERNORATES.map((g) => ({ value: g.en, label: translate(g.en, g.ar) }))}
           label={translate("Governorate (optional)", "المحافظة (اختياري)")}
+          searchable
+          clearable
         />
         <NumberInput
           value={valueEgp}

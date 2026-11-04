@@ -14,10 +14,15 @@ const { buildLeadExportRows, HEADERS: EXPORT_HEADERS } = require('../../services
 
 // GET /leads - filterable list (stage/owner/segment/q), reusing the shared pagination/sort
 // convention (handlersFactory.getAll + ApiFeatures) every other list endpoint in this codebase uses.
+//
+// Archived leads (acceptance report finding 7) are excluded by default - a soft-deleted test
+// record must behave like it's gone for everyone's everyday view, not just visually hidden. Only
+// the MD can even ask to see them (`includeArchived=1`), and only the MD has the archive/restore
+// actions below that would ever put one there in the first place.
 const listLeads = factory.getAll(Lead, 'CrmLead');
 exports.getLeads = (req, res, next) => {
   const filter = {};
-  const { stage, owner, segment, q } = req.query;
+  const { stage, owner, segment, q, includeArchived } = req.query;
   if (stage) {
     if (!STAGES.includes(stage)) return next(new ApiError('Invalid stage filter.', 400));
     filter.stage = stage;
@@ -28,7 +33,8 @@ exports.getLeads = (req, res, next) => {
   }
   if (segment) filter.segment = segment;
   if (q) filter.$text = { $search: q };
-  ['stage', 'owner', 'segment', 'q'].forEach(k => delete req.query[k]);
+  if (!(includeArchived && req.crmRole === 'md')) filter.archived = { $ne: true };
+  ['stage', 'owner', 'segment', 'q', 'includeArchived'].forEach(k => delete req.query[k]);
   req.filterObject = filter;
   return listLeads(req, res, next);
 };
@@ -36,9 +42,11 @@ exports.getLeads = (req, res, next) => {
 // GET /leads/pipeline - one lightweight aggregation for the Kanban board: every open/won/lost
 // stage's lead count and total pipeline value, computed at read time (never a persisted,
 // driftable summary) - same "pure read-time aggregation" approach this codebase already uses for
-// the Cash Flow Forecast (services/cashflow/cashFlowForecastService.js).
+// the Cash Flow Forecast (services/cashflow/cashFlowForecastService.js). Archived leads never
+// count toward the pipeline, for the same reason getLeads excludes them by default.
 exports.getPipelineSummary = asyncHandler(async (req, res) => {
   const rows = await Lead.aggregate([
+    { $match: { archived: { $ne: true } } },
     { $group: { _id: '$stage', count: { $sum: 1 }, valueEgp: { $sum: { $ifNull: ['$valueEgp', 0] } } } },
   ]);
   const byStage = Object.fromEntries(rows.map(r => [r._id, { count: r.count, valueEgp: r.valueEgp }]));
@@ -49,6 +57,9 @@ exports.getPipelineSummary = asyncHandler(async (req, res) => {
 exports.getLeadById = asyncHandler(async (req, res, next) => {
   const lead = await Lead.findById(req.params.id);
   if (!lead) return next(new ApiError('Lead not found.', 404));
+  // Direct-URL protection (not just "hidden from the list") - an archived lead is as good as gone
+  // for anyone but the MD, who alone can also restore it.
+  if (lead.archived && req.crmRole !== 'md') return next(new ApiError('Lead not found.', 404));
   const [activities, stageHistory] = await Promise.all([
     Activity.find({ lead: lead._id }).sort({ createdAt: 1 }),
     StageHistory.find({ lead: lead._id }).sort({ createdAt: 1 }),
@@ -69,6 +80,18 @@ exports.changeStage = asyncHandler(async (req, res) => {
 exports.reassignLead = asyncHandler(async (req, res) => {
   const lead = await leadService.reassignLead(req.params.id, req.body.owner || null, { userId: req.user._id });
   res.status(200).json(apiResponse('Lead reassigned successfully', true, lead));
+});
+
+// PATCH /leads/:id/archive and /leads/:id/restore - MD only (requireCrmRole('md') on the route),
+// acceptance report finding 7. Soft-delete only - see leadService.js#setLeadArchived.
+exports.archiveLead = asyncHandler(async (req, res) => {
+  const lead = await leadService.setLeadArchived(req.params.id, true, { userId: req.user._id });
+  res.status(200).json(apiResponse('Lead archived successfully', true, lead));
+});
+
+exports.restoreLead = asyncHandler(async (req, res) => {
+  const lead = await leadService.setLeadArchived(req.params.id, false, { userId: req.user._id });
+  res.status(200).json(apiResponse('Lead restored successfully', true, lead));
 });
 
 exports.recordActivity = asyncHandler(async (req, res) => {

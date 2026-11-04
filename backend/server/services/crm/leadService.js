@@ -11,6 +11,7 @@ const { addWorkingHours } = require('../../utils/crm/workingHours');
 const { generateRefCode } = require('../../utils/crm/refCode');
 const { validateStageTransition, STAGES } = require('../../utils/crm/stageRules');
 const { trackEvent } = require('./amplitudeService');
+const { pickAutoAssignee, notifyAssignment } = require('./leadAssignmentService');
 
 // Reservia CRM - lead intake, dedup/merge, activity logging and stage transitions (Developer Brief
 // section 4B/4D + section 7 "Rules that must not change"). This is the one place a Lead document
@@ -74,8 +75,18 @@ async function intakeLead(input, { userId = null } = {}) {
   const session = await mongoose.startSession();
   try {
     let created;
+    let autoAssignee = null;
     await session.withTransaction(async () => {
       const refCode = await generateRefCode(now, session);
+      // Acceptance report finding 2: a website lead with no human in the loop at creation gets an
+      // owner automatically (round-robin across active CRM 'sales' users) instead of sitting
+      // unowned - see leadAssignmentService.js's own header comment for exactly why this is
+      // scoped to the automated intake channels only.
+      let owner = input.owner || userId || null;
+      if (!owner) {
+        autoAssignee = await pickAutoAssignee(input.channel, session);
+        if (autoAssignee) owner = autoAssignee._id;
+      }
       const docs = await Lead.create(
         [
           {
@@ -90,7 +101,7 @@ async function intakeLead(input, { userId = null } = {}) {
             monthlyBillEgp: input.monthlyBillEgp ?? null,
             systemSizeKwp: input.systemSizeKwp ?? null,
             valueEgp: input.valueEgp ?? null,
-            owner: input.owner || userId || null,
+            owner,
             utmSource: input.utmSource || null,
             utmMedium: input.utmMedium || null,
             utmCampaign: input.utmCampaign || null,
@@ -104,9 +115,16 @@ async function intakeLead(input, { userId = null } = {}) {
       );
       created = docs[0];
       await Activity.create([{ lead: created._id, type: 'system', body: `Lead created via ${input.channel}.`, author: userId }], { session });
+      if (autoAssignee) {
+        await Activity.create(
+          [{ lead: created._id, type: 'system', body: `Automatically assigned to ${autoAssignee.name} (Sales Engineer round-robin).` }],
+          { session }
+        );
+      }
       await StageHistory.create([{ lead: created._id, from: null, to: 'new', changedBy: userId }], { session });
     });
     trackEvent('crm_lead_created', { ampDeviceId: created.ampDeviceId, channel: created.channel, segment: created.segment });
+    if (autoAssignee) notifyAssignment(autoAssignee, created); // fire-and-forget, after the commit
     return { lead: shapeLead(created), created: true };
   } catch (err) {
     if (err?.code === 11000) {
@@ -243,4 +261,23 @@ async function reassignLead(leadId, ownerId, { userId = null } = {}) {
   return shapeLead(lead);
 }
 
-module.exports = { intakeLead, recordActivity, changeStage, reassignLead, STAGES };
+/**
+ * Archives (soft-deletes) or restores a lead - acceptance report finding 7, "Add a delete or
+ * archive action for the MD only." The caller (controller/crm/leadController.js, behind
+ * requireCrmRole('md')) is the only place this is reachable from; this function itself does not
+ * re-check the role so it can also be used safely from a one-off maintenance script with an
+ * explicit, already-authorized MD user id. The document, its activities and its stage history are
+ * never deleted - "archived" is the entire effect, and it is fully reversible.
+ */
+async function setLeadArchived(leadId, archived, { userId = null } = {}) {
+  const lead = await Lead.findById(leadId);
+  if (!lead) throw new ApiError('Lead not found.', 404);
+  lead.archived = !!archived;
+  lead.archivedAt = archived ? new Date() : null;
+  lead.archivedBy = archived ? userId : null;
+  await lead.save();
+  await Activity.create({ lead: lead._id, type: 'system', body: archived ? 'Lead archived.' : 'Lead restored from archive.', author: userId });
+  return shapeLead(lead);
+}
+
+module.exports = { intakeLead, recordActivity, changeStage, reassignLead, setLeadArchived, STAGES };

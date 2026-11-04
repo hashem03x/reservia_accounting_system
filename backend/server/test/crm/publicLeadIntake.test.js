@@ -64,7 +64,9 @@ test('mapWebsitePayload: maps the website\'s own segment/source vocabulary to th
   assert.equal(mapped.utmMedium, 'qa');
   assert.equal(mapped.utmCampaign, 'brief-check');
   assert.equal(mapped.landingPage, 'https://reservia-energy.com/en/lp/villas');
-  assert.equal(mapped.source, 'test');
+  // Acceptance report finding 4: source is a fixed list, not free text - an unrecognized UTM
+  // value (here 'test') normalizes to 'Other', never passed through verbatim.
+  assert.equal(mapped.source, 'Other');
 });
 
 test('mapWebsitePayload: contact_form maps to channel web_form; every website segment is recognized', () => {
@@ -77,10 +79,10 @@ test('mapWebsitePayload: contact_form maps to channel web_form; every website se
   }
 });
 
-test('mapWebsitePayload: no utm_source falls back to a plain "Website" source label, never blank', () => {
+test('mapWebsitePayload: no utm_source normalizes to "Organic" (direct traffic), never blank or free text', () => {
   const { mapWebsitePayload } = require('../../services/crm/publicLeadIntakeService');
   const mapped = mapWebsitePayload(validSubmission({ utm: {} }));
-  assert.equal(mapped.source, 'Website');
+  assert.equal(mapped.source, 'Organic');
   assert.equal(mapped.utmSource, undefined);
 });
 

@@ -14,13 +14,13 @@ const sendMailer = async (to, subject, template) => {
 
     mailer.verify(err => {
       if (err) {
-        return Promise.reject(new ApiError(`Sending email error: ${err}`, 500));
+        console.error(`Sending email error: ${err}`);
       }
     });
 
     mailer.on('error', err => {
       if (err) {
-        return Promise.reject(new ApiError(`Sending email error: ${err}`, 500));
+        console.error(`Sending email error: ${err}`);
       }
     });
 

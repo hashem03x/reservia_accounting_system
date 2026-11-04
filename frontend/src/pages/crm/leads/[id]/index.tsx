@@ -1,19 +1,25 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
+import usePrivateRequest from "@/hooks/usePrivateRequest";
 import handleRequest from "@/utils/helpers/handle-request";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import { formatDateAndTime } from "@/utils/helpers/date-formaters";
 import paths from "@/utils/constants/paths";
-import { CRM_LOST_REASONS, CRM_STAGES, CrmActivity, CrmActivityType, CrmLead, CrmStage, CrmStageHistory } from "@/types/crm";
+import { CRM_LOST_REASONS, CrmActivity, CrmActivityType, CrmLead, CrmRole, CrmStage, CrmStageHistory } from "@/types/crm";
 import { Badge, Button, NumberInput, Select, Textarea, TextInput } from "@mantine/core";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import ErrorAlert from "@/components/ui/error-alert";
+import DeleteModal from "@/components/ui/delete-modal";
+import { outlineIcons } from "@/components/icons";
+import { useSystemAccess } from "@/context/SystemAccessContext";
 import { crmStageLabel, stageBadgeColor } from "../../_shared/stage";
+import { allowedNextStages } from "../../_shared/lead-display";
 
 type LeadDetail = { lead: CrmLead; activities: CrmActivity[]; stageHistory: CrmStageHistory[] };
 
@@ -27,7 +33,10 @@ const ACTIVITY_TYPES: { value: CrmActivityType; label: { en: string; ar: string 
 
 export default function CrmLeadDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { language, translate } = useLanguage();
+  const { systems } = useSystemAccess();
+  const role = systems?.CRM?.role as CrmRole | null | undefined;
   const stageLabel = crmStageLabel(translate);
 
   const { privateRequest, loading, setLoading, error, setError, data, setData } = useDataHandler<LeadDetail | null>({
@@ -70,9 +79,17 @@ export default function CrmLeadDetail() {
         title: lead.name || lead.phoneE164,
         subTitle: lead.refCode,
         sideElements: (
-          <Badge color={stageBadgeColor(lead.stage)} size="lg" variant="light">
-            {stageLabel(lead.stage)}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {lead.archived && (
+              <Badge color="gray" size="lg" variant="filled">
+                {translate("Archived", "مؤرشف")}
+              </Badge>
+            )}
+            <Badge color={stageBadgeColor(lead.stage)} size="lg" variant="light">
+              {stageLabel(lead.stage)}
+            </Badge>
+            {role === "md" && <ArchiveAction lead={lead} onChanged={load} onArchivedAway={() => navigate(`/${paths.crm}/${paths.leads}`)} />}
+          </div>
         ),
       }}
     >
@@ -87,6 +104,59 @@ export default function CrmLeadDetail() {
         </section>
       </div>
     </AdminLayoutBox>
+  );
+}
+
+// MD-only archive/restore (acceptance report finding 7) - the server (requireCrmRole('md') on the
+// route) is the real gate; this component only decides whether to render the button, which is
+// never itself a security boundary ("hiding a menu item is not authorization").
+function ArchiveAction({ lead, onChanged, onArchivedAway }: { lead: CrmLead; onChanged: () => void; onArchivedAway: () => void }) {
+  const { language, translate } = useLanguage();
+  const privateRequest = usePrivateRequest();
+  const [opened, { open, close }] = useDisclosure();
+  const { loading, setLoading, error, setError } = useDataHandler({ initialData: null });
+
+  async function restore() {
+    handleRequest(language, setLoading, setError, async () => {
+      await privateRequest({ language, method: "PATCH", url: `crm/leads/${lead._id}/restore` });
+      onChanged();
+    });
+  }
+
+  function confirmArchive() {
+    handleRequest(language, setLoading, setError, async () => {
+      await privateRequest({ language, method: "PATCH", url: `crm/leads/${lead._id}/archive` });
+      close();
+      onArchivedAway();
+    });
+  }
+
+  if (lead.archived) {
+    return (
+      <Button variant="light" color="teal" size="sm" loading={loading} onClick={restore} leftSection={<outlineIcons.ArrowUpOnSquare />}>
+        {translate("Restore", "استعادة")}
+      </Button>
+    );
+  }
+
+  return (
+    <>
+      <Button variant="light" color="red" size="sm" onClick={open} leftSection={<outlineIcons.Trash />}>
+        {translate("Archive", "أرشفة")}
+      </Button>
+      <DeleteModal
+        opened={opened}
+        onClose={close}
+        title={translate("Archive this lead?", "أرشفة هذا العميل المحتمل؟")}
+        subTitle={translate(
+          "The lead and its full history are kept - it is just hidden from the pipeline and leads list, and can be restored at any time.",
+          "يتم الاحتفاظ بالعميل المحتمل وسجله الكامل - يتم إخفاؤه فقط من المسار وقائمة العملاء المحتملين، ويمكن استعادته في أي وقت.",
+        )}
+        action={confirmArchive}
+        loading={loading}
+        error={error}
+      />
+    </>
   );
 }
 
@@ -124,6 +194,8 @@ function InfoCard({ lead, overdue }: { lead: CrmLead; overdue: boolean }) {
 
 function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => void }) {
   const { language, translate } = useLanguage();
+  const { systems } = useSystemAccess();
+  const role = (systems?.CRM?.role as CrmRole | null | undefined) || "";
   const [to, setTo] = useState<CrmStage | "">("");
   const [lostReason, setLostReason] = useState("");
   const [valueEgp, setValueEgp] = useState<string | number>(lead.valueEgp ?? "");
@@ -161,8 +233,9 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
       <Select
         value={to || null}
         onChange={(v) => setTo((v as CrmStage) || "")}
-        data={CRM_STAGES.filter((s) => s !== lead.stage).map((s) => ({ value: s, label: crmStageLabel(translate)(s) }))}
+        data={allowedNextStages(lead.stage, role).map((s) => ({ value: s, label: crmStageLabel(translate)(s as CrmStage) }))}
         placeholder={translate("Move to...", "نقل إلى...")}
+        nothingFoundMessage={translate("No further moves are available for this lead.", "لا توجد تحركات إضافية متاحة لهذا العميل المحتمل.")}
       />
       {needsLostReason && (
         <Select

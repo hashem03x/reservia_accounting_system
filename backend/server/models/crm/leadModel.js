@@ -76,6 +76,17 @@ const leadSchema = new Schema(
     ampDeviceId: { type: String, required: true },
 
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+
+    // Soft deletion only (acceptance report finding 7: "Prefer soft deletion or archiving over
+    // permanent deletion... Support restoring archived records") - services/crm/leadArchiveService.js
+    // is the one place this is ever set, gated to the MD role alone
+    // (middleware/crmAccess.js#requireCrmRole('md')). An archived lead is excluded from the
+    // pipeline/list views by default (controller/crm/leadController.js) but the document, its
+    // activity timeline and its stage history are never deleted - restoring it is just clearing
+    // these three fields again.
+    archived: { type: Boolean, default: false },
+    archivedAt: { type: Date, default: null },
+    archivedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
 );
@@ -83,12 +94,15 @@ const leadSchema = new Schema(
 leadSchema.index({ stage: 1 });
 leadSchema.index({ owner: 1 });
 leadSchema.index({ segment: 1 });
+leadSchema.index({ archived: 1 });
 leadSchema.index({ createdAt: -1 });
 // Supports the dashboard's "search by name, phone or Reservia reference code" (brief section 4A).
 leadSchema.index({ name: 'text', refCode: 'text' });
 
 leadSchema.pre(/^find/, function (next) {
-  this.populate({ path: 'owner', select: 'name email' }).populate({ path: 'createdBy', select: 'name' });
+  this.populate({ path: 'owner', select: 'name email' })
+    .populate({ path: 'createdBy', select: 'name' })
+    .populate({ path: 'archivedBy', select: 'name' });
   next();
 });
 

@@ -1,7 +1,7 @@
 const { check } = require('express-validator');
 const validatorMiddleware = require('../../../middleware/validatorMiddleware');
 const { normalizeEgyptianPhone } = require('../../crm/phone');
-const { SEGMENTS, CHANNELS, LOST_REASONS } = require('../../crm/constants');
+const { FORM_SEGMENTS, CHANNELS, LOST_REASONS, SOURCES, GOVERNORATE_NAMES_EN } = require('../../crm/constants');
 const { STAGES } = require('../../crm/stageRules');
 
 exports.createLeadValidator = [
@@ -14,9 +14,14 @@ exports.createLeadValidator = [
     }),
   check('channel').notEmpty().withMessage('Channel is required').isIn(CHANNELS).withMessage('Invalid channel'),
   check('name').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
-  check('segment').optional({ nullable: true }).isIn(SEGMENTS).withMessage('Invalid segment'),
-  check('governorate').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
-  check('source').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
+  // Acceptance report finding 4: fixed lists, not free text - FORM_SEGMENTS/SOURCES/
+  // GOVERNORATE_NAMES_EN are what the "New Lead" form may now submit. The Lead schema fields
+  // themselves stay plain strings (leadModel.js's own comment on why) so this never blocks editing
+  // an existing lead whose value predates these lists; only NEW submissions through this validator
+  // are constrained to them.
+  check('segment').optional({ nullable: true }).isIn(FORM_SEGMENTS).withMessage('Invalid segment'),
+  check('governorate').optional({ nullable: true }).isIn(GOVERNORATE_NAMES_EN).withMessage('Invalid governorate'),
+  check('source').optional({ nullable: true }).isIn(SOURCES).withMessage('Invalid source'),
   check('partnerName').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
   check('monthlyBillEgp').optional({ nullable: true }).isFloat({ min: 0 }),
   check('systemSizeKwp').optional({ nullable: true }).isFloat({ min: 0 }),

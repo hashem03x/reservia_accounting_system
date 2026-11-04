@@ -4,17 +4,24 @@ import { useUser } from "@/context/UserContext";
 import paths from "@/utils/constants/paths";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import { Button } from "@mantine/core";
+import logo from "@/assets/logo_no_bg.png";
 
 // Reservia CRM - a lean, dedicated layout rather than reusing the ERP's AdminLayout/nav-config.ts
 // (those are wired specifically to the ERP resource:action permission matrix - see
 // nav-config.ts#useAdminNavigation - which has no meaning for the CRM's own
-// md/admin/sales/technical role vocabulary). Two sections only (Pipeline, Leads) does not justify
-// a second collapsible-sidebar component; a simple top bar keeps this native-feeling to the
+// md/admin/sales/technical role vocabulary). A simple top bar keeps this native-feeling to the
 // Central Portal's Mantine look (same fonts/spacing/AdminLayoutBox cards every CRM page uses)
 // without copying machinery sized for the ERP's ~20-section nav.
+//
+// Dashboard is listed FIRST (acceptance report section 4: "Add a Dashboard as the first menu item
+// and the screen users land on after login") and / (pipeline's current default) now redirects
+// there - see routes/index.tsx's own CRM route block.
 const NAV_ITEMS = [
+  { to: `/${paths.crm}/${paths.dashboard}`, label: { en: "Dashboard", ar: "لوحة التحكم" }, Icon: outlineIcons.Squares },
   { to: `/${paths.crm}/${paths.pipeline}`, label: { en: "Pipeline", ar: "المسار" }, Icon: outlineIcons.ChartBar },
   { to: `/${paths.crm}/${paths.leads}`, label: { en: "Leads", ar: "العملاء المحتملون" }, Icon: outlineIcons.Users },
+  { to: `/${paths.crm}/${paths.performance}`, label: { en: "Performance", ar: "الأداء" }, Icon: outlineIcons.ChartBar },
+  { to: `/${paths.crm}/${paths.import}`, label: { en: "CSV Import", ar: "استيراد CSV" }, Icon: outlineIcons.ArrowUpOnSquare },
 ];
 
 export default function CrmLayout() {
@@ -31,7 +38,11 @@ export default function CrmLayout() {
         <div className="flex items-center gap-4">
           <Link to={`/${paths.portal}`} className="flex items-center gap-2 font-semibold tracking-tight">
             <solidIcons.ArrowLeft style={{ transform: `rotateY(${translate("0", "180deg")})` }} />
-            {translate("Reservia CRM", "نظام إدارة العملاء - رزيرفيا")}
+            {/* The official Reservia logo (acceptance report finding 5) - object-contain, never
+                cropped, so the full mark + "Reserv-i-a" wordmark (the battery-shaped "i") shows
+                exactly as designed, at any height. */}
+            <img src={logo} alt="" aria-hidden className="h-9 w-9 rounded bg-white object-contain p-0.5" />
+            <span>{translate("Reservia CRM", "نظام إدارة العملاء - رزيرفيا")}</span>
           </Link>
           <nav className="flex items-center gap-1">
             {NAV_ITEMS.map((item) => {

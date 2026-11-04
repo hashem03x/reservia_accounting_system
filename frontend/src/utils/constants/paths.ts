@@ -58,8 +58,11 @@ const paths = {
   platformAdmin: "platform-admin",
   // Reservia CRM
   crm: "crm",
+  dashboard: "dashboard",
   pipeline: "pipeline",
   leads: "leads",
+  performance: "performance",
+  import: "import",
 };
 
 export default paths;

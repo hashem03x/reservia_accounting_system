@@ -8,6 +8,7 @@ import {
   stageExtraFieldRequirements,
   isTerminalStage,
   isObviouslyInvalidDropTarget,
+  allowedNextStages,
 } from "./lead-display.ts";
 
 test("isLeadOverdue: true only when replyDueAt has passed AND there has been no first reply yet", () => {
@@ -60,4 +61,54 @@ test("isObviouslyInvalidDropTarget: same stage, out of Won, or Lost to anywhere 
   assert.equal(isObviouslyInvalidDropTarget("lost", "contacted"), false);
   assert.equal(isObviouslyInvalidDropTarget("new", "contacted"), false);
   assert.equal(isObviouslyInvalidDropTarget("negotiation", "new"), false);
+});
+
+// Acceptance report finding 3: "Only allowed next stages are displayed. Won is unavailable unless
+// the lead has reached Proposal Sent. Lost is displayed only when permitted. Moving backward
+// follows the existing back-one-stage-at-a-time rule." - mirrors
+// backend/server/utils/crm/stageRules.js#validateStageTransition exactly.
+test("allowedNextStages: Won is a dead end - no next stages at all", () => {
+  assert.deepEqual(allowedNextStages("won", "sales"), []);
+  assert.deepEqual(allowedNextStages("won", "md"), []);
+});
+
+test("allowedNextStages: Won only appears once the lead has reached Proposal Sent or Negotiation", () => {
+  assert.ok(!allowedNextStages("new", "sales").includes("won"));
+  assert.ok(!allowedNextStages("qualified", "sales").includes("won"));
+  assert.ok(!allowedNextStages("site_survey", "sales").includes("won"));
+  assert.ok(allowedNextStages("proposal_sent", "sales").includes("won"));
+  assert.ok(allowedNextStages("negotiation", "sales").includes("won"));
+});
+
+test("allowedNextStages: Lost can be reopened to Contacted only, and only by admin/md", () => {
+  assert.deepEqual(allowedNextStages("lost", "sales"), []);
+  assert.deepEqual(allowedNextStages("lost", "technical"), []);
+  assert.deepEqual(allowedNextStages("lost", "admin"), ["contacted"]);
+  assert.deepEqual(allowedNextStages("lost", "md"), ["contacted"]);
+});
+
+test("allowedNextStages: moving backward is capped at one stage; forward has no such cap", () => {
+  const fromNegotiation = allowedNextStages("negotiation", "md");
+  assert.ok(fromNegotiation.includes("proposal_sent"), "one stage back is fine");
+  assert.ok(!fromNegotiation.includes("site_survey"), "two stages back is not");
+  assert.ok(!fromNegotiation.includes("qualified"), "three stages back is not");
+  assert.ok(!fromNegotiation.includes("new"), "four stages back is not");
+  // Forward: New can reach Negotiation directly (no sequential-forward requirement in the spec).
+  assert.ok(allowedNextStages("new", "md").includes("negotiation"));
+});
+
+test("allowedNextStages: Lost is always offered as a destination from any open stage", () => {
+  for (const stage of ["new", "contacted", "qualified", "site_survey", "proposal_sent", "negotiation"]) {
+    assert.ok(allowedNextStages(stage, "sales").includes("lost"), `${stage} -> lost should be offered`);
+  }
+});
+
+test("allowedNextStages: technical can only move a lead to Site survey or Proposal sent", () => {
+  assert.deepEqual(allowedNextStages("new", "technical"), ["site_survey", "proposal_sent"]);
+  assert.deepEqual(allowedNextStages("qualified", "technical"), ["site_survey", "proposal_sent"]);
+  assert.deepEqual(allowedNextStages("negotiation", "technical"), ["proposal_sent"]);
+});
+
+test("allowedNextStages: a sales/md/admin user sees every structurally valid stage from New", () => {
+  assert.deepEqual(allowedNextStages("new", "sales"), ["contacted", "qualified", "site_survey", "proposal_sent", "negotiation", "lost"]);
 });

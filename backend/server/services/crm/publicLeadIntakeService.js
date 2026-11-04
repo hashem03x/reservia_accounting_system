@@ -2,6 +2,7 @@
 
 const ApiError = require('../../utils/apiError');
 const leadService = require('./leadService');
+const { normalizeSource } = require('../../utils/crm/sourceNormalization');
 
 // Reservia CRM - the public website's lead-capture call (Developer Brief: "Website lead
 // submission into CRM"). This is the ONE place the website's own vocabulary (its `Segment` type,
@@ -77,10 +78,12 @@ function mapWebsitePayload(body) {
     segment,
     channel,
     governorate: body.governorate || undefined,
-    // The website's own `utm.utm_source`, when present, is the single most useful "where did
-    // this come from" label for a human reading the pipeline - falls back to a plain "Website"
-    // label when the visit carried no campaign params at all (direct/organic traffic).
-    source: body.utm?.utm_source || 'Website',
+    // Acceptance report finding 4 ("Website leads show source 'Website' only") + "Preserve source
+    // and UTM information where provided": normalizeSource maps the real utm_source value (or a
+    // bare direct/organic visit) onto the CRM's fixed SOURCES list, so the dashboard's "Source
+    // quality" block (acceptance report section 4) can actually group leads by real ad platform
+    // instead of every lead piling up under one literal "Website" label.
+    source: normalizeSource(body.utm?.utm_source),
     utmSource: body.utm?.utm_source || undefined,
     utmMedium: body.utm?.utm_medium || undefined,
     utmCampaign: body.utm?.utm_campaign || undefined,

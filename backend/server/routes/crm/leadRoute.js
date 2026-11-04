@@ -37,5 +37,8 @@ router.patch('/:id/stage', changeStageValidator, leadController.changeStage);
 // lead off their own desk (or anyone else's) onto another rep.
 router.patch('/:id/owner', requireCrmRole('admin', 'md'), reassignLeadValidator, leadController.reassignLead);
 router.post('/:id/activities', recordActivityValidator, leadController.recordActivity);
+// Acceptance report finding 7: "Add a delete or archive action for the MD only."
+router.patch('/:id/archive', requireCrmRole('md'), leadIdValidator, leadController.archiveLead);
+router.patch('/:id/restore', requireCrmRole('md'), leadIdValidator, leadController.restoreLead);
 
 module.exports = router;

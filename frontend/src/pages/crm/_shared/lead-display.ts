@@ -123,3 +123,44 @@ export function isObviouslyInvalidDropTarget(from: string, to: string): boolean 
   if (from === "lost" && to !== "contacted") return true;
   return false;
 }
+
+const ALL_STAGES = ["new", "contacted", "qualified", "site_survey", "proposal_sent", "negotiation", "won", "lost"];
+const OPEN_STAGES = ["new", "contacted", "qualified", "site_survey", "proposal_sent", "negotiation"];
+
+/**
+ * Every STRUCTURALLY reachable next stage from `from` for a user with this `role` - a full mirror
+ * of backend/server/utils/crm/stageRules.js#validateStageTransition's non-form-dependent rules
+ * (acceptance report finding 3: "Show only the allowed next stages... Won is unavailable unless
+ * Proposal Sent... Moving backward follows the back-one-stage-at-a-time rule"). Deliberately
+ * excludes the rules that depend on what the user is ABOUT to enter in the form (lost reason, deal
+ * value, follow-up date, MD approval) - those stay visible as options and are asked for via
+ * stageExtraFieldRequirements, exactly like today; this function only decides which stages are
+ * worth offering at all.
+ *
+ * This is a genuine, intentional duplication of the backend's rule - the brief for this fix is
+ * explicit that the dropdown must be accurate, not just "mostly right". The backend
+ * (services/crm/leadService.js#changeStage) remains the final, authoritative check on every
+ * submit; a rejected change still reverts and shows the backend's own error, exactly as before.
+ */
+export function allowedNextStages(from: string, role: string): string[] {
+  if (isTerminalStage(from)) return []; // Won is done - no further moves.
+
+  return ALL_STAGES.filter((to) => {
+    if (to === from) return false;
+
+    if (from === "lost") {
+      // A lost lead can only be reopened to Contacted, and only by Admin/MD.
+      return to === "contacted" && ["admin", "md"].includes(role);
+    }
+
+    if (to === "won" && !["proposal_sent", "negotiation"].includes(from)) return false;
+
+    if (OPEN_STAGES.includes(from) && OPEN_STAGES.includes(to) && OPEN_STAGES.indexOf(to) < OPEN_STAGES.indexOf(from) - 1) {
+      return false; // more than one stage back
+    }
+
+    if (role === "technical" && !["site_survey", "proposal_sent"].includes(to)) return false;
+
+    return true;
+  });
+}

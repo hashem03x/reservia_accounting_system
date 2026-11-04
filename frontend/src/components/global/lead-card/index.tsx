@@ -1,9 +1,10 @@
 import { DragEvent, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
-import { CRM_STAGES, CrmLead, CrmStage } from "@/types/crm";
+import { useSystemAccess } from "@/context/SystemAccessContext";
+import { CrmLead, CrmRole, CrmStage } from "@/types/crm";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import copyToClipboard from "@/utils/helpers/copy-to-clipboard";
-import { channelLabel, isLeadOverdue, isObviouslyInvalidDropTarget, ownerInitials, segmentLabel, timeAgo } from "@/pages/crm/_shared/lead-display";
+import { allowedNextStages, channelLabel, isLeadOverdue, ownerInitials, segmentLabel, timeAgo } from "@/pages/crm/_shared/lead-display";
 import { crmStageLabel } from "@/pages/crm/_shared/stage";
 import { ActionIcon, Avatar, Badge, Menu, Tooltip } from "@mantine/core";
 import { outlineIcons, solidIcons } from "@/components/icons";
@@ -33,6 +34,8 @@ export type LeadCardProps = {
 
 export default function LeadCard({ lead, draggable, isDragging, isUpdating, onOpen, onRequestStageChange, onDragStart, onDragEnd }: LeadCardProps) {
   const { language, translate, translations } = useLanguage();
+  const { systems } = useSystemAccess();
+  const role = (systems?.CRM?.role as CrmRole | null | undefined) || "";
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [copiedRef, setCopiedRef] = useState(false);
 
@@ -52,7 +55,7 @@ export default function LeadCard({ lead, draggable, isDragging, isUpdating, onOp
     onOpen();
   }
 
-  const moveTargets = CRM_STAGES.filter((s) => s !== lead.stage);
+  const moveTargets = allowedNextStages(lead.stage, role) as CrmStage[];
 
   return (
     <div
@@ -103,17 +106,17 @@ export default function LeadCard({ lead, draggable, isDragging, isUpdating, onOp
               >
                 {translate("Copy reference code", "نسخ الرمز المرجعي")}
               </Menu.Item>
-              <Menu.Divider />
-              <Menu.Label>{translate("Move to", "نقل إلى")}</Menu.Label>
-              {moveTargets.map((stage) => (
-                <Menu.Item
-                  key={stage}
-                  disabled={isObviouslyInvalidDropTarget(lead.stage, stage)}
-                  onClick={() => onRequestStageChange(stage)}
-                >
-                  {crmStageLabel(translate)(stage)}
-                </Menu.Item>
-              ))}
+              {moveTargets.length > 0 && (
+                <>
+                  <Menu.Divider />
+                  <Menu.Label>{translate("Move to", "نقل إلى")}</Menu.Label>
+                  {moveTargets.map((stage) => (
+                    <Menu.Item key={stage} onClick={() => onRequestStageChange(stage)}>
+                      {crmStageLabel(translate)(stage)}
+                    </Menu.Item>
+                  ))}
+                </>
+              )}
             </Menu.Dropdown>
           </Menu>
         </div>

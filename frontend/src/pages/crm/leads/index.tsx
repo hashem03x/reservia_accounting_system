@@ -8,8 +8,9 @@ import handleRequest from "@/utils/helpers/handle-request";
 import { formatDate } from "@/utils/helpers/date-formaters";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import { PaginatedData } from "@/types/global";
-import { CRM_SEGMENTS, CRM_STAGES, CrmLead, CrmSegment, CrmStage } from "@/types/crm";
-import { Badge, Button, Select, Table, TextInput } from "@mantine/core";
+import { CRM_SEGMENTS, CRM_STAGES, CrmLead, CrmRole, CrmSegment, CrmStage } from "@/types/crm";
+import { Badge, Button, Select, Switch, Table, TextInput } from "@mantine/core";
+import { useSystemAccess } from "@/context/SystemAccessContext";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
@@ -25,6 +26,8 @@ import { crmStageLabel, stageBadgeColor } from "../_shared/stage";
 export default function CrmLeads() {
   const { language, translate, translations } = useLanguage();
   const navigate = useNavigate();
+  const { systems } = useSystemAccess();
+  const role = systems?.CRM?.role as CrmRole | null | undefined;
   const stageLabel = crmStageLabel(translate);
 
   useDocumentTitle(`${translate("Leads", "العملاء المحتملون")} | Reservia CRM`);
@@ -34,12 +37,15 @@ export default function CrmLeads() {
   const [stage, setStage] = useState((searchParams.get("stage") as CrmStage) || "");
   const [segment, setSegment] = useState((searchParams.get("segment") as CrmSegment) || "");
   const [q, setQ] = useState(searchParams.get("q") || "");
+  // MD only (acceptance report finding 7) - everyone else never even sees archived leads exist.
+  const [includeArchived, setIncludeArchived] = useState(false);
 
   const params = {
     page: activePage.toString(),
     ...(stage ? { stage } : {}),
     ...(segment ? { segment } : {}),
     ...(q ? { q } : {}),
+    ...(includeArchived && role === "md" ? { includeArchived: "1" } : {}),
   };
 
   const {
@@ -70,7 +76,7 @@ export default function CrmLeads() {
     setSearchParams(params, { replace: true });
     const cancelRequest = handleLoadLeads();
     return cancelRequest;
-  }, [activePage, stage, segment, q]);
+  }, [activePage, stage, segment, q, includeArchived]);
 
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
 
@@ -106,6 +112,14 @@ export default function CrmLeads() {
           label={translate("Segment", "القطاع")}
           clearable
         />
+        {role === "md" && (
+          <Switch
+            checked={includeArchived}
+            onChange={(e) => (setActivePage(1), setIncludeArchived(e.currentTarget.checked))}
+            label={translate("Show archived leads", "إظهار العملاء المؤرشفين")}
+            className="self-center sm:col-span-3"
+          />
+        )}
       </div>
 
       {loading ? (
@@ -138,8 +152,19 @@ export default function CrmLeads() {
                 </Table.Thead>
                 <Table.Tbody>
                   {paginatedLeads.data.map((lead) => (
-                    <ClickableRow key={lead._id} className="cursor-pointer" onClick={() => navigate(lead._id)}>
-                      <Table.Td className="whitespace-nowrap font-mono text-xs">{lead.refCode}</Table.Td>
+                    <ClickableRow
+                      key={lead._id}
+                      className={`cursor-pointer ${lead.archived ? "opacity-50" : ""}`}
+                      onClick={() => navigate(lead._id)}
+                    >
+                      <Table.Td className="whitespace-nowrap font-mono text-xs">
+                        {lead.refCode}
+                        {lead.archived && (
+                          <Badge color="gray" variant="light" className="ms-2">
+                            {translate("Archived", "مؤرشف")}
+                          </Badge>
+                        )}
+                      </Table.Td>
                       <Table.Td>
                         <TruncatedText text={lead.name || "-"} maxWidthClassName="max-w-[160px]" />
                       </Table.Td>
