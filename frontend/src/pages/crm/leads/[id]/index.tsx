@@ -20,6 +20,7 @@ import { outlineIcons } from "@/components/icons";
 import { useSystemAccess } from "@/context/SystemAccessContext";
 import { crmStageLabel, stageBadgeColor } from "../../_shared/stage";
 import { allowedNextStages } from "../../_shared/lead-display";
+import LeadAttachments from "./_components/lead-attachments";
 
 type LeadDetail = { lead: CrmLead; activities: CrmActivity[]; stageHistory: CrmStageHistory[] };
 
@@ -98,6 +99,7 @@ export default function CrmLeadDetail() {
           <InfoCard lead={lead} overdue={overdue} />
           <StageChangeCard lead={lead} onChanged={load} />
           <StageHistoryCard rows={data.stageHistory} />
+          <LeadAttachments leadId={lead._id} canEdit={role === "admin" || role === "md"} />
         </section>
         <section className="lg:col-span-2">
           <ActivityTimeline leadId={lead._id} activities={data.activities} onAdded={load} />
