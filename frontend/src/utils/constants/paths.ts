@@ -62,7 +62,6 @@ const paths = {
   pipeline: "pipeline",
   leads: "leads",
   performance: "performance",
-  import: "import",
 };
 
 export default paths;

@@ -111,9 +111,11 @@ import AP_Shareholder from "@/pages/admin/shareholders/[id]";
 
 // Reservia CRM Pages
 import Crm from "@/pages/crm";
+import CRM_Dashboard from "@/pages/crm/dashboard";
 import CRM_Pipeline from "@/pages/crm/pipeline";
 import CRM_Leads from "@/pages/crm/leads";
 import CRM_Lead from "@/pages/crm/leads/[id]";
+import CRM_Performance from "@/pages/crm/performance";
 
 export default function App() {
   useColorScheme();
@@ -327,9 +329,11 @@ export default function App() {
               <Route element={<SystemGuard systemId="CRM" />}>
                 <Route element={<CrmLayout />}>
                   <Route path={paths.crm} element={<Crm />}>
+                    <Route path={paths.dashboard} element={<CRM_Dashboard />} />
                     <Route path={paths.pipeline} element={<CRM_Pipeline />} />
                     <Route path={paths.leads} element={<CRM_Leads />} />
                     <Route path={paths.leads + "/:id"} element={<CRM_Lead />} />
+                    <Route path={paths.performance} element={<CRM_Performance />} />
                   </Route>
                   <Route path={paths.crm + "/*"} element={<NotFound />} />
                 </Route>

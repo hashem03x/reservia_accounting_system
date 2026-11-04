@@ -150,6 +150,12 @@ const mountRoutes = app => {
   app.use('/api/v1/crm/public', require('./crm/publicLeadRoute'));
   // Phase 2 (due 2026-12-10) - quotations (services/crm/quotationService.js).
   app.use('/api/v1/crm/quotations', require('./crm/quotationRoute'));
+  // Dashboard + Performance tab (acceptance report sections 4/5) - real, MD-entered targets and
+  // ad spend, and the report aggregations that read them back (services/crm/reportService.js).
+  app.use('/api/v1/crm/targets', require('./crm/targetRoute'));
+  app.use('/api/v1/crm/ad-spend', require('./crm/adSpendRoute'));
+  app.use('/api/v1/crm/reports', require('./crm/reportRoute'));
+  app.use('/api/v1/crm/team', require('./crm/teamRoute'));
 
   app.all('/api/v1', (req, res) => {
     res.status(200).json({ message: 'App is running 🚀' });

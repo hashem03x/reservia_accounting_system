@@ -21,6 +21,8 @@ import { ClickableRow } from "@/components/ui/clickable-row";
 import TruncatedText from "@/components/ui/truncated-text";
 import { solidIcons } from "@/components/icons";
 import LeadModal from "@/components/global/lead-modal";
+import ImportWizardModal from "@/components/global/csv-import/import-wizard-modal";
+import DownloadSampleButton from "@/components/global/csv-import/download-sample-button";
 import { crmStageLabel, stageBadgeColor } from "../_shared/stage";
 
 export default function CrmLeads() {
@@ -79,15 +81,30 @@ export default function CrmLeads() {
   }, [activePage, stage, segment, q, includeArchived]);
 
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
+  const [importOpened, { open: openImport, close: closeImport }] = useDisclosure(false);
+  // Acceptance report finding 8: "CSV import... not in menu" - matches the backend's own gate
+  // (requireCrmRole('admin', 'md') on routes/import/importCrmLeadRoute.js), so the button is only
+  // ever shown to a role that can actually use it.
+  const canImport = role === "admin" || role === "md";
 
   return (
     <AdminLayoutBox
       header={{
         title: translate("Leads", "العملاء المحتملون"),
         sideElements: (
-          <Button onClick={openModal} color="teal" leftSection={<solidIcons.Plus />}>
-            {translate("New Lead", "عميل محتمل جديد")}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {canImport && (
+              <>
+                <DownloadSampleButton url="import/crm-leads/sample" filename="reservia-crm-leads-template.csv" />
+                <Button onClick={openImport} variant="light" color="grape" leftSection={<solidIcons.ArrowUp />}>
+                  {translate("Import CSV", "استيراد CSV")}
+                </Button>
+              </>
+            )}
+            <Button onClick={openModal} color="teal" leftSection={<solidIcons.Plus />}>
+              {translate("New Lead", "عميل محتمل جديد")}
+            </Button>
+          </div>
         ),
       }}
     >
@@ -192,6 +209,17 @@ export default function CrmLeads() {
       )}
 
       <LeadModal opened={modalOpened} close={closeModal} callback={(lead) => navigate(lead._id)} />
+
+      {canImport && (
+        <ImportWizardModal
+          opened={importOpened}
+          close={closeImport}
+          title={translate("Import Leads from CSV", "استيراد العملاء المحتملين من CSV")}
+          previewUrl="import/crm-leads/preview"
+          commitUrl="import/crm-leads/commit"
+          onImported={() => handleLoadLeads()}
+        />
+      )}
     </AdminLayoutBox>
   );
 }

@@ -138,3 +138,119 @@ export type CrmStageHistory = {
 };
 
 export type CrmPipelineRow = { stage: CrmStage; count: number; valueEgp: number; weightedValueEgp: number };
+
+// ===================== Dashboard (acceptance report section 4) =====================
+// Mirrors backend/server/services/crm/reportService.js's getDashboard() payload exactly.
+
+export type CrmTargetMetric = { actual: number; target: number | null };
+export type CrmDashboardTargets = {
+  enquiries: CrmTargetMetric;
+  qualified: CrmTargetMetric;
+  surveys: CrmTargetMetric;
+  proposals: CrmTargetMetric;
+  signed: CrmTargetMetric;
+  valueEgp: { target: number | null };
+};
+export type CrmDashboardPipeline = { stages: CrmPipelineRow[]; totalWeightedValueEgp: number };
+export type CrmDashboardSpeed = {
+  leadsPastSlaLimit: number;
+  leadsWithNoFollowUpDate: number;
+  avgHoursToFirstReply: number | null;
+  pctWithinSla: number | null;
+};
+export type CrmSourceQualityRow = {
+  source: string;
+  leads: number;
+  qualified: number;
+  signed: number;
+  monthlySpendEgp: number | null;
+  costPerQualifiedLead: number | null;
+  overCostLimit: boolean;
+};
+export type CrmDashboardSourceQuality = { sources: CrmSourceQualityRow[]; costPerQualifiedLeadLimitEgp: number };
+export type CrmSegmentRateRow = { segment: CrmSegment; won: number; lost: number; winRatePct: number | null };
+export type CrmLostReasonRow = { reason: string; count: number };
+export type CrmDashboardWonLost = {
+  winRateBySegment: CrmSegmentRateRow[];
+  medianDaysToClose: number | null;
+  lostReasonsRanked: CrmLostReasonRow[];
+  wonCount: number;
+  lostCount: number;
+};
+export type CrmUnansweredLead = { _id: string; refCode: string; name: string | null; phoneE164: string; stage: CrmStage; createdAt: string };
+export type CrmDashboardThisWeek = { newLeads: number; moves: number; oldestUnanswered: CrmUnansweredLead[] };
+export type CrmDashboard = {
+  year: number;
+  month: number;
+  owner: string | null;
+  targets: CrmDashboardTargets;
+  pipeline: CrmDashboardPipeline;
+  speed: CrmDashboardSpeed;
+  sourceQuality: CrmDashboardSourceQuality;
+  wonLost: CrmDashboardWonLost;
+  thisWeek: CrmDashboardThisWeek;
+};
+
+// ===================== Performance tab (acceptance report section 5) =====================
+// Mirrors backend/server/services/crm/performanceReportService.js's getPerformance() payload.
+
+export type CrmSegmentSample = { segment: CrmSegment; avgDays: number | null; sampleSize: number };
+export type CrmDaysInStageRow = { stage: CrmStage; avgDays: number | null; medianDays: number | null; sampleSize: number; bySegment: CrmSegmentSample[] };
+export type CrmHoursToFirstReply = { avgHours: number | null; medianHours: number | null; pctWithin8h: number | null; sampleSize: number };
+export type CrmDaysMetric = { avgDays: number | null; medianDays: number | null; sampleSize: number; bySegment: CrmSegmentSample[] };
+export type CrmStuckLead = { leadId: string; stage: CrmStage; days: number; medianDaysForStage: number };
+export type CrmPerfSpeed = {
+  daysInStage: CrmDaysInStageRow[];
+  hoursToFirstReply: CrmHoursToFirstReply;
+  daysToQuote: CrmDaysMetric;
+  daysToClose: CrmDaysMetric;
+  stuckLeads: CrmStuckLead[];
+};
+
+export type CrmFunnelStageRow = { stage: CrmStage; count: number; pctFromPreviousStage: number | null };
+export type CrmUnavailable = { available: false; reason?: string };
+export type CrmPerfConversion = {
+  funnel: CrmFunnelStageRow[];
+  winRateBySegment: (CrmSegmentRateRow & { sampleSize: number })[];
+  winRateBySource: { source: string; won: number; lost: number; sampleSize: number; winRatePct: number | null }[];
+  winRateByOwner: { owner: string; won: number; lost: number; sampleSize: number; winRatePct: number | null }[];
+  lossRatePct: number | null;
+  lostReasonsRanked: CrmLostReasonRow[];
+  lostByStageChart: { stage: string; count: number }[];
+  quoteToWin: CrmUnavailable;
+  leadToSigned: { signed: number; enquiries: number; pct: number | null };
+};
+export type CrmDealSizeRow = { segment: CrmSegment; avgDealSizeEgp: number | null; sampleSize: number };
+export type CrmPipelineCoverage = { weightedPipelineEgp: number; remainingTargetEgp: number | null; ratio: number | null; belowOne: boolean };
+export type CrmPerfValueCost = {
+  averageDealSizeBySegment: CrmDealSizeRow[];
+  averageDiscount: CrmUnavailable;
+  pipelineCoverage: CrmPipelineCoverage;
+  costPerQualifiedLeadEgp: number | null;
+  costPerSignedDealEgp: number | null;
+};
+export type CrmPerformance = {
+  year: number;
+  month: number;
+  owner: string | null;
+  segment: string | null;
+  speed: CrmPerfSpeed;
+  conversion: CrmPerfConversion;
+  valueCost: CrmPerfValueCost;
+};
+
+export type CrmTarget = {
+  _id: string;
+  owner: string;
+  year: number;
+  month: number;
+  targetValueEgp: number | null;
+  targetDealCount: number | null;
+  targetEnquiries: number | null;
+  targetQualified: number | null;
+  targetSurveys: number | null;
+  targetProposals: number | null;
+  targetSigned: number | null;
+};
+
+export type CrmAdSpendRow = { _id: string; source: CrmSource; year: number; month: number; amountEgp: number };

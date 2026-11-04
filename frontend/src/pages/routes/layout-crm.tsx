@@ -16,12 +16,15 @@ import logo from "@/assets/logo_no_bg.png";
 // Dashboard is listed FIRST (acceptance report section 4: "Add a Dashboard as the first menu item
 // and the screen users land on after login") and / (pipeline's current default) now redirects
 // there - see routes/index.tsx's own CRM route block.
+// CSV import is deliberately NOT a nav item/separate page - every other list page in this ERP
+// (products, vendors, customers, purchase orders, sales orders) offers it as an inline
+// "Import CSV" button + ImportWizardModal on the list page itself (see leads/index.tsx); a
+// standalone menu entry would be the one inconsistent import flow in the whole app.
 const NAV_ITEMS = [
   { to: `/${paths.crm}/${paths.dashboard}`, label: { en: "Dashboard", ar: "لوحة التحكم" }, Icon: outlineIcons.Squares },
   { to: `/${paths.crm}/${paths.pipeline}`, label: { en: "Pipeline", ar: "المسار" }, Icon: outlineIcons.ChartBar },
   { to: `/${paths.crm}/${paths.leads}`, label: { en: "Leads", ar: "العملاء المحتملون" }, Icon: outlineIcons.Users },
   { to: `/${paths.crm}/${paths.performance}`, label: { en: "Performance", ar: "الأداء" }, Icon: outlineIcons.ChartBar },
-  { to: `/${paths.crm}/${paths.import}`, label: { en: "CSV Import", ar: "استيراد CSV" }, Icon: outlineIcons.ArrowUpOnSquare },
 ];
 
 export default function CrmLayout() {
