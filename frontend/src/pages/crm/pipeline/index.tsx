@@ -112,6 +112,14 @@ export default function CrmPipeline() {
     () => (data?.summary ?? []).filter((r) => OPEN_STAGES.includes(r.stage)).reduce((sum, r) => sum + r.valueEgp, 0),
     [data],
   );
+  // Acceptance report finding 6: "ignores stage weights" - weightedValueEgp comes straight from
+  // the backend (controller/crm/leadController.js#getPipelineSummary), never re-derived here from
+  // raw values and a client-side weight table, so this figure can never drift from the one source
+  // of truth for a business-critical KPI.
+  const totalWeightedValueEgp = useMemo(
+    () => (data?.summary ?? []).filter((r) => OPEN_STAGES.includes(r.stage)).reduce((sum, r) => sum + r.weightedValueEgp, 0),
+    [data],
+  );
 
   // ===================== Stage changes (menu or drag-and-drop) =====================
   const [movingLeadId, setMovingLeadId] = useState<string | null>(null);
@@ -185,6 +193,7 @@ export default function CrmPipeline() {
       <PipelineHeader
         totalCount={totalCount}
         totalValueEgp={totalOpenValueEgp}
+        totalWeightedValueEgp={totalWeightedValueEgp}
         filters={filters}
         onFiltersChange={setFilters}
         ownerOptions={ownerOptions}

@@ -72,6 +72,19 @@ const GOVERNORATES = [
 ];
 const GOVERNORATE_NAMES_EN = GOVERNORATES.map(g => g.en);
 
+// Probability-of-close weight per OPEN stage (acceptance report finding 6: "Open pipeline total
+// shows 1,500 EGP, ignores stage weights. Fix: weighted value"). Won/lost are deliberately absent
+// - Won is already-realized revenue, not a forecast, and Lost contributes nothing; "weighted
+// pipeline" only ever concerns the six open, still-uncertain stages.
+const STAGE_WEIGHTS = {
+  new: 0.05,
+  contacted: 0.1,
+  qualified: 0.25,
+  site_survey: 0.4,
+  proposal_sent: 0.55,
+  negotiation: 0.75,
+};
+
 // Activity timeline entry types (brief section 4D + the sample's own set).
 const ACTIVITY_TYPES = ['note', 'call', 'email', 'survey', 'proposal', 'whatsapp_in', 'whatsapp_out', 'system'];
 
@@ -101,4 +114,5 @@ module.exports = {
   PAYMENT_PROVIDERS,
   PAYMENT_STATUSES,
   QUOTATION_STATUSES,
+  STAGE_WEIGHTS,
 };

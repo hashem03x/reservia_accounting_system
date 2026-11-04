@@ -8,6 +8,7 @@ const factory = require('../handlersFactory');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { STAGES } = require('../../utils/crm/stageRules');
+const { STAGE_WEIGHTS } = require('../../utils/crm/constants');
 const leadService = require('../../services/crm/leadService');
 const exportToCsv = require('../../utils/exportToCsv');
 const { buildLeadExportRows, HEADERS: EXPORT_HEADERS } = require('../../services/crm/leadExportService');
@@ -50,7 +51,18 @@ exports.getPipelineSummary = asyncHandler(async (req, res) => {
     { $group: { _id: '$stage', count: { $sum: 1 }, valueEgp: { $sum: { $ifNull: ['$valueEgp', 0] } } } },
   ]);
   const byStage = Object.fromEntries(rows.map(r => [r._id, { count: r.count, valueEgp: r.valueEgp }]));
-  const summary = STAGES.map(stage => ({ stage, count: byStage[stage]?.count || 0, valueEgp: byStage[stage]?.valueEgp || 0 }));
+  // weightedValueEgp (acceptance report finding 6) - each open stage's value discounted by its
+  // probability of actually closing; Won/Lost have no weight in STAGE_WEIGHTS and so always
+  // contribute 0 (Won is already-realized revenue, not a forecast).
+  const summary = STAGES.map(stage => {
+    const valueEgp = byStage[stage]?.valueEgp || 0;
+    return {
+      stage,
+      count: byStage[stage]?.count || 0,
+      valueEgp,
+      weightedValueEgp: Math.round(valueEgp * (STAGE_WEIGHTS[stage] ?? 0)),
+    };
+  });
   res.status(200).json(apiResponse('Pipeline summary retrieved successfully', true, summary));
 });
 

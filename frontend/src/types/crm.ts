@@ -137,4 +137,4 @@ export type CrmStageHistory = {
   createdAt: string;
 };
 
-export type CrmPipelineRow = { stage: CrmStage; count: number; valueEgp: number };
+export type CrmPipelineRow = { stage: CrmStage; count: number; valueEgp: number; weightedValueEgp: number };

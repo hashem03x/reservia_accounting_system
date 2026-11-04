@@ -17,6 +17,7 @@ export type PipelineFilters = {
 export default function PipelineHeader({
   totalCount,
   totalValueEgp,
+  totalWeightedValueEgp,
   filters,
   onFiltersChange,
   ownerOptions,
@@ -29,6 +30,7 @@ export default function PipelineHeader({
 }: {
   totalCount: number;
   totalValueEgp: number;
+  totalWeightedValueEgp: number;
   filters: PipelineFilters;
   onFiltersChange: (filters: PipelineFilters) => void;
   ownerOptions: { value: string; label: string }[];
@@ -60,6 +62,12 @@ export default function PipelineHeader({
             {!!totalValueEgp && (
               <span className="text-gray-500">
                 {translate("Open pipeline value", "قيمة المسار المفتوح")}: <span className="font-semibold text-gray-700">{formatAmount(totalValueEgp, translations.currency)}</span>
+              </span>
+            )}
+            {!!totalValueEgp && (
+              <span className="text-gray-500" title={translate("Each open stage's value, discounted by its chance of closing", "قيمة كل مرحلة مفتوحة، مخصومة حسب احتمال إغلاقها")}>
+                {translate("Weighted", "القيمة المرجحة")}:{" "}
+                <span className="font-semibold text-gray-700">{formatAmount(totalWeightedValueEgp, translations.currency)}</span>
               </span>
             )}
           </div>
