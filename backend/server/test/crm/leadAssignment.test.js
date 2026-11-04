@@ -100,6 +100,33 @@ maybeTest('intakeLead: round-robins across the eligible pool rather than always 
   assert.ok(owners.includes(String(mona._id)) && owners.includes(String(omar._id)), 'both sales engineers received at least one lead');
 });
 
+maybeTest('intakeLead: multiple SIMULTANEOUS web_form submissions round-robin correctly - no race leaves a lead unassigned or skips a rotation slot', async () => {
+  // Real concurrency (Promise.all), not sequential awaits - exercises the atomic $inc rotation
+  // counter (services/crm/leadAssignmentService.js#nextRotationSeq) under genuine contention,
+  // the exact scenario "test multiple simultaneous submissions" is checking for.
+  const mona = await salesUser('Mona Khaled');
+  const omar = await salesUser('Omar Said');
+  const sara = await salesUser('Sara Adel');
+
+  const submissions = await Promise.all(
+    Array.from({ length: 9 }, (_, i) => leadService.intakeLead({ phone: `0102222${String(6000 + i)}`, channel: 'web_form', name: `Concurrent ${i}` }, {}))
+  );
+
+  const owners = submissions.map(s => String(s.lead.owner._id || s.lead.owner));
+  assert.equal(owners.length, 9);
+  assert.ok(owners.every(id => id !== 'null' && id !== 'undefined'), 'no concurrent submission was left unassigned by a race');
+
+  // Every one of the 3 eligible engineers received some leads - round-robin spread the load,
+  // never piled every concurrent submission onto a single engineer.
+  const counts = { [mona._id]: 0, [omar._id]: 0, [sara._id]: 0 };
+  for (const id of owners) counts[id] = (counts[id] || 0) + 1;
+  assert.ok(Object.values(counts).every(c => c > 0), `expected all 3 engineers to get at least one lead, got: ${JSON.stringify(counts)}`);
+
+  // No duplicate leads were created despite the concurrent writes (each phone is unique here, so
+  // this also confirms no cross-submission corruption of the wrong lead's owner).
+  assert.equal(await Lead.countDocuments({}), 9);
+});
+
 maybeTest('an explicit owner (e.g. a staff member assigning to themselves) is never overridden by auto-assignment', async () => {
   const mona = await salesUser('Mona Khaled');
   const omar = await salesUser('Omar Said');

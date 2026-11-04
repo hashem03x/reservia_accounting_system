@@ -1,5 +1,5 @@
 const { normalizeEgyptianPhone } = require('../../crm/phone');
-const { SEGMENTS, CHANNELS } = require('../../crm/constants');
+const { SEGMENTS, CHANNELS, SOURCES, GOVERNORATE_NAMES_EN } = require('../../crm/constants');
 const leadService = require('../../../services/crm/leadService');
 
 // Reservia CRM - bulk lead CSV import (Developer Brief: "bulk CSV import... dedupe/merge by
@@ -21,7 +21,7 @@ exports.headers = ['Name', 'Phone', 'Channel', 'Segment', 'Source', 'Governorate
 
 exports.requiredHeaders = ['Phone', 'Channel'];
 
-exports.exampleRow = ['Ahmed Samir', '01012345678', 'phone', 'villa', 'Google ads', 'Giza', '', '1800', '', ''];
+exports.exampleRow = ['Ahmed Samir', '01012345678', 'phone', 'villa', 'Google Ads', 'Giza', '', '1800', '', ''];
 
 exports.validateRow = async function validateRow(row) {
   const errors = [];
@@ -54,6 +54,17 @@ exports.validateRow = async function validateRow(row) {
   if (segment && !SEGMENTS.includes(segment)) {
     errors.push({ column: 'Segment', value: row.Segment, message: `Must be one of: ${SEGMENTS.join(', ')}.` });
   }
+  // Acceptance report finding 4: "Source/Governorate/Segment accept free text... Fix: fixed
+  // lists." The manual New Lead form and the public website intake already enforce this -
+  // CSV import must never be the one path that lets "google ads"/"alexandria"-style free text
+  // back in. Case-insensitive match against the canonical EN governorate names, since a CSV
+  // typed by hand will not reliably match the exact stored casing.
+  if (source && !SOURCES.includes(source)) {
+    errors.push({ column: 'Source', value: row.Source, message: `Must be one of: ${SOURCES.join(', ')}.` });
+  }
+  if (governorate && !GOVERNORATE_NAMES_EN.some(g => g.toLowerCase() === governorate.toLowerCase())) {
+    errors.push({ column: 'Governorate', value: row.Governorate, message: `Must be one of: ${GOVERNORATE_NAMES_EN.join(', ')}.` });
+  }
   for (const [column, value] of [['MonthlyBillEgp', monthlyBillEgp], ['SystemSizeKwp', systemSizeKwp], ['ValueEgp', valueEgp]]) {
     if (value && (Number.isNaN(Number(value)) || Number(value) < 0)) {
       errors.push({ column, value, message: 'Must be a non-negative number.' });
@@ -61,6 +72,10 @@ exports.validateRow = async function validateRow(row) {
   }
 
   if (errors.length > 0) return { errors, value: null };
+
+  // Normalize to the canonical stored casing (a hand-typed CSV won't reliably match it) - keeps
+  // CSV-imported leads consistent with ones created through the New Lead form or website intake.
+  const canonicalGovernorate = governorate ? GOVERNORATE_NAMES_EN.find(g => g.toLowerCase() === governorate.toLowerCase()) : undefined;
 
   return {
     errors,
@@ -70,7 +85,7 @@ exports.validateRow = async function validateRow(row) {
       channel,
       segment: segment || undefined,
       source: source || undefined,
-      governorate: governorate || undefined,
+      governorate: canonicalGovernorate,
       partnerName: partnerName || undefined,
       monthlyBillEgp: monthlyBillEgp ? Number(monthlyBillEgp) : undefined,
       systemSizeKwp: systemSizeKwp ? Number(systemSizeKwp) : undefined,
@@ -90,8 +105,8 @@ exports.fieldSpecs = [
   { column: 'Phone', required: 'yes', description: 'Phone number - leads are deduplicated/merged by this number.', format: 'Egyptian mobile (01XXXXXXXXX) or with +20/20/00 prefix', example: '01012345678' },
   { column: 'Channel', required: 'yes', description: 'How the enquiry reached us.', format: `One of: ${CHANNELS.join(', ')}`, example: 'phone' },
   { column: 'Segment', required: 'no', description: 'Customer segment.', format: `One of: ${SEGMENTS.join(', ')}`, example: 'villa' },
-  { column: 'Source', required: 'no', description: 'Marketing source label.', format: 'Text', example: 'Google ads' },
-  { column: 'Governorate', required: 'no', description: 'Governorate.', format: 'Text', example: 'Giza' },
+  { column: 'Source', required: 'no', description: 'Marketing source.', format: `One of: ${SOURCES.join(', ')}`, example: 'Google Ads' },
+  { column: 'Governorate', required: 'no', description: 'Governorate (case-insensitive).', format: `One of: ${GOVERNORATE_NAMES_EN.join(', ')}`, example: 'Giza' },
   { column: 'PartnerName', required: 'no', description: 'Dealer/partner name, if the channel is a dealer.', format: 'Text', example: 'Delta Solar Partners' },
   { column: 'MonthlyBillEgp', required: 'no', description: 'Reported monthly electricity bill.', format: 'Number (EGP)', example: '1800' },
   { column: 'SystemSizeKwp', required: 'no', description: 'Estimated system size.', format: 'Number (kWp)', example: '5' },

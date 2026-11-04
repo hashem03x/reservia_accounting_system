@@ -49,8 +49,8 @@ async function writeTempCsv(content) {
 
 const THREE_LEADS_CSV =
   'Name,Phone,Channel,Segment,Source,Governorate,PartnerName,MonthlyBillEgp,SystemSizeKwp,ValueEgp\n' +
-  'Ahmed Samir,01011111111,phone,villa,Google ads,Giza,,1800,,\n' +
-  'Mona Khaled,01022222222,whatsapp,compound,Facebook,Cairo,,2200,,\n' +
+  'Ahmed Samir,01011111111,phone,villa,Google Ads,Giza,,1800,,\n' +
+  'Mona Khaled,01022222222,whatsapp,compound,Meta Ads,Cairo,,2200,,\n' +
   'عمر حسن,01033333333,referral,farm,Referral,Fayoum,,,10,990000\n';
 
 maybeTest('1. previewImport: a well-formed 3-row CRM lead file (including an Arabic name) previews with all 3 valid', async () => {
@@ -104,6 +104,66 @@ maybeTest('5. An invalid channel is rejected at preview time with a clear row/co
   assert.equal(result.validCount, 0);
   assert.equal(result.invalidCount, 1);
   assert.ok(result.errors[0].errors.some(e => e.column === 'Channel'));
+});
+
+maybeTest('7. An invalid Egyptian phone number is rejected at preview time', async () => {
+  const csv = 'Name,Phone,Channel\nBad Phone,0000000000,phone\n';
+  const file = await writeTempCsv(csv);
+  const result = await previewImport(file, schema);
+  await fs.unlink(file.path);
+  assert.equal(result.invalidCount, 1);
+  assert.ok(result.errors[0].errors.some(e => e.column === 'Phone'));
+});
+
+maybeTest('8. Missing a mandatory field (Phone) is rejected with a clear error; Channel-only rows with no phone never silently pass', async () => {
+  const csv = 'Name,Phone,Channel\nNo Phone At All,,phone\n';
+  const file = await writeTempCsv(csv);
+  const result = await previewImport(file, schema);
+  await fs.unlink(file.path);
+  assert.equal(result.invalidCount, 1);
+  assert.ok(result.errors[0].errors.some(e => e.column === 'Phone' && /required/i.test(e.message)));
+});
+
+maybeTest("9. An invalid segment (acceptance report finding 4's fixed list) is rejected at preview time", async () => {
+  const csv = 'Name,Phone,Channel,Segment\nBad Segment,01011122244,phone,mansion\n';
+  const file = await writeTempCsv(csv);
+  const result = await previewImport(file, schema);
+  await fs.unlink(file.path);
+  assert.equal(result.invalidCount, 1);
+  assert.ok(result.errors[0].errors.some(e => e.column === 'Segment'));
+});
+
+maybeTest("10. An invalid source and an invalid governorate (acceptance report finding 4's fixed lists) are both rejected - CSV import is not a bypass for the same free-text problem the New Lead form was fixed for", async () => {
+  const csv = 'Name,Phone,Channel,Source,Governorate\nBad Source And Gov,01011122255,phone,TikTok Ads,Atlantis\n';
+  const file = await writeTempCsv(csv);
+  const result = await previewImport(file, schema);
+  await fs.unlink(file.path);
+  assert.equal(result.invalidCount, 1);
+  const errorColumns = result.errors[0].errors.map(e => e.column);
+  assert.ok(errorColumns.includes('Source'));
+  assert.ok(errorColumns.includes('Governorate'));
+});
+
+maybeTest('11. A governorate typed in a different case than stored still imports, normalized to the canonical casing', async () => {
+  const csv = 'Name,Phone,Channel,Governorate\nCase Test,01011122266,phone,ALEXANDRIA\n';
+  const file = await writeTempCsv(csv);
+  const { created, failed } = await commitImport(file, schema, { userId: null });
+  await fs.unlink(file.path);
+  assert.equal(failed.length, 0);
+  assert.equal(created.length, 1);
+  const lead = await Lead.findById(created[0].id).lean();
+  assert.equal(lead.governorate, 'Alexandria');
+});
+
+maybeTest('12. A larger import (50 valid rows) creates exactly 50 leads, none dropped or merged incorrectly', async () => {
+  const rows = Array.from({ length: 50 }, (_, i) => `Bulk Lead ${i},010${String(20000000 + i).padStart(8, '0')},phone,villa,Organic,Cairo,,,,`);
+  const csv = `Name,Phone,Channel,Segment,Source,Governorate,PartnerName,MonthlyBillEgp,SystemSizeKwp,ValueEgp\n${rows.join('\n')}\n`;
+  const file = await writeTempCsv(csv);
+  const { created, failed } = await commitImport(file, schema, { userId: null });
+  await fs.unlink(file.path);
+  assert.equal(failed.length, 0);
+  assert.equal(created.length, 50);
+  assert.equal(await Lead.countDocuments({}), 50);
 });
 
 // ===================== Export: formula-injection protection =====================
