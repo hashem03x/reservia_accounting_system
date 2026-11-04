@@ -5,6 +5,7 @@ const StageHistory = require('../../models/crm/stageHistoryModel');
 const CrmTarget = require('../../models/crm/targetModel');
 const CrmAdSpend = require('../../models/crm/adSpendModel');
 const { SEGMENTS } = require('../../utils/crm/constants');
+const { workingHoursBetween } = require('../../utils/crm/workingHours');
 const { monthBounds, median, average } = require('./reportService');
 
 // Reservia CRM - the Performance tab (acceptance report section 5). Sits entirely on real stage
@@ -110,7 +111,8 @@ async function getSpeedSection({ year, month, ownerId, segment }) {
   const repliedLeads = await Lead.find({ ...filter, firstReplyAt: { $ne: null } })
     .select('createdAt firstReplyAt')
     .lean();
-  const replyHours = repliedLeads.map(l => (l.firstReplyAt - l.createdAt) / 36e5);
+  // Working hours, not raw wall-clock hours - see reportService.js#getSpeedBlock's own comment.
+  const replyHours = repliedLeads.map(l => workingHoursBetween(l.createdAt, l.firstReplyAt));
   const hoursToFirstReply = {
     avgHours: replyHours.length ? Math.round(average(replyHours) * 10) / 10 : null,
     medianHours: replyHours.length ? Math.round(median(replyHours) * 10) / 10 : null,

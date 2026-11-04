@@ -9,6 +9,7 @@ const {
   reassignLeadValidator,
   recordActivityValidator,
 } = require('../../utils/validators/crm/leadValidators');
+const leadAttachmentRoute = require('./leadAttachmentRoute');
 
 const router = express.Router();
 
@@ -37,6 +38,9 @@ router.patch('/:id/stage', changeStageValidator, leadController.changeStage);
 // lead off their own desk (or anyone else's) onto another rep.
 router.patch('/:id/owner', requireCrmRole('admin', 'md'), reassignLeadValidator, leadController.reassignLead);
 router.post('/:id/activities', recordActivityValidator, leadController.recordActivity);
+// File upload (acceptance report section 7) - a lead's attached documents (e.g. an electricity
+// bill), stored the same private-GridFS way every other attachment in this ERP already is.
+router.use('/:leadId/attachments', leadAttachmentRoute);
 // Acceptance report finding 7: "Add a delete or archive action for the MD only."
 router.patch('/:id/archive', requireCrmRole('md'), leadIdValidator, leadController.archiveLead);
 router.patch('/:id/restore', requireCrmRole('md'), leadIdValidator, leadController.restoreLead);

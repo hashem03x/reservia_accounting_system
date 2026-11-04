@@ -67,4 +67,46 @@ function isWithinWorkingHours(date) {
   return WORKING_WEEKDAYS.includes(weekday) && hour >= WORK_START_HOUR && hour < WORK_END_HOUR;
 }
 
-module.exports = { addWorkingHours, isWithinWorkingHours, WORK_START_HOUR, WORK_END_HOUR, WORKING_WEEKDAYS };
+// Hard cap so a `start` that is somehow after `end` (clock skew, bad data) can never spin this
+// loop forever - mirrors addWorkingHours' own MAX_ITERATIONS guard.
+const MAX_SPAN_MINUTES = MAX_ITERATIONS;
+
+/**
+ * The inverse of addWorkingHours: how many WORKING hours elapsed between two instants (Sun-Thu
+ * 09:00-18:00 Cairo time only - weekends and after-hours time never count). This is what "hours
+ * to first reply" must be measured in, not raw wall-clock hours - a lead created Thursday 17:00
+ * and answered Sunday 10:00 is 2 working hours (comfortably inside the 8-hour SLA), not the ~65
+ * raw hours a naive timestamp subtraction would report. Returns 0 if `end` is not after `start`.
+ *
+ * @param {Date|string} start
+ * @param {Date|string} end
+ * @returns {number} working hours (fractional), e.g. 2.5
+ */
+function workingHoursBetween(start, end) {
+  let cursor = new Date(start);
+  cursor.setUTCSeconds(0, 0);
+  const endTime = new Date(end).getTime();
+  if (endTime <= cursor.getTime()) return 0;
+
+  let elapsedMinutes = 0;
+  for (let guard = 0; guard < MAX_SPAN_MINUTES && cursor.getTime() < endTime; guard += 1) {
+    const { weekday, hour, minute } = cairoParts(cursor);
+    const isWorkingDay = WORKING_WEEKDAYS.includes(weekday);
+    const isWorkingHour = isWorkingDay && hour >= WORK_START_HOUR && hour < WORK_END_HOUR;
+
+    if (isWorkingHour) {
+      const minutesLeftToday = (WORK_END_HOUR - hour) * 60 - minute;
+      const minutesLeftOverall = Math.round((endTime - cursor.getTime()) / 60000);
+      const step = Math.min(minutesLeftToday, minutesLeftOverall);
+      cursor = new Date(cursor.getTime() + step * 60000);
+      elapsedMinutes += step;
+    } else {
+      const toNextMinuteBoundary = (60 - minute) * 60000;
+      const next = new Date(cursor.getTime() + toNextMinuteBoundary);
+      cursor = next.getTime() < endTime ? next : new Date(endTime);
+    }
+  }
+  return elapsedMinutes / 60;
+}
+
+module.exports = { addWorkingHours, workingHoursBetween, isWithinWorkingHours, WORK_START_HOUR, WORK_END_HOUR, WORKING_WEEKDAYS };

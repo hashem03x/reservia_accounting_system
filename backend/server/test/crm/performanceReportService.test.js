@@ -71,6 +71,11 @@ async function createStageHistoryAt(fields, when) {
 
 const OWNER_A = new mongoose.Types.ObjectId();
 const d = (day, hour = 0) => new Date(Date.UTC(2026, 0, day, hour)); // January 2026
+// Africa/Cairo observes DST in this environment's tzdata (EEST = UTC+3 in summer/fall, EET =
+// UTC+2 in winter) - the 2026 transition back to standard time falls between Oct 29 and Oct 30,
+// confirmed empirically. This helper is only valid for November dates (safely UTC+2 throughout);
+// never reuse it across that boundary into October.
+const cairoIso = (day, hour, min = 0) => new Date(Date.UTC(2026, 10, day, hour - 2, min));
 
 maybeTest('computeStageDurations: a lead spends N days in a stage, measured from entering it to the next transition', async () => {
   const lead = await createLeadAt({ owner: OWNER_A, stage: 'qualified' }, d(1));
@@ -106,6 +111,20 @@ maybeTest('computeStageDurations: a lead stuck more than 2x the median time for 
     stuckLeads.some(s => String(s.leadId) === String(stuckLead._id)),
     'a lead untouched since January should be flagged as stuck relative to the ~1-day median'
   );
+});
+
+maybeTest('getSpeedSection: hours to first reply are WORKING hours, never raw wall-clock elapsed time', async () => {
+  // Created Thursday 17:00, replied Sunday 10:00 Cairo (Nov 5 -> Nov 8, both safely on the
+  // post-DST-transition +2 side - see cairoIso's own header comment) - 2 real working hours (1
+  // left Thursday + 1 on Sunday), not the ~65 raw hours a naive timestamp subtraction would
+  // report. Direct regression test for the bug this audit caught in reportService.js and here.
+  await createLeadAt({ owner: OWNER_A, firstReplyAt: cairoIso(8, 10, 0), replyDueAt: cairoIso(5, 18, 0) }, cairoIso(5, 17, 0));
+
+  const { hoursToFirstReply } = await performanceReportService.getSpeedSection({ year: 2026, month: 11, ownerId: String(OWNER_A) });
+  assert.equal(hoursToFirstReply.avgHours, 2);
+  assert.equal(hoursToFirstReply.medianHours, 2);
+  assert.equal(hoursToFirstReply.pctWithin8h, 100);
+  assert.equal(hoursToFirstReply.sampleSize, 1);
 });
 
 maybeTest('getConversionSection: stage-to-stage conversion percentages match a hand calculation', async () => {

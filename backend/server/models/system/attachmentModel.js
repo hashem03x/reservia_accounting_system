@@ -8,7 +8,12 @@ const { Schema, model } = require('mongoose');
 // Attachments are kept in their own collection instead of on the order / journal entry itself, so
 // adding or removing one never saves (or re-validates, or re-posts) the financial record: an
 // attachment never creates, changes or reverses a transaction.
-const OWNER_TYPES = ['PurchaseOrder', 'SalesOrder', 'JournalEntry'];
+// CrmLead added for the CRM's own lead attachments (acceptance report section 7 - "file upload",
+// e.g. an electricity bill) - same private GridFS storage, same PDF validation, a separate
+// CRM-role-based permission gate (routes/crm/leadAttachmentRoute.js) instead of the ERP
+// resource:action check the other three owner types use, since a CRM user may hold no ERP
+// permissions at all.
+const OWNER_TYPES = ['PurchaseOrder', 'SalesOrder', 'JournalEntry', 'CrmLead'];
 
 const attachmentSchema = new Schema(
   {

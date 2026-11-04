@@ -80,6 +80,11 @@ async function createStageHistoryAt(fields, when) {
 const OWNER_A = new mongoose.Types.ObjectId();
 const OWNER_B = new mongoose.Types.ObjectId();
 const d = (day, hour = 0) => new Date(Date.UTC(2026, 0, day, hour)); // January 2026
+// Africa/Cairo observes DST in this environment's tzdata (EEST = UTC+3 in summer/fall, EET =
+// UTC+2 in winter) - the 2026 transition back to standard time falls between Oct 29 and Oct 30,
+// confirmed empirically. This helper is only valid for November dates (safely UTC+2 throughout);
+// never reuse it across that boundary into October.
+const cairoIso = (day, hour, min = 0) => new Date(Date.UTC(2026, 10, day, hour - 2, min));
 
 maybeTest('getTargetsBlock: actual funnel counts match a hand count; a field with no target set reports null, not zero', async () => {
   // L1: owner A, villa, reaches qualified on the 7th.
@@ -134,17 +139,32 @@ maybeTest('getPipelineBlock: weighted value matches hand calculation, Won/Lost e
   assert.equal(result.totalWeightedValueEgp, 50000, 'Won is excluded from the open-pipeline total');
 });
 
-maybeTest('getSpeedBlock: SLA breach and average hours to first reply match a hand calculation', async () => {
+maybeTest('getSpeedBlock: SLA breach and average WORKING hours to first reply match a hand calculation', async () => {
   const now = new Date();
-  // Past the 8-hour SLA, never replied, still open - counts as a breach.
-  await createLeadAt({ owner: OWNER_A, stage: 'new', replyDueAt: new Date(now.getTime() - 3600000), firstReplyAt: null }, d(5));
+  // Past the 8-hour SLA, never replied, still open - counts as a breach. Created within
+  // November so it falls inside this test's own month filter below.
+  await createLeadAt({ owner: OWNER_A, stage: 'new', replyDueAt: new Date(now.getTime() - 3600000), firstReplyAt: null }, cairoIso(2, 10, 0));
 
-  // Replied exactly 4 hours after creation.
-  await createLeadAt({ owner: OWNER_A, stage: 'contacted', replyDueAt: d(10, 8), firstReplyAt: d(10, 4) }, d(10, 0));
+  // Created Sunday 10:00, replied Sunday 14:00 Cairo - exactly 4 WORKING hours (same working
+  // window, no weekend crossed) - this is the regression case for the bug this audit caught:
+  // "hours to first reply" must use Cairo working hours, never raw wall-clock elapsed time.
+  await createLeadAt({ owner: OWNER_A, stage: 'contacted', replyDueAt: cairoIso(1, 18, 0), firstReplyAt: cairoIso(1, 14, 0) }, cairoIso(1, 10, 0));
 
-  const result = await reportService.getSpeedBlock({ year: 2026, month: 1, ownerId: String(OWNER_A) });
+  const result = await reportService.getSpeedBlock({ year: 2026, month: 11, ownerId: String(OWNER_A) });
   assert.equal(result.leadsPastSlaLimit, 1);
   assert.equal(result.avgHoursToFirstReply, 4);
+  assert.equal(result.pctWithinSla, 100);
+});
+
+maybeTest('getSpeedBlock: a reply that merely spans a weekend is never reported as a slow reply', async () => {
+  // Created Thursday 17:00, replied Sunday 10:00 Cairo (Nov 5 -> Nov 8, both safely on the
+  // post-DST-transition +2 side - see cairoIso's own header comment) - the brief's own boundary
+  // scenario: only 2 real working hours passed (1 left Thursday + 1 on Sunday), well within the
+  // 8-hour SLA, even though ~65 raw wall-clock hours elapsed.
+  await createLeadAt({ owner: OWNER_A, stage: 'contacted', replyDueAt: cairoIso(5, 18, 0), firstReplyAt: cairoIso(8, 10, 0) }, cairoIso(5, 17, 0));
+
+  const result = await reportService.getSpeedBlock({ year: 2026, month: 11, ownerId: String(OWNER_A) });
+  assert.equal(result.avgHoursToFirstReply, 2, 'the weekend must not be counted as elapsed reply time');
   assert.equal(result.pctWithinSla, 100);
 });
 

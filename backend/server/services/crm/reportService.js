@@ -5,6 +5,7 @@ const StageHistory = require('../../models/crm/stageHistoryModel');
 const CrmTarget = require('../../models/crm/targetModel');
 const CrmAdSpend = require('../../models/crm/adSpendModel');
 const { STAGE_WEIGHTS, SEGMENTS } = require('../../utils/crm/constants');
+const { workingHoursBetween } = require('../../utils/crm/workingHours');
 
 // Reservia CRM - the main Dashboard (acceptance report section 4). Every figure here is computed
 // at read time from real Lead/StageHistory/CrmTarget/CrmAdSpend documents - nothing is hardcoded,
@@ -127,7 +128,9 @@ async function getSpeedBlock({ year, month, ownerId }) {
       .lean(),
   ]);
 
-  const hours = repliedLeads.map(l => (l.firstReplyAt - l.createdAt) / 36e5);
+  // Working hours, not raw wall-clock hours - a reply that merely spans a Fri/Sat weekend must
+  // never be reported as if the team took ~65 hours to respond (see utils/crm/workingHours.js).
+  const hours = repliedLeads.map(l => workingHoursBetween(l.createdAt, l.firstReplyAt));
   const avgHoursToFirstReply = average(hours);
   const withinSla = hours.length === 0 ? null : (hours.filter(h => h <= SLA_HOURS).length / hours.length) * 100;
 

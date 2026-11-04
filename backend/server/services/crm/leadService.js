@@ -198,7 +198,12 @@ async function changeStage(leadId, input, { userId = null, role } = {}) {
     role,
     lostReason: input.lostReason ?? lead.lostReason,
     valueEgp: input.valueEgp ?? lead.valueEgp,
-    mdApproved: input.mdApproved || lead.mdApproved || role === 'md',
+    // SECURITY: never trust a client-supplied `mdApproved` - a request body is not proof the MD
+    // actually approved anything. Approval can only come from the ACTING role genuinely being
+    // 'md' (checked server-side via req.crmRole, loaded from the database - never the client) or
+    // from the lead's own already-persisted flag (which itself could only have been set true by
+    // this same, now-trustworthy path). `input.mdApproved` is deliberately never read here.
+    mdApproved: lead.mdApproved || role === 'md',
     followUpAt: input.followUpAt ?? lead.followUpAt,
   };
   const errors = validateStageTransition(ctx);

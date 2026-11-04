@@ -43,7 +43,9 @@ exports.changeStageValidator = [
     .withMessage('Invalid lost reason'),
   check('valueEgp').optional({ nullable: true }).isFloat({ min: 0 }),
   check('followUpAt').optional({ nullable: true }).isISO8601().withMessage('Invalid follow-up date'),
-  check('mdApproved').optional({ nullable: true }).isBoolean(),
+  // mdApproved is deliberately NOT accepted here - services/crm/leadService.js#changeStage never
+  // trusts a client-supplied approval flag (a request body is not proof the MD approved
+  // anything); only the acting role genuinely being 'md' can satisfy the >EGP 1M rule.
   validatorMiddleware,
 ];
 

@@ -27,11 +27,15 @@ const PDF_TYPES = ['application/pdf', 'application/x-pdf'];
 const maxBytes = () => Math.max(0.1, Number(process.env.ATTACHMENT_MAX_MB) || (process.env.VERCEL ? 4 : 10)) * 1024 * 1024;
 const maxFiles = () => Math.max(1, Math.floor(Number(process.env.ATTACHMENT_MAX_FILES) || 20));
 
-// The records that take attachments, by the URL segment the API uses for them.
+// The records that take attachments, by the URL segment the API uses for them. `resource` is the
+// ERP resource:action permission name (controller/attachmentController.js#guardOwner) - CrmLead
+// has none, because the CRM route that serves it (routes/crm/leadAttachmentRoute.js) gates on the
+// CRM's own role vocabulary instead and never calls guardOwner/assertCan.
 const OWNERS = {
   'purchase-orders': { ownerType: 'PurchaseOrder', model: 'PurchaseOrder', resource: Resources.purchaseOrders },
   'sales-orders': { ownerType: 'SalesOrder', model: 'SalesOrder', resource: Resources.salesOrders },
   'journal-entries': { ownerType: 'JournalEntry', model: 'JournalEntry', resource: Resources.journalEntries },
+  'crm-leads': { ownerType: 'CrmLead', model: 'CrmLead', resource: null },
 };
 const OWNER_BY_TYPE = Object.fromEntries(Object.values(OWNERS).map(o => [o.ownerType, o]));
 

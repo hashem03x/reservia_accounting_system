@@ -135,6 +135,30 @@ maybeTest('changeStage: Won above EGP 1M requires MD approval - rejected for a s
   assert.equal(history.valueEgpAtChange, 1_500_000);
 });
 
+maybeTest('SECURITY: a sales rep cannot self-approve a >EGP 1M deal by sending mdApproved: true in the request', async () => {
+  // Regression test for a real vulnerability caught during acceptance audit: changeStage used to
+  // compute `ctx.mdApproved = input.mdApproved || lead.mdApproved || role === 'md'`, trusting
+  // whatever the CLIENT sent in the request body. Any authenticated CRM user (sales/technical)
+  // could self-approve a >1M deal just by including `mdApproved: true` in their own PATCH, with
+  // no actual MD ever involved. A request body is never proof of approval - only the ACTING
+  // ROLE (loaded server-side from the database, never the client) can satisfy this rule.
+  const { lead } = await leadService.intakeLead({ phone: '01244455567', channel: 'phone' });
+  await leadService.changeStage(lead._id, { to: 'contacted', followUpAt: null }, { role: 'sales' });
+  await leadService.changeStage(lead._id, { to: 'qualified', followUpAt: new Date() }, { role: 'sales' });
+  await leadService.changeStage(lead._id, { to: 'site_survey', followUpAt: new Date() }, { role: 'sales' });
+  await leadService.changeStage(lead._id, { to: 'proposal_sent', followUpAt: new Date() }, { role: 'sales' });
+
+  await assert.rejects(
+    () => leadService.changeStage(lead._id, { to: 'won', valueEgp: 1_500_000, mdApproved: true }, { role: 'sales' }),
+    err => /MD approval/.test(err.message),
+    'a forged mdApproved flag in the request body must never bypass the check'
+  );
+
+  const stillOpen = await Lead.findById(lead._id).lean();
+  assert.equal(stillOpen.stage, 'proposal_sent', 'the forged approval must not have moved the lead at all');
+  assert.equal(stillOpen.mdApproved, false);
+});
+
 maybeTest('changeStage: a lost lead can only be reopened by Admin or the MD', async () => {
   const { lead } = await leadService.intakeLead({ phone: '01255566677', channel: 'phone' });
   await leadService.changeStage(lead._id, { to: 'lost', lostReason: 'Price' }, { role: 'sales' });

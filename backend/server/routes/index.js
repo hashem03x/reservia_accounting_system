@@ -156,6 +156,7 @@ const mountRoutes = app => {
   app.use('/api/v1/crm/ad-spend', require('./crm/adSpendRoute'));
   app.use('/api/v1/crm/reports', require('./crm/reportRoute'));
   app.use('/api/v1/crm/team', require('./crm/teamRoute'));
+  app.use('/api/v1/crm/attachments', require('./crm/leadAttachmentRoute').byId);
 
   app.all('/api/v1', (req, res) => {
     res.status(200).json({ message: 'App is running 🚀' });
