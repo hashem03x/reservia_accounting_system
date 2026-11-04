@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDisclosure } from "@mantine/hooks";
 import { MonthPickerInput } from "@mantine/dates";
@@ -11,7 +11,6 @@ import handleRequest from "@/utils/helpers/handle-request";
 import { toMonthOnly } from "@/utils/helpers/format-date";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
-import KpiCard from "@/components/ui/kpi-card";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import { outlineIcons } from "@/components/icons";
@@ -27,7 +26,7 @@ const AMBER = "#EDA202";
 function TargetTile({ label, actual, target, translate }: { label: string; actual: number; target: number | null; translate: (en: string, ar: string) => string }) {
   const pct = target && target > 0 ? Math.min(Math.round((actual / target) * 100), 100) : null;
   return (
-    <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-gray-100 p-3">
+    <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-gray-100 p-2.5">
       <span className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</span>
       <span className="text-lg font-semibold" style={{ color: GREEN }}>
         {actual}
@@ -40,6 +39,19 @@ function TargetTile({ label, actual, target, translate }: { label: string; actua
       ) : (
         <span className="text-xs text-gray-400">{translate("No target set", "لم يُحدد هدف")}</span>
       )}
+    </div>
+  );
+}
+
+// A deliberately compact stat tile for this page only - the shared KpiCard component
+// (components/ui/kpi-card.tsx) has a min-h-[104px] sized for the main ERP's spacious financial
+// cards; reusing it here is what made the Dashboard taller than one laptop screen (acceptance
+// report section 4: "no vertical scrolling"). This one is label + value only, no min-height.
+function StatTile({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-gray-100 p-2">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">{label}</span>
+      <span className="text-base font-semibold text-gray-800">{value}</span>
     </div>
   );
 }
@@ -128,10 +140,10 @@ export default function CrmDashboardPage() {
         <ErrorSection errorTitle={translate("Error loading dashboard", "خطأ في تحميل لوحة التحكم")} errorMessage={error} />
       ) : (
         data && (
-          <div className="flex flex-col gap-3 text-sm">
+          <div className="flex flex-col gap-2 text-sm">
             {/* Targets */}
             <section>
-              <h3 className="mb-2 text-sm font-semibold" style={{ color: TEAL }}>
+              <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
                 {translate("Targets", "الأهداف")}
               </h3>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
@@ -140,7 +152,7 @@ export default function CrmDashboardPage() {
                 <TargetTile label={translate("Surveys", "المعاينات")} actual={data.targets.surveys.actual} target={data.targets.surveys.target} translate={translate} />
                 <TargetTile label={translate("Proposals", "العروض")} actual={data.targets.proposals.actual} target={data.targets.proposals.target} translate={translate} />
                 <TargetTile label={translate("Signed", "موقّع")} actual={data.targets.signed.actual} target={data.targets.signed.target} translate={translate} />
-                <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-gray-100 p-3">
+                <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-gray-100 p-2.5">
                   <span className="text-xs font-medium uppercase tracking-wide text-gray-500">{translate("Value target", "هدف القيمة")}</span>
                   <span className="text-lg font-semibold" style={{ color: GREEN }}>
                     {data.targets.valueEgp.target != null ? formatAmount(data.targets.valueEgp.target, translations.currency) : "-"}
@@ -149,9 +161,9 @@ export default function CrmDashboardPage() {
               </div>
             </section>
 
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
               {/* Pipeline by stage */}
-              <section className="rounded-lg border border-gray-100 p-3">
+              <section className="rounded-lg border border-gray-100 p-2.5">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold" style={{ color: TEAL }}>
                     {translate("Pipeline by stage", "المسار حسب المرحلة")}
@@ -174,21 +186,21 @@ export default function CrmDashboardPage() {
               </section>
 
               {/* Speed */}
-              <section className="rounded-lg border border-gray-100 p-3">
-                <h3 className="mb-2 text-sm font-semibold" style={{ color: TEAL }}>
+              <section className="rounded-lg border border-gray-100 p-2.5">
+                <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
                   {translate("Speed", "السرعة")}
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
-                  <KpiCard label={translate("Past SLA", "تجاوز الحد")} value={data.speed.leadsPastSlaLimit} />
-                  <KpiCard label={translate("No follow-up", "بدون متابعة")} value={data.speed.leadsWithNoFollowUpDate} />
-                  <KpiCard label={translate("Avg hrs to reply", "متوسط ساعات الرد")} value={data.speed.avgHoursToFirstReply ?? "-"} />
-                  <KpiCard label={translate("% within 8h", "% خلال 8 ساعات")} value={data.speed.pctWithinSla != null ? `${data.speed.pctWithinSla}%` : "-"} />
+                  <StatTile label={translate("Past SLA", "تجاوز الحد")} value={data.speed.leadsPastSlaLimit} />
+                  <StatTile label={translate("No follow-up", "بدون متابعة")} value={data.speed.leadsWithNoFollowUpDate} />
+                  <StatTile label={translate("Avg hrs to reply", "متوسط ساعات الرد")} value={data.speed.avgHoursToFirstReply ?? "-"} />
+                  <StatTile label={translate("% within 8h", "% خلال 8 ساعات")} value={data.speed.pctWithinSla != null ? `${data.speed.pctWithinSla}%` : "-"} />
                 </div>
               </section>
 
               {/* Source quality */}
-              <section className="rounded-lg border border-gray-100 p-3">
-                <h3 className="mb-2 text-sm font-semibold" style={{ color: TEAL }}>
+              <section className="rounded-lg border border-gray-100 p-2.5">
+                <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
                   {translate("Source quality", "جودة المصدر")}
                 </h3>
                 <Table verticalSpacing={2} fz="xs">
@@ -216,16 +228,16 @@ export default function CrmDashboardPage() {
               </section>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
               {/* Won and lost */}
-              <section className="rounded-lg border border-gray-100 p-3">
-                <h3 className="mb-2 text-sm font-semibold" style={{ color: TEAL }}>
+              <section className="rounded-lg border border-gray-100 p-2.5">
+                <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
                   {translate("Won and lost", "المربوح والخاسر")}
                 </h3>
                 <div className="mb-2 grid grid-cols-3 gap-2">
-                  <KpiCard label={translate("Won", "مربوح")} value={data.wonLost.wonCount} />
-                  <KpiCard label={translate("Lost", "خاسر")} value={data.wonLost.lostCount} />
-                  <KpiCard label={translate("Median days to close", "متوسط أيام الإغلاق")} value={data.wonLost.medianDaysToClose ?? "-"} />
+                  <StatTile label={translate("Won", "مربوح")} value={data.wonLost.wonCount} />
+                  <StatTile label={translate("Lost", "خاسر")} value={data.wonLost.lostCount} />
+                  <StatTile label={translate("Median days to close", "متوسط أيام الإغلاق")} value={data.wonLost.medianDaysToClose ?? "-"} />
                 </div>
                 {data.wonLost.lostReasonsRanked.length > 0 && (
                   <div className="flex flex-wrap gap-1">
@@ -239,7 +251,7 @@ export default function CrmDashboardPage() {
               </section>
 
               {/* This week */}
-              <section className="rounded-lg border border-gray-100 p-3">
+              <section className="rounded-lg border border-gray-100 p-2.5">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold" style={{ color: TEAL }}>
                     {translate("This week", "هذا الأسبوع")}
@@ -256,11 +268,11 @@ export default function CrmDashboardPage() {
                 {data.thisWeek.oldestUnanswered.length === 0 ? (
                   <p className="text-xs text-gray-400">{translate("Nothing unanswered - well done.", "لا يوجد عملاء دون رد - أحسنت.")}</p>
                 ) : (
-                  <ul className="flex flex-col gap-1">
+                  <ul className="flex flex-col gap-0.5">
                     {data.thisWeek.oldestUnanswered.map(l => (
                       <li
                         key={l._id}
-                        className="flex cursor-pointer items-center justify-between rounded px-2 py-1 text-xs hover:bg-gray-50"
+                        className="flex cursor-pointer items-center justify-between rounded px-2 py-0.5 text-xs hover:bg-gray-50"
                         onClick={() => navigate(`/crm/leads/${l._id}`)}
                       >
                         <span className="font-mono">{l.refCode}</span>

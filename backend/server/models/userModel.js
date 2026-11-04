@@ -193,7 +193,16 @@ userSchema.pre('save', async function (next) {
     this.email = undefined;
   }
 
-  this.password = bcrypt.hash(this.password, 5);
+  // SECURITY: this was missing `await` - bcrypt.hash() returns a Promise when called without a
+  // callback, so `this.password` was being set to the pending Promise object itself, never the
+  // actual hash. In practice this was masked because every real caller (controller/user/
+  // userController.js, authController.js, scripts/createAdminUser.js) already pre-hashes the
+  // password itself before reaching here, and Mongoose's String cast silently discarded the
+  // invalid Promise assignment, leaving that already-correct hash in place by accident - but any
+  // code that (reasonably, given this hook's own existence) relied on the model to do the
+  // hashing, as a direct `User.create({ password: 'plaintext' })` call does, stored the password
+  // completely unhashed. Found during the CRM acceptance audit while seeding test users.
+  this.password = await bcrypt.hash(this.password, 5);
   next();
 });
 
