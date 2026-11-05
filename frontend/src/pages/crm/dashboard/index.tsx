@@ -16,6 +16,7 @@ import ErrorSection from "@/components/ui/sections/error";
 import { outlineIcons } from "@/components/icons";
 import { CrmDashboard, CrmRole } from "@/types/crm";
 import { crmStageLabel } from "../_shared/stage";
+import { segmentLabel } from "../_shared/lead-display";
 import TargetsModal from "./_components/targets-modal";
 
 // Brand colors (acceptance report section 4).
@@ -63,6 +64,7 @@ export default function CrmDashboardPage() {
   const role = systems?.CRM?.role as CrmRole | null | undefined;
   const isManager = role === "md" || role === "admin";
   const stageLabel = crmStageLabel(translate);
+  const segLabel = segmentLabel(translate);
 
   useDocumentTitle(`${translate("Dashboard", "لوحة التحكم")} | Reservia CRM`);
 
@@ -198,28 +200,32 @@ export default function CrmDashboardPage() {
                 </div>
               </section>
 
-              {/* Source quality */}
+              {/* Segment quality (Change Request 1, Feature 5C) */}
               <section className="rounded-lg border border-gray-100 p-2.5">
                 <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
-                  {translate("Source quality", "جودة المصدر")}
+                  {translate("Segment quality", "جودة القطاع")}
                 </h3>
                 <Table verticalSpacing={2} fz="xs">
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th>{translate("Source", "المصدر")}</Table.Th>
+                      <Table.Th>{translate("Segment", "القطاع")}</Table.Th>
                       <Table.Th className="text-right">{translate("Leads", "محتملون")}</Table.Th>
                       <Table.Th className="text-right">{translate("Qual.", "مؤهل")}</Table.Th>
                       <Table.Th className="text-right">{translate("Cost/qual.", "التكلفة/مؤهل")}</Table.Th>
+                      <Table.Th className="text-right">{translate("Cost/enquiry", "التكلفة/استفسار")}</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {data.sourceQuality.sources.map(s => (
-                      <Table.Tr key={s.source}>
-                        <Table.Td>{s.source}</Table.Td>
+                    {data.segmentQuality.segments.map(s => (
+                      <Table.Tr key={s.segment}>
+                        <Table.Td>{segLabel(s.segment)}</Table.Td>
                         <Table.Td className="text-right">{s.leads}</Table.Td>
                         <Table.Td className="text-right">{s.qualified}</Table.Td>
                         <Table.Td className={`text-right ${s.overCostLimit ? "font-semibold text-red-600" : "text-gray-500"}`}>
                           {s.costPerQualifiedLead != null ? formatAmount(s.costPerQualifiedLead, translations.currency) : "-"}
+                        </Table.Td>
+                        <Table.Td className="text-right text-gray-500">
+                          {s.costPerEnquiry != null ? formatAmount(s.costPerEnquiry, translations.currency) : "-"}
                         </Table.Td>
                       </Table.Tr>
                     ))}
@@ -227,6 +233,37 @@ export default function CrmDashboardPage() {
                 </Table>
               </section>
             </div>
+
+            {/* Team totals (Change Request 1, Feature 3) - the SAME org-wide reconciliation figures
+                the Pipeline board shows, surfaced here whenever this view is scoped to a single
+                owner, so a sales user's own numbers and the always-org-wide Pipeline total can be
+                read side by side instead of looking like a disagreement. */}
+            {data.team && (
+              <section className="rounded-lg border border-gray-100 p-2.5">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold" style={{ color: TEAL }}>
+                    {translate("Whole-CRM totals (for comparison)", "إجماليات النظام بالكامل (للمقارنة)")}
+                  </h3>
+                  <Badge color="gray" variant="light">
+                    {formatAmount(data.team.totalWeightedValueEgp, translations.currency)}
+                  </Badge>
+                </div>
+                <p className="mb-2 text-xs text-gray-400">
+                  {translate(
+                    "These are organization-wide figures, including every unassigned/other-owner lead - the same totals the Pipeline board shows.",
+                    "هذه أرقام على مستوى المنظمة بالكامل، بما في ذلك كل عميل غير مُعيَّن أو تابع لمسؤول آخر - نفس إجماليات لوحة المسار.",
+                  )}
+                </p>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                  <StatTile label={translate("Enquiries", "الاستفسارات")} value={data.team.enquiries} />
+                  <StatTile label={translate("Qualified", "مؤهل")} value={data.team.qualified} />
+                  <StatTile label={translate("Surveys", "المعاينات")} value={data.team.surveys} />
+                  <StatTile label={translate("Proposals", "العروض")} value={data.team.proposals} />
+                  <StatTile label={translate("Won", "مربوح")} value={data.team.wonCount} />
+                  <StatTile label={translate("Lost", "خاسر")} value={data.team.lostCount} />
+                </div>
+              </section>
+            )}
 
             <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
               {/* Won and lost */}
@@ -290,7 +327,7 @@ export default function CrmDashboardPage() {
         )
       )}
 
-      {role === "md" && <TargetsModal opened={targetsOpened} close={closeTargets} team={team} onSaved={() => loadDashboard()} />}
+      {role === "md" && <TargetsModal opened={targetsOpened} close={closeTargets} onSaved={() => loadDashboard()} />}
     </AdminLayoutBox>
   );
 }

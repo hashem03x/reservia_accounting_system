@@ -1,38 +1,92 @@
 const { SOURCES } = require('./constants');
 
-// Maps a raw source/UTM signal onto the fixed SOURCES list (acceptance report finding 4) -
-// "Preserve source and UTM information where provided" rather than discarding it the moment a
-// fixed list exists. Used by the public website intake (services/crm/publicLeadIntakeService.js)
-// and CSV import (services/crm/leadImportService.js) - the two paths that receive a free-text
-// `source`/`utm_source` from outside rather than a user picking from the CRM's own dropdown.
+// Centralized source-mapping rules (Change Request 1, Feature 1, section "Source mapping rules")
+// - the ONE place every lead-intake channel (public website intake, CSV import, the WhatsApp
+// webhook) resolves a raw signal onto the CRM's fixed SOURCES list, so the business rule can
+// never drift between callers.
 //
-// Deliberately permissive matching (case-insensitive substring) - ad platforms and UTM
-// conventions vary ("google", "google-ads", "google_cpc" should all land on "Google Ads"); when
-// nothing recognizable matches, the raw value is kept as the lead's free-text `source` (never
-// silently dropped) and "Other" is used only for the fixed-list-constrained callers that need one.
-// Word-boundary-anchored, not bare substrings - "ig" (Instagram) alone would otherwise false-match
-// ordinary words like "campaign" or "design"; "fb" is short enough to anchor the same way.
-const PATTERNS = [
-  { match: /google/i, source: 'Google Ads' },
-  { match: /\b(meta|facebook|fb|instagram|ig)\b/i, source: 'Meta Ads' },
-  { match: /whatsapp/i, source: 'WhatsApp Direct' },
-  { match: /referral|refer/i, source: 'Referral' },
-  { match: /organic|direct|^website$/i, source: 'Organic' },
-];
+// | Incoming signal                                          | CRM Source       |
+// |-----------------------------------------------------------|-------------------|
+// | utm_source=google and utm_medium=cpc                      | Google Ads        |
+// | utm_source=facebook, instagram or meta + a paid medium     | Meta Ads          |
+// | utm_source=tiktok                                          | TikTok            |
+// | WhatsApp message with a recognized Ref code                 | the code's source |
+// | WhatsApp without a recognized Ref code                     | WhatsApp Direct   |
+// | No UTM + search engine referrer                             | Organic           |
+// | No UTM + no referrer                                        | Direct            |
+// | Manually entered lead                                       | user must select  |
+//
+// A utm_source WAS provided but didn't match a recognized ad platform/medium combination lands on
+// "Other" - never "Organic"/"Direct" (those are exclusively for the NO-utm_source case) and never
+// silently dropped. This is the explicit "do not classify paid traffic as Organic" rule.
+
+const GOOGLE_SOURCES = ['google'];
+const GOOGLE_PAID_MEDIA = ['cpc', 'ppc', 'paid', 'paid_search'];
+const META_SOURCES = ['facebook', 'instagram', 'meta', 'fb', 'ig'];
+const META_PAID_MEDIA = ['paid_social', 'cpc', 'ppc', 'paid'];
+const TIKTOK_SOURCES = ['tiktok'];
+// A small, extensible set of common search-engine hostnames - a referrer whose host ends in one
+// of these is treated as an organic search result; anything else with a referrer is still
+// "Direct" by this table's own definition (only a SEARCH referrer earns "Organic" - a referrer
+// from an unrelated site, e.g. a news article linking in, isn't a paid or a search result, so it
+// is not misrepresented as either; it is conservatively still Direct rather than invented as a
+// ninth bucket this report never asked for).
+const SEARCH_ENGINE_HOSTS = ['google.', 'bing.', 'yahoo.', 'duckduckgo.', 'baidu.', 'yandex.'];
+
+function norm(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isSearchReferrer(referrer) {
+  const value = norm(referrer);
+  if (!value) return false;
+  try {
+    const host = new URL(value.startsWith('http') ? value : `https://${value}`).hostname.toLowerCase();
+    return SEARCH_ENGINE_HOSTS.some(h => host.includes(h));
+  } catch {
+    return SEARCH_ENGINE_HOSTS.some(h => value.includes(h));
+  }
+}
 
 /**
- * @returns {string} one of SOURCES - no utm_source at all (a direct visit - typed the URL,
- * bookmark, or an unattributed search result) is "Organic", the conventional bucket for
- * unattributed traffic; "Other" is reserved for a utm_source that WAS provided but doesn't match
- * anything recognizable, so it is never confused with genuinely-direct traffic.
+ * @param {object} signal
+ * @param {string|null|undefined} signal.utmSource
+ * @param {string|null|undefined} signal.utmMedium
+ * @param {string|null|undefined} signal.referrer - document.referrer at first arrival; only
+ *   consulted when there is no utm_source at all.
+ * @returns {string} one of SOURCES
  */
-function normalizeSource(raw) {
-  const value = String(raw || '').trim();
-  if (!value) return 'Organic';
-  for (const { match, source } of PATTERNS) {
-    if (match.test(value)) return source;
+function normalizeSource({ utmSource, utmMedium, referrer } = {}) {
+  const source = norm(utmSource);
+  const medium = norm(utmMedium);
+
+  if (!source) {
+    return isSearchReferrer(referrer) ? 'Organic' : 'Direct';
   }
+
+  if (GOOGLE_SOURCES.includes(source) && GOOGLE_PAID_MEDIA.includes(medium)) return 'Google Ads';
+  if (META_SOURCES.includes(source) && META_PAID_MEDIA.includes(medium)) return 'Meta Ads';
+  if (TIKTOK_SOURCES.includes(source)) return 'TikTok';
+
+  // A utm_source was provided but didn't match a recognized paid-platform/medium combination
+  // (e.g. google with no medium, or an unknown platform) - paid or at least UTM-tagged traffic,
+  // never reclassified as Organic/Direct.
   return 'Other';
 }
 
-module.exports = { normalizeSource, SOURCES };
+/** Backward-compatible single-string form for CSV import and other callers with no medium/referrer context. */
+function normalizeSourceFromString(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return 'Direct';
+  const lower = value.toLowerCase();
+  if (GOOGLE_SOURCES.some(s => lower.includes(s))) return 'Google Ads';
+  if (META_SOURCES.some(s => new RegExp(`\\b${s}\\b`, 'i').test(lower))) return 'Meta Ads';
+  if (TIKTOK_SOURCES.some(s => lower.includes(s))) return 'TikTok';
+  if (/whatsapp/.test(lower)) return 'WhatsApp Direct';
+  if (/referral|refer/.test(lower)) return 'Referral';
+  if (/organic/.test(lower)) return 'Organic';
+  if (/direct|^website$/.test(lower)) return 'Direct';
+  return 'Other';
+}
+
+module.exports = { normalizeSource, normalizeSourceFromString, isSearchReferrer, SOURCES };

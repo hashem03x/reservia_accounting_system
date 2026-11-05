@@ -273,12 +273,13 @@ async function getValueCostSection({ year, month, ownerId, segment }) {
   // this reads CrmTarget.targetValueEgp, not targetSigned (a deal COUNT, a different unit).
   // null/undefined (not zero/red) when no EGP target was ever set - a missing target is not
   // "failing coverage" - and also null once the target is already met (nothing left to cover).
+  // Targets are keyed by segment, not owner (Change Request 1, Feature 5A) - the currently
+  // selected segment filter's own target, or the company-wide 'all' record when no segment filter
+  // is active, exactly like the Dashboard's own getTargetsBlock.
   const actualSigned = wonRows.length;
   const actualSignedValueEgp = wonRows.reduce((sum, e) => sum + (e.valueEgpAtChange ?? e.leadDoc.valueEgp ?? 0), 0);
-  const targetFilter = { year, month };
-  if (ownerId) targetFilter.owner = ownerId;
-  const targets = await CrmTarget.find(targetFilter).lean();
-  const targetValueSum = targets.some(t => t.targetValueEgp != null) ? targets.reduce((sum, t) => sum + (t.targetValueEgp || 0), 0) : null;
+  const target = await CrmTarget.findOne({ segment: segment || 'all', year, month }).lean();
+  const targetValueSum = target?.targetValueEgp ?? null;
   const remainingTargetEgp = targetValueSum == null ? null : Math.max(targetValueSum - actualSignedValueEgp, 0);
 
   const { getPipelineBlock } = require('./reportService');
@@ -286,7 +287,10 @@ async function getValueCostSection({ year, month, ownerId, segment }) {
   const pipelineCoverage =
     remainingTargetEgp == null || remainingTargetEgp === 0 ? null : Math.round((pipeline.totalWeightedValueEgp / remainingTargetEgp) * 100) / 100;
 
-  const spendRows = await CrmAdSpend.find({ year, month }).lean();
+  // Spend scoped to the selected segment (summed across every channel tagged with it) when a
+  // segment filter is active, else every entered channel for the month - matching how
+  // reportService.js#getSegmentQualityBlock attributes spend.
+  const spendRows = await CrmAdSpend.find({ year, month, ...(segment ? { segment } : {}) }).lean();
   const totalSpend = spendRows.reduce((sum, s) => sum + s.amountEgp, 0);
   const qualifiedCount = await StageHistory.aggregate([
     { $match: { to: 'qualified', createdAt: { $gte: start, $lt: end } } },

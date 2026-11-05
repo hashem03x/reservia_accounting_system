@@ -117,9 +117,13 @@ export default function LeadModal({
           value={source || null}
           onChange={(v) => setSource((v as CrmSource) || "")}
           data={CRM_SOURCES.map((s) => ({ value: s, label: s }))}
-          label={translate("Source (optional)", "المصدر (اختياري)")}
+          // Change Request 1: source must be explicitly chosen for every channel except WhatsApp
+          // (resolved automatically server-side from the Ref code, or "WhatsApp Direct") - never
+          // silently defaulted to "Other".
+          label={channel === "whatsapp" ? translate("Source (optional - resolved automatically)", "المصدر (اختياري - يُحدد تلقائياً)") : translate("Source", "المصدر")}
           placeholder={translate("Where did this lead come from?", "من أين جاء هذا العميل المحتمل؟")}
-          clearable
+          required={channel !== "whatsapp"}
+          clearable={channel === "whatsapp"}
         />
         <Select
           value={governorate || null}
@@ -140,7 +144,7 @@ export default function LeadModal({
           <Button onClick={handleClose} variant="light" color="dark" fullWidth>
             {translations.cancel}
           </Button>
-          <Button type="submit" loading={loading} disabled={!phone || !channel} fullWidth color="teal">
+          <Button type="submit" loading={loading} disabled={!phone || !channel || (channel !== "whatsapp" && !source)} fullWidth color="teal">
             {translate("Create Lead", "إنشاء عميل محتمل")}
           </Button>
         </div>

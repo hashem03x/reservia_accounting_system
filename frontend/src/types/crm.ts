@@ -17,11 +17,12 @@ export const CRM_SEGMENTS: CrmSegment[] = ["villa", "compound", "farm", "oil_gas
 // actively picks from a dropdown.
 export const CRM_FORM_SEGMENTS: CrmSegment[] = ["villa", "compound", "farm", "oil_gas", "factory", "services", "other"];
 
-// Fixed marketing-source list (acceptance report finding 4) - mirrors
-// backend/server/utils/crm/constants.js's SOURCES exactly. The Lead.source field itself stays
-// free text server-side (so historical values never break), but every NEW/edited lead from the
-// CRM's own "New Lead" form is constrained to this list.
-export const CRM_SOURCES = ["Google Ads", "Meta Ads", "Organic", "Referral", "WhatsApp Direct", "Other"] as const;
+// Fixed marketing-source list (acceptance report finding 4; extended by Change Request 1, Feature
+// 4: adds TikTok and splits Direct out of Organic) - mirrors backend/server/utils/crm/constants.js's
+// SOURCES exactly. The Lead.source field itself stays free text server-side (so historical values
+// never break), but every NEW/edited lead from the CRM's own "New Lead" form is constrained to
+// this list.
+export const CRM_SOURCES = ["Google Ads", "Meta Ads", "TikTok", "Organic", "Direct", "Referral", "WhatsApp Direct", "Other"] as const;
 export type CrmSource = (typeof CRM_SOURCES)[number];
 
 // The 27 official Egyptian governorates (acceptance report finding 4), English + Arabic - mirrors
@@ -113,6 +114,13 @@ export type CrmLead = {
   archived: boolean;
   archivedAt: string | null;
   archivedBy: { _id: string; name: string } | null;
+  archiveReason: string | null;
+  // First-touch attribution (Change Request 1, Feature 1) - displayed on the lead detail page.
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmContent: string | null;
+  landingPage: string | null;
 };
 
 export type CrmActivity = {
@@ -158,16 +166,20 @@ export type CrmDashboardSpeed = {
   avgHoursToFirstReply: number | null;
   pctWithinSla: number | null;
 };
-export type CrmSourceQualityRow = {
-  source: string;
+// Change Request 1, Feature 5C: regrouped from marketing SOURCE to SEGMENT, since ad spend is now
+// entered per free-text channel with an optional segment tag (not per ad-platform source) - see
+// backend/server/services/crm/reportService.js#getSegmentQualityBlock.
+export type CrmSegmentQualityRow = {
+  segment: CrmSegment;
   leads: number;
   qualified: number;
   signed: number;
   monthlySpendEgp: number | null;
   costPerQualifiedLead: number | null;
+  costPerEnquiry: number | null;
   overCostLimit: boolean;
 };
-export type CrmDashboardSourceQuality = { sources: CrmSourceQualityRow[]; costPerQualifiedLeadLimitEgp: number };
+export type CrmDashboardSegmentQuality = { segments: CrmSegmentQualityRow[]; costPerQualifiedLeadLimitEgp: number };
 export type CrmSegmentRateRow = { segment: CrmSegment; won: number; lost: number; winRatePct: number | null };
 export type CrmLostReasonRow = { reason: string; count: number };
 export type CrmDashboardWonLost = {
@@ -179,6 +191,20 @@ export type CrmDashboardWonLost = {
 };
 export type CrmUnansweredLead = { _id: string; refCode: string; name: string | null; phoneE164: string; stage: CrmStage; createdAt: string };
 export type CrmDashboardThisWeek = { newLeads: number; moves: number; oldestUnanswered: CrmUnansweredLead[] };
+// Change Request 1, Feature 3: present only when the Dashboard is showing a single-owner view
+// (a sales user's own scope, or an MD drilling into one person) - the SAME org-wide totals the
+// Pipeline board shows, so the two screens reconcile instead of silently disagreeing. Deliberately
+// aggregate-only (no individual leads listed) - see reportService.js#getTeamTotals.
+export type CrmTeamTotals = {
+  enquiries: number;
+  qualified: number;
+  surveys: number;
+  proposals: number;
+  signed: number;
+  totalWeightedValueEgp: number;
+  wonCount: number;
+  lostCount: number;
+};
 export type CrmDashboard = {
   year: number;
   month: number;
@@ -186,9 +212,10 @@ export type CrmDashboard = {
   targets: CrmDashboardTargets;
   pipeline: CrmDashboardPipeline;
   speed: CrmDashboardSpeed;
-  sourceQuality: CrmDashboardSourceQuality;
+  segmentQuality: CrmDashboardSegmentQuality;
   wonLost: CrmDashboardWonLost;
   thisWeek: CrmDashboardThisWeek;
+  team: CrmTeamTotals | null;
 };
 
 // ===================== Performance tab (acceptance report section 5) =====================
@@ -239,9 +266,15 @@ export type CrmPerformance = {
   valueCost: CrmPerfValueCost;
 };
 
+// Change Request 1, Feature 5A: keyed by (segment, month), not (owner, month) - 'all' is itself a
+// selectable segment value, the single company-wide target entered when a month isn't broken
+// down per segment (matches the client's own "All segments: Enquiries 24..." seed data).
+export type CrmTargetSegment = CrmSegment | "all";
+export const CRM_TARGET_SEGMENTS: CrmTargetSegment[] = ["all", ...CRM_FORM_SEGMENTS];
+
 export type CrmTarget = {
   _id: string;
-  owner: string;
+  segment: CrmTargetSegment;
   year: number;
   month: number;
   targetValueEgp: number | null;
@@ -253,4 +286,10 @@ export type CrmTarget = {
   targetSigned: number | null;
 };
 
-export type CrmAdSpendRow = { _id: string; source: CrmSource; year: number; month: number; amountEgp: number };
+// Change Request 1, Feature 5B: `channel` is a free-text, MD-authored budget-line name (e.g.
+// "Farm test", "Farms", "Villas", "Compounds", "SEO") - no longer constrained to CRM_SOURCES,
+// since real ad-platform sources don't match the client's own segment-shaped budget line items.
+// `segment` is an optional tag used only to roll spend up into a segment's cost-per-lead figures;
+// a channel with no segment (SEO, agency fees, ...) still counts toward total spend but is
+// excluded from any one segment's math.
+export type CrmAdSpendRow = { _id: string; channel: string; segment: CrmSegment | null; year: number; month: number; amountEgp: number };

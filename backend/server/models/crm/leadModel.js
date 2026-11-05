@@ -46,7 +46,15 @@ const leadSchema = new Schema(
     utmSource: { type: String, trim: true, maxlength: 150, default: null },
     utmMedium: { type: String, trim: true, maxlength: 150, default: null },
     utmCampaign: { type: String, trim: true, maxlength: 150, default: null },
+    // Change Request 1, Feature 1: utm_content was captured by the website's own 30-day
+    // first-touch storage already (hooks/useUtmParams.ts) but was never persisted onto the lead.
+    utmContent: { type: String, trim: true, maxlength: 150, default: null },
     landingPage: { type: String, trim: true, maxlength: 300, default: null },
+    // The first-touch referrer (document.referrer at first arrival) - only meaningful when there
+    // is no UTM at all, to distinguish Organic (arrived via a search engine) from Direct (typed
+    // the URL, a bookmark, or a referrer the browser didn't disclose). Never itself shown as the
+    // lead's source; only an input to sourceNormalization.js.
+    referrer: { type: String, trim: true, maxlength: 300, default: null },
 
     stage: { type: String, enum: STAGES, default: 'new' },
     stageChangedAt: { type: Date, default: Date.now },
@@ -77,16 +85,17 @@ const leadSchema = new Schema(
 
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
 
-    // Soft deletion only (acceptance report finding 7: "Prefer soft deletion or archiving over
-    // permanent deletion... Support restoring archived records") - services/crm/leadArchiveService.js
-    // is the one place this is ever set, gated to the MD role alone
-    // (middleware/crmAccess.js#requireCrmRole('md')). An archived lead is excluded from the
-    // pipeline/list views by default (controller/crm/leadController.js) but the document, its
-    // activity timeline and its stage history are never deleted - restoring it is just clearing
-    // these three fields again.
+    // Soft deletion only (acceptance report finding 7 + Change Request 1, Feature 6: "Prefer soft
+    // deletion or archiving over permanent deletion... require a reason... record who/when...
+    // audit trail") - services/crm/leadService.js#setLeadArchived is the one place this is ever
+    // set, gated to the MD role alone (middleware/crmAccess.js#requireCrmRole('md')). An archived
+    // lead is excluded from the pipeline/list views by default (controller/crm/leadController.js)
+    // but the document, its activity timeline and its stage history are never deleted - restoring
+    // it is just clearing these four fields again.
     archived: { type: Boolean, default: false },
     archivedAt: { type: Date, default: null },
     archivedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    archiveReason: { type: String, trim: true, maxlength: 300, default: null },
   },
   { timestamps: true }
 );

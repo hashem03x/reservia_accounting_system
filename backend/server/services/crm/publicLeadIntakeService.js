@@ -3,6 +3,7 @@
 const ApiError = require('../../utils/apiError');
 const leadService = require('./leadService');
 const { normalizeSource } = require('../../utils/crm/sourceNormalization');
+const WaRefCode = require('../../models/crm/waRefCodeModel');
 
 // Reservia CRM - the public website's lead-capture call (Developer Brief: "Website lead
 // submission into CRM"). This is the ONE place the website's own vocabulary (its `Segment` type,
@@ -78,16 +79,17 @@ function mapWebsitePayload(body) {
     segment,
     channel,
     governorate: body.governorate || undefined,
-    // Acceptance report finding 4 ("Website leads show source 'Website' only") + "Preserve source
-    // and UTM information where provided": normalizeSource maps the real utm_source value (or a
-    // bare direct/organic visit) onto the CRM's fixed SOURCES list, so the dashboard's "Source
-    // quality" block (acceptance report section 4) can actually group leads by real ad platform
-    // instead of every lead piling up under one literal "Website" label.
-    source: normalizeSource(body.utm?.utm_source),
+    // Centralized source-mapping rules (Change Request 1, Feature 1) - see
+    // utils/crm/sourceNormalization.js's own header for the full table (Google Ads needs BOTH
+    // source=google and medium=cpc, Meta Ads needs a paid medium, TikTok, Organic vs Direct by
+    // referrer when there's no UTM at all).
+    source: normalizeSource({ utmSource: body.utm?.utm_source, utmMedium: body.utm?.utm_medium, referrer: body.referrer }),
     utmSource: body.utm?.utm_source || undefined,
     utmMedium: body.utm?.utm_medium || undefined,
     utmCampaign: body.utm?.utm_campaign || undefined,
+    utmContent: body.utm?.utm_content || undefined,
     landingPage: body.pageUrl || undefined,
+    referrer: body.referrer || undefined,
     // Only set from the calculator's own typed estimate (a clean, known-unit figure) - never from
     // the generic `siteInput` number, whose unit depends on a form field (`extraKind`) the
     // website does not currently send with the submission; see buildIntakeNote for how that
@@ -118,4 +120,20 @@ async function intakePublicLead(body) {
   return { refCode: lead.refCode };
 }
 
-module.exports = { intakePublicLead, mapWebsitePayload, buildIntakeNote, WEBSITE_SEGMENT_TO_CRM, WEBSITE_SOURCE_TO_CHANNEL };
+/**
+ * Registers a WhatsApp Ref code's attribution at the moment the website builds a wa.me link
+ * (Change Request 1, Feature 1) - the ONE place a WA code's source is ever recorded, since the
+ * code itself (services/waRefCode.ts on the website) is never otherwise persisted. Upsert, not
+ * create-only - the website may retry a flaky network call safely.
+ */
+async function registerWaRefCode({ code, utmSource, utmMedium, utmCampaign, utmContent, referrer }) {
+  if (!code || typeof code !== 'string') throw new ApiError('A ref code is required.', 400);
+  const source = normalizeSource({ utmSource, utmMedium, referrer });
+  await WaRefCode.findOneAndUpdate(
+    { code: code.trim().slice(0, 40) },
+    { $set: { source, utmSource: utmSource || null, utmMedium: utmMedium || null, utmCampaign: utmCampaign || null, utmContent: utmContent || null } },
+    { upsert: true, setDefaultsOnInsert: true }
+  );
+}
+
+module.exports = { intakePublicLead, mapWebsitePayload, buildIntakeNote, registerWaRefCode, WEBSITE_SEGMENT_TO_CRM, WEBSITE_SOURCE_TO_CHANNEL };

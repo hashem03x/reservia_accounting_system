@@ -45,8 +45,12 @@ function leadMatch({ start, end, ownerId }) {
  * leads that reached at least that stage during the period - enquiries from Lead.createdAt,
  * everything else from the StageHistory event that actually moved a lead INTO that stage (never
  * "currently sitting in" it, which would undercount leads that passed through and moved on).
- * Targets come from CrmTarget - an owner/month with none set reports `target: null` for every
- * field, never a fabricated number (acceptance report: real MD-entered targets only).
+ *
+ * Targets come from CrmTarget, keyed by (segment, month) (Change Request 1, Feature 5A) - the
+ * Dashboard itself has no segment filter, so it always reads the single company-wide `segment:
+ * 'all'` record for the month, regardless of which owner's ACTUAL counts are shown alongside it.
+ * A segment/month with none set reports `target: null` for every field, never a fabricated
+ * number (acceptance report: real MD-entered targets only).
  */
 async function getTargetsBlock({ year, month, ownerId }) {
   const { start, end } = monthBounds(year, month);
@@ -67,29 +71,23 @@ async function getTargetsBlock({ year, month, ownerId }) {
     return rows.length;
   };
 
-  const [actualEnquiries, actualQualified, actualSurveys, actualProposals, actualSigned] = await Promise.all([
+  const [actualEnquiries, actualQualified, actualSurveys, actualProposals, actualSigned, target] = await Promise.all([
     Lead.countDocuments(leadFilter),
     stageReached('qualified'),
     stageReached('site_survey'),
     stageReached('proposal_sent'),
     stageReached('won'),
+    CrmTarget.findOne({ segment: 'all', year, month }).lean(),
   ]);
-
-  const targetFilter = { year, month };
-  if (ownerId) targetFilter.owner = ownerId;
-  const targets = await CrmTarget.find(targetFilter).lean();
-  const sumTarget = field => {
-    const withValue = targets.filter(t => t[field] != null);
-    return withValue.length === 0 ? null : withValue.reduce((sum, t) => sum + t[field], 0);
-  };
+  const field = f => (target && target[f] != null ? target[f] : null);
 
   return {
-    enquiries: { actual: actualEnquiries, target: sumTarget('targetEnquiries') },
-    qualified: { actual: actualQualified, target: sumTarget('targetQualified') },
-    surveys: { actual: actualSurveys, target: sumTarget('targetSurveys') },
-    proposals: { actual: actualProposals, target: sumTarget('targetProposals') },
-    signed: { actual: actualSigned, target: sumTarget('targetSigned') },
-    valueEgp: { target: sumTarget('targetValueEgp') },
+    enquiries: { actual: actualEnquiries, target: field('targetEnquiries') },
+    qualified: { actual: actualQualified, target: field('targetQualified') },
+    surveys: { actual: actualSurveys, target: field('targetSurveys') },
+    proposals: { actual: actualProposals, target: field('targetProposals') },
+    signed: { actual: actualSigned, target: field('targetSigned') },
+    valueEgp: { target: field('targetValueEgp') },
   };
 }
 
@@ -145,56 +143,70 @@ async function getSpeedBlock({ year, month, ownerId }) {
 const COST_PER_QUALIFIED_LEAD_LIMIT_EGP = 3500;
 
 /**
- * Block 4: Source quality - leads/qualified/signed by source, cost per qualified lead against the
- * real monthly spend entered for that source (CrmAdSpend) - `costPerQualifiedLead: null` when no
- * spend was entered or there were zero qualified leads, never a fabricated/zero cost.
+ * Block 4: Segment quality (Change Request 1, Feature 5C) - leads/qualified/signed by SEGMENT,
+ * cost per qualified lead AND cost per enquiry against the real monthly ad spend entered for that
+ * segment (CrmAdSpend.segment, summed across every channel/budget-line tagged with it) -
+ * `costPerQualifiedLead`/`costPerEnquiry: null` when no spend was entered for the segment or
+ * there were zero leads/qualified, never a fabricated/zero cost. Previously grouped by marketing
+ * SOURCE (Google Ads/Meta Ads/...), back when ad spend was entered per source; spend is now
+ * entered per free-text channel with an optional segment tag (client's own real budget line items
+ * - "Farm test", "Farms", "Villas", "Compounds" - don't correspond to any ad-platform source), so
+ * this block regroups by segment to match what spend can actually be attributed to. A channel row
+ * with no segment tag (e.g. "SEO", "Agency fees") contributes to total spend elsewhere but is
+ * deliberately excluded here - it isn't anyone's segment to charge against.
  */
-async function getSourceQualityBlock({ year, month, ownerId }) {
+async function getSegmentQualityBlock({ year, month, ownerId }) {
   const { start, end } = monthBounds(year, month);
   const filter = leadMatch({ start, end, ownerId });
 
-  const [bySource, wonRows, spendRows] = await Promise.all([
-    Lead.aggregate([{ $match: filter }, { $group: { _id: '$source', leads: { $sum: 1 } } }]),
+  const [bySegment, wonRows, spendRows] = await Promise.all([
+    Lead.aggregate([{ $match: filter }, { $group: { _id: '$segment', leads: { $sum: 1 } } }]),
     StageHistory.aggregate([
       { $match: { to: 'won', createdAt: { $gte: start, $lt: end } } },
       { $lookup: { from: 'crmleads', localField: 'lead', foreignField: '_id', as: 'leadDoc' } },
       { $unwind: '$leadDoc' },
       ...(ownerId ? [{ $match: { 'leadDoc.owner': new mongoose.Types.ObjectId(ownerId) } }] : []),
-      { $group: { _id: '$leadDoc.source', signed: { $sum: 1 } } },
+      { $group: { _id: '$leadDoc.segment', signed: { $sum: 1 } } },
     ]),
     CrmAdSpend.find({ year, month }).lean(),
   ]);
 
-  // "Qualified" per source, same reached-stage definition as the Targets block.
+  // "Qualified" per segment, same reached-stage definition as the Targets block.
   const qualifiedRows = await StageHistory.aggregate([
     { $match: { to: 'qualified', createdAt: { $gte: start, $lt: end } } },
     { $lookup: { from: 'crmleads', localField: 'lead', foreignField: '_id', as: 'leadDoc' } },
     { $unwind: '$leadDoc' },
     ...(ownerId ? [{ $match: { 'leadDoc.owner': new mongoose.Types.ObjectId(ownerId) } }] : []),
-    { $group: { _id: '$leadDoc.source', qualified: { $sum: 1 } } },
+    { $group: { _id: '$leadDoc.segment', qualified: { $sum: 1 } } },
   ]);
 
-  const qualifiedBySource = Object.fromEntries(qualifiedRows.map(r => [r._id, r.qualified]));
-  const signedBySource = Object.fromEntries(wonRows.map(r => [r._id, r.signed]));
-  const spendBySource = Object.fromEntries(spendRows.map(r => [r.source, r.amountEgp]));
+  const qualifiedBySegment = Object.fromEntries(qualifiedRows.map(r => [r._id, r.qualified]));
+  const signedBySegment = Object.fromEntries(wonRows.map(r => [r._id, r.signed]));
+  const spendBySegment = {};
+  for (const row of spendRows) {
+    if (!row.segment) continue; // not attributable to one segment (SEO, agency fees, ...)
+    spendBySegment[row.segment] = (spendBySegment[row.segment] || 0) + row.amountEgp;
+  }
 
-  const sources = bySource.map(r => {
-    const source = r._id || 'Other';
-    const qualified = qualifiedBySource[source] || 0;
-    const spend = spendBySource[source];
+  const segments = bySegment.map(r => {
+    const segment = r._id || 'unknown';
+    const qualified = qualifiedBySegment[segment] || 0;
+    const spend = spendBySegment[segment];
     const costPerQualifiedLead = spend == null || qualified === 0 ? null : Math.round((spend / qualified) * 100) / 100;
+    const costPerEnquiry = spend == null || r.leads === 0 ? null : Math.round((spend / r.leads) * 100) / 100;
     return {
-      source,
+      segment,
       leads: r.leads,
       qualified,
-      signed: signedBySource[source] || 0,
+      signed: signedBySegment[segment] || 0,
       monthlySpendEgp: spend ?? null,
       costPerQualifiedLead,
+      costPerEnquiry,
       overCostLimit: costPerQualifiedLead != null && costPerQualifiedLead > COST_PER_QUALIFIED_LEAD_LIMIT_EGP,
     };
   });
 
-  return { sources, costPerQualifiedLeadLimitEgp: COST_PER_QUALIFIED_LEAD_LIMIT_EGP };
+  return { segments, costPerQualifiedLeadLimitEgp: COST_PER_QUALIFIED_LEAD_LIMIT_EGP };
 }
 
 /** Block 5: Won and lost - win rate by segment, median days to close, lost reasons ranked. All 7 segments always listed, even at zero. */
@@ -282,20 +294,64 @@ async function getThisWeekBlock({ ownerId }) {
 }
 
 /**
+ * Change Request 1, Feature 3: "The pipeline shows two leads, but the Dashboard reports only one
+ * enquiry... Sales users: can also see team-level aggregate totals." Root cause of the original
+ * complaint: the Pipeline board (controller/crm/leadController.js#getPipelineSummary) has NEVER
+ * had an owner filter - it shows every non-archived lead, org-wide, to everyone. A sales user's
+ * own Dashboard, scoped to just their leads, will legitimately show a smaller number than that
+ * org-wide Pipeline total - comparing the two looks like a bug ("the unassigned lead is missing")
+ * even though each number is individually correct for what it represents. The fix is not to make
+ * the Dashboard's "mine" figures org-wide (that would leak nothing, but it would defeat the point
+ * of a personal view) - it is to ALSO expose the same org-wide total the Pipeline board already
+ * shows, so the two screens can be read side by side instead of silently disagreeing.
+ *
+ * Deliberately a NARROW, aggregate-only block - counts and the weighted pipeline total, nothing
+ * that lists or names another rep's individual leads (the Dashboard's own "This week" block is
+ * never included here), matching "must not receive access to other users' restricted lead details
+ * through dashboard APIs."
+ */
+async function getTeamTotals({ year, month }) {
+  const { start, end } = monthBounds(year, month);
+  const [enquiries, qualified, surveys, proposals, signed, pipeline, wonLost] = await Promise.all([
+    Lead.countDocuments(leadMatch({ start, end, ownerId: null })),
+    StageHistory.distinct('lead', { to: 'qualified', createdAt: { $gte: start, $lt: end } }).then(r => r.length),
+    StageHistory.distinct('lead', { to: 'site_survey', createdAt: { $gte: start, $lt: end } }).then(r => r.length),
+    StageHistory.distinct('lead', { to: 'proposal_sent', createdAt: { $gte: start, $lt: end } }).then(r => r.length),
+    StageHistory.distinct('lead', { to: 'won', createdAt: { $gte: start, $lt: end } }).then(r => r.length),
+    getPipelineBlock({ ownerId: null }),
+    getWonLostBlock({ year, month, ownerId: null }),
+  ]);
+  return {
+    enquiries,
+    qualified,
+    surveys,
+    proposals,
+    signed,
+    totalWeightedValueEgp: pipeline.totalWeightedValueEgp,
+    wonCount: wonLost.wonCount,
+    lostCount: wonLost.lostCount,
+  };
+}
+
+/**
  * The full Dashboard payload. `ownerId` null/undefined means "all owners" (MD/admin view); a
  * sales/technical caller should always pass their own id (enforced by the controller, never
- * trusted from the client) - see controller/crm/reportController.js.
+ * trusted from the client) - see controller/crm/reportController.js. When `ownerId` is set (a
+ * single-owner view, whether a sales user's own scope or an MD drilling into one person), `team`
+ * carries the SAME organization-wide totals the Pipeline board shows, so the two screens
+ * reconcile instead of silently disagreeing (Feature 3, above).
  */
 async function getDashboard({ year, month, ownerId }) {
-  const [targets, pipeline, speed, sourceQuality, wonLost, thisWeek] = await Promise.all([
+  const [targets, pipeline, speed, segmentQuality, wonLost, thisWeek, team] = await Promise.all([
     getTargetsBlock({ year, month, ownerId }),
     getPipelineBlock({ ownerId }),
     getSpeedBlock({ year, month, ownerId }),
-    getSourceQualityBlock({ year, month, ownerId }),
+    getSegmentQualityBlock({ year, month, ownerId }),
     getWonLostBlock({ year, month, ownerId }),
     getThisWeekBlock({ ownerId }),
+    ownerId ? getTeamTotals({ year, month }) : null,
   ]);
-  return { year, month, owner: ownerId || null, targets, pipeline, speed, sourceQuality, wonLost, thisWeek };
+  return { year, month, owner: ownerId || null, targets, pipeline, speed, segmentQuality, wonLost, thisWeek, team };
 }
 
 module.exports = {
@@ -303,9 +359,10 @@ module.exports = {
   getTargetsBlock,
   getPipelineBlock,
   getSpeedBlock,
-  getSourceQualityBlock,
+  getSegmentQualityBlock,
   getWonLostBlock,
   getThisWeekBlock,
+  getTeamTotals,
   monthBounds,
   median,
   average,

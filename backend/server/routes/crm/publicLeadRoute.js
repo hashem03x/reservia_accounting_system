@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { PUBLIC_LEAD_ALLOWED_ORIGINS, isAllowedWebsiteOrigin } = require('../../utils/crm/publicLeadOrigins');
 const publicLeadRateLimit = require('../../middleware/publicLeadRateLimit');
-const { publicLeadValidators } = require('../../utils/validators/crm/publicLeadValidators');
+const { publicLeadValidators, waRefValidators } = require('../../utils/validators/crm/publicLeadValidators');
 const publicLeadController = require('../../controller/crm/publicLeadController');
 
 // Reservia CRM - the public website's lead-capture call. Deliberately NOT behind
@@ -33,5 +33,6 @@ router.use(
 );
 
 router.post('/leads', publicLeadRateLimit, publicLeadValidators, publicLeadController.submitPublicLead);
+router.post('/wa-ref', publicLeadRateLimit, waRefValidators, publicLeadController.registerWaRef);
 
 module.exports = router;

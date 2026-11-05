@@ -29,14 +29,15 @@ const LOST_REASONS = [
   'Other',
 ];
 
-// Marketing source (acceptance report finding 4) - the fixed list a lead's "where did this come
-// from" field offers GOING FORWARD. Deliberately NOT a hard Mongoose `enum:` on Lead.source (see
+// Marketing source (acceptance report finding 4; extended by Change Request 1 section 4: adds
+// TikTok and splits Direct out of Organic) - the fixed list a lead's "where did this come from"
+// field offers GOING FORWARD. Deliberately NOT a hard Mongoose `enum:` on Lead.source (see
 // leadModel.js's own comment) - existing leads carry whatever free text was typed before this
 // list existed ("google ads", "Website", ...), and those must keep displaying correctly rather
 // than fail validation on an unrelated future edit. Enforced as a fixed choice at the validator
 // layer for new/edited leads instead (utils/validators/crm/leadValidators.js), with a normalizer
-// (crmSourceNormalization.js) mapping incoming UTM values onto this list rather than discarding them.
-const SOURCES = ['Google Ads', 'Meta Ads', 'Organic', 'Referral', 'WhatsApp Direct', 'Other'];
+// (sourceNormalization.js) mapping incoming UTM/referrer signals onto this list.
+const SOURCES = ['Google Ads', 'Meta Ads', 'TikTok', 'Organic', 'Direct', 'Referral', 'WhatsApp Direct', 'Other'];
 
 // The 27 official Egyptian governorates (acceptance report finding 4), English + Arabic. Same
 // "fixed list for new data, free text never rejected outright on an old record" approach as
@@ -100,10 +101,19 @@ const QUOTATION_STATUSES = ['draft', 'sent', 'accepted', 'declined'];
 // still needs a safe default) but is never offered as something a person actively picks.
 const FORM_SEGMENTS = SEGMENTS.filter(s => s !== 'unknown');
 
+// Target dimension (Change Request 1, Feature 5A: "MD configures targets by Month, Segment").
+// 'all' is itself a selectable value, not a fallback computed elsewhere - it is the single
+// company-wide target the MD enters when a month isn't broken down per segment (exactly how the
+// client's own initial Nov/Dec 2026 figures were given: "All segments: Enquiries 24..."). A
+// specific segment's own target (when the MD later chooses to set one) is a SEPARATE record, never
+// summed into or compared against the 'all' record.
+const TARGET_SEGMENTS = ['all', ...FORM_SEGMENTS];
+
 module.exports = {
   STAGES,
   SEGMENTS,
   FORM_SEGMENTS,
+  TARGET_SEGMENTS,
   CHANNELS,
   SOURCES,
   GOVERNORATES,

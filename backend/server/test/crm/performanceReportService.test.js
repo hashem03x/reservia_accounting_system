@@ -157,7 +157,7 @@ maybeTest('getValueCostSection: pipeline coverage ratio and average deal size ma
 
   await createLeadAt({ owner: OWNER_A, stage: 'negotiation', valueEgp: 400000 }, d(5)); // open, weighted 75% -> 300,000
 
-  await CrmTarget.create({ owner: OWNER_A, year: 2026, month: 1, targetValueEgp: 500000 });
+  await CrmTarget.create({ segment: 'all', year: 2026, month: 1, targetValueEgp: 500000 });
 
   const result = await performanceReportService.getValueCostSection({ year: 2026, month: 1, ownerId: String(OWNER_A) });
   const villa = result.averageDealSizeBySegment.find(s => s.segment === 'villa');
@@ -174,16 +174,30 @@ maybeTest('getValueCostSection: pipeline coverage ratio and average deal size ma
 });
 
 maybeTest('getValueCostSection: cost per qualified/signed deal match a hand calculation', async () => {
-  const l1 = await createLeadAt({ owner: OWNER_A, source: 'Meta Ads' }, d(1));
+  const l1 = await createLeadAt({ owner: OWNER_A, segment: 'villa' }, d(1));
   await createStageHistoryAt({ lead: l1._id, from: 'new', to: 'qualified' }, d(3));
   await createStageHistoryAt({ lead: l1._id, from: 'qualified', to: 'won', valueEgpAtChange: 50000 }, d(10));
 
-  const l2 = await createLeadAt({ owner: OWNER_A, source: 'Meta Ads' }, d(1));
+  const l2 = await createLeadAt({ owner: OWNER_A, segment: 'villa' }, d(1));
   await createStageHistoryAt({ lead: l2._id, from: 'new', to: 'qualified' }, d(4));
 
-  await CrmAdSpend.create({ source: 'Meta Ads', year: 2026, month: 1, amountEgp: 4000 });
+  await CrmAdSpend.create({ channel: 'Villas', segment: 'villa', year: 2026, month: 1, amountEgp: 4000 });
 
   const result = await performanceReportService.getValueCostSection({ year: 2026, month: 1, ownerId: String(OWNER_A) });
   assert.equal(result.costPerQualifiedLeadEgp, 2000, '4000 / 2 qualified');
   assert.equal(result.costPerSignedDealEgp, 4000, '4000 / 1 signed');
+});
+
+maybeTest('getValueCostSection: with a segment filter active, spend and target are scoped to that segment only', async () => {
+  await CrmTarget.create({ segment: 'all', year: 2026, month: 1, targetValueEgp: 999999 });
+  await CrmTarget.create({ segment: 'farm', year: 2026, month: 1, targetValueEgp: 500000 });
+  await CrmAdSpend.create({ channel: 'Farms', segment: 'farm', year: 2026, month: 1, amountEgp: 2000 });
+  await CrmAdSpend.create({ channel: 'Villas', segment: 'villa', year: 2026, month: 1, amountEgp: 9000 });
+
+  const l1 = await createLeadAt({ owner: OWNER_A, segment: 'farm' }, d(1));
+  await createStageHistoryAt({ lead: l1._id, from: 'new', to: 'qualified' }, d(3));
+
+  const farmView = await performanceReportService.getValueCostSection({ year: 2026, month: 1, ownerId: String(OWNER_A), segment: 'farm' });
+  assert.equal(farmView.costPerQualifiedLeadEgp, 2000, '2000 / 1, only the farm-tagged spend counted');
+  assert.equal(farmView.pipelineCoverage.remainingTargetEgp, 500000, "the farm segment's own target, not the 'all' one");
 });

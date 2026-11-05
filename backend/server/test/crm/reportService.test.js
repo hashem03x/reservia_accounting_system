@@ -102,7 +102,7 @@ maybeTest('getTargetsBlock: actual funnel counts match a hand count; a field wit
   // L3: owner B, farm - must never count toward owner A's totals.
   await createLeadAt({ owner: OWNER_B, segment: 'farm' }, d(2));
 
-  await CrmTarget.create({ owner: OWNER_A, year: 2026, month: 1, targetEnquiries: 2, targetQualified: 2, targetSigned: 1, targetValueEgp: 400000 });
+  await CrmTarget.create({ segment: 'all', year: 2026, month: 1, targetEnquiries: 2, targetQualified: 2, targetSigned: 1, targetValueEgp: 400000 });
 
   const result = await reportService.getTargetsBlock({ year: 2026, month: 1, ownerId: String(OWNER_A) });
 
@@ -118,12 +118,23 @@ maybeTest('getTargetsBlock: actual funnel counts match a hand count; a field wit
   assert.equal(result.valueEgp.target, 400000);
 });
 
-maybeTest('getTargetsBlock: with no owner filter, targets sum across every owner who has one set', async () => {
-  await CrmTarget.create({ owner: OWNER_A, year: 2026, month: 2, targetSigned: 2 });
-  await CrmTarget.create({ owner: OWNER_B, year: 2026, month: 2, targetSigned: 3 });
+maybeTest('getTargetsBlock: always reads the single company-wide "all" segment target, regardless of which owner\'s actuals are being viewed', async () => {
+  await CrmTarget.create({ segment: 'all', year: 2026, month: 2, targetSigned: 5 });
+  // A specific segment's own target is a SEPARATE record - it must never leak into the "all" figure.
+  await CrmTarget.create({ segment: 'farm', year: 2026, month: 2, targetSigned: 2 });
 
-  const result = await reportService.getTargetsBlock({ year: 2026, month: 2, ownerId: null });
-  assert.equal(result.signed.target, 5);
+  const mdView = await reportService.getTargetsBlock({ year: 2026, month: 2, ownerId: null });
+  assert.equal(mdView.signed.target, 5);
+
+  const ownerView = await reportService.getTargetsBlock({ year: 2026, month: 2, ownerId: String(OWNER_A) });
+  assert.equal(ownerView.signed.target, 5, 'the company-wide target is the same regardless of the owner scoping the ACTUAL counts');
+});
+
+maybeTest('getTargetsBlock: no target set for the month reports null for every field, never zero or a stale figure', async () => {
+  const result = await reportService.getTargetsBlock({ year: 2026, month: 3, ownerId: null });
+  assert.equal(result.enquiries.target, null);
+  assert.equal(result.signed.target, null);
+  assert.equal(result.valueEgp.target, null);
 });
 
 maybeTest('getPipelineBlock: weighted value matches hand calculation, Won/Lost excluded, owner-filtered', async () => {
@@ -168,26 +179,35 @@ maybeTest('getSpeedBlock: a reply that merely spans a weekend is never reported 
   assert.equal(result.pctWithinSla, 100);
 });
 
-maybeTest('getSourceQualityBlock: cost per qualified lead = monthly spend / qualified count; null with no spend entered', async () => {
-  const l1 = await createLeadAt({ owner: OWNER_A, source: 'Google Ads' }, d(5));
+maybeTest('getSegmentQualityBlock: cost per qualified lead and cost per enquiry = monthly segment spend / count; null with no spend entered', async () => {
+  const l1 = await createLeadAt({ owner: OWNER_A, segment: 'farm' }, d(5));
   await createStageHistoryAt({ lead: l1._id, from: 'new', to: 'qualified' }, d(7));
 
-  const l2 = await createLeadAt({ owner: OWNER_A, source: 'Google Ads' }, d(6));
+  const l2 = await createLeadAt({ owner: OWNER_A, segment: 'farm' }, d(6));
   await createStageHistoryAt({ lead: l2._id, from: 'new', to: 'qualified' }, d(8));
 
-  await createLeadAt({ owner: OWNER_A, source: 'Organic' }, d(6));
+  await createLeadAt({ owner: OWNER_A, segment: 'villa' }, d(6));
 
-  await CrmAdSpend.create({ source: 'Google Ads', year: 2026, month: 1, amountEgp: 7000 });
+  // Two differently-named channel line items both tagged 'farm' - their spend must be SUMMED for
+  // the segment's cost-per-lead math (client's own real budget line items, e.g. "Farm test" and
+  // "Farms" in different months, both roll up to the farm segment).
+  await CrmAdSpend.create({ channel: 'Farm test', segment: 'farm', year: 2026, month: 1, amountEgp: 5000 });
+  await CrmAdSpend.create({ channel: 'Farms extra', segment: 'farm', year: 2026, month: 1, amountEgp: 2000 });
+  // Untagged spend (SEO/agency fees) must never be attributed to any one segment.
+  await CrmAdSpend.create({ channel: 'SEO', year: 2026, month: 1, amountEgp: 1000 });
 
-  const result = await reportService.getSourceQualityBlock({ year: 2026, month: 1, ownerId: String(OWNER_A) });
-  const google = result.sources.find(s => s.source === 'Google Ads');
-  const organic = result.sources.find(s => s.source === 'Organic');
+  const result = await reportService.getSegmentQualityBlock({ year: 2026, month: 1, ownerId: String(OWNER_A) });
+  const farm = result.segments.find(s => s.segment === 'farm');
+  const villa = result.segments.find(s => s.segment === 'villa');
 
-  assert.equal(google.leads, 2);
-  assert.equal(google.qualified, 2);
-  assert.equal(google.costPerQualifiedLead, 3500, '7000 / 2');
-  assert.equal(google.overCostLimit, false, 'exactly at the limit, not over it');
-  assert.equal(organic.costPerQualifiedLead, null, 'no spend was ever entered for Organic this month');
+  assert.equal(farm.leads, 2);
+  assert.equal(farm.qualified, 2);
+  assert.equal(farm.monthlySpendEgp, 7000, '5000 + 2000 summed across both farm-tagged channels');
+  assert.equal(farm.costPerQualifiedLead, 3500, '7000 / 2');
+  assert.equal(farm.costPerEnquiry, 3500, '7000 / 2 leads');
+  assert.equal(farm.overCostLimit, false, 'exactly at the limit, not over it');
+  assert.equal(villa.costPerQualifiedLead, null, 'no spend was ever entered for villa this month');
+  assert.equal(villa.costPerEnquiry, null);
 });
 
 maybeTest('getWonLostBlock: win rate by segment and median days to close match a hand calculation', async () => {
@@ -213,6 +233,32 @@ maybeTest('getWonLostBlock: win rate by segment and median days to close match a
   assert.ok(compound);
   assert.equal(compound.won, 0);
   assert.equal(compound.winRatePct, null, 'no deals at all - a dash, never a fabricated 0%');
+});
+
+maybeTest('getTeamTotals: org-wide figures including every owner, deliberately narrower (aggregate-only) than the per-owner block', async () => {
+  // Owner A's own lead, plus an UNASSIGNED lead (owner: null) and owner B's lead - getTeamTotals
+  // must count all three; this is exactly the Feature 3 scenario ("the unassigned lead is missing
+  // from the Dashboard") the org-wide `team` block exists to reconcile against.
+  await createLeadAt({ owner: OWNER_A }, d(5));
+  await createLeadAt({ owner: null }, d(6));
+  await createLeadAt({ owner: OWNER_B }, d(7));
+
+  const result = await reportService.getTeamTotals({ year: 2026, month: 1 });
+  assert.equal(result.enquiries, 3, 'org-wide total includes the unassigned lead and both owners');
+  assert.ok(!('oldestUnanswered' in result), 'deliberately aggregate-only - no individual lead details exposed');
+});
+
+maybeTest('getDashboard: the "team" block is present only for a single-owner view, and absent for the org-wide (MD) view', async () => {
+  await createLeadAt({ owner: OWNER_A }, d(5));
+  await createLeadAt({ owner: null }, d(6));
+
+  const mdView = await reportService.getDashboard({ year: 2026, month: 1, ownerId: null });
+  assert.equal(mdView.team, null, 'the MD view already sees everything - no separate reconciliation block needed');
+
+  const ownerView = await reportService.getDashboard({ year: 2026, month: 1, ownerId: String(OWNER_A) });
+  assert.ok(ownerView.team, 'a single-owner view gets the org-wide reconciliation figures');
+  assert.equal(ownerView.team.enquiries, 2, 'org-wide count includes the unassigned lead, unlike this owner\'s own scoped targets.actual');
+  assert.equal(ownerView.targets.enquiries.actual, 1, 'the scoped block itself still only counts this owner\'s own lead');
 });
 
 maybeTest('getThisWeekBlock: only leads from the last 7 days count, and the oldest unanswered lead comes first', async () => {

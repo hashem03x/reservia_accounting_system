@@ -100,7 +100,9 @@ export default function LeadAttachments({ leadId, canEdit }: { leadId: string; c
     e.target.value = "";
     const room = Math.max(0, limits.maxFiles - rows.length);
     const queue: Pending[] = chosen.map((file, i) => {
-      const problem = checkPdf(file, limits, translate) || (i >= room ? translate(`At most ${limits.maxFiles} files can be attached.`, `يمكن إرفاق ${limits.maxFiles} ملفات كحد أقصى.`) : undefined);
+      const problem =
+        checkPdf(file, limits, translate, { allowImages: true }) ||
+        (i >= room ? translate(`At most ${limits.maxFiles} files can be attached.`, `يمكن إرفاق ${limits.maxFiles} ملفات كحد أقصى.`) : undefined);
       return { key: `${Date.now()}-${i}-${file.name}`, file, progress: 0, error: problem || undefined };
     });
     setPending(p => [...p, ...queue]);
@@ -153,13 +155,23 @@ export default function LeadAttachments({ leadId, canEdit }: { leadId: string; c
         <div>
           <h4>{translate("Attachments", "المرفقات")}</h4>
           <p className="text-xs text-gray-500">
-            {translate(`PDF documents for this lead, e.g. an electricity bill (up to ${limits.maxFiles}, ${formatBytes(limits.maxBytes)} each).`, `مستندات PDF الخاصة بهذا العميل، مثل فاتورة الكهرباء (حتى ${limits.maxFiles} ملف، ${formatBytes(limits.maxBytes)} لكل ملف).`)}
+            {translate(
+              `PDF or image documents for this lead, e.g. an electricity bill (up to ${limits.maxFiles}, ${formatBytes(limits.maxBytes)} each).`,
+              `مستندات PDF أو صور الخاصة بهذا العميل، مثل فاتورة الكهرباء (حتى ${limits.maxFiles} ملف، ${formatBytes(limits.maxBytes)} لكل ملف).`,
+            )}
           </p>
         </div>
         <Button size="xs" variant="light" leftSection={<solidIcons.Plus size={12} />} onClick={() => inputRef.current?.click()} disabled={rows.length >= limits.maxFiles}>
-          {translate("Attach PDFs", "إرفاق ملفات PDF")}
+          {translate("Attach files", "إرفاق ملفات")}
         </Button>
-        <input ref={inputRef} type="file" accept=".pdf,application/pdf" multiple hidden onChange={addFiles} />
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+          multiple
+          hidden
+          onChange={addFiles}
+        />
       </div>
 
       {error && <ErrorAlert error={error} />}

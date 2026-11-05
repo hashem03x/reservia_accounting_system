@@ -4,6 +4,22 @@ const crypto = require('crypto');
 const ApiError = require('../../utils/apiError');
 const { normalizeEgyptianPhone } = require('../../utils/crm/phone');
 const leadService = require('./leadService');
+const WaRefCode = require('../../models/crm/waRefCodeModel');
+
+// Change Request 1, Feature 1: "WhatsApp message with a recognized Ref code -> Source associated
+// with that code." The code the website appends to every wa.me prefilled message
+// (services/waRefCode.ts) looks like "WA-0511-VIL-K2F9" - matched here out of the customer's own
+// first message text and looked up against what the website registered at click time
+// (services/crm/publicLeadIntakeService.js#registerWaRefCode).
+const WA_REF_PATTERN = /\bWA-\d{4}-[A-Z]{3}-[A-Z0-9]{4}\b/;
+
+/** @returns {Promise<string>} a real SOURCES value - the recognized code's source, or the "WhatsApp without a recognized Ref code" fallback. */
+async function resolveWhatsAppSource(messageText) {
+  const match = String(messageText || '').match(WA_REF_PATTERN);
+  if (!match) return 'WhatsApp Direct';
+  const found = await WaRefCode.findOne({ code: match[0] }).lean();
+  return found?.source || 'WhatsApp Direct';
+}
 
 // WhatsApp Business Platform (Meta Cloud API) webhook - Developer Brief section 4G. This file is
 // deliberately INBOUND-ONLY: it verifies and processes what Meta sends us. It does NOT send
@@ -104,7 +120,10 @@ async function handleInboundMessage(message, contactName) {
   const phoneE164 = normalizeEgyptianPhone(message.from);
   if (!phoneE164) return { skipped: true, reason: 'unrecognized phone', raw: message.from };
 
-  const { lead } = await leadService.intakeLead({ phone: phoneE164, channel: 'whatsapp', name: contactName });
+  // Source is resolved from the FIRST message only - intakeLead never overwrites an existing
+  // lead's first-touch source on a repeat enquiry, matching every other channel's own rule.
+  const source = await resolveWhatsAppSource(message.text?.body);
+  const { lead } = await leadService.intakeLead({ phone: phoneE164, channel: 'whatsapp', name: contactName, source });
   const activity = await leadService.recordActivity(
     lead._id,
     { type: 'whatsapp_in', body: describeMessage(message), whatsappMessageId: message.id },
@@ -113,7 +132,7 @@ async function handleInboundMessage(message, contactName) {
   return { leadId: lead._id, activityId: activity._id };
 }
 
-module.exports = { verifySubscription, verifySignature, processWebhookPayload, describeMessage };
+module.exports = { verifySubscription, verifySignature, processWebhookPayload, describeMessage, resolveWhatsAppSource };
 
 // Re-exported for routes/crm/whatsappRoute.js's error responses without a second import path.
 module.exports.ApiError = ApiError;

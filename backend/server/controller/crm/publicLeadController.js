@@ -1,6 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const apiResponse = require('../../utils/apiResponse');
-const { intakePublicLead } = require('../../services/crm/publicLeadIntakeService');
+const { intakePublicLead, registerWaRefCode } = require('../../services/crm/publicLeadIntakeService');
 
 // POST /crm/public/leads - the real public website's quote/lead forms. Unauthenticated by design
 // (there is no logged-in user on the public site), but never unprotected: scoped CORS
@@ -17,4 +17,18 @@ exports.submitPublicLead = asyncHandler(async (req, res) => {
     return res.status(201).json(apiResponse('Thank you - we will be in touch shortly.', true, {}));
   }
   res.status(201).json(apiResponse('Thank you - we will be in touch shortly.', true, { refCode: result.refCode }));
+});
+
+// POST /crm/public/wa-ref - registers a WhatsApp Ref code's attribution at click time (Change
+// Request 1, Feature 1). Same public/unauthenticated surface as submitPublicLead above; the
+// response carries nothing back (fire-and-forget on the website side, must never delay opening
+// wa.me) and never errors out loudly for a bad/duplicate code - a failed registration just means
+// that one click's code falls back to "WhatsApp Direct" later, never a broken wa.me link.
+exports.registerWaRef = asyncHandler(async (req, res) => {
+  try {
+    await registerWaRefCode(req.body);
+  } catch {
+    // Swallowed deliberately - see header comment.
+  }
+  res.status(204).send();
 });

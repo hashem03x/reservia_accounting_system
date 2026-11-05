@@ -97,7 +97,7 @@ exports.reassignLead = asyncHandler(async (req, res) => {
 // PATCH /leads/:id/archive and /leads/:id/restore - MD only (requireCrmRole('md') on the route),
 // acceptance report finding 7. Soft-delete only - see leadService.js#setLeadArchived.
 exports.archiveLead = asyncHandler(async (req, res) => {
-  const lead = await leadService.setLeadArchived(req.params.id, true, { userId: req.user._id });
+  const lead = await leadService.setLeadArchived(req.params.id, true, { userId: req.user._id, reason: req.body.reason });
   res.status(200).json(apiResponse('Lead archived successfully', true, lead));
 });
 

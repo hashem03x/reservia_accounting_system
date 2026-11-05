@@ -30,6 +30,8 @@
     "db:migrate-account-parent-groups": "node server/scripts/migrateAccountParentGroups.js",
     "db:migrate-vendor-payment-accounts": "node server/scripts/migrateVendorPaymentAccounts.js",
     "db:audit-ar-attribution": "node server/scripts/auditArCustomerAttribution.js",
+    "db:seed-crm-targets": "node server/scripts/seedCrmChangeRequest1Targets.js",
+    "db:audit-crm-test-leads": "node server/scripts/auditCrmTestLeads.js",
     "start": "node server.js",
     "dev": "cross-env NODE_ENV=development nodemon server.js",
     "staging": "cross-env NODE_ENV=staging nodemon server.js",

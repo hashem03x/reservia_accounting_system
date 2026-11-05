@@ -17,6 +17,7 @@ import ErrorSection from "@/components/ui/sections/error";
 import ErrorAlert from "@/components/ui/error-alert";
 import DeleteModal from "@/components/ui/delete-modal";
 import { outlineIcons } from "@/components/icons";
+import TruncatedText from "@/components/ui/truncated-text";
 import { useSystemAccess } from "@/context/SystemAccessContext";
 import { crmStageLabel, stageBadgeColor } from "../../_shared/stage";
 import { allowedNextStages } from "../../_shared/lead-display";
@@ -116,6 +117,7 @@ function ArchiveAction({ lead, onChanged, onArchivedAway }: { lead: CrmLead; onC
   const { language, translate } = useLanguage();
   const privateRequest = usePrivateRequest();
   const [opened, { open, close }] = useDisclosure();
+  const [reason, setReason] = useState("");
   const { loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
   async function restore() {
@@ -127,7 +129,9 @@ function ArchiveAction({ lead, onChanged, onArchivedAway }: { lead: CrmLead; onC
 
   function confirmArchive() {
     handleRequest(language, setLoading, setError, async () => {
-      await privateRequest({ language, method: "PATCH", url: `crm/leads/${lead._id}/archive` });
+      // Change Request 1, Feature 6: a reason is required - the backend rejects an empty one too
+      // (defense in depth), this just avoids a round-trip for the obvious case.
+      await privateRequest({ language, method: "PATCH", url: `crm/leads/${lead._id}/archive`, data: { reason: reason.trim() } });
       close();
       onArchivedAway();
     });
@@ -157,7 +161,18 @@ function ArchiveAction({ lead, onChanged, onArchivedAway }: { lead: CrmLead; onC
         action={confirmArchive}
         loading={loading}
         error={error}
-      />
+        disabled={!reason.trim()}
+      >
+        <Textarea
+          label={translate("Reason (required)", "السبب (مطلوب)")}
+          placeholder={translate("e.g. Duplicate test lead created while verifying the form", "مثال: عميل محتمل تجريبي مكرر تم إنشاؤه أثناء اختبار النموذج")}
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          autosize
+          minRows={2}
+          required
+        />
+      </DeleteModal>
     </>
   );
 }
@@ -190,6 +205,29 @@ function InfoCard({ lead, overdue }: { lead: CrmLead; overdue: boolean }) {
       )}
       {lead.firstReplyAt && row(translate("First reply", "أول رد"), formatDateAndTime(lead.firstReplyAt, language))}
       {lead.followUpAt && row(translate("Follow-up", "المتابعة"), formatDateAndTime(lead.followUpAt, language))}
+      {/* First-touch attribution (Change Request 1, Feature 1: "Display the campaign and landing
+          page on the CRM lead details page") - shown only when present, since most leads (phone,
+          walk-in, dealer) never had a web visit to attribute. */}
+      {(lead.utmCampaign || lead.landingPage || lead.utmSource) && (
+        <>
+          <h4 className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">{translate("First-touch attribution", "أول نقطة تواصل")}</h4>
+          {lead.utmSource && row(translate("UTM Source", "مصدر UTM"), lead.utmSource)}
+          {lead.utmMedium && row(translate("UTM Medium", "وسيط UTM"), lead.utmMedium)}
+          {lead.utmCampaign && row(translate("Campaign", "الحملة"), lead.utmCampaign)}
+          {lead.utmContent && row(translate("UTM Content", "محتوى UTM"), lead.utmContent)}
+          {lead.landingPage && row(translate("Landing page", "صفحة الهبوط"), <TruncatedText text={lead.landingPage} maxWidthClassName="max-w-[180px]" />)}
+        </>
+      )}
+      {/* Archive audit trail (Change Request 1, Feature 6: "record who/when... audit trail") -
+          shown only once archived, to the MD who can already see this page's archive/restore action. */}
+      {lead.archived && (
+        <>
+          <h4 className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">{translate("Archive", "الأرشفة")}</h4>
+          {lead.archivedAt && row(translate("Archived at", "تاريخ الأرشفة"), formatDateAndTime(lead.archivedAt, language))}
+          {lead.archivedBy && row(translate("Archived by", "تمت الأرشفة بواسطة"), lead.archivedBy.name)}
+          {lead.archiveReason && row(translate("Reason", "السبب"), <TruncatedText text={lead.archiveReason} maxWidthClassName="max-w-[180px]" />)}
+        </>
+      )}
     </div>
   );
 }

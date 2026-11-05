@@ -79,11 +79,25 @@ test('mapWebsitePayload: contact_form maps to channel web_form; every website se
   }
 });
 
-test('mapWebsitePayload: no utm_source normalizes to "Organic" (direct traffic), never blank or free text', () => {
+test('mapWebsitePayload: no utm_source and no referrer normalizes to "Direct", never blank or free text', () => {
   const { mapWebsitePayload } = require('../../services/crm/publicLeadIntakeService');
   const mapped = mapWebsitePayload(validSubmission({ utm: {} }));
-  assert.equal(mapped.source, 'Organic');
+  assert.equal(mapped.source, 'Direct');
   assert.equal(mapped.utmSource, undefined);
+});
+
+test('mapWebsitePayload: no utm_source but a search-engine referrer normalizes to "Organic"', () => {
+  const { mapWebsitePayload } = require('../../services/crm/publicLeadIntakeService');
+  const mapped = mapWebsitePayload(validSubmission({ utm: {}, referrer: 'https://www.google.com/search?q=solar+egypt' }));
+  assert.equal(mapped.source, 'Organic');
+});
+
+test('mapWebsitePayload: persists utm_content and referrer alongside the existing UTM fields', () => {
+  const { mapWebsitePayload } = require('../../services/crm/publicLeadIntakeService');
+  const mapped = mapWebsitePayload(validSubmission({ utm: { utm_source: 'google', utm_medium: 'cpc', utm_content: 'banner-a' }, referrer: 'https://www.google.com/' }));
+  assert.equal(mapped.source, 'Google Ads');
+  assert.equal(mapped.utmContent, 'banner-a');
+  assert.equal(mapped.referrer, 'https://www.google.com/');
 });
 
 test('buildIntakeNote: summarizes a calculator estimate and the generic site figure as a readable note, never as a typed field', () => {

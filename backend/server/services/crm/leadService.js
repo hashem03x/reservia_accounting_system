@@ -6,12 +6,13 @@ const ApiError = require('../../utils/apiError');
 const Lead = require('../../models/crm/leadModel');
 const Activity = require('../../models/crm/activityModel');
 const StageHistory = require('../../models/crm/stageHistoryModel');
+const User = require('../../models/userModel');
 const { normalizeEgyptianPhone } = require('../../utils/crm/phone');
 const { addWorkingHours } = require('../../utils/crm/workingHours');
 const { generateRefCode } = require('../../utils/crm/refCode');
 const { validateStageTransition, STAGES } = require('../../utils/crm/stageRules');
 const { trackEvent } = require('./amplitudeService');
-const { pickAutoAssignee, notifyAssignment } = require('./leadAssignmentService');
+const { pickAutoAssignee, notifyAssignment, notifyReassignment, assignmentStrategy } = require('./leadAssignmentService');
 
 // Reservia CRM - lead intake, dedup/merge, activity logging and stage transitions (Developer Brief
 // section 4B/4D + section 7 "Rules that must not change"). This is the one place a Lead document
@@ -95,7 +96,11 @@ async function intakeLead(input, { userId = null } = {}) {
             phoneE164,
             segment: input.segment || 'unknown',
             governorate: input.governorate || null,
-            source: input.source || 'Other',
+            // Change Request 1: a WhatsApp lead with no explicit source (the normal case - the
+            // validator never requires one for this channel, see leadValidators.js) falls back to
+            // "WhatsApp Direct", never "Other" - every other channel's own validator already
+            // requires an explicit source, so this 'Other' only protects an unexpected caller.
+            source: input.source || (input.channel === 'whatsapp' ? 'WhatsApp Direct' : 'Other'),
             channel: input.channel,
             partnerName: input.partnerName || null,
             monthlyBillEgp: input.monthlyBillEgp ?? null,
@@ -105,7 +110,9 @@ async function intakeLead(input, { userId = null } = {}) {
             utmSource: input.utmSource || null,
             utmMedium: input.utmMedium || null,
             utmCampaign: input.utmCampaign || null,
+            utmContent: input.utmContent || null,
             landingPage: input.landingPage || null,
+            referrer: input.referrer || null,
             replyDueAt: addWorkingHours(now, SLA_WORKING_HOURS),
             ampDeviceId: resolveAmpDeviceId(input.ampDeviceId),
             createdBy: userId,
@@ -116,8 +123,9 @@ async function intakeLead(input, { userId = null } = {}) {
       created = docs[0];
       await Activity.create([{ lead: created._id, type: 'system', body: `Lead created via ${input.channel}.`, author: userId }], { session });
       if (autoAssignee) {
+        const strategyLabel = assignmentStrategy() === 'single' ? 'default Sales Engineer' : 'round-robin';
         await Activity.create(
-          [{ lead: created._id, type: 'system', body: `Automatically assigned to ${autoAssignee.name} (Sales Engineer round-robin).` }],
+          [{ lead: created._id, type: 'system', body: `Automatically assigned to ${autoAssignee.name} (${strategyLabel}).` }],
           { session }
         );
       }
@@ -260,9 +268,21 @@ async function changeStage(leadId, input, { userId = null, role } = {}) {
 async function reassignLead(leadId, ownerId, { userId = null } = {}) {
   const lead = await Lead.findById(leadId);
   if (!lead) throw new ApiError('Lead not found.', 404);
+  // The lead's own pre-save populate hook resolves `owner` to {_id, name} - read the PREVIOUS
+  // owner's name before overwriting it, so the audit trail (Change Request 1, Feature 2:
+  // "Preserve the previous owner in the assignment history") actually names both sides of the
+  // change, not just "reassigned" with no record of who it moved from/to.
+  const previousOwnerName = lead.owner?.name || null;
+  const newOwner = ownerId ? await User.findById(ownerId).select('_id name email').lean() : null;
+
   lead.owner = ownerId || null;
   await lead.save();
-  await Activity.create({ lead: lead._id, type: 'system', body: 'Lead reassigned.', author: userId });
+  const body = newOwner
+    ? `Lead reassigned${previousOwnerName ? ` from ${previousOwnerName}` : ''} to ${newOwner.name}.`
+    : `Lead unassigned${previousOwnerName ? ` (was ${previousOwnerName})` : ''}.`;
+  await Activity.create({ lead: lead._id, type: 'system', body, author: userId });
+
+  if (newOwner) notifyReassignment(newOwner, lead); // fire-and-forget, same as the auto-assignment notification
   return shapeLead(lead);
 }
 
@@ -274,14 +294,22 @@ async function reassignLead(leadId, ownerId, { userId = null } = {}) {
  * explicit, already-authorized MD user id. The document, its activities and its stage history are
  * never deleted - "archived" is the entire effect, and it is fully reversible.
  */
-async function setLeadArchived(leadId, archived, { userId = null } = {}) {
+/**
+ * Archive/restore (Change Request 1, Feature 6) - a reason is required to archive (never to
+ * restore) and is recorded both on the lead itself and in its activity timeline, so the audit
+ * trail answers "who archived this, when, and why" without needing a separate collection.
+ */
+async function setLeadArchived(leadId, archived, { userId = null, reason = null } = {}) {
   const lead = await Lead.findById(leadId);
   if (!lead) throw new ApiError('Lead not found.', 404);
+  if (archived && !String(reason || '').trim()) throw new ApiError('A reason is required to archive a lead.', 400);
   lead.archived = !!archived;
   lead.archivedAt = archived ? new Date() : null;
   lead.archivedBy = archived ? userId : null;
+  lead.archiveReason = archived ? String(reason).trim() : null;
   await lead.save();
-  await Activity.create({ lead: lead._id, type: 'system', body: archived ? 'Lead archived.' : 'Lead restored from archive.', author: userId });
+  const body = archived ? `Lead archived. Reason: ${lead.archiveReason}` : 'Lead restored from archive.';
+  await Activity.create({ lead: lead._id, type: 'system', body, author: userId });
   return shapeLead(lead);
 }
 

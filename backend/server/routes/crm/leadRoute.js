@@ -5,6 +5,7 @@ const leadController = require('../../controller/crm/leadController');
 const {
   createLeadValidator,
   leadIdValidator,
+  archiveLeadValidator,
   changeStageValidator,
   reassignLeadValidator,
   recordActivityValidator,
@@ -41,8 +42,9 @@ router.post('/:id/activities', recordActivityValidator, leadController.recordAct
 // File upload (acceptance report section 7) - a lead's attached documents (e.g. an electricity
 // bill), stored the same private-GridFS way every other attachment in this ERP already is.
 router.use('/:leadId/attachments', leadAttachmentRoute);
-// Acceptance report finding 7: "Add a delete or archive action for the MD only."
-router.patch('/:id/archive', requireCrmRole('md'), leadIdValidator, leadController.archiveLead);
+// Acceptance report finding 7 + Change Request 1, Feature 6: "Add a delete or archive action for
+// the MD only" / "require a reason".
+router.patch('/:id/archive', requireCrmRole('md'), archiveLeadValidator, leadController.archiveLead);
 router.patch('/:id/restore', requireCrmRole('md'), leadIdValidator, leadController.restoreLead);
 
 module.exports = router;

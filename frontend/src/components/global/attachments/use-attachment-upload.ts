@@ -8,19 +8,37 @@ import { Attachment, AttachmentLimits, AttachmentOwnerKey } from "@/types/attach
 // accepts ~4.5 MB per request). A request refused for an expired session is retried once with a
 // refreshed token, as every other request in the app is (usePrivateRequest).
 
+// Unified 10 MB per file (Change Request 1, Feature 7) - this default matches
+// attachmentService.js#maxBytes's own flat 10MB default; the server's own `limits.maxBytes` from
+// the list endpoint is still what actually governs validation, this is only the fallback before
+// that first response arrives.
 export const DEFAULT_LIMITS: AttachmentLimits = { maxBytes: 10 * 1024 * 1024, maxFiles: 20 };
+
+const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp)$/i;
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export const formatBytes = (bytes: number) =>
   bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
-/** Why a chosen file cannot be attached (checked again, by content, on the server) - or null. */
+/**
+ * Why a chosen file cannot be attached (checked again, by content, on the server) - or null.
+ * `allowImages` (Change Request 1, Feature 7: "PDF AND images supported") is CRM-lead-only - the
+ * ERP's own PO/SO/journal-entry attachment panels never pass it, so they stay PDF-only exactly as
+ * before.
+ */
 export function checkPdf(
   file: File,
   limits: AttachmentLimits,
   translate: (en: string, ar: string) => string,
+  { allowImages = false }: { allowImages?: boolean } = {},
 ): string | null {
-  if (!/\.pdf$/i.test(file.name) || (file.type && !["application/pdf", "application/x-pdf"].includes(file.type)))
-    return translate(`"${file.name}" is not a PDF file.`, `"${file.name}" ليس ملف PDF.`);
+  const isPdf = /\.pdf$/i.test(file.name) && (!file.type || ["application/pdf", "application/x-pdf"].includes(file.type));
+  const isImage = allowImages && IMAGE_EXTENSIONS.test(file.name) && (!file.type || IMAGE_TYPES.includes(file.type));
+  if (!isPdf && !isImage) {
+    return allowImages
+      ? translate(`"${file.name}" is not a PDF, JPEG, PNG or WEBP file.`, `"${file.name}" ليس ملف PDF أو JPEG أو PNG أو WEBP.`)
+      : translate(`"${file.name}" is not a PDF file.`, `"${file.name}" ليس ملف PDF.`);
+  }
   if (file.size === 0) return translate(`"${file.name}" is empty.`, `"${file.name}" فارغ.`);
   if (file.size > limits.maxBytes)
     return translate(

@@ -31,6 +31,9 @@ exports.publicLeadValidators = [
   check('message').optional({ nullable: true }).isString().trim().isLength({ max: 2000 }),
   check('siteInput').optional({ nullable: true }).isFloat({ min: 0, max: 1_000_000 }),
   check('pageUrl').optional({ nullable: true }).isString().trim().isLength({ max: 300 }),
+  // Change Request 1, Feature 1: document.referrer at first touch - only used to tell Organic
+  // (arrived via a search engine) from Direct (no referrer) when there is no UTM at all.
+  check('referrer').optional({ nullable: true }).isString().trim().isLength({ max: 300 }),
   check('lang').optional({ nullable: true }).isString().trim().isLength({ max: 10 }),
   check('eventId').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
   check('ampDeviceId').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
@@ -38,6 +41,7 @@ exports.publicLeadValidators = [
   check('utm.utm_source').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
   check('utm.utm_medium').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
   check('utm.utm_campaign').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  check('utm.utm_content').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
   check('calculator').optional({ nullable: true }).isObject(),
   check('calculator.systemSizeKwp').optional({ nullable: true }).isFloat({ min: 0, max: 100_000 }),
   check('calculator.indicativePriceEgp').optional({ nullable: true }).isFloat({ min: 0, max: 1_000_000_000 }),
@@ -45,5 +49,16 @@ exports.publicLeadValidators = [
   check('calculator.paybackYears').optional({ nullable: true }).isFloat({ min: 0, max: 1000 }),
   // Honeypot: accepted as plain text, never required, never surfaced in an error message.
   check('website').optional({ nullable: true }).isString().isLength({ max: 500 }),
+  validatorMiddleware,
+];
+
+// POST /crm/public/wa-ref (Change Request 1, Feature 1 - WhatsApp Ref code attribution).
+exports.waRefValidators = [
+  check('code').trim().notEmpty().withMessage('A ref code is required.').isLength({ max: 40 }),
+  check('utmSource').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  check('utmMedium').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  check('utmCampaign').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  check('utmContent').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  check('referrer').optional({ nullable: true }).isString().trim().isLength({ max: 300 }),
   validatorMiddleware,
 ];

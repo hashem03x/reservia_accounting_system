@@ -3,9 +3,9 @@ const apiResponse = require('../../utils/apiResponse');
 const targetService = require('../../services/crm/targetService');
 
 exports.setTarget = asyncHandler(async (req, res) => {
-  const { owner, year, month, targetValueEgp, targetDealCount, targetEnquiries, targetQualified, targetSurveys, targetProposals, targetSigned } = req.body;
+  const { segment, year, month, targetValueEgp, targetDealCount, targetEnquiries, targetQualified, targetSurveys, targetProposals, targetSigned } = req.body;
   const target = await targetService.setTarget(
-    owner,
+    segment,
     year,
     month,
     { targetValueEgp, targetDealCount, targetEnquiries, targetQualified, targetSurveys, targetProposals, targetSigned },
@@ -15,7 +15,7 @@ exports.setTarget = asyncHandler(async (req, res) => {
 });
 
 exports.listTargets = asyncHandler(async (req, res) => {
-  const { year, month, owner } = req.query;
-  const targets = await targetService.listTargets(parseInt(year, 10), parseInt(month, 10), { ownerId: owner });
+  const { year, month, segment } = req.query;
+  const targets = await targetService.listTargets(parseInt(year, 10), parseInt(month, 10), { segment });
   res.status(200).json(apiResponse('Targets retrieved successfully', true, targets));
 });

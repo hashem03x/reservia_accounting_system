@@ -3,8 +3,8 @@ const apiResponse = require('../../utils/apiResponse');
 const adSpendService = require('../../services/crm/adSpendService');
 
 exports.setAdSpend = asyncHandler(async (req, res) => {
-  const { source, year, month, amountEgp } = req.body;
-  const spend = await adSpendService.setAdSpend(source, year, month, amountEgp, { userId: req.user._id });
+  const { channel, segment, year, month, amountEgp } = req.body;
+  const spend = await adSpendService.setAdSpend(channel, year, month, amountEgp, { segment: segment || null, userId: req.user._id });
   res.status(200).json(apiResponse('Ad spend saved successfully', true, spend));
 });
 
