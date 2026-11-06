@@ -7,9 +7,7 @@ const Vendor = require('../../models/vendor/vendor');
 const Warehouse = require('../../models/inventory/warehouseModel');
 const Project = require('../../models/project/projectModel');
 const Requisition = require('../../models/vendor/requisitionModel');
-const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { vatAndWithholdingTaxValidators } = require('./taxValidators');
-const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
 
 const createPurchaseOrderValidate = [
     body('vendorId').isMongoId().withMessage('Vendor ID must be a mongoID').custom(value => {
@@ -41,32 +39,22 @@ const createPurchaseOrderValidate = [
         return true;
     }),
 
-    // Optional - mirrors Sales Order's 'account'/'advanced_payment' cases (docs section "Payment
-    // Methods Must Come From Chart of Accounts" / "Vendor Advanced Payments").
-    body('paymentMethod').optional({ nullable: true }).isIn(['account', 'advanced_payment']).withMessage('Payment method must be "account" or "advanced_payment"'),
-    body('paymentAccount')
-        .if((value, { req }) => req.body.paymentMethod === 'account')
-        .notEmpty()
-        .withMessage('A payment account is required when Payment Method is "account"')
-        .isMongoId()
-        .withMessage('Payment account ID must be a mongoID')
-        .custom(async value => {
-            const account = await ChartOfAccount.findById(value);
-            if (!account) throw new Error('The selected payment account does not exist');
-            if (!isPaymentAccountEligible(account)) {
-                throw new Error('The selected payment account must be a Cash or Cash Equivalent account');
-            }
-            return true;
-        }),
-
+    // Payment Method/Account are never accepted at Purchase Invoice creation time (Change Request:
+    // "Remove Payment Method from Purchase Invoice... Payments should continue to be managed
+    // through the existing payment and cash workflows") - an invoice is always created unpaid;
+    // paying it (cash/bank account or a vendor Advanced Payment) happens exclusively afterward via
+    // the standalone payment-recording endpoint (PaymentController.js#createPurchasePayment),
+    // which validates its own paymentMethod/paymentAccount independently of this one.
     ...vatAndWithholdingTaxValidators,
 
     body('items').isArray().withMessage('Items must be an array'),
 
     body('items.*.productId').isMongoId().withMessage('Product ID must be a mongoID'),
     body('items.*.unitPrice').isFloat({ gt: 0 }).withMessage('Price must be a positive number'),
-    // At most 1,000 per line - the same cap as the invoice form's quantity input.
-    body('items.*.starterQuantity').isInt({ gt: 0, max: 1000 }).withMessage('Quantity must be a whole number from 1 to 1000'),
+    // No arbitrary cap - matches the Purchase Order's (Requisition model) own quantity validator
+    // exactly (requisitionValidators.js), since an invoice's quantity must be able to fully match
+    // whatever was ordered, including a decimal quantity, and the Requisition side allows one.
+    body('items.*.starterQuantity').isFloat({ gt: 0 }).withMessage('Quantity must be a positive number'),
     // Legacy field - no longer used for accounting (a service line always posts to the Service's own
     // PUC account). Still format-checked so a stray value can't be junk.
     body('items.*.costAccount').optional({ nullable: true }).isMongoId().withMessage('Cost account ID must be a mongoID'),

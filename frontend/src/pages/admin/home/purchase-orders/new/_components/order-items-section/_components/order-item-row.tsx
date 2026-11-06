@@ -8,7 +8,6 @@ import { outlineIcons, solidIcons } from "@/components/icons";
 import { Button, NumberInput, Table, TextInput } from "@mantine/core";
 import ProductSearchModal from "@/components/global/variant-search-modal";
 import { OrderItemInput, PurchaseOrderLines } from "../../../types";
-import { MAX_ITEM_QUANTITY } from "../../../_utils/validation";
 import { calculateSubTotal, calculateUnitPriceAfterDiscount } from "../../../_utils/calculations";
 import noProductDetails from "../../../_utils/no-variant-details";
 import { getPurchaseUnitPrice } from "@/utils/helpers/purchase-unit-price";
@@ -49,7 +48,9 @@ export default function OrderItemRow({
   // invoice's other rows of the same product already take).
   const poLine = productData ? poLines?.lines.find((line) => line.product === productData._id) : undefined;
   const otherRowsQuantity = items.reduce((sum, item, i) => (i !== index && productData && item.productData?._id === productData._id ? sum + (Number(item.starterQuantity) || 0) : sum), 0);
-  const maxQuantity = poLine ? Math.max(0, Math.min(MAX_ITEM_QUANTITY, poLine.remaining - otherRowsQuantity)) : MAX_ITEM_QUANTITY;
+  // No arbitrary cap (Change Request: "Remove the 1,000 quantity limitation in Purchase Orders") -
+  // only bounded by what the selected Purchase Order line still has left to invoice, if any.
+  const maxQuantity = poLine ? Math.max(0, poLine.remaining - otherRowsQuantity) : undefined;
 
   const updateItem = (updates: Partial<typeof currentItem>) => {
     setItems((prevItems) => {
@@ -215,11 +216,11 @@ export default function OrderItemRow({
               placeholder={translate("Quantity", "الكمية")}
               value={starterQuantity}
               onChange={(value) => handleValueChange("starterQuantity", value)}
-              min={1}
+              min={0.0001}
               max={maxQuantity}
               clampBehavior="strict"
               allowNegative={false}
-              decimalScale={0}
+              decimalScale={4}
               className="font-bold text-gray-800"
               hideControls
               required

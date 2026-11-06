@@ -3,8 +3,6 @@ import { Language } from "@/types/language";
 import translate from "@/utils/helpers/translate";
 import { OrderItemInput, PurchaseOrderLines } from "../types";
 
-export const MAX_ITEM_QUANTITY = 1000;
-
 export default function validation(
   { vendor, warehouse, items, poLines }: { vendor: Vendor | null; warehouse: string; items: OrderItemInput[]; poLines?: PurchaseOrderLines | null },
   language: Language,
@@ -15,9 +13,11 @@ export default function validation(
   // Products carry no cost of their own any more - the purchase price is entered here, on each line.
   if (items.some((item) => item.productData && !(Number(item.unitPrice) > 0)))
     return translate(language, "Please enter the purchase price (unit price) for every item.", "يرجى إدخال سعر الشراء (سعر الوحدة) لكل صنف.");
-  // Same rules as the backend (poValidator.js, requisitionQuantityService.js).
-  if (items.some((item) => !Number.isInteger(Number(item.starterQuantity)) || Number(item.starterQuantity) < 1 || Number(item.starterQuantity) > MAX_ITEM_QUANTITY))
-    return translate(language, `Every item's quantity must be a whole number from 1 to ${MAX_ITEM_QUANTITY}.`, `يجب أن تكون كمية كل صنف عددًا صحيحًا من 1 إلى ${MAX_ITEM_QUANTITY}.`);
+  // Same rule as the backend (poValidator.js) - any positive number, no arbitrary cap (Change
+  // Request: "Remove the 1,000 quantity limitation in Purchase Orders"). Decimal quantities are
+  // supported, matching the Purchase Order's (Requisition model) own quantity validator.
+  if (items.some((item) => !(Number(item.starterQuantity) > 0)))
+    return translate(language, "Every item's quantity must be a positive number.", "يجب أن تكون كمية كل صنف عددًا موجبًا.");
   if (poLines) {
     const requested = new Map<string, { quantity: number; item: OrderItemInput }>();
     for (const item of items) {

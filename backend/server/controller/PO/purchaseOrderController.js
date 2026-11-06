@@ -11,8 +11,7 @@ const PO = require('../../models/vendor/purchaseOrder');
 const Product = require('../../models/inventory/productModel');
 const factory = require('../handlersFactory');
 const ApiError = require('../../utils/apiError'); // DEV_URL
-const { consumeVendorAdvancedPayment } = require('../../services/payments/advancedPaymentService');
-const { postPurchaseOrderJournalEntries, postPurchaseOrderAdvanceAppliedJE } = require('../../services/accounting/accountingEventService');
+const { postPurchaseOrderJournalEntries } = require('../../services/accounting/accountingEventService');
 const { allocatePurchaseOrderToProject, allocationState } = require('../../services/inventory/poProjectAllocationService');
 const { purchaseOrderPayments } = require('../../services/purchases/purchaseOrderPaymentService');
 
@@ -81,41 +80,30 @@ exports.createPO = asyncHandler(async (req, res, next) => {
     // destructured here - only the percentages are ever accepted from a client; the model's own
     // pre('save') hook computes every derived amount from the real item totals (docs section "Do
     // not allow clients to manipulate the final total").
-    const { vendorId, warehouseId, items, project, requisition, paymentMethod, paymentAccount, vatPercentage, withholdingTaxPercentage, importReference } = req.body;
+    const { vendorId, warehouseId, items, project, requisition, vatPercentage, withholdingTaxPercentage, importReference } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new ApiError('Items must be a non-empty array');
     }
 
     // Create the purchase order first (before updating stock)
+    // Payment Method/Account are never set at creation time (Change Request: "Remove Payment
+    // Method from Purchase Invoice... Do not confuse the PI with the actual payment transaction") -
+    // a new invoice is always created unpaid; paying it (by cash/bank account OR by consuming a
+    // vendor Advanced Payment) happens exclusively afterward through the standalone payment-
+    // recording workflow (PaymentController.js#createPurchasePayment), which already supports both
+    // independently of this invoice's own paymentMethod field.
     const purchaseOrder = new PO({
       vendorId,
       warehouseId,
       items,
       project: project || null,
       requisition: requisition || null,
-      paymentMethod: paymentMethod || null,
-      paymentAccount: paymentMethod === 'account' ? paymentAccount || null : null,
       vatPercentage,
       withholdingTaxPercentage,
       importReference: importReference || undefined,
       createdBy: req.user._id,
     });
-
-    // Vendor Advanced Payment: never trust a client-submitted amount (mirrors
-    // salesOrderCreation.service.js's identical rule) - the consumed amount always comes from the
-    // live AdvancedPayment balance, inside this same transaction.
-    let consumedAdvanceAmount = null;
-    if (paymentMethod === 'advanced_payment') {
-      const { advancedPaymentId, consumedAmount } = await consumeVendorAdvancedPayment({
-        vendor: vendorId,
-        purchaseOrderId: purchaseOrder._id,
-        session,
-      });
-      purchaseOrder.advancedPayment = advancedPaymentId;
-      purchaseOrder.paidAmount = consumedAmount;
-      consumedAdvanceAmount = consumedAmount;
-    }
 
     await purchaseOrder.save({ session });
 
@@ -123,12 +111,9 @@ exports.createPO = asyncHandler(async (req, res, next) => {
     await applyPurchaseToProducts(purchaseOrder, warehouseId, session);
 
     // Automatic accounting engine - one business event (this PO) can produce more than one
-    // JournalEntry (inventory receipt + WIP transfer, or service-to-WIP, or advance applied) - see
+    // JournalEntry (inventory receipt + WIP transfer, or service-to-WIP) - see
     // services/accounting/accountingEventService.js.
     await postPurchaseOrderJournalEntries(purchaseOrder, session);
-    if (consumedAdvanceAmount !== null) {
-      await postPurchaseOrderAdvanceAppliedJE(purchaseOrder, consumedAdvanceAmount, session);
-    }
 
     // The received stock lines go on to the order's project (quantity side of PO_INVENTORY_TO_WIP),
     // in this same transaction - a failure leaves neither stock nor allocation behind.

@@ -18,7 +18,6 @@ import noProductDetails from "./_utils/no-variant-details";
 import VendorWarehouseSection from "./_components/vendor-warehouse-section";
 import RequisitionSelect from "./_components/requisition-select";
 import OrderItemsSection from "./_components/order-items-section";
-import PaymentAccountSelect from "@/components/global/payment-account-select";
 import OrderTaxSection from "@/components/global/order-tax-section";
 import { calculateOrderTotals } from "@/utils/helpers/order-totals";
 import AttachmentPicker from "@/components/global/attachments/attachment-picker";
@@ -73,8 +72,6 @@ export default function NewPurchaseOrder() {
       .then((res) => setPoLines({ lines: res.data || [], hasUnmatchableLines }))
       .catch((err) => notifyError({ language, message: (err as { message?: string })?.message || translate("Could not load the Purchase Order lines.", "تعذر تحميل بنود أمر الشراء.") }));
   }, [requisition]);
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [paymentAccount, setPaymentAccount] = useState("");
   const [vatPercentage, setVatPercentage] = useState<string | number>(0);
   const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
   // Optional PDFs, uploaded right after the order is created.
@@ -125,11 +122,6 @@ export default function NewPurchaseOrder() {
         return;
       }
 
-      if (paymentMethod === "account" && !paymentAccount) {
-        setError(translate("A payment account must be selected.", "يجب اختيار حساب الدفع."));
-        return;
-      }
-
       const response = await privateRequest({
         language,
         method: "POST",
@@ -139,8 +131,6 @@ export default function NewPurchaseOrder() {
           vendorId: vendor?._id,
           requisition: requisition._id,
           project: project || undefined,
-          paymentMethod: paymentMethod || undefined,
-          paymentAccount: paymentMethod === "account" ? paymentAccount : undefined,
           vatPercentage: Number(vatPercentage) || 0,
           withholdingTaxPercentage: Number(withholdingTaxPercentage) || 0,
           items: filteredItems.map((item) => ({
@@ -179,7 +169,7 @@ export default function NewPurchaseOrder() {
             px="xl"
             radius="md"
             loading={loading}
-            disabled={!requisition || !project || (paymentMethod === "account" && !paymentAccount)}
+            disabled={!requisition || !project}
           >
             {translate("Save", "حفظ")}
           </Button>
@@ -249,28 +239,6 @@ export default function NewPurchaseOrder() {
           style={{ maxWidth: 300 }}
         />
       )}
-
-      <hr />
-
-      {/* Payment Method - a Cash/Cash-Equivalent Chart of Accounts account, never a hardcoded list
-          (docs section "Payment Methods Must Come From Chart of Accounts"). */}
-      <div className="flex flex-col gap-3">
-        <Select
-          label={translate("Payment Method (Optional)", "طريقة الدفع (اختياري)")}
-          placeholder={translate("Select payment method", "اختر طريقة الدفع")}
-          value={paymentMethod || null}
-          onChange={(v) => {
-            setPaymentMethod(v || "");
-            setPaymentAccount("");
-          }}
-          data={[{ value: "account", label: translate("Cash / Cash Equivalent Account", "حساب نقدي / ما يعادله") }]}
-          clearable
-          style={{ maxWidth: 300 }}
-        />
-        {paymentMethod === "account" && (
-          <PaymentAccountSelect value={paymentAccount} onChange={setPaymentAccount} required />
-        )}
-      </div>
 
       <hr />
 

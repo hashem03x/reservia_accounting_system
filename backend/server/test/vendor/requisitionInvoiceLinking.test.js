@@ -314,7 +314,7 @@ test('a returned quantity is free to invoice again; an item that is not on the P
   await assert.rejects(() => PurchaseOrder.create(invoiceBody(requisition._id, { items: [{ productId: other._id, unitPrice: 5, starterQuantity: 1 }] })), /not on its linked Purchase Order/);
 });
 
-test('request validation: an invoice line quantity must be a whole number from 1 to 1000', async () => {
+test('request validation: an invoice line quantity must be a positive number - no arbitrary cap, decimals allowed (Change Request: remove the 1,000 quantity limitation)', async () => {
   const { validationResult } = require('express-validator');
   const { createPurchaseOrderValidate } = require('../../utils/validators/poValidator');
   const errorsFor = async starterQuantity => {
@@ -322,9 +322,10 @@ test('request validation: an invoice line quantity must be a whole number from 1
     for (const v of createPurchaseOrderValidate) if (typeof v.run === 'function') await v.run(req);
     return validationResult(req).array().filter(e => /items\[0\]\.starterQuantity/.test(e.param)).map(e => e.msg);
   };
-  assert.deepEqual(await errorsFor(1), []);
-  assert.deepEqual(await errorsFor(1000), []);
-  for (const bad of [1001, 0, -1, 2.5, 'abc', '']) assert.match((await errorsFor(bad)).join(), /1 to 1000/, `quantity ${bad}`);
+  // No upper bound any more, and decimals are allowed (matching the Purchase Order's/Requisition's
+  // own quantity validator) - 1,001, 1,500, 10,000 and 2.5 must all be accepted now.
+  for (const ok of [1, 1000, 1001, 1500, 10000, 2.5, 0.0001]) assert.deepEqual(await errorsFor(ok), [], `quantity ${ok} should be valid`);
+  for (const bad of [0, -1, 'abc', '']) assert.match((await errorsFor(bad)).join(), /positive number/, `quantity ${bad}`);
 });
 
 test('concurrent invoices for the same PO line can never jointly exceed its quantity', async t => {
