@@ -21,15 +21,26 @@ const pricingService = require('./commercialPricingService');
 // `component`: an override replaces `qty`/`unitPrice` but the freshly recalculated auto values are
 // kept alongside as `autoQty`/`autoUnitPrice` so an override is visible and never silently
 // destroys the underlying calculation (the project's own explicit rule).
-
+//
+// Every *Engine.js module numbers its own lines with `no` (the ORIGINAL item number from that
+// line's source BOQ sheet, e.g. On_Grid.xlsx's own 1,2,...,9,11,12,13,14 - note "10" is skipped
+// on purpose there, matching the sheet's own blank/merged row; see onGridEngine.js's header
+// comment). `CommercialRevision.boqLines` (models/commercial/commercialRevisionModel.js) stores
+// that same number under the schema's required `lineNo` field instead - `no` is a plain-object
+// convenience inside the engines, `lineNo` is the persisted/schema name. This is the ONE place
+// that rename happens, since every category's lines flow through here before being handed to
+// revisionService.js - fixing it anywhere else (or in each engine) would either miss a category
+// or duplicate the mapping.
 function applyManualOverrides(lines, overridesByComponent = {}) {
-  return lines.map(line => {
+  return lines.map(({ no, ...line }) => {
+    const lineNo = line.lineNo ?? no;
     const override = overridesByComponent[line.component];
-    if (!override) return { ...line, autoQty: null, autoUnitPrice: null, source: line.source || 'auto' };
+    if (!override) return { ...line, lineNo, autoQty: null, autoUnitPrice: null, source: line.source || 'auto' };
     const qty = override.qty ?? line.qty;
     const unitPrice = override.unitPrice ?? line.unitPrice;
     return {
       ...line,
+      lineNo,
       qty, unitPrice,
       total: qty != null && unitPrice != null ? qty * unitPrice : null,
       autoQty: line.qty, autoUnitPrice: line.unitPrice,
@@ -147,15 +158,7 @@ async function runAgriculturePumping({ engineeringInput, manualOverrides }) {
   const dcCables = [...priceBook.toDcCableShape(dcItems), ...pumpingExtras.PUMPING_DC_CABLES];
   const dcCable = pumping.sizeDcCable({ installedKwp: strings.installedKwp, strings: strings.strings, module: module_, stringVmpStc: modulesPerString * module_.vmp, dcCables });
 
-  const lines = applyManualOverrides([
-    { component: 'Submersible Water Pump', description: `${pump.model} | ${pump.casing} | ${pump.hp} HP | ${pump.flowM3h} m3/h | ${pump.headM} m head`, unit: 'pcs', qty: engineeringInput.pumpQty || 1, unitPrice: pump.price, total: (engineeringInput.pumpQty || 1) * pump.price },
-    { component: 'Pump Motor', description: `${motor.model} | ${motor.hp} HP | ${motor.kw} kW`, unit: 'pcs', qty: 1, unitPrice: motor.castIronPrice, total: motor.castIronPrice },
-    { component: 'Solar PV Modules', description: `${module_.brand} ${module_.model}`, unit: 'pcs', qty: strings.installedModules, unitPrice: module_.pricePerWatt * module_.pmaxW, total: strings.installedModules * module_.pricePerWatt * module_.pmaxW },
-    { component: 'DC Cables', description: `${dcCable.selectedSizeMm2} mm2`, unit: 'm', qty: dcCable.totalLengthM, unitPrice: dcCable.pricePerM, total: dcCable.totalCost },
-    { component: 'Submersible Drop Cable', description: submersible.size, unit: 'm', qty: submersible.cableLengthM, unitPrice: null, total: null, flag: 'Requires supplier quotation for this cable size' },
-    { component: 'Rising Main Pipe', description: `Diameter band ${pumping.pipeDiameterBand(demand.totalFlowM3h)}" (manual pipe/price selection - no selection formula in the source workbook)`, unit: 'pcs', qty: null, unitPrice: null, total: null, flag: 'Manual selection required' },
-    { component: 'Pump Inverter / VFD', description: 'Manual selection required - brand compatibility tables not yet modeled', unit: 'pcs', qty: null, unitPrice: null, total: null, flag: 'Manual selection required' },
-  ], manualOverrides);
+  const lines = applyManualOverrides(buildPumpingBoqLines({ pump, motor, module_, strings, dcCable, submersible, demand, pumpQty: engineeringInput.pumpQty }), manualOverrides);
 
   return {
     engineeringResult: { demand, pump, motor, pv, strings, submersible, dcCable },
@@ -163,6 +166,31 @@ async function runAgriculturePumping({ engineeringInput, manualOverrides }) {
     boqTotal: lines.reduce((s, l) => s + (l.total || 0), 0),
     kWp: strings.installedKwp,
   };
+}
+
+/**
+ * Builds the raw (pre-override) Agriculture Pumping BOQ lines. Extracted as its own pure
+ * function (no DB access) so it is directly unit-testable - `runAgriculturePumping` above is the
+ * only caller, after resolving `module_`/`dcCable` against the live Price Book.
+ *
+ * `no` on each line is the item number from Solar_Pumping3.xlsx's own `BOQ` sheet (A4:A21) -
+ * preserved even though this engine only implements a subset of that sheet's 18 rows, so a line's
+ * number always matches what the source workbook itself calls that component (1 Submersible Water
+ * Pump, 2 Pump Motor, 3 Rising Main/Delivery Pipe, 4 Pump Drop Cable, 7 Solar PV Modules, 8 Solar
+ * Pump Inverter, 10 DC Cables - rows 5/6/9/11-18 are not modeled here, see this file's own header
+ * on Pipe/VFD selection being flagged rather than invented).
+ */
+function buildPumpingBoqLines({ pump, motor, module_, strings, dcCable, submersible, demand, pumpQty }) {
+  const qty = pumpQty || 1;
+  return [
+    { no: 1, component: 'Submersible Water Pump', description: `${pump.model} | ${pump.casing} | ${pump.hp} HP | ${pump.flowM3h} m3/h | ${pump.headM} m head`, unit: 'pcs', qty, unitPrice: pump.price, total: qty * pump.price },
+    { no: 2, component: 'Pump Motor', description: `${motor.model} | ${motor.hp} HP | ${motor.kw} kW`, unit: 'pcs', qty: 1, unitPrice: motor.castIronPrice, total: motor.castIronPrice },
+    { no: 7, component: 'Solar PV Modules', description: `${module_.brand} ${module_.model}`, unit: 'pcs', qty: strings.installedModules, unitPrice: module_.pricePerWatt * module_.pmaxW, total: strings.installedModules * module_.pricePerWatt * module_.pmaxW },
+    { no: 10, component: 'DC Cables', description: `${dcCable.selectedSizeMm2} mm2`, unit: 'm', qty: dcCable.totalLengthM, unitPrice: dcCable.pricePerM, total: dcCable.totalCost },
+    { no: 4, component: 'Submersible Drop Cable', description: submersible.size, unit: 'm', qty: submersible.cableLengthM, unitPrice: null, total: null, flag: 'Requires supplier quotation for this cable size' },
+    { no: 3, component: 'Rising Main Pipe', description: `Diameter band ${pumping.pipeDiameterBand(demand.totalFlowM3h)}" (manual pipe/price selection - no selection formula in the source workbook)`, unit: 'pcs', qty: null, unitPrice: null, total: null, flag: 'Manual selection required' },
+    { no: 8, component: 'Pump Inverter / VFD', description: 'Manual selection required - brand compatibility tables not yet modeled', unit: 'pcs', qty: null, unitPrice: null, total: null, flag: 'Manual selection required' },
+  ];
 }
 
 async function buildBoq({ category, engineeringInput, country, region, manualOverrides = {} }) {
@@ -179,4 +207,4 @@ async function priceBoq({ category, boqTotal, kWp, vatPct, overrides = {} }) {
   return pricingService.priceCommercialRevision({ cogs: boqTotal, kWp, vatPct, ...defaults, ...overrides });
 }
 
-module.exports = { buildBoq, priceBoq, applyManualOverrides };
+module.exports = { buildBoq, priceBoq, applyManualOverrides, buildPumpingBoqLines };
