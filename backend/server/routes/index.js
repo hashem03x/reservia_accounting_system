@@ -158,6 +158,19 @@ const mountRoutes = app => {
   app.use('/api/v1/crm/team', require('./crm/teamRoute'));
   app.use('/api/v1/crm/attachments', require('./crm/leadAttachmentRoute').byId);
 
+  // Reservia Commercial - engineering estimation, BOQ, pricing and quotation workflow
+  // (services/commercial/*). Calculation logic is Excel-sourced (On_Grid.xlsx/Off_Grid.xlsx/
+  // Solar_Pumping3.xlsx) - see services/commercial/*Engine.js; the project/revision/approval/
+  // proposal workflow is the module's own business rules, same split the implementation plan
+  // documents.
+  app.use('/api/v1/commercial/materials', require('./commercial/materialRoute'));
+  app.use('/api/v1/commercial/projects', require('./commercial/projectRoute'));
+  app.use('/api/v1/commercial/revisions', require('./commercial/revisionRoute'));
+  app.use('/api/v1/commercial/approvals', require('./commercial/approvalRoute'));
+  app.use('/api/v1/commercial/proposals', require('./commercial/proposalRoute'));
+  app.use('/api/v1/commercial/dashboard', require('./commercial/dashboardRoute'));
+  app.use('/api/v1/commercial/attachments', require('./commercial/projectAttachmentRoute').byId);
+
   app.all('/api/v1', (req, res) => {
     res.status(200).json({ message: 'App is running 🚀' });
   });

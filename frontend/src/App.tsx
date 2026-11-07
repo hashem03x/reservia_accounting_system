@@ -9,6 +9,7 @@ import actions from "@/utils/constants/actions";
 import Layout from "@/pages/routes/layout";
 import AdminLayout from "@/pages/routes/layout-admin";
 import CrmLayout from "@/pages/routes/layout-crm";
+import CommercialLayout from "@/pages/routes/layout-commercial";
 import NotFound from "@/pages/routes/not-found";
 import AuthGaurd from "@/pages/routes/auth-gaurd";
 import RoleGuard from "@/pages/routes/role-guard";
@@ -116,6 +117,13 @@ import CRM_Pipeline from "@/pages/crm/pipeline";
 import CRM_Leads from "@/pages/crm/leads";
 import CRM_Lead from "@/pages/crm/leads/[id]";
 import CRM_Performance from "@/pages/crm/performance";
+
+// Reservia Commercial Pages
+import Commercial from "@/pages/commercial";
+import COM_Dashboard from "@/pages/commercial/dashboard";
+import COM_Projects from "@/pages/commercial/projects";
+import COM_Project from "@/pages/commercial/projects/[id]";
+import COM_Materials from "@/pages/commercial/materials";
 
 export default function App() {
   useColorScheme();
@@ -336,6 +344,30 @@ export default function App() {
                     <Route path={paths.performance} element={<CRM_Performance />} />
                   </Route>
                   <Route path={paths.crm + "/*"} element={<NotFound />} />
+                </Route>
+              </Route>
+            </Route>
+          </Route>
+
+          {/* Reservia Commercial - engineering estimation, BOQ, pricing and quotation workflow
+              (On-Grid/Off-Grid/Agriculture Pumping/Utility Scale, calculation logic sourced from
+              the three Excel reference workbooks - see services/commercial/*Engine.js on the
+              backend). Gated the same way as CRM above (staff-only RoleGuard, then SystemGuard on
+              the "COMMERCIAL" system id/active membership) with its own layout/nav
+              (layout-commercial.tsx) since the Commercial role vocabulary
+              (md/commercial_director/sales/technical/member) has nothing to do with the ERP's
+              resource:action permission matrix. */}
+          <Route element={<AuthGaurd requireLoggedIn={true} />}>
+            <Route element={<RoleGuard allowedRoles={[roles.admin.value, roles.moderator.value, roles.operator.value]} />}>
+              <Route element={<SystemGuard systemId="COMMERCIAL" />}>
+                <Route element={<CommercialLayout />}>
+                  <Route path={paths.commercial} element={<Commercial />}>
+                    <Route path={paths.dashboard} element={<COM_Dashboard />} />
+                    <Route path={paths.commercialProjects} element={<COM_Projects />} />
+                    <Route path={paths.commercialProjects + "/:id"} element={<COM_Project />} />
+                    <Route path={paths.commercialMaterials} element={<COM_Materials />} />
+                  </Route>
+                  <Route path={paths.commercial + "/*"} element={<NotFound />} />
                 </Route>
               </Route>
             </Route>

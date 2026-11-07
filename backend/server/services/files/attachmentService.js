@@ -50,6 +50,10 @@ const OWNERS = {
   'sales-orders': { ownerType: 'SalesOrder', model: 'SalesOrder', resource: Resources.salesOrders, allowImages: false },
   'journal-entries': { ownerType: 'JournalEntry', model: 'JournalEntry', resource: Resources.journalEntries, allowImages: false },
   'crm-leads': { ownerType: 'CrmLead', model: 'CrmLead', resource: null, allowImages: true },
+  // Reservia Commercial - supplier quotes / supporting documents attached to a project
+  // (resource: null since Commercial gates via middleware/commercialAccess.js, not the ERP's
+  // resource:action list - same reasoning as crm-leads above).
+  'commercial-projects': { ownerType: 'CommercialProject', model: 'CommercialProject', resource: null, allowImages: true },
 };
 const OWNER_BY_TYPE = Object.fromEntries(Object.values(OWNERS).map(o => [o.ownerType, o]));
 

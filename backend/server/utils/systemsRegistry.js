@@ -46,12 +46,19 @@ exports.SYSTEMS = {
     implemented: true,
     roles: ['md', 'admin', 'sales', 'technical'],
   },
+  // Reservia Commercial - engineering estimation, BOQ, pricing and quotation workflow for solar
+  // projects (On-Grid, Off-Grid, Agriculture Pumping, Utility Scale, Street Lighting, Solar Water
+  // Heaters). Roles mirror the two-stage-plus-MD commercial approval workflow: member (create/edit
+  // projects, no approval rights), sales / technical (either can give the Stage 1 gross-profit
+  // sign-off), commercial_director (Stage 2 allocations sign-off, opens only after Stage 1), md
+  // (final sign-off, required when net price excl. VAT is above the configured threshold).
+  // Deliberately NOT the ERP's role enum, same reasoning as CRM above.
   COMMERCIAL: {
     id: 'COMMERCIAL',
     name: 'Commercial',
     description: 'Commercial activities, sales operations, proposals, and business development workflows.',
-    implemented: false,
-    roles: ['MEMBER'],
+    implemented: true,
+    roles: ['md', 'commercial_director', 'sales', 'technical', 'member'],
   },
   WEBSITE: {
     id: 'WEBSITE',

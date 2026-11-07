@@ -32,6 +32,7 @@
     "db:audit-ar-attribution": "node server/scripts/auditArCustomerAttribution.js",
     "db:seed-crm-targets": "node server/scripts/seedCrmChangeRequest1Targets.js",
     "db:audit-crm-test-leads": "node server/scripts/auditCrmTestLeads.js",
+    "db:seed-commercial-materials": "node server/scripts/seedCommercialMaterials.js",
     "start": "node server.js",
     "dev": "cross-env NODE_ENV=development nodemon server.js",
     "staging": "cross-env NODE_ENV=staging nodemon server.js",

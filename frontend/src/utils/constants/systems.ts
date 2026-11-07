@@ -52,7 +52,7 @@ const systems: {
       en: "Commercial activities, sales operations, proposals, and business development workflows.",
       ar: "الأنشطة التجارية، عمليات المبيعات، العروض، وتطوير الأعمال.",
     },
-    entryRoute: null,
+    entryRoute: `/${paths.commercial}`,
   },
   {
     id: "WEBSITE",

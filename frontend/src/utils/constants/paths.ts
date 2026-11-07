@@ -62,6 +62,10 @@ const paths = {
   pipeline: "pipeline",
   leads: "leads",
   performance: "performance",
+  // Reservia Commercial
+  commercial: "commercial",
+  commercialProjects: "projects",
+  commercialMaterials: "materials",
 };
 
 export default paths;
