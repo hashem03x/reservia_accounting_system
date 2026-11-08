@@ -171,6 +171,13 @@ const mountRoutes = app => {
   app.use('/api/v1/commercial/dashboard', require('./commercial/dashboardRoute'));
   app.use('/api/v1/commercial/attachments', require('./commercial/projectAttachmentRoute').byId);
 
+  // Website Management (CMS for the public Reservia website, Reservia_Website repo) - Pages,
+  // Sections (nested under /website/pages/:pageId/sections - see routes/website/pageRoute.js) and
+  // the Media Library. Gated by its own middleware/websiteAccess.js, not the ERP's permission
+  // matrix - same pattern as CRM/Commercial above.
+  app.use('/api/v1/website/pages', require('./website/pageRoute'));
+  app.use('/api/v1/website/media', require('./website/mediaRoute'));
+
   app.all('/api/v1', (req, res) => {
     res.status(200).json({ message: 'App is running 🚀' });
   });

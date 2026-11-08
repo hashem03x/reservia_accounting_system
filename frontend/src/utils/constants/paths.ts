@@ -62,6 +62,8 @@ const paths = {
   pipeline: "pipeline",
   leads: "leads",
   performance: "performance",
+  website: "website",
+  websiteOverview: "overview",
   // Reservia Commercial
   commercial: "commercial",
   commercialProjects: "projects",

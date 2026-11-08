@@ -29,6 +29,21 @@ type PlatformUser = {
 };
 type AuditEntry = { _id: string; action: string; createdAt: string; actorName: string; actorEmail?: string; before: unknown; after: unknown };
 
+// Real, selectable roles per system - mirrors backend/server/utils/systemsRegistry.js's own
+// `roles` per system exactly. ERP's own three roles are handled separately below (its role field
+// doubles as the account's actual ERP role, not a membership-only label). Website Management is
+// the first NON-ERP system with a real role vocabulary this grid can offer (admin/editor/viewer -
+// see middleware/websiteAccess.js) - CRM/COMMERCIAL intentionally keep the "MEMBER" placeholder
+// here (their own role assignment is a separate, not-yet-built concern, out of this task's scope -
+// not something this edit silently changes).
+const NON_ERP_SYSTEM_ROLES: Partial<Record<SystemId, string[]>> = {
+  WEBSITE: ["admin", "editor", "viewer"],
+};
+function roleOptionsFor(systemId: SystemId): string[] {
+  if (systemId === "ERP") return ["admin", "moderator", "operator"];
+  return NON_ERP_SYSTEM_ROLES[systemId] || ["MEMBER"];
+}
+
 // Central Business Portal - a single user's cross-system access: basic details, activation,
 // per-system membership/role, platform-admin grant/revoke (with last-admin protection enforced
 // server-side), password reset, and this user's own audit history.
@@ -131,7 +146,7 @@ function SystemsEditor({ user, onUpdated }: { user: PlatformUser; onUpdated: () 
     const initial = {} as Record<SystemId, { granted: boolean; role: string; isActive: boolean }>;
     for (const s of systems) {
       const existing = user.systemMemberships.find(m => m.system === s.id);
-      initial[s.id] = { granted: !!existing, role: existing?.role || (s.id === "ERP" ? "moderator" : "MEMBER"), isActive: existing?.isActive ?? true };
+      initial[s.id] = { granted: !!existing, role: existing?.role || (s.id === "ERP" ? "moderator" : roleOptionsFor(s.id)[0]), isActive: existing?.isActive ?? true };
     }
     return initial;
   });
@@ -176,8 +191,8 @@ function SystemsEditor({ user, onUpdated }: { user: PlatformUser; onUpdated: () 
                 <Table.Td>
                   <Select
                     size="xs"
-                    disabled={!rows[s.id].granted || s.id !== "ERP"}
-                    data={s.id === "ERP" ? ["admin", "moderator", "operator"] : ["MEMBER"]}
+                    disabled={!rows[s.id].granted}
+                    data={roleOptionsFor(s.id)}
                     value={rows[s.id].role}
                     onChange={v => setRows(r => ({ ...r, [s.id]: { ...r[s.id], role: v || r[s.id].role } }))}
                     allowDeselect={false}

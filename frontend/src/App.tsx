@@ -10,6 +10,7 @@ import Layout from "@/pages/routes/layout";
 import AdminLayout from "@/pages/routes/layout-admin";
 import CrmLayout from "@/pages/routes/layout-crm";
 import CommercialLayout from "@/pages/routes/layout-commercial";
+import WebsiteLayout from "@/pages/routes/layout-website";
 import NotFound from "@/pages/routes/not-found";
 import AuthGaurd from "@/pages/routes/auth-gaurd";
 import RoleGuard from "@/pages/routes/role-guard";
@@ -124,6 +125,9 @@ import COM_Dashboard from "@/pages/commercial/dashboard";
 import COM_Projects from "@/pages/commercial/projects";
 import COM_Project from "@/pages/commercial/projects/[id]";
 import COM_Materials from "@/pages/commercial/materials";
+
+// Website Management Pages
+import WebsiteOverview from "@/pages/website";
 
 export default function App() {
   useColorScheme();
@@ -369,6 +373,25 @@ export default function App() {
                   </Route>
                   <Route path={paths.commercial + "/*"} element={<NotFound />} />
                 </Route>
+              </Route>
+            </Route>
+          </Route>
+
+          {/* Website Management (CMS for the public Reservia website, Reservia_Website repo) -
+              gated the same way as CRM/Commercial above (staff-only RoleGuard, then SystemGuard on
+              the "WEBSITE" system id/active membership) with its own layout/nav
+              (layout-website.tsx), since Website Management's own admin/editor/viewer role
+              vocabulary (middleware/websiteAccess.js) has nothing to do with the ERP's
+              resource:action permission matrix. Milestone 1: only Overview exists; Pages/Media/
+              Navigation/SEO/Tracking/Custom Code/Settings/Publishing/Activity Logs are added as
+              their own milestones ship real data behind them. */}
+          <Route element={<AuthGaurd requireLoggedIn={true} />}>
+            <Route element={<RoleGuard allowedRoles={[roles.admin.value, roles.moderator.value, roles.operator.value]} />}>
+              <Route element={<SystemGuard systemId="WEBSITE" />}>
+                <Route element={<WebsiteLayout />}>
+                  <Route path={paths.website} element={<WebsiteOverview />} />
+                </Route>
+                <Route path={paths.website + "/*"} element={<NotFound />} />
               </Route>
             </Route>
           </Route>

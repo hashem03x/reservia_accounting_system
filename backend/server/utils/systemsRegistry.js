@@ -60,12 +60,18 @@ exports.SYSTEMS = {
     implemented: true,
     roles: ['md', 'commercial_director', 'sales', 'technical', 'member'],
   },
+  // Website Management (CMS for the public Reservia marketing site, Reservia_Website repo). Roles
+  // are a simple content-authority ladder, not the ERP's resource:action matrix - see
+  // middleware/websiteAccess.js's CAPABILITIES_BY_ROLE for exactly what each role can do. Same
+  // "deliberately NOT the ERP's role enum" reasoning as CRM/COMMERCIAL above: admin (full control,
+  // including publish/tracking/custom code - real site-wide and legal blast radius), editor
+  // (draft content/media/SEO, cannot publish or touch tracking/custom code), viewer (read-only).
   WEBSITE: {
     id: 'WEBSITE',
     name: 'Website',
     description: "Access to the company website's content management dashboard.",
-    implemented: false,
-    roles: ['MEMBER'],
+    implemented: true,
+    roles: ['admin', 'editor', 'viewer'],
   },
 };
 

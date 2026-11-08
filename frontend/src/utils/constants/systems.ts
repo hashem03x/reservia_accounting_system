@@ -62,7 +62,7 @@ const systems: {
       en: "Access to the company website's content management dashboard.",
       ar: "الوصول إلى لوحة إدارة محتوى الموقع الإلكتروني للشركة.",
     },
-    entryRoute: null,
+    entryRoute: `/${paths.website}`,
   },
 ];
 
