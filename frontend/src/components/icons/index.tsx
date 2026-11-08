@@ -258,4 +258,5 @@ export const navIcons = {
   Close: Hi2.HiOutlineXMark,
   Backup: Hi2.HiOutlineCircleStack,
   Users:Hi2.HiOutlineUserGroup,
+  Cash:Hi2.HiCurrencyDollar
 };

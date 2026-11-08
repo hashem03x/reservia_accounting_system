@@ -209,6 +209,12 @@ export function useAdminNavigation(): NavSection[] {
             Icon: navIcons.AccountingPeriods,
             adminOnly: true,
           },
+          {
+            key:"cash",
+            to: admin(paths.cash),
+            label: pages.cash,
+            Icon: navIcons.Cash,
+          }
         ],
       },
       {
