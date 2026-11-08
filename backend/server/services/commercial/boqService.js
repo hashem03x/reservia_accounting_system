@@ -96,11 +96,18 @@ async function runOnGridOrUtility({ category, engineeringInput, country, region,
   // monthly-reference-profile scaling `Estimator Input` itself uses (not a fabricated yield),
   // using the sheet's own default 8 m2/kWp area ratio since this flow sizes from kWp directly
   // rather than from an area input.
+  // Feasibility Table!G4 (tariff), !C4 (maintenance %), !M7/!T7 (the two escalation-scenario
+  // rates) are genuine editable input cells in the sheet, not formulas - the commercial team may
+  // override any of them per project; the defaults are the sheet's own live values, never guessed.
   let feasibility = null;
   if (engineeringInput.annualConsumptionKwh > 0) {
     const { annualProductionKwh } = onGrid.estimateCapacityFromArea({ areaM2: kWp * 8, areaPerKwp: 8 }, onGridCatalogData.MONTHLY_PRODUCTION_30KWP_REFERENCE);
     feasibility = onGridFeasibility.runOnGridFeasibility({
       capex: boqTotal, annualProductionKwhYear1: annualProductionKwh, annualConsumptionKwh: engineeringInput.annualConsumptionKwh,
+      baseTariffEgpPerKwh: engineeringInput.tariffEgpPerKwh ?? 2.8,
+      maintenancePctOfCapex: engineeringInput.maintenancePctOfCapex ?? 0.01,
+      escalationScenario2: engineeringInput.escalationScenario2 ?? 0.03,
+      escalationScenario3: engineeringInput.escalationScenario3 ?? 0.1,
     });
   }
 
@@ -135,6 +142,7 @@ async function runOffGrid({ engineeringInput, manualOverrides }) {
       batteryReplacementCost: result.lineItems.find(l => l.component === 'Battery Bank')?.total || 0,
       solarInitialCapex: result.pricing.grandTotalInclVat,
       discountRate: engineeringInput.discountRate ?? 0.1,
+      analysisPeriodYears: engineeringInput.analysisPeriodYears ?? 25,
     });
   }
 

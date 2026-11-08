@@ -59,6 +59,34 @@ test('3% and 10% escalation scenarios diverge from the flat scenario after year 
   assert.ok(scenarios.escalation10pct.finalCumulative > scenarios.flat.finalCumulative);
 });
 
+// Feasibility Table!G4/C4/M7/T7 are genuine editable input cells, not fixed constants - the
+// commercial team must be able to override any of them per project (this is the fix for the bug
+// where the UI had no way to supply these at all; previously only reachable via the hardcoded
+// function defaults below).
+test('baseTariffEgpPerKwh/maintenancePctOfCapex/escalation rates are honored when overridden', () => {
+  const overridden = feas.runOnGridFeasibility({
+    capex: CAPEX_AS_CACHED_IN_SHEET,
+    annualProductionKwhYear1: ANNUAL_PRODUCTION_YEAR1,
+    annualConsumptionKwh: ANNUAL_CONSUMPTION,
+    baseTariffEgpPerKwh: 3.5,
+    maintenancePctOfCapex: 0.02,
+    escalationScenario2: 0.05,
+    escalationScenario3: 0.2,
+  });
+  const defaulted = run();
+  assert.equal(overridden.scenarios.flat.years[0].tariff, 3.5);
+  assert.equal(overridden.scenarios.escalation3pct.years[1].tariff, 3.5 * 1.05);
+  assert.equal(overridden.scenarios.escalation10pct.years[1].tariff, 3.5 * 1.2);
+  assert.notEqual(overridden.headline.roi, defaulted.headline.roi);
+});
+
+test('defaults (2.80 tariff / 1% maintenance / 3% / 10% escalation) are unchanged from the sheet\'s own live values', () => {
+  const { scenarios } = run();
+  assert.equal(scenarios.flat.years[0].tariff, 2.8);
+  assert.equal(scenarios.escalation3pct.years[1].tariff, 2.8 * 1.03);
+  assert.equal(scenarios.escalation10pct.years[1].tariff, 2.8 * 1.1);
+});
+
 function round(n, dp) {
   const f = 10 ** dp;
   return Math.round(n * f) / f;

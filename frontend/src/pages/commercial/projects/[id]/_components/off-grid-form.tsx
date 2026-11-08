@@ -45,6 +45,18 @@ export default function OffGridForm({ project, revision, onSaved }: { project: C
   const [installationRatePerKwp, setInstallationRatePerKwp] = useState<number>((input.installationRatePerKwp as number) || 650);
   const [generatorPurchasePrice, setGeneratorPurchasePrice] = useState<number | "">((input.generatorPurchasePrice as number) || "");
   const [dieselPriceEgpPerL, setDieselPriceEgpPerL] = useState<number>((input.dieselPriceEgpPerL as number) || 20);
+  // Feasibility Study!B12,B13,B14,B15,B16,B17,B18,B21,B22 - all genuine editable input cells in
+  // Off_Grid.xlsx's own feasibility sheet, previously hardcoded as backend-only defaults with no
+  // way for the commercial team to override them per project.
+  const [dieselTransportEgpPerL, setDieselTransportEgpPerL] = useState<number>((input.dieselTransportEgpPerL as number) ?? 2);
+  const [dieselAnnualEscalation, setDieselAnnualEscalation] = useState<number>(((input.dieselAnnualEscalation as number) ?? 0.025) * 100);
+  const [generatorSpecificFuelUseLPerKwh, setGeneratorSpecificFuelUseLPerKwh] = useState<number>((input.generatorSpecificFuelUseLPerKwh as number) ?? 0.3);
+  const [generatorMaintenancePct, setGeneratorMaintenancePct] = useState<number>(((input.generatorMaintenancePct as number) ?? 0.1) * 100);
+  const [generatorReplacementIntervalYears, setGeneratorReplacementIntervalYears] = useState<number>((input.generatorReplacementIntervalYears as number) ?? 10);
+  const [solarAnnualOmPct, setSolarAnnualOmPct] = useState<number>(((input.solarAnnualOmPct as number) ?? 0.025) * 100);
+  const [batteryReplacementIntervalYears, setBatteryReplacementIntervalYears] = useState<number>((input.batteryReplacementIntervalYears as number) ?? 10);
+  const [analysisPeriodYears, setAnalysisPeriodYears] = useState<number>((input.analysisPeriodYears as number) ?? 25);
+  const [discountRate, setDiscountRate] = useState<number>(((input.discountRate as number) ?? 0.1) * 100);
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler<null>({ initialData: null });
 
@@ -63,6 +75,10 @@ export default function OffGridForm({ project, revision, onSaved }: { project: C
         installationRatePerKwp, transportationRatePerKwp: 500,
         contingencyRate: 0.02, profitMarginRate: 0.1, vatRate: project.country === "Saudi Arabia" ? 0.15 : 0.14,
         generatorPurchasePrice: generatorPurchasePrice || undefined, dieselPriceEgpPerL,
+        dieselTransportEgpPerL, dieselAnnualEscalation: dieselAnnualEscalation / 100,
+        generatorSpecificFuelUseLPerKwh, generatorMaintenancePct: generatorMaintenancePct / 100,
+        generatorReplacementIntervalYears, solarAnnualOmPct: solarAnnualOmPct / 100,
+        batteryReplacementIntervalYears, analysisPeriodYears, discountRate: discountRate / 100,
       };
       const url = revision ? `commercial/revisions/${revision._id}` : `commercial/revisions/project/${project._id}`;
       await privateRequest({ url, method: revision ? "PATCH" : "POST", data: { engineeringInput }, language });
@@ -145,7 +161,13 @@ export default function OffGridForm({ project, revision, onSaved }: { project: C
         </div>
       </SectionCard>
 
-      <SectionCard title={translate("Diesel Generator Comparison (optional)", "مقارنة المولد الديزل (اختياري)")}>
+      <SectionCard title={translate("Feasibility Inputs - Diesel Generator Comparison (optional)", "مدخلات الجدوى - مقارنة المولد الديزل (اختياري)")}>
+        <p className="mb-3 text-sm text-gray-500">
+          {translate(
+            "These values drive the Feasibility tab's solar-vs-diesel comparison only. Leave the purchase price blank to skip it.",
+            "هذه القيم تغذي مقارنة الديزل في تبويب الجدوى فقط. اتركه فارغاً لتجاوز المقارنة."
+          )}
+        </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <NumberInput
             label={translate("Generator Purchase Price", "سعر شراء المولد")}
@@ -154,6 +176,66 @@ export default function OffGridForm({ project, revision, onSaved }: { project: C
             onChange={(v) => setGeneratorPurchasePrice((v as number) || "")}
           />
           <NumberInput label={translate("Diesel Price (EGP/L)", "سعر الديزل (جنيه/لتر)")} value={dieselPriceEgpPerL} onChange={(v) => setDieselPriceEgpPerL((v as number) || 0)} />
+          <NumberInput
+            label={translate("Diesel Transport/Delivery (EGP/L)", "نقل/توريد الديزل (جنيه/لتر)")}
+            description={translate("Feasibility Study default: 2", "القيمة الافتراضية: 2")}
+            value={dieselTransportEgpPerL}
+            onChange={(v) => setDieselTransportEgpPerL((v as number) || 0)}
+          />
+          <NumberInput
+            label={translate("Diesel Annual Escalation (%/yr)", "تصاعد سعر الديزل (%/سنة)")}
+            description={translate("Feasibility Study default: 2.5%/yr", "القيمة الافتراضية: 2.5%/سنة")}
+            value={dieselAnnualEscalation}
+            onChange={(v) => setDieselAnnualEscalation((v as number) || 0)}
+            suffix="%"
+          />
+          <NumberInput
+            label={translate("Generator Specific Fuel Use (L/kWh)", "استهلاك الوقود النوعي (لتر/كيلوواط ساعة)")}
+            description={translate("Feasibility Study default: 0.3", "القيمة الافتراضية: 0.3")}
+            value={generatorSpecificFuelUseLPerKwh}
+            onChange={(v) => setGeneratorSpecificFuelUseLPerKwh((v as number) || 0)}
+            step={0.01}
+            decimalScale={2}
+          />
+          <NumberInput
+            label={translate("Generator Maintenance (%/yr of price)", "صيانة المولد (%/سنة من السعر)")}
+            description={translate("Feasibility Study default: 10%/yr", "القيمة الافتراضية: 10%/سنة")}
+            value={generatorMaintenancePct}
+            onChange={(v) => setGeneratorMaintenancePct((v as number) || 0)}
+            suffix="%"
+          />
+          <NumberInput
+            label={translate("Generator Replacement Interval (yrs)", "فترة استبدال المولد (سنوات)")}
+            description={translate("Feasibility Study default: 10", "القيمة الافتراضية: 10")}
+            value={generatorReplacementIntervalYears}
+            onChange={(v) => setGeneratorReplacementIntervalYears((v as number) || 1)}
+          />
+          <NumberInput
+            label={translate("Solar Annual O&M (% of CapEx)", "تشغيل وصيانة الألواح (% من الاستثمار)")}
+            description={translate("Feasibility Study default: 2.5%/yr", "القيمة الافتراضية: 2.5%/سنة")}
+            value={solarAnnualOmPct}
+            onChange={(v) => setSolarAnnualOmPct((v as number) || 0)}
+            suffix="%"
+          />
+          <NumberInput
+            label={translate("Battery Replacement Interval (yrs)", "فترة استبدال البطارية (سنوات)")}
+            description={translate("Feasibility Study default: 10", "القيمة الافتراضية: 10")}
+            value={batteryReplacementIntervalYears}
+            onChange={(v) => setBatteryReplacementIntervalYears((v as number) || 1)}
+          />
+          <NumberInput
+            label={translate("Analysis Period (yrs)", "فترة التحليل (سنوات)")}
+            description={translate("Feasibility Study default: 25", "القيمة الافتراضية: 25")}
+            value={analysisPeriodYears}
+            onChange={(v) => setAnalysisPeriodYears((v as number) || 1)}
+          />
+          <NumberInput
+            label={translate("Discount Rate (%)", "معدل الخصم (%)")}
+            description={translate("Feasibility Study default: 10% (used for NPV)", "القيمة الافتراضية: 10% (لحساب القيمة الحالية الصافية)")}
+            value={discountRate}
+            onChange={(v) => setDiscountRate((v as number) || 0)}
+            suffix="%"
+          />
         </div>
       </SectionCard>
 

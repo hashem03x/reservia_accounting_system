@@ -61,6 +61,21 @@ test('Written payback = "5 Years 2 Months" (Feasibility Study!B63)', () => {
   assert.equal(headline.written, '5 Years 2 Months');
 });
 
+// Feasibility Study!B21 is a genuine editable input cell (analysis horizon), not a fixed
+// constant - confirms a shorter/longer horizon actually changes the comparison instead of being
+// silently pinned to 25 regardless of what's supplied.
+test('a shorter analysis period changes the 25-year-net-savings headline (Feasibility Study!B21)', () => {
+  const shortened = feas.runOffGridDieselFeasibility({
+    dailyWh: 39520, generatorPurchasePrice: 70000, dieselPriceEgpPerL: 20, dieselTransportEgpPerL: 2,
+    dieselAnnualEscalation: 0.025, generatorSpecificFuelUseLPerKwh: 0.3, generatorMaintenancePct: 0.1,
+    generatorReplacementIntervalYears: 10, solarAnnualOmPct: 0.025, batteryReplacementIntervalYears: 10,
+    batteryReplacementCost: 210000, solarInitialCapex: 549389.16252, analysisPeriodYears: 10, discountRate: 0.1,
+  });
+  const full = referenceScenario();
+  assert.equal(shortened.years.length, 11);
+  assert.notEqual(shortened.headline.twentyFiveYearNetSavings, full.headline.twentyFiveYearNetSavings);
+});
+
 function round(n, dp) {
   const f = 10 ** dp;
   return Math.round(n * f) / f;

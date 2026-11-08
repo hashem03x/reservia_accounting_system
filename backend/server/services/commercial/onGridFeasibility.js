@@ -81,15 +81,21 @@ function irrBisection(series) {
  * Runs all 3 tariff-escalation scenarios and the sheet's own headline figures (flat-scenario
  * payback/ROI/IRR). `capex` is a plain parameter - callers decide whether to pass the raw BOQ
  * cost (matching the sheet exactly) or some other basis; this module never re-derives it.
+ *
+ * `baseTariffEgpPerKwh` (Feasibility Table!G4), `maintenancePctOfCapex` (!C4),
+ * `escalationScenario2`/`escalationScenario3` (!M7/!T7) are all genuine EDITABLE input cells in
+ * the source sheet, not formulas - their defaults below are the sheet's own live values, never
+ * fabricated, but a caller (the commercial team, per-project) may override any of them.
  */
 function runOnGridFeasibility({
   capex, annualProductionKwhYear1, annualConsumptionKwh,
   baseTariffEgpPerKwh = 2.8, maintenancePctOfCapex = 0.01,
+  escalationScenario2 = 0.03, escalationScenario3 = 0.1,
 }) {
   const scenarios = {
     flat: runScenario({ capex, annualProductionKwhYear1, annualConsumptionKwh, baseTariffEgpPerKwh, maintenancePctOfCapex, escalationRate: 0 }),
-    escalation3pct: runScenario({ capex, annualProductionKwhYear1, annualConsumptionKwh, baseTariffEgpPerKwh, maintenancePctOfCapex, escalationRate: 0.03 }),
-    escalation10pct: runScenario({ capex, annualProductionKwhYear1, annualConsumptionKwh, baseTariffEgpPerKwh, maintenancePctOfCapex, escalationRate: 0.1 }),
+    escalation3pct: runScenario({ capex, annualProductionKwhYear1, annualConsumptionKwh, baseTariffEgpPerKwh, maintenancePctOfCapex, escalationRate: escalationScenario2 }),
+    escalation10pct: runScenario({ capex, annualProductionKwhYear1, annualConsumptionKwh, baseTariffEgpPerKwh, maintenancePctOfCapex, escalationRate: escalationScenario3 }),
   };
   const flat = scenarios.flat;
   const payback = simplePaybackWithMonths(flat.years); // B38
