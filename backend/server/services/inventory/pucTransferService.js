@@ -65,6 +65,13 @@ async function projectQuantity(productId, projectId, session) {
   for (const t of transfers) {
     if (t.sourceType === 'purchase-return') {
       if (idOf(t.project) === String(project)) quantity -= t.quantity; // released for a return
+    } else if (t.sourceType === 'sale' || t.sourceType === 'sale-return') {
+      // A Sales Order consuming/releasing this project's PUC (pucSalesConsumptionService.js) -
+      // never an incoming/outgoing TRANSFER, so it must not be added like one (see this function's
+      // own `project`/`sourceProject` branches below, which assume a transfer's semantics).
+      if ((!t.journalEntry || live.has(String(t.journalEntry))) && idOf(t.project) === String(project)) {
+        quantity += t.sourceType === 'sale' ? -t.quantity : t.quantity;
+      }
     } else if (!t.journalEntry || live.has(String(t.journalEntry))) {
       if (idOf(t.project) === String(project)) quantity += t.quantity;
       if (idOf(t.sourceProject) === String(project)) quantity -= t.quantity;
@@ -268,9 +275,13 @@ async function listProjectInventory(projectId, { category, brand, product, page 
   if (brand) rows = rows.filter(r => String(r.product?.brand || '') === String(brand));
 
   const total = rows.length;
-  const totalQuantityPurchased = round2(rows.filter(r => r.sourceType !== 'purchase-return').reduce((sum, r) => sum + r.quantity, 0));
+  const totalQuantityPurchased = round2(rows.filter(r => !['purchase-return', 'sale', 'sale-return'].includes(r.sourceType)).reduce((sum, r) => sum + r.quantity, 0));
   const totalQuantityReturned = round2(rows.filter(r => r.sourceType === 'purchase-return').reduce((sum, r) => sum + r.quantity, 0));
-  const totalAmount = round2(rows.reduce((sum, r) => sum + (r.sourceType === 'purchase-return' ? -r.amount : r.amount), 0));
+  const totalQuantityUsed = round2(rows.filter(r => r.sourceType === 'sale').reduce((sum, r) => sum + r.quantity, 0) - rows.filter(r => r.sourceType === 'sale-return').reduce((sum, r) => sum + r.quantity, 0));
+  // This project's net PUC value from these rows: in for warehouse/project/purchase-order receipts
+  // and sale-returns, out for purchase-returns and sales consumption.
+  const amountSign = r => (['purchase-return', 'sale'].includes(r.sourceType) ? -1 : 1);
+  const totalAmount = round2(rows.reduce((sum, r) => sum + amountSign(r) * r.amount, 0));
 
   const paged = rows.slice((pageNum - 1) * limitNum, pageNum * limitNum);
 
@@ -281,9 +292,11 @@ async function listProjectInventory(projectId, { category, brand, product, page 
       totalQuantityReturned,
       netQuantity: round2(totalQuantityPurchased - totalQuantityReturned),
       totalAmount,
-      // Explicit, documented limitation - see header comment above.
-      quantityUsed: null,
-      quantityRemaining: null,
+      // Now tracked for real (services/inventory/pucSalesConsumptionService.js's 'sale'/
+      // 'sale-return' records) - no longer the documented limitation above (kept for context on
+      // why this used to be null).
+      quantityUsed: totalQuantityUsed,
+      quantityRemaining: round2(totalQuantityPurchased - totalQuantityReturned - totalQuantityUsed),
     },
     pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.max(Math.ceil(total / limitNum), 1) },
     data: paged.map(r => ({

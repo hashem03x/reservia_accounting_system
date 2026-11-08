@@ -22,16 +22,23 @@ const { rateForDate } = require('../accounting/currencyService');
 //   + transfer in    warehouse -> project, or another project -> this project
 //   - transfer out   this project -> another project
 //   - return         quantity released from the project for a purchase return
+//   - consumed       quantity a Sales Order actually consumed from this project's PUC
+//                    (PucTransfer 'sale' - services/inventory/pucSalesConsumptionService.js),
+//                    net of whatever a later return released back ('sale-return')
 // A transfer whose journal entry was reversed does not count. Each purchase keeps its source
 // document (invoice, vendor, unit cost), so every cost is traceable; several invoices for one
 // material simply add up, each listed on its own.
 //
-// Quantity CONSUMED is not recorded anywhere in Reservia (materials are consumed in VALUE, by the
-// cost-recognition entry JV0011 crediting PUC - Raw Materials when a Sales Invoice is issued), so a
-// quantity "remaining after use" cannot be derived - the quantity shown is what is ALLOCATED to the
-// project. The project's VALUE is reconciled separately with the PUC - Raw Materials ledger itself
-// (opening / receipts / relief (credits: cost recognition, returns, transfers out) / closing), the
-// figure the General Ledger and the balance sheet show.
+// Quantity CONSUMED by a specific Sales Order IS now tracked (PucTransfer 'sale'/'sale-return' -
+// see pucSalesConsumptionService.js), on top of (never instead of) the project-level,
+// percentage-of-contract VALUE cost-recognition entry JV0011 - the two can never double-count,
+// since JV0011's own recognizable amount is capped at the project's REAL, live PUC ledger balance
+// (accountingEventService.js#postProjectCostRecognitionJE), which these 'sale' consumption entries
+// already reduce. `closingQuantity`/`closingValue` below are what is ALLOCATED and NOT YET
+// consumed by a specific sale; the project's overall VALUE is still reconciled separately with the
+// PUC - Raw Materials ledger itself (opening / receipts / relief (credits: cost recognition,
+// returns, transfers out, sales) / closing), the figure the General Ledger and the balance sheet
+// show.
 //
 // PLANNED cost is not mixed in: Purchase Order (pre-invoice) quantities are reported separately as
 // "ordered" (committed), never added to the purchased quantity.
@@ -104,6 +111,11 @@ async function loadMovements({ projectIds = null, productId = null, dateTo = nul
       if (inScope(t.project)) movements.push({ ...base, project: idOf(t.project), kind: 'return', warehouse, invoice });
       continue;
     }
+    if (t.sourceType === 'sale' || t.sourceType === 'sale-return') {
+      if (t.journalEntry && !live.has(String(t.journalEntry))) continue;
+      if (inScope(t.project)) movements.push({ ...base, project: idOf(t.project), kind: t.sourceType === 'sale' ? 'consumed' : 'consumed_return', warehouse: null, invoice: null });
+      continue;
+    }
     if (t.journalEntry && !live.has(String(t.journalEntry))) continue;
     if (inScope(t.project)) {
       movements.push({ ...base, project: idOf(t.project), kind: t.sourceType === 'purchase-order' ? 'purchase' : 'transfer_in', warehouse, invoice, counterpartProject: idOf(t.sourceProject) });
@@ -147,10 +159,17 @@ async function loadMovements({ projectIds = null, productId = null, dateTo = nul
   return movements;
 }
 
-const SIGN = { purchase: 1, transfer_in: 1, transfer_out: -1, return: -1 };
+const SIGN = { purchase: 1, transfer_in: 1, transfer_out: -1, return: -1, consumed: -1, consumed_return: 1 };
 
 function emptyBalance() {
-  return { openingQuantity: 0, openingValue: 0, purchasedQuantity: 0, purchasedValue: 0, transferredInQuantity: 0, transferredInValue: 0, transferredOutQuantity: 0, transferredOutValue: 0, returnedQuantity: 0, returnedValue: 0 };
+  return {
+    openingQuantity: 0, openingValue: 0, purchasedQuantity: 0, purchasedValue: 0, transferredInQuantity: 0, transferredInValue: 0,
+    transferredOutQuantity: 0, transferredOutValue: 0, returnedQuantity: 0, returnedValue: 0,
+    // 'consumed' = Sales Orders that took materials from this project's PUC (PucTransfer 'sale');
+    // 'consumedReturn' = the portion a later Sales Order return released back ('sale-return') - a
+    // separate bucket, same convention as transferredOut/returned above, never pre-netted.
+    consumedQuantity: 0, consumedValue: 0, consumedReturnQuantity: 0, consumedReturnValue: 0,
+  };
 }
 
 function addMovement(balance, m, opening) {
@@ -161,7 +180,7 @@ function addMovement(balance, m, opening) {
     balance.openingValue += SIGN[m.kind] * v;
     return;
   }
-  const key = { purchase: 'purchased', transfer_in: 'transferredIn', transfer_out: 'transferredOut', return: 'returned' }[m.kind];
+  const key = { purchase: 'purchased', transfer_in: 'transferredIn', transfer_out: 'transferredOut', return: 'returned', consumed: 'consumed', consumed_return: 'consumedReturn' }[m.kind];
   balance[`${key}Quantity`] += q;
   balance[`${key}Value`] += v;
 }
@@ -169,9 +188,13 @@ function addMovement(balance, m, opening) {
 function finishBalance(b) {
   const out = {};
   for (const [k, v] of Object.entries(b)) out[k] = /Quantity$/.test(k) ? round4(v) : round2(v);
-  out.closingQuantity = round4(b.openingQuantity + b.purchasedQuantity + b.transferredInQuantity - b.transferredOutQuantity - b.returnedQuantity);
-  out.closingValue = round2(b.openingValue + b.purchasedValue + b.transferredInValue - b.transferredOutValue - b.returnedValue);
-  // Weighted average of what came in (purchases + transfers in) - the cost the allocated quantity carries.
+  out.closingQuantity = round4(b.openingQuantity + b.purchasedQuantity + b.transferredInQuantity - b.transferredOutQuantity - b.returnedQuantity - b.consumedQuantity + b.consumedReturnQuantity);
+  out.closingValue = round2(b.openingValue + b.purchasedValue + b.transferredInValue - b.transferredOutValue - b.returnedValue - b.consumedValue + b.consumedReturnValue);
+  // Weighted average of what came in (purchases + transfers in) - the cost the allocated quantity
+  // carries. Deliberately NOT reduced by consumption - this is a cost BASIS, unaffected by how much
+  // of it has since been sold (services/inventory/pucSalesConsumptionService.js uses this exact
+  // figure as the cost of a NEW sale, so it must stay the true weighted-average-of-receipts, never
+  // drift as consumption happens).
   const inQty = b.openingQuantity + b.purchasedQuantity + b.transferredInQuantity;
   out.averageUnitCost = inQty > 0 ? round2((b.openingValue + b.purchasedValue + b.transferredInValue) / inQty) : null;
   return out;
@@ -462,4 +485,4 @@ async function getProjectMaterialBreakdown(projectId) {
   };
 }
 
-module.exports = { getPucRawMaterialBalances, getProjectMaterialBreakdown, loadMovements };
+module.exports = { getPucRawMaterialBalances, getProjectMaterialBreakdown, loadMovements, emptyBalance, addMovement, finishBalance };

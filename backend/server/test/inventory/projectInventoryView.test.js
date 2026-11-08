@@ -111,9 +111,11 @@ test('lists a purchased, allocated item with its product identity, PO/vendor ref
 
   assert.equal(result.summary.totalQuantityPurchased, 10);
   assert.equal(result.summary.totalAmount, 500);
-  // Explicitly not tracked anywhere in this codebase - never fabricated.
-  assert.equal(result.summary.quantityUsed, null);
-  assert.equal(result.summary.quantityRemaining, null);
+  // Now tracked for real (services/inventory/pucSalesConsumptionService.js's 'sale' PucTransfer
+  // records) - zero here since nothing has consumed this project's PUC yet; see
+  // pucSalesConsumptionService.test.js for a sale actually moving these off zero.
+  assert.equal(result.summary.quantityUsed, 0);
+  assert.equal(result.summary.quantityRemaining, 10);
 });
 
 test('aggregates multiple purchases of different products for the same project', async () => {

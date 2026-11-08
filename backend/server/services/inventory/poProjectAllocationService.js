@@ -60,8 +60,22 @@ async function lineStates(po, session) {
 /**
  * Allocates every received, not yet allocated stock quantity of the order to its project. Returns
  * the order's allocation state. Safe to call again: a fully allocated order does nothing.
+ *
+ * `requireAvailableStock` (default true) gates whether the warehouse decrement below re-checks
+ * "does the warehouse still hold at least this much" before applying it:
+ *   - true  (every caller except PO creation itself): a real possible scenario - the received
+ *     stock may have been sold/transferred out since it was received (e.g. an order created before
+ *     automatic allocation existed, or a delayed manual retry via the project-allocation endpoint)
+ *     - refuse rather than let the quantity go negative.
+ *   - false (PO creation ONLY, see purchaseOrderController.js#createPO): the quantity being
+ *     allocated here is EXACTLY what this same transaction's own applyPurchaseToProducts just
+ *     added a moment ago, inside the same atomic transaction - nothing else can have touched it in
+ *     the meantime. A Purchase Order is a planned procurement; it must never fail to be created
+ *     over a stock-availability mismatch the PO's own receipt just created. The decrement is still
+ *     applied (never skipped - the PucTransfer/allocation bookkeeping below still needs it), just
+ *     without the redundant, failure-prone pre-check.
  */
-async function allocatePurchaseOrderToProject(purchaseOrderId, { userId = null, session } = {}) {
+async function allocatePurchaseOrderToProject(purchaseOrderId, { userId = null, session, requireAvailableStock = true } = {}) {
   const po = await PurchaseOrder.findById(purchaseOrderId).session(session || null);
   if (!po) throw new ApiError('Purchase Invoice not found', 404);
   const { lines, toWip } = await lineStates(po, session);
@@ -75,14 +89,17 @@ async function allocatePurchaseOrderToProject(purchaseOrderId, { userId = null, 
     if (line.unallocated <= 0) continue;
     const qty = line.unallocated;
     const warehouse = idOf(po.warehouseId);
+    const warehouseObjectId = new mongoose.Types.ObjectId(warehouse);
+    const filter = requireAvailableStock
+      ? { _id: line.product._id, stock: { $elemMatch: { warehouse: warehouseObjectId, quantity: { $gte: qty } } } }
+      : { _id: line.product._id, 'stock.warehouse': warehouseObjectId };
     // eslint-disable-next-line no-await-in-loop
-    const { modifiedCount } = await Product.updateOne(
-      { _id: line.product._id, stock: { $elemMatch: { warehouse: new mongoose.Types.ObjectId(warehouse), quantity: { $gte: qty } } } },
-      { $inc: { 'stock.$.quantity': -qty } },
-      { session }
-    );
+    const { modifiedCount } = await Product.updateOne(filter, { $inc: { 'stock.$.quantity': -qty } }, { session });
     if (modifiedCount !== 1) {
-      throw new ApiError(`Cannot allocate ${qty} of "${line.product.title?.en || line.product._id}" to the project: the warehouse no longer holds that quantity (it was sold or transferred). Nothing was allocated.`, 400);
+      const reason = requireAvailableStock
+        ? 'the warehouse no longer holds that quantity (it was sold or transferred)'
+        : 'no matching warehouse stock entry was found for this product';
+      throw new ApiError(`Cannot allocate ${qty} of "${line.product.title?.en || line.product._id}" to the project: ${reason}. Nothing was allocated.`, 400);
     }
     const unitCost = round2(line.item.unitPriceAfterDiscount ?? line.item.unitPrice ?? 0);
     // eslint-disable-next-line no-await-in-loop

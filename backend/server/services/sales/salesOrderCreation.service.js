@@ -6,39 +6,23 @@ const ApiError = require('../../utils/apiError');
 const { consumeCustomerAdvancedPayment } = require('../payments/advancedPaymentService');
 const { recalculateExecutedPercentage } = require('../project/projectAccountingService');
 const { postSalesOrderAdvanceAppliedJE } = require('../accounting/accountingEventService');
+const { consumePucForSale } = require('../inventory/pucSalesConsumptionService');
 
-// Decrements this product's stock in the sale's warehouse AND increments its totalSold in one
-// atomic update - previously two separate writes (decrement Variant.stock, then a second
-// Product.findByIdAndUpdate for totalSold once the variant's productId was resolved). With items
-// identifying their product directly, there's no variant to resolve and no reason for a second
-// write.
+// Every new Sales Order requires a project (salesOrderModel.js's pre('save') hook), and a
+// project's materials are purchased straight into its PUC, never left sitting as ordinary
+// warehouse stock (every Purchase Order with a project - always - is synchronously, fully
+// allocated to that project's PUC on receipt: poProjectAllocationService.js). So a sale's
+// materials/cost must come from the sold product's PROJECT's PUC balance
+// (pucSalesConsumptionService.js#consumePucForSale, called from createSalesOrder below), never
+// from Product.stock - decrementing stock here on top of that would incorrectly treat project
+// materials as available warehouse inventory a second time (they were never really there as
+// general stock to begin with). `totalSold` (a lifetime sales counter, unrelated to on-hand
+// quantity) is still incremented exactly as before.
 async function updateStockAndSold(item, warehouseId, session) {
   const { product: productId, starterQuantity } = item;
 
-  // Products are the overwhelmingly common case, so try the warehouse-stock decrement first (one
-  // query) exactly as before - this only ever misses for a service (no stock array to match) or a
-  // genuinely missing product, both handled in the fallback below without adding a query to the
-  // normal product path.
-  const result = await Product.findOneAndUpdate(
-    { _id: productId, 'stock.warehouse': warehouseId },
-    { $inc: { 'stock.$.quantity': -starterQuantity, totalSold: starterQuantity } },
-    { new: true, session, runValidators: true }
-  );
-
-  if (!result) {
-    const foundProduct = await Product.findById(productId).session(session);
-    if (!foundProduct) throw new ApiError(`Product with ID ${productId} not found.`);
-
-    // A service has no stock/warehouse concept at all (see docs/entities/products.md) - selling
-    // one only needs totalSold tracked for reporting, there is nothing to decrement.
-    if (foundProduct.type === 'service') {
-      return Product.findByIdAndUpdate(productId, { $inc: { totalSold: starterQuantity } }, { new: true, session, runValidators: true });
-    }
-
-    const stock = foundProduct.stock.find(s => s.warehouse.toString() === warehouseId);
-    if (!stock) throw new ApiError(`No stock found for product ${foundProduct.title?.en || foundProduct.sku || productId} in warehouse ${warehouseId}`);
-  }
-
+  const result = await Product.findByIdAndUpdate(productId, { $inc: { totalSold: starterQuantity } }, { new: true, session, runValidators: true });
+  if (!result) throw new ApiError(`Product with ID ${productId} not found.`);
   return result;
 }
 
@@ -149,6 +133,14 @@ async function createSalesOrder(
     // vendor-side equivalent.
     if (consumedAdvanceAmount !== null) {
       await postSalesOrderAdvanceAppliedJE(salesOrder, consumedAdvanceAmount, session);
+    }
+
+    // Consumes this order's materials from its project's PUC balance (Dr COGS / Cr PUC - Raw
+    // Materials) - BEFORE recalculateExecutedPercentage below, so PROJECT_COST_RECOGNITION's own
+    // real-PUC-balance cap (accountingEventService.js#pucAccountBalance) already sees what this
+    // just consumed and never double-counts it.
+    if (salesOrder.project) {
+      await consumePucForSale(salesOrder, { userId: createdBy, session });
     }
 
     // Project is mandatory for every new Sales Order (see salesOrderModel.js's pre('save') hook),

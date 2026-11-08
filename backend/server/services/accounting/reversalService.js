@@ -20,6 +20,7 @@ const { postAutomaticJournalEntry, getAccountIdByCode, resolveVendorNumber, reso
 const { assertPeriodsOpen } = require('./accountingPeriodService');
 const { claimAndApplyPaymentReversal, PAYMENT_ACTIONS } = require('../payments/paymentReversalService');
 const { logAccountingEvent } = require('../../utils/accountingLogger');
+const { releasePucConsumptionForReturn } = require('../inventory/pucSalesConsumptionService');
 
 // The accounting reversal engine: sales returns, purchase returns, payment reversals and settlement
 // (advance application) reversals, each as ONE transaction that posts the compensating journal
@@ -346,14 +347,17 @@ async function returnSalesOrder({ salesOrderId, items, warehouseId, refund, reas
       line.item.returnedQuantity = round2((line.item.returnedQuantity || 0) + line.quantity);
       line.item.quantityToBeReturned = Math.max((line.item.quantityToBeReturned || 0) - line.quantity, 0);
       product.totalSold = Math.max((product.totalSold || 0) - line.quantity, 0);
-      // A service has no stock - a returned service only reverses its sale.
-      if (product.type !== 'service') {
-        const stock = product.stock.find(s => String(s.warehouse) === String(warehouseId));
-        if (!stock) throw new ApiError(`"${product.title?.en || product.title?.ar}" has no stock record in the chosen warehouse.`, 400);
-        stock.quantity += line.quantity;
-      }
       // eslint-disable-next-line no-await-in-loop
       await product.save({ session });
+      // A service has no PUC/stock concept - a returned service only reverses its sale. A
+      // physical product's materials were consumed from the project's PUC when sold (never from
+      // ordinary warehouse stock - services/inventory/pucSalesConsumptionService.js), so a return
+      // releases them back into PUC, not into Product.stock (docs section "Sales - Consume Items
+      // From PUC... Reversals and cancellations restore the appropriate PUC balance").
+      if (product.type !== 'service' && projectId) {
+        // eslint-disable-next-line no-await-in-loop
+        await releasePucConsumptionForReturn(order, product._id, line.quantity, { userId, session });
+      }
       // eslint-disable-next-line no-await-in-loop
       const [record] = await SalesOrderReturn.create([{ salesOrderId: order._id, warehouseId: warehouseId || null, productId: product._id, returnedQuantity: line.quantity, returnedAmount: line.amount, notes: input.reason, reversal: recordId, createdBy: userId }], { session });
       returnRecords.push(record._id);

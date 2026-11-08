@@ -1,21 +1,16 @@
 const { check } = require('express-validator');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
-const { isPaymentAccountEligible } = require('../accountingConstants');
 const { isValidEgyptianNationalId } = require('../egyptianNationalId');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 
 // Fast pre-checks - the model (total ownership <= 100%, equity account type, National ID
 // format/uniqueness) and services/equity/shareholderService.js (accounts, amount, Issued
-// Capital/ownership gates) are the real backstops.
+// Capital/ownership gates) are the real backstops. `equityAccount` here is the SHAREHOLDER's own
+// default equity account (profile field) - unrelated to a contribution's accounts, which are
+// fixed/non-selectable (see contributionChecks below).
 const equityAccount = async value => {
   const account = await ChartOfAccount.findById(value);
   if (!account || account.isActive === false || account.type !== 'equity') throw new Error('The equity account must be an active Chart of Accounts equity account.');
-  return true;
-};
-const paymentAccount = async value => {
-  const account = await ChartOfAccount.findById(value);
-  if (!account) throw new Error('The selected payment account does not exist');
-  if (!isPaymentAccountEligible(account)) throw new Error('The selected payment account must be a Cash or Cash Equivalent account');
   return true;
 };
 const nationalIdFormat = value => {
@@ -33,10 +28,12 @@ const profileChecks = [
 // `when` (optional) must be applied before the validators - express-validator's .if() only guards
 // what follows it in the chain.
 const field = (name, when) => (when ? check(name).if(when) : check(name));
+// A Capital Contribution's payment/equity accounts are FIXED (services/equity/shareholderService.js
+// #addContribution resolves the real "NBE Capital" / "Capital" accounts by Chart of Accounts code,
+// never from the request) - so `paymentAccount`/`equityAccount` are no longer validated or required
+// here. Anything a client still sends for either field is simply never read by the service.
 const contributionChecks = (prefix, when) => [
   field(`${prefix}amount`, when).notEmpty().withMessage('Contribution amount is required').isFloat({ gt: 0 }).withMessage('Contribution amount must be greater than 0'),
-  field(`${prefix}paymentAccount`, when).notEmpty().withMessage('A payment account (Cash or Cash Equivalent) is required').isMongoId().withMessage('Invalid payment account id').custom(paymentAccount),
-  field(`${prefix}equityAccount`, when).optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Invalid equity account id').custom(equityAccount),
   field(`${prefix}date`, when).optional({ nullable: true }).isISO8601().withMessage('Invalid date'),
   field(`${prefix}reference`, when).optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
   field(`${prefix}notes`, when).optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),

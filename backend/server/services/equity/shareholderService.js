@@ -3,7 +3,7 @@ const Shareholder = require('../../models/equity/shareholderModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const ApiError = require('../../utils/apiError');
 const { round2 } = require('../../utils/orderTotals');
-const { isPaymentAccountEligible } = require('../../utils/accountingConstants');
+const { isPaymentAccountEligible, AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
 const { postAutomaticJournalEntry } = require('../accounting/accountingEventService');
 const { requireCompanyCapital, totalActiveOwnershipPercentage, setIssuedCapital } = require('./companyCapitalService');
 
@@ -32,19 +32,21 @@ const allocatedCapital = (shareholder, issuedCapital) => round2((issuedCapital *
 /**
  * Records a capital contribution and its SHAREHOLDER_CONTRIBUTION entry in the caller's transaction:
  *
- *   Dr  the payment account (Cash / Cash Equivalent)      amount
- *       Cr  the equity account (shareholder's, unless another equity account is chosen)   amount
+ *   Dr  the fixed NBE "Capital" bank account (AutomaticJournalAccountCodes.capitalContributionBankAccount)   amount
+ *       Cr  the fixed Capital equity account (AutomaticJournalAccountCodes.capitalContributionEquityAccount) amount
  *
- * with the Shareholder Number as the Sub Account of the equity line only - a shareholder sub-account
- * belongs on an equity account (journalLinePartyService.js), never on the bank / cash line. The
- * shareholder is only updated if
- * its share capital is unchanged since it was read, so a concurrent duplicate cannot be applied twice.
+ * Both accounts are fixed/non-selectable (see this function's account-resolution block below) -
+ * every shareholder's contribution lands on the SAME two accounts; which shareholder it belongs
+ * to is carried entirely by the Shareholder Number, stamped as the Sub Account of the equity line
+ * only (journalLinePartyService.js) - a shareholder sub-account belongs on an equity account,
+ * never on the bank / cash line. The shareholder is only updated if its share capital is
+ * unchanged since it was read, so a concurrent duplicate cannot be applied twice.
  *
  * `idempotencyKey` (optional, generated once per "Add Payment" dialog open - see
  * reversalService.js's identical convention): a retried/double-click submission carrying the same
  * key is recognized here and returns the ALREADY-posted entry instead of posting a second one.
  */
-async function addContribution(shareholderId, { amount, date, paymentAccount, equityAccount, reference, notes, idempotencyKey }, userId, session) {
+async function addContribution(shareholderId, { amount, date, reference, notes, idempotencyKey }, userId, session) {
   const shareholder = await Shareholder.findById(shareholderId).session(session || null);
   if (!shareholder) throw new ApiError('Shareholder not found', 404);
   if (shareholder.status !== 'active') throw new ApiError('Contributions can only be recorded for an active shareholder.', 400);
@@ -75,12 +77,22 @@ async function addContribution(shareholderId, { amount, date, paymentAccount, eq
     throw new ApiError(`This payment would bring total Paid-in Capital above Issued Capital (${issuedCapital}).`, 400);
   }
 
+  // Capital Contributions always post to two FIXED accounts - the "NBE \"Capital\" -EGP" bank
+  // account and the "Capital" equity account - resolved here by their real Chart of Accounts code
+  // (the same AutomaticJournalAccountCodes convention every other automatic posting uses), never
+  // trusted from the request body. Any `paymentAccount`/`equityAccount` a client submits is
+  // ignored entirely (not merely overridden) - there is nothing in the request that can redirect
+  // where this money is posted.
   const [cashAccount, capitalAccount] = await Promise.all([
-    ChartOfAccount.findById(paymentAccount).session(session || null).lean(),
-    ChartOfAccount.findById(equityAccount || shareholder.equityAccount?._id || shareholder.equityAccount).session(session || null).lean(),
+    ChartOfAccount.findOne({ code: AutomaticJournalAccountCodes.capitalContributionBankAccount }).session(session || null).lean(),
+    ChartOfAccount.findOne({ code: AutomaticJournalAccountCodes.capitalContributionEquityAccount }).session(session || null).lean(),
   ]);
-  if (!isPaymentAccountEligible(cashAccount)) throw new ApiError('The payment account must be a Cash or Cash Equivalent account.', 400);
-  if (!isEquityAccountEligible(capitalAccount)) throw new ApiError('The equity account must be an active Chart of Accounts equity account.', 400);
+  if (!isPaymentAccountEligible(cashAccount)) {
+    throw new ApiError(`Capital contributions must be received into account ${AutomaticJournalAccountCodes.capitalContributionBankAccount} (NBE), but it is missing, inactive, or no longer a Cash/Cash Equivalent account. Contact an administrator before recording this contribution.`, 400);
+  }
+  if (!isEquityAccountEligible(capitalAccount)) {
+    throw new ApiError(`Capital contributions must be credited to account ${AutomaticJournalAccountCodes.capitalContributionEquityAccount} (Capital), but it is missing, inactive, or no longer an equity account. Contact an administrator before recording this contribution.`, 400);
+  }
 
   const contributionId = new mongoose.Types.ObjectId();
   const contributionDate = date ? new Date(date) : new Date();

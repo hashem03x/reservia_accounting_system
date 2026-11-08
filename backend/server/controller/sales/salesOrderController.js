@@ -119,6 +119,11 @@ exports.cancelOrder = asyncHandler(async (req, res, next) => {
         // (Dr Customer Advances / Cr Accounts Receivable is mirrored).
         const applied = await JournalEntry.findOne({ sourceType: 'SO', sourceId: freshOrder._id, accountingAction: 'SO_CUSTOMER_ADVANCE_APPLIED', status: 'posted' }).session(session);
         if (applied) await mirrorReverseEntry({ entryId: applied._id, date: new Date(), reason: 'Sales order cancelled', userId: req.user?._id || null, session });
+        // This order's materials are given back to its project's PUC balance in full (docs
+        // section "Sales - Consume Items From PUC"): mirrors the whole SALES_PUC_CONSUMPTION
+        // entry, the same way the advance-applied entry above is reversed.
+        const consumption = await JournalEntry.findOne({ sourceType: 'SO', sourceId: freshOrder._id, accountingAction: 'SALES_PUC_CONSUMPTION', status: 'posted' }).session(session);
+        if (consumption) await mirrorReverseEntry({ entryId: consumption._id, date: new Date(), reason: 'Sales order cancelled', userId: req.user?._id || null, session });
         // Canceling removes this order's amount from the project's Executed % numerator (docs
         // section "Project Executed % Calculation").
         if (freshOrder.project) {
@@ -134,6 +139,10 @@ exports.cancelOrder = asyncHandler(async (req, res, next) => {
 
   salesOrder.orderStatus = 'canceled';
   await salesOrder.save();
+  // This order's materials are given back to its project's PUC balance in full (docs section
+  // "Sales - Consume Items From PUC").
+  const consumption = await JournalEntry.findOne({ sourceType: 'SO', sourceId: salesOrder._id, accountingAction: 'SALES_PUC_CONSUMPTION', status: 'posted' });
+  if (consumption) await mirrorReverseEntry({ entryId: consumption._id, date: new Date(), reason: 'Sales order cancelled', userId: req.user?._id || null });
   if (salesOrder.project) {
     await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, undefined, salesOrder._id);
   }

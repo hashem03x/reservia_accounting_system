@@ -117,7 +117,11 @@ exports.createPO = asyncHandler(async (req, res, next) => {
 
     // The received stock lines go on to the order's project (quantity side of PO_INVENTORY_TO_WIP),
     // in this same transaction - a failure leaves neither stock nor allocation behind.
-    await allocatePurchaseOrderToProject(purchaseOrder._id, { userId: req.user._id, session });
+    // `requireAvailableStock: false` - this is the quantity applyPurchaseToProducts just added a
+    // moment ago, in this same transaction; a Purchase Order (a planned procurement) must never
+    // fail to be CREATED over a stock-availability mismatch its own receipt just created (see
+    // poProjectAllocationService.js's header comment on this flag).
+    await allocatePurchaseOrderToProject(purchaseOrder._id, { userId: req.user._id, session, requireAvailableStock: false });
 
     await session.commitTransaction();
 

@@ -8,6 +8,13 @@ const mongoose = require('mongoose');
 // posting Dr the payment account / Cr the equity account with the Shareholder Number as Sub
 // Account - all-or-nothing - gated on a complete (Issued Capital set, active ownership = 100%)
 // capital structure and never exceeding a shareholder's allocated share or Issued Capital itself.
+//
+// Capital contributions ALWAYS post to two FIXED accounts, resolved server-side by Chart of
+// Accounts code (AutomaticJournalAccountCodes.capitalContributionBankAccount = '11000001',
+// .capitalContributionEquityAccount = '20000001') - addContribution no longer reads
+// `paymentAccount`/`equityAccount` from its input at all, so a caller can never redirect a
+// contribution to a different account, not even accidentally. `accounts.bank`/`accounts.capital`
+// below are seeded at exactly those two codes for this reason.
 
 const DB_URI = process.env.TEST_DB_URI || 'mongodb://127.0.0.1:27017/reversia_test_shareholders';
 
@@ -132,9 +139,14 @@ test('a contribution posts Dr bank / Cr equity with the Shareholder Number on th
   assert.equal(equityLine.partyType, 'shareholder');
   for (const line of entry.lines) assert.equal(line.description, entry.description);
 
-  // Another equity account can be chosen for a contribution - still within Ahmed's 500,000 allocation.
-  await contribute(shareholder, { amount: 1000, equityAccount: accounts.reserves._id });
-  assert.equal((await Shareholder.findById(shareholder._id).lean()).shareCapital, 501000);
+  // Submitting a DIFFERENT (even ineligible) equity/payment account has NO effect - the service
+  // never reads either field - every contribution still lands on the same two fixed accounts.
+  await contribute(shareholder, { amount: 1000, equityAccount: accounts.reserves._id, paymentAccount: accounts.revenue._id });
+  const updated = await Shareholder.findById(shareholder._id).lean();
+  assert.equal(updated.shareCapital, 501000);
+  const second = updated.contributions[1];
+  assert.equal(idStr(second.paymentAccount), idStr(accounts.bank._id), 'the submitted paymentAccount override was ignored');
+  assert.equal(idStr(second.equityAccount), idStr(accounts.capital._id), 'the submitted equityAccount override was ignored');
 });
 
 test('a shareholder can be created with a first contribution in the same transaction', async t => {
@@ -146,15 +158,55 @@ test('a shareholder can be created with a first contribution in the same transac
   assert.equal(await JournalEntry.countDocuments({ accountingAction: 'SHAREHOLDER_CONTRIBUTION' }), 1);
 });
 
-test('wrong accounts and amounts are refused', async t => {
+test('a shareholder\'s own default equity account is still validated; non-positive contribution amounts are refused', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
   await assert.rejects(() => create({ name: 'X', ownershipPercentage: 10, equityAccount: accounts.revenue._id }), /equity account/);
   await setCapital(1000000);
   const shareholder = await create({ name: 'Ahmed', ownershipPercentage: 100 });
-  await assert.rejects(() => contribute(shareholder, { amount: 100, paymentAccount: accounts.capital._id }), /Cash or Cash Equivalent/);
-  await assert.rejects(() => contribute(shareholder, { amount: 100, equityAccount: accounts.revenue._id }), /equity account/);
   await assert.rejects(() => contribute(shareholder, { amount: 0 }), /greater than 0/);
+  await assert.rejects(() => contribute(shareholder, { amount: -5 }), /greater than 0/);
   assert.equal(await JournalEntry.countDocuments({}), 0);
+  assert.equal((await Shareholder.findById(shareholder._id).lean()).shareCapital, 0);
+});
+
+// Regression/acceptance coverage for "manipulate account IDs through the API -> backend enforces
+// fixed accounts": a wrong/ineligible `paymentAccount`/`equityAccount` submitted in the request no
+// longer causes a validation error (the old "wrong accounts are refused" behavior) - the fields
+// are simply never read, so the contribution posts normally, to the fixed accounts only.
+test('manipulated or ineligible account ids in the request are silently ignored, never applied', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await setCapital(1000000);
+  const shareholder = await create({ name: 'Ahmed', ownershipPercentage: 100 });
+  const fakeId = new mongoose.Types.ObjectId();
+  await contribute(shareholder, { amount: 100, paymentAccount: accounts.revenue._id, equityAccount: accounts.revenue._id });
+  await contribute(shareholder, { amount: 50, paymentAccount: fakeId, equityAccount: fakeId }); // ids that don't even exist
+  const stored = await Shareholder.findById(shareholder._id).lean();
+  assert.equal(stored.shareCapital, 150);
+  for (const c of stored.contributions) {
+    assert.equal(idStr(c.paymentAccount), idStr(accounts.bank._id));
+    assert.equal(idStr(c.equityAccount), idStr(accounts.capital._id));
+  }
+  const entries = await JournalEntry.find({ accountingAction: 'SHAREHOLDER_CONTRIBUTION' }).lean();
+  for (const entry of entries) {
+    assert.deepEqual(entry.lines.map(l => codeOf(l.account)), ['bank', 'capital']);
+  }
+});
+
+// Acceptance coverage: "If the NBE account or Capital account cannot be found or is inactive,
+// return a clear validation error. Never silently select another account."
+test('contributions are refused with a clear error if the fixed bank or capital account is missing or inactive', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await setCapital(1000000);
+  const shareholder = await create({ name: 'Ahmed', ownershipPercentage: 100 });
+
+  await ChartOfAccount.updateOne({ _id: accounts.bank._id }, { $set: { isActive: false } });
+  await assert.rejects(() => contribute(shareholder, { amount: 100 }), /account 11000001 \(NBE\)/);
+  await ChartOfAccount.updateOne({ _id: accounts.bank._id }, { $set: { isActive: true } });
+
+  await ChartOfAccount.deleteOne({ _id: accounts.capital._id });
+  await assert.rejects(() => contribute(shareholder, { amount: 100 }), /account 20000001 \(Capital\)/);
+
+  assert.equal(await JournalEntry.countDocuments({}), 0, 'nothing was posted for either failed attempt');
   assert.equal((await Shareholder.findById(shareholder._id).lean()).shareCapital, 0);
 });
 

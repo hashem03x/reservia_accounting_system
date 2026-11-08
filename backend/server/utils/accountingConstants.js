@@ -138,6 +138,12 @@ exports.AccountingActions = [
   'PURCHASE_RETURN',
   'SO_REFUND_RECORDED',
   'PO_REFUND_RECORDED',
+  // Sales consuming materials from their project's PUC (services/inventory/
+  // pucSalesConsumptionService.js): Dr Cost of Goods Sold - Raw Materials / Cr PUC - Raw
+  // Materials, at the project's weighted average PUC cost for the sold product; a return/release
+  // reverses the direction for the returned quantity, at the ORIGINAL consumption's own cost.
+  'SALES_PUC_CONSUMPTION',
+  'SALES_PUC_CONSUMPTION_RETURN',
 ];
 
 // Automatic actions that are inherently project-related: they are only ever posted for a document
@@ -153,6 +159,8 @@ exports.ProjectRequiredAccountingActions = [
   'SO_CUSTOMER_ADVANCE_APPLIED',
   'PROJECT_REVENUE_RECOGNITION',
   'PROJECT_COST_RECOGNITION',
+  'SALES_PUC_CONSUMPTION',
+  'SALES_PUC_CONSUMPTION_RETURN',
 ];
 
 // The business-document type that triggered an automatic entry - paired with sourceId (that
@@ -242,6 +250,12 @@ exports.AutomaticJournalAccountCodes = {
   vatPayable: '31000010', // VAT Payable (liability)
   revenue: '60000001', // Revenue (revenue) - generic, until a dedicated project-execution-revenue account exists
   costRawMaterials: '50000001', // Raw Materials (cogs)
+  // Fixed Capital Contribution accounts (brief: "Capital Contributions must always be received
+  // into NBE and credited to the Capital account, never user-selectable") - confirmed against the
+  // live Chart of Accounts: 11000001 is "NBE \"Capital\" -EGP", the bank account specifically
+  // dedicated to capital funds (distinct from 11000002, the general NBE operating account).
+  capitalContributionBankAccount: '11000001', // NBE "Capital" -EGP (asset, Cash & Cash Equivalents)
+  capitalContributionEquityAccount: '20000001', // Capital (equity)
 };
 
 // Main description of the Sales Order project cost entry (JV0011), verbatim from
@@ -276,6 +290,8 @@ exports.AccountingModuleByAction = {
   PAYMENT_VENDOR_ADVANCE_APPLIED: 'Payment',
   PROJECT_REVENUE_RECOGNITION: 'Sales Order',
   PROJECT_COST_RECOGNITION: 'Sales Order',
+  SALES_PUC_CONSUMPTION: 'Sales Order',
+  SALES_PUC_CONSUMPTION_RETURN: 'Sales Order',
   FIXED_ASSET_ACQUISITION: 'Fixed Asset',
   FIXED_ASSET_DEPRECIATION: 'Fixed Asset',
   FIXED_ASSET_PAYMENT_RECORDED: 'Fixed Asset',

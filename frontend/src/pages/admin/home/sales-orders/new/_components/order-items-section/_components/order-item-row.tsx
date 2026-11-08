@@ -226,7 +226,6 @@ export default function OrderItemRow({
               value={starterQuantity}
               onChange={(value) => handleValueChange("starterQuantity", value)}
               min={1}
-              max={1000}
               decimalScale={0}
               className="font-bold text-gray-800"
               // hideControls
