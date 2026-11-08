@@ -21,11 +21,14 @@ const iso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : undefined);
 /**
  * Warehouses -> PUC - Raw Materials (client requirement "Warehouses - Projectwise PUC Raw Materials
  * Balances"): per project and material, opening / purchased / transferred in / out / returned /
- * closing quantity and value - derived from the PUC allocation records, never a separate stored
- * balance - and, per project, the PUC - Raw Materials LEDGER balance beside it (the difference is
- * the value relieved by cost recognition when Sales Invoices are issued). Records with no project
- * are reported, never assigned to one. Quantity consumed is not recorded in Reservia, so the
- * quantity shown is the allocated quantity. Read-only (backend pucMaterialBalanceService.js).
+ * SOLD / closing quantity and value - derived from the PUC allocation records, never a separate
+ * stored balance - and, per project, the PUC - Raw Materials LEDGER balance beside it (the
+ * difference is value relieved by cost recognition (JV0011) that isn't tied to a specific sold
+ * product). Records with no project are reported, never assigned to one. "Sold" is net of any
+ * sale-return release (services/inventory/pucSalesConsumptionService.js); "Closing qty"/"Closing
+ * value" are what remains in the project's PUC after that consumption - this is now the real
+ * Total Inventory Amount for the project's materials, not just what was ever allocated.
+ * Read-only (backend pucMaterialBalanceService.js).
  */
 export default function PucBalancesTab() {
   const { language, translate, translations } = useLanguage();
@@ -129,12 +132,12 @@ export default function PucBalancesTab() {
             <>
               <p className="text-xs text-gray-500">
                 {translate(
-                  "Quantity = allocated to the project's PUC (purchases + transfers in - transfers out - returns). Consumption is recorded in value only (cost recognition on Sales Invoices), shown as the difference to the PUC ledger.",
-                  "الكمية = المخصصة لمشروعات تحت التنفيذ (مشتريات + تحويلات واردة - صادرة - مرتجعات). الاستهلاك يُسجل بالقيمة فقط (تحميل التكلفة عند فواتير المبيعات) ويظهر كفرق مع رصيد الحساب.",
+                  "Closing qty/value = purchases + transfers in - transfers out - returns - sold (net of sale returns) - the actual remaining project inventory and its Total Inventory Amount.",
+                  "رصيد آخر (كمية/قيمة) = مشتريات + تحويلات واردة - صادرة - مرتجعات - مباع (بعد خصم مرتجعات المبيعات) - وهو المخزون الفعلي المتبقي للمشروع وإجمالي قيمته.",
                 )}
               </p>
               <DataTableContainer maxHeight="70vh">
-                <DataTable className="min-w-[1200px]" stickyHeader>
+                <DataTable className="min-w-[1300px]" stickyHeader>
                   <Table.Thead className={`${dataTableHeadClassName} z-10`}>
                     <Table.Tr>
                       <Table.Th>{translate("Product", "المنتج")}</Table.Th>
@@ -145,9 +148,10 @@ export default function PucBalancesTab() {
                       <Table.Th className="text-end">{translate("In", "وارد")}</Table.Th>
                       <Table.Th className="text-end">{translate("Out", "صادر")}</Table.Th>
                       <Table.Th className="text-end">{translate("Returned", "مرتجع")}</Table.Th>
-                      <Table.Th className="text-end">{translate("Closing qty", "رصيد آخر")}</Table.Th>
+                      <Table.Th className="text-end">{translate("Sold", "مباع")}</Table.Th>
+                      <Table.Th className="text-end">{translate("Remaining qty", "الكمية المتبقية")}</Table.Th>
                       <Table.Th className="text-end">{translate("Avg unit cost", "متوسط التكلفة")}</Table.Th>
-                      <Table.Th className="text-end">{translate("Closing value", "القيمة")}</Table.Th>
+                      <Table.Th className="text-end">{translate("Total Inventory Amount", "إجمالي قيمة المخزون")}</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -167,6 +171,7 @@ export default function PucBalancesTab() {
                               )}
                             </span>
                           </Table.Td>
+                          <Table.Td className="text-end tabular-nums">{qty(summary.consumedQuantity)}</Table.Td>
                           <Table.Td colSpan={2} className="text-end text-xs text-gray-500">
                             {translate(`${summary.materials} material(s)`, `${summary.materials} مادة`)}
                           </Table.Td>
@@ -186,6 +191,7 @@ export default function PucBalancesTab() {
                               <Table.Td className="text-end tabular-nums">{qty(r.transferredInQuantity)}</Table.Td>
                               <Table.Td className="text-end tabular-nums">{qty(r.transferredOutQuantity)}</Table.Td>
                               <Table.Td className="text-end tabular-nums">{qty(r.returnedQuantity)}</Table.Td>
+                              <Table.Td className="text-end tabular-nums">{qty(r.consumedQuantity - r.consumedReturnQuantity)}</Table.Td>
                               <Table.Td className="text-end font-semibold tabular-nums">{qty(r.closingQuantity)}</Table.Td>
                               <Table.Td className="text-end tabular-nums">{money(r.averageUnitCost)}</Table.Td>
                               <Table.Td className="text-end tabular-nums">{money(r.closingValue)}</Table.Td>
@@ -196,8 +202,10 @@ export default function PucBalancesTab() {
                   </Table.Tbody>
                   <Table.Tfoot className="border-t-2 bg-gray-50 font-bold dark:bg-gray-800">
                     <Table.Tr>
-                      <Table.Td colSpan={10}>
-                        {translate("Total", "الإجمالي")} <span className="text-xs font-normal text-gray-500">({translate("PUC ledger", "رصيد الحساب")}: {money(data.totals.ledgerClosing)})</span>
+                      <Table.Td colSpan={8}>{translate("Total", "الإجمالي")}</Table.Td>
+                      <Table.Td className="text-end tabular-nums">{qty(data.totals.consumedQuantity)}</Table.Td>
+                      <Table.Td colSpan={2} className="text-end text-xs font-normal text-gray-500">
+                        {translate("PUC ledger", "رصيد الحساب")}: {money(data.totals.ledgerClosing)}
                       </Table.Td>
                       <Table.Td className="text-end tabular-nums">{money(data.totals.closingValue)}</Table.Td>
                     </Table.Tr>

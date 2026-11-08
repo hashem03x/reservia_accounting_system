@@ -70,7 +70,13 @@ export default function ProjectMaterialsSection({ projectId, reloadKey }: { proj
         <>
           <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             <Card label={translate("BOQ value (EGP)", "قيمة جدول الكميات (جنيه)")} value={money(data.totals.boqValue)} />
-            <Card label={translate("Purchased (actual)", "المشتريات (فعلي)")} value={money(data.totals.purchasedValue)} />
+            <Card label={translate("Purchased (actual)", "المشتريات (فعلي)")} value={money(data.totals.purchasedValue)} hint={qty(data.totals.purchasedQuantity)} />
+            <Card label={translate("Sold", "مباع")} value={money(data.totals.consumedValue)} hint={qty(data.totals.consumedQuantity)} />
+            <Card
+              label={translate("Total Inventory Amount", "إجمالي قيمة المخزون")}
+              value={money(data.totals.closingValue)}
+              hint={translate(`${qty(data.totals.closingQuantity)} remaining`, `${qty(data.totals.closingQuantity)} متبقي`)}
+            />
             <Card
               label={translate("Contribution (BOQ price - cost) x BOQ qty", "المساهمة (سعر جدول الكميات - التكلفة) × الكمية")}
               value={money(data.totals.contribution)}

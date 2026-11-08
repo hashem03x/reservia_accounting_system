@@ -23,6 +23,12 @@ export interface MaterialBalance {
   transferredOutValue: number;
   returnedQuantity: number;
   returnedValue: number;
+  // Consumed by a Sales Order (quantity/value actually sold from this project's PUC), and the
+  // portion a sales RETURN released back - see services/inventory/pucSalesConsumptionService.js.
+  consumedQuantity: number;
+  consumedValue: number;
+  consumedReturnQuantity: number;
+  consumedReturnValue: number;
   closingQuantity: number;
   closingValue: number;
   averageUnitCost: number | null;
@@ -49,11 +55,27 @@ export interface PucBalancesResult {
     project: PucBalanceRow["project"];
     materials: number;
     openingValue: number;
+    purchasedQuantity: number;
+    consumedQuantity: number;
+    consumedValue: number;
     closingValue: number;
+    closingQuantity: number;
     ledger: PucLedger;
     differenceToLedger: number | null;
   }[];
-  totals: { openingValue: number; purchasedValue: number; transferredInValue: number; transferredOutValue: number; returnedValue: number; closingValue: number; ledgerClosing: number };
+  totals: {
+    openingValue: number;
+    purchasedQuantity: number;
+    purchasedValue: number;
+    transferredInValue: number;
+    transferredOutValue: number;
+    returnedValue: number;
+    consumedQuantity: number;
+    consumedValue: number;
+    closingQuantity: number;
+    closingValue: number;
+    ledgerClosing: number;
+  };
 }
 
 export interface MaterialSource {
@@ -85,7 +107,11 @@ export interface ProjectMaterialBreakdown {
   ledger: PucLedger;
   materials: ProjectMaterial[];
   totals: {
+    purchasedQuantity: number;
     purchasedValue: number;
+    consumedQuantity: number;
+    consumedValue: number;
+    closingQuantity: number;
     closingValue: number;
     orderedAmount: number;
     boqValue: number;

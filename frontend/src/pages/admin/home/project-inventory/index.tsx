@@ -23,7 +23,12 @@ const sourceTypeColors: Record<string, string> = {
   warehouse: "cyan",
   project: "grape",
   "purchase-return": "red",
+  sale: "orange",
+  "sale-return": "teal",
 };
+
+// Rows that REDUCE this project's inventory (shown with a leading "-") vs. rows that increase it.
+const outflowSourceTypes = new Set(["purchase-return", "sale"]);
 
 // Project-oriented inventory view (docs section "Inventory / Warehouses - Detailed PUC and Raw
 // Materials Per Project"). Distinguishes physical inventory movements (this page, backed by
@@ -157,15 +162,12 @@ export default function ProjectInventory() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <InfoItem label={translate("Total Purchased Qty", "إجمالي الكمية المشتراة")} value={data.summary.totalQuantityPurchased.toLocaleString()} />
             <InfoItem label={translate("Total Returned Qty", "إجمالي الكمية المرتجعة")} value={data.summary.totalQuantityReturned.toLocaleString()} />
-            <InfoItem label={translate("Net Quantity", "الكمية الصافية")} value={data.summary.netQuantity.toLocaleString()} />
-            <InfoItem label={translate("Total Amount", "الإجمالي")} value={`${data.summary.totalAmount.toLocaleString()} ${translations.currency}`} />
+            <InfoItem label={translate("Total Sold Qty", "إجمالي الكمية المباعة")} value={(data.summary.quantityUsed ?? 0).toLocaleString()} />
+            <InfoItem label={translate("Remaining Qty", "الكمية المتبقية")} value={(data.summary.quantityRemaining ?? data.summary.netQuantity).toLocaleString()} />
           </div>
-          <p className="text-xs text-gray-400">
-            {translate(
-              "Quantity used/remaining is not tracked by any existing workflow and is not shown here.",
-              "الكمية المستخدمة/المتبقية غير مسجلة في أي سجل حالي ولا تُعرض هنا.",
-            )}
-          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <InfoItem label={translate("Total Inventory Amount", "إجمالي قيمة المخزون")} value={`${data.summary.totalAmount.toLocaleString()} ${translations.currency}`} />
+          </div>
 
           <hr />
 
@@ -197,11 +199,19 @@ export default function ProjectInventory() {
                     <Table.Td>{row.product?.model || row.product?.sku || "-"}</Table.Td>
                     <Table.Td>
                       <Badge size="sm" variant="light" color={sourceTypeColors[row.sourceType] || "gray"}>
-                        {row.sourceType === "purchase-return" ? translate("Return", "مرتجع") : translate("Purchase", "شراء")}
+                        {
+                          (
+                            {
+                              "purchase-return": translate("Return", "مرتجع"),
+                              sale: translate("Sold", "مباع"),
+                              "sale-return": translate("Sale Return", "مرتجع مبيعات"),
+                            } as Record<string, string>
+                          )[row.sourceType] || translate("Purchase", "شراء")
+                        }
                       </Badge>
                     </Table.Td>
-                    <Table.Td className={`text-right tabular-nums ${row.sourceType === "purchase-return" ? "text-red-600" : ""}`}>
-                      {row.sourceType === "purchase-return" ? "-" : ""}
+                    <Table.Td className={`text-right tabular-nums ${outflowSourceTypes.has(row.sourceType) ? "text-red-600" : ""}`}>
+                      {outflowSourceTypes.has(row.sourceType) ? "-" : ""}
                       {row.quantity.toLocaleString()}
                     </Table.Td>
                     <Table.Td className="text-right tabular-nums">{row.unitCost.toLocaleString()}</Table.Td>

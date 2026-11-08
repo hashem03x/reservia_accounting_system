@@ -310,15 +310,21 @@ async function getPucRawMaterialBalances({ project, product, warehouse, dateFrom
   if (kw) rows = rows.filter(r => [r.product?.title?.en, r.product?.title?.ar, r.product?.model, r.product?.sku, r.project.projectNumber].some(t => t && String(t).toLowerCase().includes(kw)));
   rows.sort((a, b) => String(a.project.projectNumber || '').localeCompare(String(b.project.projectNumber || '')) || String(a.product?.title?.en || '').localeCompare(String(b.product?.title?.en || '')));
 
-  // Per project: the allocated value of its materials beside its PUC - Raw Materials ledger.
+  // Per project: the allocated quantity/value of its materials, how much of it this project has
+  // actually sold (net of any sale returns), and what is left - beside its PUC - Raw Materials
+  // ledger.
   const perProject = new Map();
   for (const r of rows) {
     const id = String(r.project._id);
-    if (!perProject.has(id)) perProject.set(id, { project: r.project, materials: 0, openingValue: 0, closingValue: 0, closingQuantity: 0 });
+    if (!perProject.has(id)) perProject.set(id, { project: r.project, materials: 0, openingValue: 0, purchasedQuantity: 0, consumedQuantity: 0, consumedValue: 0, closingValue: 0, closingQuantity: 0 });
     const s = perProject.get(id);
     s.materials += 1;
     s.openingValue = round2(s.openingValue + r.openingValue);
+    s.purchasedQuantity = round4(s.purchasedQuantity + r.purchasedQuantity);
+    s.consumedQuantity = round4(s.consumedQuantity + r.consumedQuantity - r.consumedReturnQuantity);
+    s.consumedValue = round2(s.consumedValue + r.consumedValue - r.consumedReturnValue);
     s.closingValue = round2(s.closingValue + r.closingValue);
+    s.closingQuantity = round4(s.closingQuantity + r.closingQuantity);
   }
   const projectSummaries = [...perProject.values()].map(s => {
     const led = ledger.byProject.get(String(s.project._id)) || { opening: 0, debit: 0, credit: 0, closing: 0 };
@@ -332,6 +338,7 @@ async function getPucRawMaterialBalances({ project, product, warehouse, dateFrom
   });
 
   const sum = key => round2(rows.reduce((t, r) => t + (r[key] || 0), 0));
+  const sumQty = key => round4(rows.reduce((t, r) => t + (r[key] || 0), 0));
   return {
     account: ledger.account,
     dataQuality: await pucDataQuality({ dateTo: to }),
@@ -340,10 +347,15 @@ async function getPucRawMaterialBalances({ project, product, warehouse, dateFrom
     projects: projectSummaries,
     totals: {
       openingValue: sum('openingValue'),
+      purchasedQuantity: sumQty('purchasedQuantity'),
       purchasedValue: sum('purchasedValue'),
       transferredInValue: sum('transferredInValue'),
       transferredOutValue: sum('transferredOutValue'),
       returnedValue: sum('returnedValue'),
+      // Net sold (consumed by a Sales Order, less any sale-return release) - quantity and value.
+      consumedQuantity: round4(sumQty('consumedQuantity') - sumQty('consumedReturnQuantity')),
+      consumedValue: round2(sum('consumedValue') - sum('consumedReturnValue')),
+      closingQuantity: sumQty('closingQuantity'),
       closingValue: sum('closingValue'),
       ledgerClosing: round2(projectSummaries.reduce((t, s) => t + s.ledger.closing, 0)),
     },
@@ -470,7 +482,12 @@ async function getProjectMaterialBreakdown(projectId) {
     ledger: ledger.byProject.get(String(project._id)) || { opening: 0, debit: 0, credit: 0, closing: 0 },
     materials,
     totals: {
+      purchasedQuantity: round4(materials.reduce((t, m) => t + m.purchasedQuantity, 0)),
       purchasedValue: round2(materials.reduce((t, m) => t + m.purchasedValue, 0)),
+      // Net sold (consumed by a Sales Order, less any sale-return release).
+      consumedQuantity: round4(materials.reduce((t, m) => t + m.consumedQuantity - m.consumedReturnQuantity, 0)),
+      consumedValue: round2(materials.reduce((t, m) => t + m.consumedValue - m.consumedReturnValue, 0)),
+      closingQuantity: round4(materials.reduce((t, m) => t + m.closingQuantity, 0)),
       closingValue: round2(materials.reduce((t, m) => t + m.closingValue, 0)),
       orderedAmount: round2(materials.reduce((t, m) => t + (m.ordered?.amount || 0), 0)),
       // BOQ value (EGP) of the lines whose price could be converted, and the contribution of the

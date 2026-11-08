@@ -26,7 +26,7 @@ export interface ProjectInventoryRow {
     sku: string | null;
     classification: "product" | "service";
   } | null;
-  sourceType: "purchase-order" | "warehouse" | "project" | "purchase-return";
+  sourceType: "purchase-order" | "warehouse" | "project" | "purchase-return" | "sale" | "sale-return";
   quantity: number;
   unitCost: number;
   amount: number;
