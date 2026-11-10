@@ -79,6 +79,19 @@ exports.SYSTEMS = {
 // for a placeholder system should pass this.
 exports.DEFAULT_PLACEHOLDER_ROLE = 'MEMBER';
 
+// The role that OWNS each system - the one whose holders can use every function of it (CRM: MD-only
+// targets, spend, archive, stage overrides, integration keys; Commercial: MD final sign-off).
+// Single source of truth for (a) the "never remove the last owner" lock-out guard
+// (controller/portal/platformAdminController.js) and (b) the platform-administrator rule of
+// scripts/restoreSystemAccess.js. Only systems with a real role vocabulary have one.
+exports.SYSTEM_OWNER_ROLES = { CRM: 'md', COMMERCIAL: 'md' };
+
+// Historical placeholder role stored while a system was still `implemented: false` with roles
+// ['MEMBER'] (CRM until 29 Oct 2026, Commercial until 7 Nov 2026, Website until 8 Nov 2026). It
+// only ever meant "has a membership" - it carries NO permission level and is not the same thing as
+// Commercial's lower-case 'member' role. Never mapped to a real role automatically.
+exports.LEGACY_PLACEHOLDER_ROLE = 'MEMBER';
+
 exports.isValidSystemId = id => exports.SYSTEM_IDS.includes(id);
 
 exports.isValidRoleForSystem = (systemId, role) => {

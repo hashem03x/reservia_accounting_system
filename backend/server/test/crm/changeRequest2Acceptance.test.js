@@ -792,11 +792,11 @@ maybeTest('Phase 0 - restoreSystemAccess: read-only diagnosis names the removing
   console.log = () => {};
   try {
     const dry = await restoreSystemAccess({ connect: false, argv: ['node', 'x', `--email=${mdUser.email}`] });
-    assert.deepEqual(dry.plan.map(p => `${p.system}:${p.role}`), ['CRM:md', 'COMMERCIAL:md']);
+    assert.deepEqual(dry.plan.items.filter(p => p.action === 'add' || p.action === 'set').map(p => `${p.system}:${p.role}`), ['CRM:md', 'COMMERCIAL:md']);
     assert.equal(dry.applied, false);
     assert.equal((await User.findById(mdUser._id).lean()).systemMemberships.length, 2, 'read-only run changed nothing');
 
-    const applied = await restoreSystemAccess({ connect: false, argv: ['node', 'x', `--email=${mdUser.email}`, '--apply', `--actor-email=${admin.email}`] });
+    const applied = await restoreSystemAccess({ connect: false, argv: ['node', 'x', `--email=${mdUser.email}`, '--apply', `--actor-email=${admin.email}`, `--confirm-db=${mongoose.connection.db.databaseName}`] });
     assert.equal(applied.applied, true);
   } finally {
     console.log = quiet;

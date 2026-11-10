@@ -22,6 +22,15 @@ const websitePageSchema = new Schema(
     pageType: { type: String, enum: ['managed', 'legacy'], default: 'managed' },
     parentSlug: { type: String, default: null, trim: true },
     sortOrder: { type: Number, default: 0 },
+    // Which language versions of this page exist (SEO brief 2.2). Arabic is the site's default
+    // language; a page without an English version simply omits 'en' - hreflang alternates are
+    // only ever generated between languages listed here (utils/website/seoResolver.js), never
+    // assumed. Existing pages default to both, which is what the live site has today.
+    locales: {
+      type: [{ type: String, enum: ['ar', 'en'] }],
+      default: ['ar', 'en'],
+      validate: { validator: v => Array.isArray(v) && v.length > 0, message: 'A page needs at least one language.' },
+    },
     seo: {
       titleEn: { type: String, trim: true, maxlength: 70, default: '' },
       titleAr: { type: String, trim: true, maxlength: 70, default: '' },
@@ -32,6 +41,21 @@ const websitePageSchema = new Schema(
         publicId: { type: String, default: null },
       },
       noindex: { type: Boolean, default: false },
+      // SEO brief 2.1-2.6. Every field below is OPTIONAL and empty by default: an empty field
+      // means "use the generated default" (seoResolver.js computes defaults at read time and
+      // never writes them back), so a value an editor typed is never overwritten automatically.
+      nofollow: { type: Boolean, default: false },
+      // '' = self-referencing canonical. Otherwise an absolute https URL or a site path.
+      canonicalEn: { type: String, trim: true, maxlength: 500, default: '' },
+      canonicalAr: { type: String, trim: true, maxlength: 500, default: '' },
+      ogTitleEn: { type: String, trim: true, maxlength: 95, default: '' },
+      ogTitleAr: { type: String, trim: true, maxlength: 95, default: '' },
+      ogDescriptionEn: { type: String, trim: true, maxlength: 200, default: '' },
+      ogDescriptionAr: { type: String, trim: true, maxlength: 200, default: '' },
+      twitterCard: { type: String, enum: ['', 'summary', 'summary_large_image'], default: '' },
+      breadcrumbLabelEn: { type: String, trim: true, maxlength: 60, default: '' },
+      breadcrumbLabelAr: { type: String, trim: true, maxlength: 60, default: '' },
+      showBreadcrumbs: { type: Boolean, default: true },
     },
     status: { type: String, enum: ['never_published', 'published', 'unpublished'], default: 'never_published' },
     publishedAt: { type: Date, default: null },

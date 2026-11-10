@@ -5,7 +5,7 @@ const PlatformAuditLog = require('../../models/platformAuditLogModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { forgotPassword } = require('../user/authController');
-const { SYSTEMS, isValidSystemId, isValidRoleForSystem } = require('../../utils/systemsRegistry');
+const { SYSTEMS, isValidSystemId, isValidRoleForSystem, SYSTEM_OWNER_ROLES } = require('../../utils/systemsRegistry');
 
 // Central Business Portal - platform-wide administration (docs section "Central System and Role
 // Administration"). Every endpoint here is mounted behind `requirePlatformAdmin`
@@ -18,7 +18,8 @@ const SAFE_FIELDS = '-password -passwordResetCode -passwordResetCodeExpires';
 
 // Roles that only ever have to exist somewhere for the system to stay fully usable (MD-only
 // targets/spend/archive/stage override/integration keys in CRM; MD final sign-off in Commercial).
-const SOLE_AUTHORITY_ROLES = { CRM: 'md', COMMERCIAL: 'md' };
+// Defined once in the registry (also used by scripts/restoreSystemAccess.js).
+const SOLE_AUTHORITY_ROLES = SYSTEM_OWNER_ROLES;
 
 /**
  * @description  The systems registry (ids, names, implemented flag, valid roles) - so the admin UI

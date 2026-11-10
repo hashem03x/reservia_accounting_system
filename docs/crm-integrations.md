@@ -302,9 +302,12 @@ or dry-run unless `--apply` is given.
 ```bash
 cd backend
 
-# 0. MD access (item 0): diagnose, then restore CRM md + Commercial md from the audit trail.
+# 0. MD access (item 0): diagnose (read-only), then repair. Roles are resolved by the documented
+#    rules in scripts/restoreSystemAccess.js - the legacy placeholder "MEMBER" is never copied; a
+#    platform administrator holding ERP admin gets each system's owner role (CRM md, COMMERCIAL md);
+#    HR is never granted. --confirm-db must name the database the dry run printed.
 npm run db:restore-system-access -- --email=<MD email>
-npm run db:restore-system-access -- --email=<MD email> --apply --actor-email=<platform admin email>
+npm run db:restore-system-access -- --email=<MD email> --apply --actor-email=<platform admin email> --confirm-db=<database name>
 
 # 1. Data migration: follow-up dates -> calendar dates; backfill first replies from history.
 npm run db:migrate-crm-cr2

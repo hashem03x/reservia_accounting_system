@@ -36,14 +36,16 @@ type AuditEntry = { _id: string; action: string; createdAt: string; actorName: s
 // the server; and the only way to get a save through (e.g. while granting Website access) was to
 // switch CRM/Commercial off - which removed them. Now:
 //   1. roles come from the server's registry (GET admin/platform/systems), never a local copy;
-//   2. a stored role is always kept as an option, so it can never display blank or be lost;
+//   2. a stored role that is NOT valid any more (the legacy placeholder "MEMBER", or a missing role
+//      written outside this screen) is flagged on its row and must be replaced with a real role
+//      before saving - it is never offered as a choice, because the server rejects it, and that
+//      rejection is exactly what pushed the 8 Nov save into removing CRM/Commercial;
 //   3. a save that would remove or deactivate any existing access must be confirmed explicitly,
 //      naming exactly what will be lost (and the server refuses to remove the last CRM/Commercial MD).
 type RegistrySystem = { id: SystemId; roles: string[]; implemented: boolean };
 const FALLBACK_ROLES: Partial<Record<SystemId, string[]>> = { ERP: ["admin", "moderator", "operator"] };
-function roleOptionsFor(systemId: SystemId, registry: RegistrySystem[], current?: string): string[] {
-  const roles = registry.find(r => r.id === systemId)?.roles || FALLBACK_ROLES[systemId] || [];
-  return current && !roles.includes(current) ? [current, ...roles] : roles;
+function roleOptionsFor(systemId: SystemId, registry: RegistrySystem[]): string[] {
+  return registry.find(r => r.id === systemId)?.roles || FALLBACK_ROLES[systemId] || [];
 }
 
 // Central Business Portal - a single user's cross-system access: basic details, activation,
@@ -173,7 +175,9 @@ function SystemsEditor({ user, onUpdated }: { user: PlatformUser; onUpdated: () 
       if (!row.isActive) return translate(`${m.system} access deactivated`, `إيقاف صلاحية ${m.system}`);
       return translate(`${m.system} role changed from "${m.role}" to "${row.role}"`, `تغيير دور ${m.system} من "${m.role}" إلى "${row.role}"`);
     });
-  const missingRole = (Object.keys(rows) as SystemId[]).filter(id => rows[id].granted && !rows[id].role);
+  // A granted row whose role is empty or not one of the system's real roles blocks saving.
+  const isValidRole = (id: SystemId, role: string) => !!role && (registry.length === 0 || roleOptionsFor(id, registry).includes(role));
+  const missingRole = (Object.keys(rows) as SystemId[]).filter(id => rows[id].granted && !isValidRole(id, rows[id].role));
 
   function requestSave() {
     if (losses.length) openConfirm();
@@ -229,10 +233,16 @@ function SystemsEditor({ user, onUpdated }: { user: PlatformUser; onUpdated: () 
                   <Select
                     size="xs"
                     disabled={!rows[s.id].granted}
-                    data={roleOptionsFor(s.id, registry, rows[s.id].role)}
-                    value={rows[s.id].role || null}
+                    data={roleOptionsFor(s.id, registry)}
+                    value={isValidRole(s.id, rows[s.id].role) ? rows[s.id].role : null}
                     placeholder={translate("Choose a role", "اختر دوراً")}
-                    error={rows[s.id].granted && !rows[s.id].role ? translate("Required", "مطلوب") : undefined}
+                    error={
+                      !rows[s.id].granted || isValidRole(s.id, rows[s.id].role)
+                        ? undefined
+                        : rows[s.id].role
+                          ? translate(`Stored role "${rows[s.id].role}" is not valid - choose one`, `الدور المحفوظ "${rows[s.id].role}" غير صالح - اختر دوراً`)
+                          : translate("Required", "مطلوب")
+                    }
                     onChange={v => setRows(r => ({ ...r, [s.id]: { ...r[s.id], role: v || r[s.id].role } }))}
                     allowDeselect={false}
                   />
