@@ -110,7 +110,11 @@ maybeTest('getTargetsBlock: actual funnel counts match a hand count; a field wit
   assert.equal(result.enquiries.target, 2);
   assert.equal(result.qualified.actual, 2, 'both L1 and L2 reached qualified in January');
   assert.equal(result.qualified.target, 2);
-  assert.equal(result.surveys.actual, 0);
+  // Change Request 2, item 1: L2 went Qualified -> Proposal sent without a Site survey event
+  // (legacy data from before strict progression). It still passed that point of the funnel, so
+  // it counts at Surveys too - Proposals 1 / Surveys 0 ("Qualified 0, Surveys 1" in reverse) can
+  // no longer be reported.
+  assert.equal(result.surveys.actual, 1, 'L2 skipped site_survey on its way to proposal_sent, so it still counts as having reached it');
   assert.equal(result.surveys.target, null, 'no survey target was ever set - null, not 0');
   assert.equal(result.proposals.actual, 1, 'only L2 reached proposal_sent');
   assert.equal(result.signed.actual, 1, 'only L2 reached won');
@@ -164,7 +168,13 @@ maybeTest('getSpeedBlock: SLA breach and average WORKING hours to first reply ma
   const result = await reportService.getSpeedBlock({ year: 2026, month: 11, ownerId: String(OWNER_A) });
   assert.equal(result.leadsPastSlaLimit, 1);
   assert.equal(result.avgHoursToFirstReply, 4);
-  assert.equal(result.pctWithinSla, 100);
+  // Change Request 2, item 3: the unreplied lead is already past its deadline - a definite SLA
+  // miss - so it is in the denominator: 1 of 2 known outcomes met the SLA. (Previously it was
+  // ignored and this read 100%, flattering a team that had not answered half its leads.)
+  assert.equal(result.pctWithinSla, 50);
+  assert.equal(result.firstReply.repliedCount, 1);
+  assert.equal(result.firstReply.overdueUnrepliedCount, 1);
+  assert.equal(result.firstReply.slaSampleSize, 2);
 });
 
 maybeTest('getSpeedBlock: a reply that merely spans a weekend is never reported as a slow reply', async () => {

@@ -1,5 +1,16 @@
 const { Schema, model } = require('mongoose');
-const { STAGES, SEGMENTS, CHANNELS, LOST_REASONS } = require('../../utils/crm/constants');
+const { STAGES, SEGMENTS, CHANNELS, LOST_REASONS, FIRST_REPLY_VIA } = require('../../utils/crm/constants');
+const { toDateOnly } = require('../../utils/crm/businessDate');
+
+// Change Request 2, item 2: a follow-up is a CALENDAR DATE, stored as 'YYYY-MM-DD'. Legacy
+// documents still hold a BSON Date (written as `new Date('2026-11-12')`, i.e. UTC midnight); this
+// caster converts those to the Cairo calendar day on read, so they display correctly even before
+// scripts/migrateCrmFollowUpDates.js rewrites them. Invalid input throws -> a normal CastError.
+function castFollowUpDate(value) {
+  const dateOnly = toDateOnly(value);
+  if (dateOnly === undefined) throw new Error('Follow-up date must be a calendar date (YYYY-MM-DD).');
+  return dateOnly;
+}
 
 // Reservia CRM - a Lead (Developer Brief section 4B "Lead management" + section 7 "Rules that
 // must not change"). One document per real customer enquiry, keyed by its normalized phone number
@@ -37,7 +48,11 @@ const leadSchema = new Schema(
     // optional before that (an early-stage lead may have no value estimate yet).
     valueEgp: { type: Number, min: 0, default: null },
     owner: { type: Schema.Types.ObjectId, ref: 'User', default: null },
-    followUpAt: { type: Date, default: null },
+    // Optional contact email (Change Request 2: CSV import and ad lead forms deliver one).
+    email: { type: String, trim: true, lowercase: true, maxlength: 200, default: null },
+    // Calendar date 'YYYY-MM-DD' (Change Request 2, item 2) - see castFollowUpDate above. The
+    // field name is unchanged for API backward compatibility.
+    followUpAt: { type: String, cast: castFollowUpDate, default: null },
     // First-touch website attribution (brief: "Website campaign and landing-page attribution") -
     // captured once at creation from the lead-capture payload, never overwritten by a later
     // channel (e.g. a later WhatsApp message on the same phone keeps the website's own first-touch
@@ -49,6 +64,19 @@ const leadSchema = new Schema(
     // Change Request 1, Feature 1: utm_content was captured by the website's own 30-day
     // first-touch storage already (hooks/useUtmParams.ts) but was never persisted onto the lead.
     utmContent: { type: String, trim: true, maxlength: 150, default: null },
+    // Change Request 2, item 7: utm_term was never captured.
+    utmTerm: { type: String, trim: true, maxlength: 150, default: null },
+    // Human-readable campaign name, whatever channel delivered it (website utm_campaign, Meta
+    // campaign_name, a CSV "Campaign" column, Google Ads campaign id). The raw utm* fields above are
+    // kept verbatim alongside it; this is the one field the UI and reports show as "Campaign".
+    campaign: { type: String, trim: true, maxlength: 200, default: null },
+    // Ad-platform lead-form attribution (Change Request 2, items 9-11) - all optional, set only by
+    // the Meta/TikTok/Google Ads intake paths, first-touch like the utm* fields.
+    adSetName: { type: String, trim: true, maxlength: 200, default: null },
+    adName: { type: String, trim: true, maxlength: 200, default: null },
+    adFormId: { type: String, trim: true, maxlength: 100, default: null },
+    adPlatform: { type: String, trim: true, maxlength: 40, default: null },
+    externalLeadId: { type: String, trim: true, maxlength: 150, default: null },
     landingPage: { type: String, trim: true, maxlength: 300, default: null },
     // The first-touch referrer (document.referrer at first arrival) - only meaningful when there
     // is no UTM at all, to distinguish Organic (arrived via a search engine) from Direct (typed
@@ -72,6 +100,15 @@ const leadSchema = new Schema(
     // acknowledgement does not count as the first human reply").
     replyDueAt: { type: Date, required: true },
     firstReplyAt: { type: Date, default: null },
+    // Change Request 2, item 3: which qualifying event set firstReplyAt (the first move out of New,
+    // or the first logged call / WhatsApp / email) - see services/crm/firstReplyService.js.
+    firstReplyVia: { type: String, enum: [...FIRST_REPLY_VIA, null], default: null },
+    // Change Request 2, items 3 + 12: when the customer ORIGINALLY submitted the enquiry (ad lead
+    // form timestamp, the CSV's original timestamp). The SLA clock (replyDueAt) and "hours to
+    // first reply" are measured from this, never from the moment a CSV happened to be imported.
+    // Equal to createdAt for leads entered live. Absent on legacy leads - read it through
+    // services/crm/firstReplyService.js#leadOriginAt, which falls back to createdAt.
+    submittedAt: { type: Date, default: null },
 
     // Amplitude correlation id (brief section 4H: "safe, pseudonymous identifiers... only") - a
     // random, non-personal device id. For a website-originated lead this IS the visitor's own
@@ -105,6 +142,7 @@ leadSchema.index({ owner: 1 });
 leadSchema.index({ segment: 1 });
 leadSchema.index({ archived: 1 });
 leadSchema.index({ createdAt: -1 });
+leadSchema.index({ submittedAt: -1 });
 // Supports the dashboard's "search by name, phone or Reservia reference code" (brief section 4A).
 leadSchema.index({ name: 'text', refCode: 'text' });
 

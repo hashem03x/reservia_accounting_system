@@ -242,6 +242,11 @@ export default function ImportWizardModal({
               <div className="flex flex-wrap gap-4 text-sm">
                 <span className="text-green-700">{translate("Imported", "تم استيراد")}: <b>{result.created.length}</b></span>
                 <span className="text-red-600">{translate("Failed", "فشل")}: <b>{result.failed.length}</b></span>
+                {!!result.skipped?.length && (
+                  <span className="text-gray-600" title={translate("These exact submissions were imported earlier - nothing was changed.", "تم استيراد هذه الإدخالات من قبل - لم يتغير شيء.")}>
+                    {translate("Already imported (skipped)", "مستورد مسبقاً (تم التخطي)")}: <b>{result.skipped.length}</b>
+                  </span>
+                )}
               </div>
 
               {result.failed.length > 0 && (

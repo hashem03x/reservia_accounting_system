@@ -19,6 +19,7 @@ const CHANNEL_LABELS: Record<CrmChannel, { en: string; ar: string }> = {
   whatsapp: { en: "WhatsApp", ar: "واتساب" },
   web_form: { en: "Website form", ar: "نموذج الموقع" },
   landing_page: { en: "Landing page", ar: "صفحة هبوط" },
+  ad_lead_form: { en: "Ad lead form (Meta / TikTok / Google)", ar: "نموذج إعلان (ميتا / تيك توك / جوجل)" },
 };
 
 export default function LeadModal({
@@ -34,6 +35,8 @@ export default function LeadModal({
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [campaign, setCampaign] = useState("");
   const [channel, setChannel] = useState<CrmChannel | "">("");
   const [segment, setSegment] = useState<CrmSegment | "">("");
   const [source, setSource] = useState<CrmSource | "">("");
@@ -45,6 +48,8 @@ export default function LeadModal({
   function reset() {
     setName("");
     setPhone("");
+    setEmail("");
+    setCampaign("");
     setChannel("");
     setSegment("");
     setSource("");
@@ -68,6 +73,8 @@ export default function LeadModal({
         data: {
           name: name || undefined,
           phone,
+          email: email.trim() || undefined,
+          campaign: campaign.trim() || undefined,
           channel,
           segment: segment || undefined,
           source: source || undefined,
@@ -98,6 +105,13 @@ export default function LeadModal({
           placeholder="01012345678"
           required
         />
+        <TextInput
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          label={translate("Email (optional)", "البريد الإلكتروني (اختياري)")}
+          placeholder="name@example.com"
+        />
         <Select
           value={channel || null}
           onChange={(v) => setChannel((v as CrmChannel) || "")}
@@ -124,6 +138,13 @@ export default function LeadModal({
           placeholder={translate("Where did this lead come from?", "من أين جاء هذا العميل المحتمل؟")}
           required={channel !== "whatsapp"}
           clearable={channel === "whatsapp"}
+        />
+        <TextInput
+          value={campaign}
+          onChange={(e) => setCampaign(e.target.value)}
+          label={translate("Campaign (optional)", "الحملة (اختياري)")}
+          placeholder={translate("e.g. Villas November", "مثال: فلل نوفمبر")}
+          maxLength={200}
         />
         <Select
           value={governorate || null}

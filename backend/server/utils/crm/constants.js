@@ -13,7 +13,30 @@ const SEGMENTS = ['villa', 'compound', 'farm', 'oil_gas', 'factory', 'services',
 // Acquisition channel - how the enquiry physically arrived. Covers both the manual "New lead" form
 // (phone/walk_in/dealer/referral/event/outreach/email/whatsapp) and the automated intake paths
 // (web_form from the website's lead-capture endpoint, landing_page from a campaign page).
-const CHANNELS = ['phone', 'walk_in', 'dealer', 'referral', 'event', 'outreach', 'email', 'whatsapp', 'web_form', 'landing_page'];
+// 'ad_lead_form' (Change Request 2, items 9-11): an ad platform's own instant/lead form (Meta Lead
+// Ads, TikTok Lead Generation, Google Ads lead form) - the platform itself is the lead's SOURCE.
+const CHANNELS = ['phone', 'walk_in', 'dealer', 'referral', 'event', 'outreach', 'email', 'whatsapp', 'web_form', 'landing_page', 'ad_lead_form'];
+
+// Change Request 2, item 6: the five acquisition "doors" the unified intake endpoint accepts
+// (POST /api/v1/crm/integrations/:channel/leads), each with its own API key, mapped to the lead
+// channel and the fixed SOURCES value it produces. `source: null` means "resolved per lead"
+// (website -> UTM rules in sourceNormalization.js; whatsapp -> Ref code, else WhatsApp Direct).
+const INTEGRATION_CHANNELS = {
+  website: { leadChannel: 'web_form', source: null, label: 'Website form' },
+  whatsapp: { leadChannel: 'whatsapp', source: null, label: 'WhatsApp' },
+  meta: { leadChannel: 'ad_lead_form', source: 'Meta Ads', label: 'Meta Lead Ads' },
+  tiktok: { leadChannel: 'ad_lead_form', source: 'TikTok', label: 'TikTok Lead Generation' },
+  google_ads: { leadChannel: 'ad_lead_form', source: 'Google Ads', label: 'Google Ads lead form' },
+};
+const INTEGRATION_CHANNEL_IDS = Object.keys(INTEGRATION_CHANNELS);
+
+// Change Request 2, item 3 - what counts as a first reply: the first move out of New, or the first
+// logged call, WhatsApp message or email, whichever is EARLIEST. These are the only values
+// Lead.firstReplyVia may hold (services/crm/firstReplyService.js).
+const FIRST_REPLY_VIA = ['stage_change', 'call', 'whatsapp_out', 'email'];
+// Activity types that count as a human reply. `whatsapp_in` (the customer's own message), `note`
+// and `system` (automated) never do.
+const FIRST_REPLY_ACTIVITY_TYPES = ['call', 'email', 'whatsapp_out'];
 
 // Lost reasons (ported verbatim from the reference sample's LOST list).
 const LOST_REASONS = [
@@ -77,6 +100,12 @@ const GOVERNORATE_NAMES_EN = GOVERNORATES.map(g => g.en);
 // shows 1,500 EGP, ignores stage weights. Fix: weighted value"). Won/lost are deliberately absent
 // - Won is already-realized revenue, not a forecast, and Lost contributes nothing; "weighted
 // pipeline" only ever concerns the six open, still-uncertain stages.
+//
+// Change Request 2, item 4: this object is THE single source of truth for stage probabilities.
+// The API returns it with every pipeline payload (`probability` per stage) so the Dashboard and the
+// Pipeline board print the exact numbers used in the calculation - the frontend never keeps its
+// own copy. services/crm/pipelineValuation.js refuses to silently treat a missing open-stage
+// weight as 0 (see assertStageWeightsConfigured).
 const STAGE_WEIGHTS = {
   new: 0.05,
   contacted: 0.1,
@@ -125,4 +154,8 @@ module.exports = {
   PAYMENT_STATUSES,
   QUOTATION_STATUSES,
   STAGE_WEIGHTS,
+  INTEGRATION_CHANNELS,
+  INTEGRATION_CHANNEL_IDS,
+  FIRST_REPLY_VIA,
+  FIRST_REPLY_ACTIVITY_TYPES,
 };

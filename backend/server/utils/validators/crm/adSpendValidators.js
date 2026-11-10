@@ -7,7 +7,12 @@ exports.setAdSpendValidator = [
   check('segment').optional({ nullable: true }).isIn(FORM_SEGMENTS).withMessage('Invalid segment'),
   check('year').isInt({ min: 2020, max: 2100 }).withMessage('Invalid year'),
   check('month').isInt({ min: 1, max: 12 }).withMessage('Invalid month'),
-  check('amountEgp').isFloat({ min: 0 }).withMessage('amountEgp must be a non-negative number'),
+  check('amountEgp').isFloat({ min: 0 }).withMessage('Planned amount (EGP) must be a non-negative number.'),
+  check('actualAmountEgp').optional({ nullable: true, checkFalsy: false }).custom(value => {
+    if (value === null || value === '') return true;
+    if (Number.isNaN(Number(value)) || Number(value) < 0) throw new Error('Actual amount (EGP) must be a non-negative number, or empty if not known yet.');
+    return true;
+  }),
   validatorMiddleware,
 ];
 

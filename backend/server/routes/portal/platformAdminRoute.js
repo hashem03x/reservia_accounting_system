@@ -10,6 +10,7 @@ const {
   updatePlatformAdmin,
   resetUserPassword,
   listAuditLog,
+  listSystems,
 } = require('../../controller/portal/platformAdminController');
 
 const router = Router();
@@ -22,6 +23,7 @@ const router = Router();
 router.use(authController.protect, requirePlatformAdmin);
 
 router.get('/audit-log', listAuditLog);
+router.get('/systems', listSystems);
 
 router.route('/users').get(listUsers).post(createUser);
 router.route('/users/:id').get(getUserDetail).patch(updateUser);

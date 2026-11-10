@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDisclosure } from "@mantine/hooks";
 import { MonthPickerInput } from "@mantine/dates";
-import { Select, Badge, Table, Button } from "@mantine/core";
+import { Select, Badge, Table, Button, Tooltip } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import { useSystemAccess } from "@/context/SystemAccessContext";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
@@ -48,13 +48,45 @@ function TargetTile({ label, actual, target, translate }: { label: string; actua
 // (components/ui/kpi-card.tsx) has a min-h-[104px] sized for the main ERP's spacious financial
 // cards; reusing it here is what made the Dashboard taller than one laptop screen (acceptance
 // report section 4: "no vertical scrolling"). This one is label + value only, no min-height.
-function StatTile({ label, value }: { label: string; value: ReactNode }) {
-  return (
+function StatTile({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
+  const tile = (
     <div className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-gray-100 p-2">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">{label}</span>
+      <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-gray-500">
+        {label}
+        {hint && <outlineIcons.InfoCircle size={11} aria-hidden />}
+      </span>
       <span className="text-base font-semibold text-gray-800">{value}</span>
     </div>
   );
+  if (!hint) return tile;
+  return (
+    <Tooltip label={hint} multiline w={260} withArrow>
+      {/* Keyboard users reach the explanation too, not only mouse hover. */}
+      <div tabIndex={0} aria-label={`${label}: ${hint}`}>
+        {tile}
+      </div>
+    </Tooltip>
+  );
+}
+
+/** "(n=3)" beside a rate/average, so a tiny sample never reads as a confident figure. */
+function SampleSize({ n }: { n: number }) {
+  return <span className="ms-1 text-[10px] font-normal text-gray-400">(n={n})</span>;
+}
+
+type Translate = (en: string, ar: string) => string;
+
+function spendBasisLabel(basis: "planned" | "actual" | "mixed" | null, translate: Translate) {
+  if (basis === "actual") return translate("Actual spend entered by the MD.", "الإنفاق الفعلي المُدخل من المدير العام.");
+  if (basis === "mixed") return translate("Actual spend where entered, planned budget for the other lines.", "الإنفاق الفعلي حيث أُدخل، والميزانية المخططة لباقي البنود.");
+  if (basis === "planned") return translate("Planned budget - no actual spend entered yet.", "الميزانية المخططة - لم يُدخل إنفاق فعلي بعد.");
+  return translate("No spend entered for this month.", "لا يوجد إنفاق مُدخل لهذا الشهر.");
+}
+
+function costHint(spend: number | null, count: number, translate: Translate) {
+  if (spend == null) return translate("Shown once spend is entered for this month.", "يظهر عند إدخال الإنفاق لهذا الشهر.");
+  if (count === 0) return translate("No leads yet this month - a cost per lead would be misleading.", "لا يوجد عملاء هذا الشهر بعد - تكلفة العميل ستكون مضللة.");
+  return translate(`Spend / ${count}`, `الإنفاق / ${count}`);
 }
 
 export default function CrmDashboardPage() {
@@ -148,6 +180,13 @@ export default function CrmDashboardPage() {
               <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
                 {translate("Targets", "الأهداف")}
               </h3>
+              {!data.targets.targetSet && (
+                <p className="mb-1.5 text-xs text-amber-700">
+                  {role === "md"
+                    ? translate("No targets have been entered for this month - use Targets & Spend to add them.", "لم تُدخل أهداف لهذا الشهر - استخدم الأهداف والإنفاق لإضافتها.")
+                    : translate("No targets have been entered for this month yet.", "لم تُدخل أهداف لهذا الشهر بعد.")}
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
                 <TargetTile label={translate("Enquiries", "الاستفسارات")} actual={data.targets.enquiries.actual} target={data.targets.enquiries.target} translate={translate} />
                 <TargetTile label={translate("Qualified", "مؤهل")} actual={data.targets.qualified.actual} target={data.targets.qualified.target} translate={translate} />
@@ -164,39 +203,92 @@ export default function CrmDashboardPage() {
             </section>
 
             <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
-              {/* Pipeline by stage */}
+              {/* Pipeline by stage - Change Request 2, item 4: the FULL value and the WEIGHTED value
+                  are two separate, labelled figures, and the probability behind every weighted
+                  row is printed beside it (straight from the API - never a frontend copy). */}
               <section className="rounded-lg border border-gray-100 p-2.5">
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold" style={{ color: TEAL }}>
-                    {translate("Pipeline by stage", "المسار حسب المرحلة")}
-                  </h3>
-                  <Badge color="teal" variant="light">
-                    {formatAmount(data.pipeline.totalWeightedValueEgp, translations.currency)}
-                  </Badge>
+                <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
+                  {translate("Pipeline by stage", "المسار حسب المرحلة")}
+                </h3>
+                <div className="mb-2 grid grid-cols-2 gap-2">
+                  <StatTile
+                    label={translate("Pipeline value", "قيمة المسار")}
+                    value={formatAmount(data.pipeline.totalValueEgp, translations.currency)}
+                    hint={translate("Full value of every open lead (not won, lost or archived).", "القيمة الكاملة لكل عميل مفتوح (غير مربوح أو خاسر أو مؤرشف).")}
+                  />
+                  <StatTile
+                    label={translate("Weighted value", "القيمة المرجحة")}
+                    value={formatAmount(data.pipeline.totalWeightedValueEgp, translations.currency)}
+                    hint={translate("Each open lead's value x the probability of its stage (table below).", "قيمة كل عميل مفتوح × احتمال مرحلته (الجدول أدناه).")}
+                  />
                 </div>
                 <Table verticalSpacing={2} fz="xs">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>{translate("Stage", "المرحلة")}</Table.Th>
+                      <Table.Th className="text-right">#</Table.Th>
+                      <Table.Th className="text-right">{translate("Prob.", "الاحتمال")}</Table.Th>
+                      <Table.Th className="text-right">{translate("Value", "القيمة")}</Table.Th>
+                      <Table.Th className="text-right">{translate("Weighted", "مرجح")}</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
                   <Table.Tbody>
                     {data.pipeline.stages.map(s => (
                       <Table.Tr key={s.stage}>
                         <Table.Td>{stageLabel(s.stage)}</Table.Td>
                         <Table.Td className="text-right">{s.count}</Table.Td>
-                        <Table.Td className="text-right text-gray-500">{formatAmount(s.weightedValueEgp, translations.currency)}</Table.Td>
+                        <Table.Td className="text-right text-gray-500">{s.probability != null ? `${Math.round(s.probability * 100)}%` : translate("not set", "غير محدد")}</Table.Td>
+                        <Table.Td className="text-right">{formatAmount(s.valueEgp, translations.currency)}</Table.Td>
+                        <Table.Td className="text-right text-gray-500">{s.weightedValueEgp != null ? formatAmount(s.weightedValueEgp, translations.currency) : "-"}</Table.Td>
                       </Table.Tr>
                     ))}
                   </Table.Tbody>
                 </Table>
+                {data.pipeline.unconfiguredStages?.length > 0 && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {translate("Some stages have no configured probability and are left out of the weighted value.", "بعض المراحل ليس لها احتمال محدد ولم تُحتسب في القيمة المرجحة.")}
+                  </p>
+                )}
               </section>
 
-              {/* Speed */}
+              {/* Speed - Change Request 2, item 3: every first-reply figure says what it counts. */}
               <section className="rounded-lg border border-gray-100 p-2.5">
                 <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
                   {translate("Speed", "السرعة")}
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
-                  <StatTile label={translate("Past SLA", "تجاوز الحد")} value={data.speed.leadsPastSlaLimit} />
+                  <StatTile
+                    label={translate("Past SLA", "تجاوز الحد")}
+                    value={data.speed.leadsPastSlaLimit}
+                    hint={translate("Open leads with no reply after 8 working hours.", "عملاء مفتوحون بلا رد بعد 8 ساعات عمل.")}
+                  />
                   <StatTile label={translate("No follow-up", "بدون متابعة")} value={data.speed.leadsWithNoFollowUpDate} />
-                  <StatTile label={translate("Avg hrs to reply", "متوسط ساعات الرد")} value={data.speed.avgHoursToFirstReply ?? "-"} />
-                  <StatTile label={translate("% within 8h", "% خلال 8 ساعات")} value={data.speed.pctWithinSla != null ? `${data.speed.pctWithinSla}%` : "-"} />
+                  <StatTile
+                    label={translate("Avg hrs to reply", "متوسط ساعات الرد")}
+                    value={
+                      <>
+                        {data.speed.avgHoursToFirstReply ?? "-"}
+                        <SampleSize n={data.speed.firstReply?.repliedCount ?? 0} />
+                      </>
+                    }
+                    hint={translate(
+                      "Working hours (Sun-Thu 09:00-18:00 Cairo) from the original enquiry to the first reply: the first move out of New, or the first logged call, WhatsApp or email - whichever came first.",
+                      "ساعات العمل (الأحد-الخميس 9-18 بتوقيت القاهرة) من وقت الاستفسار الأصلي حتى أول رد: أول نقل من مرحلة جديد، أو أول مكالمة أو واتساب أو بريد مسجل - أيها أسبق.",
+                    )}
+                  />
+                  <StatTile
+                    label={translate("% within 8h", "% خلال 8 ساعات")}
+                    value={
+                      <>
+                        {data.speed.pctWithinSla != null ? `${data.speed.pctWithinSla}%` : "-"}
+                        <SampleSize n={data.speed.firstReply?.slaSampleSize ?? 0} />
+                      </>
+                    }
+                    hint={translate(
+                      "Replied within 8 working hours, out of every lead whose outcome is known (replied, or unreplied and already past its deadline). Leads still inside their 8 hours are not counted yet.",
+                      "نسبة من تم الرد عليهم خلال 8 ساعات عمل من كل عميل نتيجته معروفة (تم الرد، أو لم يُرد وتجاوز المهلة). العملاء الذين ما زالوا ضمن المهلة لا يُحتسبون بعد.",
+                    )}
+                  />
                 </div>
               </section>
 
@@ -205,6 +297,24 @@ export default function CrmDashboardPage() {
                 <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
                   {translate("Segment quality", "جودة القطاع")}
                 </h3>
+                {/* Change Request 2, item 5: overall marketing cost, with the spend basis stated. */}
+                <div className="mb-2 grid grid-cols-3 gap-2">
+                  <StatTile
+                    label={translate("Spend", "الإنفاق")}
+                    value={data.segmentQuality.totals?.effectiveSpendEgp != null ? formatAmount(data.segmentQuality.totals.effectiveSpendEgp, translations.currency) : "-"}
+                    hint={spendBasisLabel(data.segmentQuality.totals?.basis ?? null, translate)}
+                  />
+                  <StatTile
+                    label={translate("Cost/enquiry", "التكلفة/استفسار")}
+                    value={data.segmentQuality.totals?.costPerEnquiry != null ? formatAmount(data.segmentQuality.totals.costPerEnquiry, translations.currency) : "-"}
+                    hint={costHint(data.segmentQuality.totals?.effectiveSpendEgp ?? null, data.segmentQuality.totals?.enquiries ?? 0, translate)}
+                  />
+                  <StatTile
+                    label={translate("Cost/qualified", "التكلفة/مؤهل")}
+                    value={data.segmentQuality.totals?.costPerQualifiedLead != null ? formatAmount(data.segmentQuality.totals.costPerQualifiedLead, translations.currency) : "-"}
+                    hint={costHint(data.segmentQuality.totals?.effectiveSpendEgp ?? null, data.segmentQuality.totals?.qualified ?? 0, translate)}
+                  />
+                </div>
                 <Table verticalSpacing={2} fz="xs">
                   <Table.Thead>
                     <Table.Tr>
@@ -244,9 +354,14 @@ export default function CrmDashboardPage() {
                   <h3 className="text-sm font-semibold" style={{ color: TEAL }}>
                     {translate("Whole-CRM totals (for comparison)", "إجماليات النظام بالكامل (للمقارنة)")}
                   </h3>
-                  <Badge color="gray" variant="light">
-                    {formatAmount(data.team.totalWeightedValueEgp, translations.currency)}
-                  </Badge>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge color="gray" variant="light">
+                      {translate("Pipeline value", "قيمة المسار")}: {formatAmount(data.team.totalValueEgp, translations.currency)}
+                    </Badge>
+                    <Badge color="gray" variant="light">
+                      {translate("Weighted", "مرجح")}: {formatAmount(data.team.totalWeightedValueEgp, translations.currency)}
+                    </Badge>
+                  </div>
                 </div>
                 <p className="mb-2 text-xs text-gray-400">
                   {translate(
@@ -254,8 +369,13 @@ export default function CrmDashboardPage() {
                     "هذه أرقام على مستوى المنظمة بالكامل، بما في ذلك كل عميل غير مُعيَّن أو تابع لمسؤول آخر - نفس إجماليات لوحة المسار.",
                   )}
                 </p>
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-7">
                   <StatTile label={translate("Enquiries", "الاستفسارات")} value={data.team.enquiries} />
+                  <StatTile
+                    label={translate("Unassigned", "غير مخصص")}
+                    value={data.team.unassignedEnquiries ?? 0}
+                    hint={translate("Enquiries this month with no owner - included in every whole-CRM figure.", "استفسارات هذا الشهر بلا مسؤول - مشمولة في كل أرقام النظام.")}
+                  />
                   <StatTile label={translate("Qualified", "مؤهل")} value={data.team.qualified} />
                   <StatTile label={translate("Surveys", "المعاينات")} value={data.team.surveys} />
                   <StatTile label={translate("Proposals", "العروض")} value={data.team.proposals} />

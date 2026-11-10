@@ -98,6 +98,10 @@ async function commitImport(file, schema, context) {
   const { rowResults } = await parseAndValidate(file, schema);
   const created = [];
   const failed = [];
+  // Rows an importer recognized as ALREADY imported (an idempotent re-import - see
+  // crmLeadImportSchema.js). Not an error and not a new record; reported separately so a repeat
+  // upload of yesterday's file reads "already imported", never "every row failed".
+  const skipped = [];
 
   for (const r of rowResults) {
     if (r.errors.length > 0 || !r.value) {
@@ -109,11 +113,12 @@ async function commitImport(file, schema, context) {
       const doc = await schema.createOne(r.value, context);
       created.push({ row: r.row, id: doc._id });
     } catch (err) {
-      failed.push({ row: r.row, errors: [{ message: friendlyWriteError(err) }] });
+      if (err && err.alreadyImported) skipped.push({ row: r.row, message: err.message });
+      else failed.push({ row: r.row, errors: [{ message: friendlyWriteError(err) }] });
     }
   }
 
-  return { created, failed };
+  return { created, failed, skipped };
 }
 
 // Never leak a raw stack trace or internal driver error to the client (docs section "Permissions

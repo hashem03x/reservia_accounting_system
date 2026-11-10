@@ -21,12 +21,16 @@ exports.previewCrmLeads = asyncHandler(async (req, res, next) => {
 exports.commitCrmLeads = asyncHandler(async (req, res, next) => {
   if (!req.file) return next(new ApiError('Please upload a CSV file.', 400));
   try {
-    const { created, failed } = await commitImport(req.file, schema, { userId: req.user._id });
-    if (created.length === 0) {
+    const { created, failed, skipped = [] } = await commitImport(req.file, schema, { userId: req.user._id });
+    if (created.length === 0 && skipped.length === 0) {
       return next(new ApiError('No leads could be imported - every row failed validation.', 400, { validationErrors: failed }));
     }
-    const status = failed.length > 0 ? 207 : 201;
-    res.status(status).json(apiResponse(failed.length > 0 ? 'Leads imported with some errors.' : 'Leads imported successfully.', true, { created, failed }));
+    let message = 'Leads imported successfully.';
+    if (created.length === 0) message = 'Nothing new to import - every valid row was already imported earlier.';
+    else if (failed.length > 0) message = 'Leads imported with some errors.';
+    else if (skipped.length > 0) message = `Leads imported. ${skipped.length} row(s) were already imported earlier and were skipped.`;
+    const status = failed.length > 0 ? 207 : created.length > 0 ? 201 : 200;
+    res.status(status).json(apiResponse(message, true, { created, failed, skipped }));
   } finally {
     await cleanupTempFile(req);
   }

@@ -42,6 +42,7 @@ exports.publicLeadValidators = [
   check('utm.utm_medium').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
   check('utm.utm_campaign').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
   check('utm.utm_content').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  check('utm.utm_term').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
   check('calculator').optional({ nullable: true }).isObject(),
   check('calculator.systemSizeKwp').optional({ nullable: true }).isFloat({ min: 0, max: 100_000 }),
   check('calculator.indicativePriceEgp').optional({ nullable: true }).isFloat({ min: 0, max: 1_000_000_000 }),

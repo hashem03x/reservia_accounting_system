@@ -29,19 +29,21 @@ type PlatformUser = {
 };
 type AuditEntry = { _id: string; action: string; createdAt: string; actorName: string; actorEmail?: string; before: unknown; after: unknown };
 
-// Real, selectable roles per system - mirrors backend/server/utils/systemsRegistry.js's own
-// `roles` per system exactly. ERP's own three roles are handled separately below (its role field
-// doubles as the account's actual ERP role, not a membership-only label). Website Management is
-// the first NON-ERP system with a real role vocabulary this grid can offer (admin/editor/viewer -
-// see middleware/websiteAccess.js) - CRM/COMMERCIAL intentionally keep the "MEMBER" placeholder
-// here (their own role assignment is a separate, not-yet-built concern, out of this task's scope -
-// not something this edit silently changes).
-const NON_ERP_SYSTEM_ROLES: Partial<Record<SystemId, string[]>> = {
-  WEBSITE: ["admin", "editor", "viewer"],
-};
-function roleOptionsFor(systemId: SystemId): string[] {
-  if (systemId === "ERP") return ["admin", "moderator", "operator"];
-  return NON_ERP_SYSTEM_ROLES[systemId] || ["MEMBER"];
+// Change Request 2, item 0 - root cause of the 9 Nov 2026 MD access loss. This grid used to keep
+// its OWN copy of each system's roles, and that copy offered only "MEMBER" for CRM and Commercial
+// while their real roles are md/admin/sales/technical and md/commercial_director/... So an
+// existing "md" membership rendered as a BLANK, now-editable role box; "MEMBER" was rejected by
+// the server; and the only way to get a save through (e.g. while granting Website access) was to
+// switch CRM/Commercial off - which removed them. Now:
+//   1. roles come from the server's registry (GET admin/platform/systems), never a local copy;
+//   2. a stored role is always kept as an option, so it can never display blank or be lost;
+//   3. a save that would remove or deactivate any existing access must be confirmed explicitly,
+//      naming exactly what will be lost (and the server refuses to remove the last CRM/Commercial MD).
+type RegistrySystem = { id: SystemId; roles: string[]; implemented: boolean };
+const FALLBACK_ROLES: Partial<Record<SystemId, string[]>> = { ERP: ["admin", "moderator", "operator"] };
+function roleOptionsFor(systemId: SystemId, registry: RegistrySystem[], current?: string): string[] {
+  const roles = registry.find(r => r.id === systemId)?.roles || FALLBACK_ROLES[systemId] || [];
+  return current && !roles.includes(current) ? [current, ...roles] : roles;
 }
 
 // Central Business Portal - a single user's cross-system access: basic details, activation,
@@ -141,21 +143,49 @@ function BasicInfo({ user, onUpdated }: { user: PlatformUser; onUpdated: () => v
 function SystemsEditor({ user, onUpdated }: { user: PlatformUser; onUpdated: () => void }) {
   const { language, translate } = useLanguage();
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
+  const [registry, setRegistry] = useState<RegistrySystem[]>([]);
+  const [registryError, setRegistryError] = useState("");
+  const [confirmOpened, { open: openConfirm, close: closeConfirm }] = useDisclosure(false);
+
+  useEffect(() => {
+    privateRequest({ url: "admin/platform/systems", language })
+      .then(res => setRegistry(res.data as RegistrySystem[]))
+      .catch(err => setRegistryError((err as { message?: string })?.message || "Could not load the roles list."));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [rows, setRows] = useState<Record<SystemId, { granted: boolean; role: string; isActive: boolean }>>(() => {
     const initial = {} as Record<SystemId, { granted: boolean; role: string; isActive: boolean }>;
     for (const s of systems) {
       const existing = user.systemMemberships.find(m => m.system === s.id);
-      initial[s.id] = { granted: !!existing, role: existing?.role || (s.id === "ERP" ? "moderator" : roleOptionsFor(s.id)[0]), isActive: existing?.isActive ?? true };
+      initial[s.id] = { granted: !!existing, role: existing?.role || (s.id === "ERP" ? "moderator" : ""), isActive: existing?.isActive ?? true };
     }
     return initial;
   });
+
+  // Exactly what this save would take away from the user, compared with what they have now.
+  const losses = user.systemMemberships
+    .filter(m => m.isActive)
+    .filter(m => !rows[m.system]?.granted || !rows[m.system]?.isActive || rows[m.system]?.role !== m.role)
+    .map(m => {
+      const row = rows[m.system];
+      if (!row?.granted) return translate(`${m.system} access removed (was "${m.role}")`, `إزالة صلاحية ${m.system} (كانت "${m.role}")`);
+      if (!row.isActive) return translate(`${m.system} access deactivated`, `إيقاف صلاحية ${m.system}`);
+      return translate(`${m.system} role changed from "${m.role}" to "${row.role}"`, `تغيير دور ${m.system} من "${m.role}" إلى "${row.role}"`);
+    });
+  const missingRole = (Object.keys(rows) as SystemId[]).filter(id => rows[id].granted && !rows[id].role);
+
+  function requestSave() {
+    if (losses.length) openConfirm();
+    else save();
+  }
 
   function save() {
     handleRequest(language, setLoading, setError, async () => {
       const systemMemberships = (Object.keys(rows) as SystemId[]).filter(id => rows[id].granted).map(id => ({ system: id, role: rows[id].role, isActive: rows[id].isActive }));
       await privateRequest({ url: `admin/platform/users/${user._id}/systems`, method: "PUT", data: { systemMemberships }, language });
       notifySuccess({ language, title: translate("Saved", "تم الحفظ"), message: translate("System access updated.", "تم تحديث صلاحيات الأنظمة.") });
+      closeConfirm();
       onUpdated();
     });
   }
@@ -164,6 +194,7 @@ function SystemsEditor({ user, onUpdated }: { user: PlatformUser; onUpdated: () 
     <div className="flex flex-col gap-3">
       <h3>{translate("System Access", "صلاحيات الأنظمة")}</h3>
       {error && <ErrorAlert error={error} fade />}
+      {registryError && <ErrorAlert error={registryError} />}
       <div className="overflow-x-auto">
         <Table verticalSpacing="sm">
           <Table.Thead>
@@ -186,14 +217,22 @@ function SystemsEditor({ user, onUpdated }: { user: PlatformUser; onUpdated: () 
                   )}
                 </Table.Td>
                 <Table.Td>
-                  <Switch checked={rows[s.id].granted} onChange={e => setRows(r => ({ ...r, [s.id]: { ...r[s.id], granted: e.currentTarget.checked } }))} />
+                  <Switch
+                    checked={rows[s.id].granted}
+                    onChange={e => {
+                      const granted = e.currentTarget.checked;
+                      setRows(r => ({ ...r, [s.id]: { ...r[s.id], granted, role: r[s.id].role || (granted ? roleOptionsFor(s.id, registry)[0] || "" : "") } }));
+                    }}
+                  />
                 </Table.Td>
                 <Table.Td>
                   <Select
                     size="xs"
                     disabled={!rows[s.id].granted}
-                    data={roleOptionsFor(s.id)}
-                    value={rows[s.id].role}
+                    data={roleOptionsFor(s.id, registry, rows[s.id].role)}
+                    value={rows[s.id].role || null}
+                    placeholder={translate("Choose a role", "اختر دوراً")}
+                    error={rows[s.id].granted && !rows[s.id].role ? translate("Required", "مطلوب") : undefined}
                     onChange={v => setRows(r => ({ ...r, [s.id]: { ...r[s.id], role: v || r[s.id].role } }))}
                     allowDeselect={false}
                   />
@@ -213,10 +252,23 @@ function SystemsEditor({ user, onUpdated }: { user: PlatformUser; onUpdated: () 
         )}
       </p>
       <div>
-        <Button onClick={save} loading={loading}>
+        <Button onClick={requestSave} loading={loading} disabled={missingRole.length > 0 || registry.length === 0}>
           {translate("Save System Access", "حفظ صلاحيات الأنظمة")}
         </Button>
       </div>
+
+      <DeleteModal
+        opened={confirmOpened}
+        onClose={closeConfirm}
+        title={translate("This save removes access", "هذا الحفظ يزيل صلاحيات")}
+        subTitle={translate(
+          `${user.name} will lose: ${losses.join("; ")}. Continue only if this is intended.`,
+          `سيفقد ${user.name}: ${losses.join("؛ ")}. تابع فقط إذا كان ذلك مقصوداً.`,
+        )}
+        action={save}
+        loading={loading}
+        error={error}
+      />
     </div>
   );
 }

@@ -5,8 +5,8 @@ const StageHistory = require('../../models/crm/stageHistoryModel');
 const CrmTarget = require('../../models/crm/targetModel');
 const CrmAdSpend = require('../../models/crm/adSpendModel');
 const { SEGMENTS } = require('../../utils/crm/constants');
-const { workingHoursBetween } = require('../../utils/crm/workingHours');
-const { monthBounds, median, average } = require('./reportService');
+const { monthBounds, median, average, leadMatch, originInRange, reachedStageLeads, summarizeSpend } = require('./reportService');
+const { computeFirstReplyMetrics } = require('./firstReplyService');
 
 // Reservia CRM - the Performance tab (acceptance report section 5). Sits entirely on real stage
 // history and lead data - "no new data entry needed except lost reason and monthly ad spend",
@@ -21,20 +21,20 @@ const ALL_SEGMENTS = SEGMENTS.filter(s => s !== 'unknown');
 // 3-deal sample doesn't have.
 const SMALL_SAMPLE_THRESHOLD = 10;
 
+// Archived leads never count (Change Request 2: same exclusion as the Dashboard).
 function ownerLookupStage(ownerId) {
   return [
     { $lookup: { from: 'crmleads', localField: 'lead', foreignField: '_id', as: 'leadDoc' } },
     { $unwind: '$leadDoc' },
-    ...(ownerId ? [{ $match: { 'leadDoc.owner': new mongoose.Types.ObjectId(ownerId) } }] : []),
+    { $match: { 'leadDoc.archived': { $ne: true }, ...(ownerId ? { 'leadDoc.owner': new mongoose.Types.ObjectId(ownerId) } : {}) } },
   ];
 }
 
-function leadIdsFilter({ start, end, ownerId, segment }) {
-  const match = { createdAt: { $gte: start, $lt: end }, archived: { $ne: true } };
-  if (ownerId) match.owner = new mongoose.Types.ObjectId(ownerId);
-  if (segment) match.segment = segment;
-  return match;
-}
+// Same period/owner/segment/archived rule as the Dashboard (reportService.js#leadMatch): a lead
+// belongs to the Cairo month it was ORIGINALLY submitted.
+const leadIdsFilter = leadMatch;
+
+const leadOrigin = leadDoc => leadDoc.submittedAt || leadDoc.createdAt;
 
 /**
  * A.1/A.5: per-lead, per-stage time spent, and currently-open "stuck" leads. Walks each lead's
@@ -108,25 +108,35 @@ async function getSpeedSection({ year, month, ownerId, segment }) {
     return { stage, avgDays: days.length ? Math.round(average(days) * 10) / 10 : null, medianDays: days.length ? Math.round(median(days) * 10) / 10 : null, sampleSize: days.length, bySegment };
   });
 
-  const repliedLeads = await Lead.find({ ...filter, firstReplyAt: { $ne: null } })
-    .select('createdAt firstReplyAt')
-    .lean();
-  // Working hours, not raw wall-clock hours - see reportService.js#getSpeedBlock's own comment.
-  const replyHours = repliedLeads.map(l => workingHoursBetween(l.createdAt, l.firstReplyAt));
+  // Change Request 2, item 3: the SAME calculation as the Dashboard's Speed block
+  // (services/crm/firstReplyService.js) - working hours from the original submission time.
+  const leadsInScope = await Lead.find(filter).select('createdAt submittedAt firstReplyAt replyDueAt').lean();
+  const metrics = computeFirstReplyMetrics(leadsInScope);
   const hoursToFirstReply = {
-    avgHours: replyHours.length ? Math.round(average(replyHours) * 10) / 10 : null,
-    medianHours: replyHours.length ? Math.round(median(replyHours) * 10) / 10 : null,
-    pctWithin8h: replyHours.length ? Math.round((replyHours.filter(h => h <= 8).length / replyHours.length) * 1000) / 10 : null,
-    sampleSize: replyHours.length,
+    avgHours: metrics.avgHours,
+    medianHours: metrics.medianHours,
+    pctWithin8h: metrics.pctWithinSla,
+    sampleSize: metrics.sampleSize,
+    slaSampleSize: metrics.slaSampleSize,
+    withinSlaCount: metrics.withinSlaCount,
+    overdueUnrepliedCount: metrics.overdueUnrepliedCount,
+    pendingCount: metrics.pendingCount,
   };
 
-  // Days to quote: created -> first `proposal_sent` transition (the report's own stand-in "until
-  // quotation module exists").
+  // Days to quote: original submission -> first `proposal_sent` transition (the report's own
+  // stand-in "until quotation module exists").
   const proposalEvents = await StageHistory.aggregate([
     { $match: { to: 'proposal_sent' } },
     ...ownerLookupStage(ownerId),
-    { $match: { 'leadDoc.createdAt': { $gte: start, $lt: end }, ...(segment ? { 'leadDoc.segment': segment } : {}) } },
-    { $group: { _id: '$lead', firstProposalAt: { $min: '$createdAt' }, createdAt: { $first: '$leadDoc.createdAt' }, segment: { $first: '$leadDoc.segment' } } },
+    { $match: { ...originInRange(start, end, 'leadDoc'), ...(segment ? { 'leadDoc.segment': segment } : {}) } },
+    {
+      $group: {
+        _id: '$lead',
+        firstProposalAt: { $min: '$createdAt' },
+        createdAt: { $first: { $ifNull: ['$leadDoc.submittedAt', '$leadDoc.createdAt'] } },
+        segment: { $first: '$leadDoc.segment' },
+      },
+    },
   ]);
   const daysToQuoteAll = proposalEvents.map(e => (e.firstProposalAt - e.createdAt) / 86400000);
   const daysToQuote = {
@@ -142,15 +152,15 @@ async function getSpeedSection({ year, month, ownerId, segment }) {
   const wonEvents = await StageHistory.aggregate([
     { $match: { to: 'won' } },
     ...ownerLookupStage(ownerId),
-    { $match: { 'leadDoc.createdAt': { $gte: start, $lt: end }, ...(segment ? { 'leadDoc.segment': segment } : {}) } },
+    { $match: { ...originInRange(start, end, 'leadDoc'), ...(segment ? { 'leadDoc.segment': segment } : {}) } },
   ]);
-  const daysToCloseAll = wonEvents.map(e => (e.createdAt - e.leadDoc.createdAt) / 86400000);
+  const daysToCloseAll = wonEvents.map(e => (e.createdAt - leadOrigin(e.leadDoc)) / 86400000);
   const daysToClose = {
     avgDays: daysToCloseAll.length ? Math.round(average(daysToCloseAll) * 10) / 10 : null,
     medianDays: daysToCloseAll.length ? Math.round(median(daysToCloseAll) * 10) / 10 : null,
     sampleSize: daysToCloseAll.length,
     bySegment: ALL_SEGMENTS.map(seg => {
-      const segDays = wonEvents.filter(e => (e.leadDoc.segment || 'other') === seg).map(e => (e.createdAt - e.leadDoc.createdAt) / 86400000);
+      const segDays = wonEvents.filter(e => (e.leadDoc.segment || 'other') === seg).map(e => (e.createdAt - leadOrigin(e.leadDoc)) / 86400000);
       return { segment: seg, avgDays: segDays.length ? Math.round(average(segDays) * 10) / 10 : null, sampleSize: segDays.length };
     }),
   };
@@ -162,15 +172,9 @@ async function getSpeedSection({ year, month, ownerId, segment }) {
 async function getConversionSection({ year, month, ownerId, segment }) {
   const { start, end } = monthBounds(year, month);
 
-  const reachedCount = async stage => {
-    const rows = await StageHistory.aggregate([
-      { $match: { to: stage, createdAt: { $gte: start, $lt: end } } },
-      ...ownerLookupStage(ownerId),
-      ...(segment ? [{ $match: { 'leadDoc.segment': segment } }] : []),
-      { $group: { _id: '$lead' } },
-    ]);
-    return rows.length;
-  };
+  // The Dashboard's own "reached this stage" definition (reportService.js#reachedStageLeads), so
+  // a lead that skipped a stage still counts at every stage it passed.
+  const reachedCount = async stage => (await reachedStageLeads({ stage, start, end, ownerId, segment })).length;
 
   const counts = Object.fromEntries(await Promise.all(FUNNEL.map(async stage => [stage, await reachedCount(stage)])));
   const funnel = FUNNEL.map((stage, i) => {
@@ -291,12 +295,10 @@ async function getValueCostSection({ year, month, ownerId, segment }) {
   // segment filter is active, else every entered channel for the month - matching how
   // reportService.js#getSegmentQualityBlock attributes spend.
   const spendRows = await CrmAdSpend.find({ year, month, ...(segment ? { segment } : {}) }).lean();
-  const totalSpend = spendRows.reduce((sum, s) => sum + s.amountEgp, 0);
-  const qualifiedCount = await StageHistory.aggregate([
-    { $match: { to: 'qualified', createdAt: { $gte: start, $lt: end } } },
-    ...ownerLookupStage(ownerId),
-    { $group: { _id: '$lead' } },
-  ]).then(rows => rows.length);
+  // Actual spend when the MD has entered it, the planned budget otherwise (reportService.js#summarizeSpend).
+  const spend = summarizeSpend(spendRows);
+  const totalSpend = spend.effectiveSpendEgp || 0;
+  const qualifiedCount = (await reachedStageLeads({ stage: 'qualified', start, end, ownerId, segment })).length;
 
   return {
     averageDealSizeBySegment,
@@ -309,6 +311,7 @@ async function getValueCostSection({ year, month, ownerId, segment }) {
     },
     costPerQualifiedLeadEgp: totalSpend === 0 || qualifiedCount === 0 ? null : Math.round((totalSpend / qualifiedCount) * 100) / 100,
     costPerSignedDealEgp: totalSpend === 0 || actualSigned === 0 ? null : Math.round((totalSpend / actualSigned) * 100) / 100,
+    spend,
   };
 }
 

@@ -25,6 +25,7 @@ export default function StageColumn({
   stage,
   count,
   valueEgp,
+  probability = null,
   leads,
   collapsed,
   onToggleCollapse,
@@ -43,6 +44,8 @@ export default function StageColumn({
   stage: CrmStage;
   count: number;
   valueEgp: number;
+  // Change Request 2, item 4: the configured probability (0-1) from the API, printed on the column.
+  probability?: number | null;
   leads: CrmLead[];
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -100,6 +103,11 @@ export default function StageColumn({
             <div className="flex min-w-0 items-center gap-1.5">
               <span className="truncate text-sm font-semibold text-gray-700">{crmStageLabel(translate)(stage)}</span>
               <span className="shrink-0 rounded-full bg-gray-200 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-gray-700">{count}</span>
+              {probability != null && (
+                <Tooltip label={translate("Probability of closing used for the weighted pipeline value", "احتمال الإغلاق المستخدم في القيمة المرجحة للمسار")}>
+                  <span className="shrink-0 text-[11px] font-medium text-gray-400">{Math.round(probability * 100)}%</span>
+                </Tooltip>
+              )}
             </div>
             <ActionIcon variant="subtle" color="gray" size="sm" onClick={onToggleCollapse} aria-label={translate("Collapse column", "طي العمود")}>
               <solidIcons.AngleUp style={{ transform: "rotate(-90deg)" }} size={12} />

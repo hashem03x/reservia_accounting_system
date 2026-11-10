@@ -1,9 +1,10 @@
 'use strict';
 
 const ApiError = require('../../utils/apiError');
-const leadService = require('./leadService');
 const { normalizeSource } = require('../../utils/crm/sourceNormalization');
 const WaRefCode = require('../../models/crm/waRefCodeModel');
+const Lead = require('../../models/crm/leadModel');
+const { processIntake } = require('./leadIntakeService');
 
 // Reservia CRM - the public website's lead-capture call (Developer Brief: "Website lead
 // submission into CRM"). This is the ONE place the website's own vocabulary (its `Segment` type,
@@ -88,6 +89,9 @@ function mapWebsitePayload(body) {
     utmMedium: body.utm?.utm_medium || undefined,
     utmCampaign: body.utm?.utm_campaign || undefined,
     utmContent: body.utm?.utm_content || undefined,
+    // Change Request 2, item 7: utm_term was dropped; campaign is the one displayed field.
+    utmTerm: body.utm?.utm_term || undefined,
+    campaign: body.utm?.utm_campaign || undefined,
     landingPage: body.pageUrl || undefined,
     referrer: body.referrer || undefined,
     // Only set from the calculator's own typed estimate (a clean, known-unit figure) - never from
@@ -112,12 +116,19 @@ async function intakePublicLead(body) {
   if (body.website) return { honeypot: true };
 
   const mapped = mapWebsitePayload(body);
-  const { lead } = await leadService.intakeLead(mapped, {});
-
-  const note = buildIntakeNote(body);
-  if (note) await leadService.recordActivity(lead._id, { type: 'note', body: note }, {});
-
-  return { refCode: lead.refCode };
+  // Change Request 2, item 6: the website is one of the five doors into the SAME unified intake.
+  // The website's own per-submission `eventId` makes a double-click or a retried request
+  // idempotent (one lead, one note); a submission without one (an older website build) still
+  // works exactly as before.
+  const { leadId, refCode } = await processIntake({
+    channel: 'website',
+    externalId: body.eventId ? `event:${body.eventId}` : null,
+    lead: mapped,
+    note: buildIntakeNote(body),
+  });
+  if (refCode) return { refCode };
+  const lead = await Lead.findById(leadId).select('refCode').lean();
+  return { refCode: lead?.refCode };
 }
 
 /**

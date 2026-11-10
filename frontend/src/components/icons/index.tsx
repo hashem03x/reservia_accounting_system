@@ -28,6 +28,7 @@ import {
   HiOutlineSun,
   HiOutlineMoon,
   HiOutlineListBullet,
+  HiOutlineInformationCircle,
 } from "react-icons/hi2";
 import {
   FaCircleExclamation,
@@ -105,6 +106,7 @@ export const outlineIcons = {
   CheckCircle: FiCheckCircle,
   XMarkCircle: FiXCircle,
   ExclamationCircle: HiOutlineExclamationCircle,
+  InfoCircle: HiOutlineInformationCircle,
   ArrowUpCircle: FiArrowUpCircle,
   ArrowDownCircle: FiArrowDownCircle,
   ArrowUpOnSquare: HiOutlineArrowUpOnSquare,

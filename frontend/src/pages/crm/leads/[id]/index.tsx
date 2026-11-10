@@ -7,10 +7,9 @@ import useDataHandler from "@/hooks/useDataHandler";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
 import handleRequest from "@/utils/helpers/handle-request";
 import { formatAmount } from "@/utils/helpers/format-amount";
-import { formatDateAndTime } from "@/utils/helpers/date-formaters";
 import paths from "@/utils/constants/paths";
-import { CRM_LOST_REASONS, CrmActivity, CrmActivityType, CrmLead, CrmRole, CrmStage, CrmStageHistory } from "@/types/crm";
-import { Badge, Button, NumberInput, Select, Textarea, TextInput } from "@mantine/core";
+import { CRM_LOST_REASONS, CrmActivity, CrmActivityType, CrmLead, CrmLeadFirstReply, CrmRole, CrmStage, CrmStageHistory } from "@/types/crm";
+import { Alert, Badge, Button, NumberInput, Select, Textarea, TextInput, Tooltip } from "@mantine/core";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
@@ -20,18 +19,40 @@ import { outlineIcons } from "@/components/icons";
 import TruncatedText from "@/components/ui/truncated-text";
 import { useSystemAccess } from "@/context/SystemAccessContext";
 import { crmStageLabel, stageBadgeColor } from "../../_shared/stage";
-import { allowedNextStages } from "../../_shared/lead-display";
+import { allowedNextStages, channelLabel, overrideOnlyStages, segmentLabel, stageExtraFieldRequirements } from "../../_shared/lead-display";
+import { formatCairoDateTime, formatFollowUpDate, isFollowUpOverdue } from "../../_shared/business-date";
 import LeadAttachments from "./_components/lead-attachments";
 
-type LeadDetail = { lead: CrmLead; activities: CrmActivity[]; stageHistory: CrmStageHistory[] };
+type LeadDetail = { lead: CrmLead; activities: CrmActivity[]; stageHistory: CrmStageHistory[]; firstReply?: CrmLeadFirstReply };
 
+// What a rep can log by hand. "WhatsApp message (sent)" (Change Request 2, item 3) is a reply sent
+// from the sales phone - it counts as a first reply exactly like a call or an email.
 const ACTIVITY_TYPES: { value: CrmActivityType; label: { en: string; ar: string } }[] = [
   { value: "note", label: { en: "Note", ar: "ملاحظة" } },
   { value: "call", label: { en: "Call", ar: "مكالمة" } },
+  { value: "whatsapp_out", label: { en: "WhatsApp message (sent)", ar: "رسالة واتساب (مرسلة)" } },
   { value: "email", label: { en: "Email", ar: "بريد إلكتروني" } },
   { value: "survey", label: { en: "Site survey", ar: "مسح الموقع" } },
   { value: "proposal", label: { en: "Proposal", ar: "عرض سعر" } },
 ];
+
+const ACTIVITY_LABELS: Record<CrmActivityType, { en: string; ar: string }> = {
+  note: { en: "Note", ar: "ملاحظة" },
+  call: { en: "Call", ar: "مكالمة" },
+  email: { en: "Email", ar: "بريد" },
+  survey: { en: "Site survey", ar: "مسح الموقع" },
+  proposal: { en: "Proposal", ar: "عرض سعر" },
+  whatsapp_in: { en: "WhatsApp in", ar: "واتساب وارد" },
+  whatsapp_out: { en: "WhatsApp sent", ar: "واتساب مرسل" },
+  system: { en: "System", ar: "النظام" },
+};
+
+const FIRST_REPLY_VIA_LABELS: Record<string, { en: string; ar: string }> = {
+  stage_change: { en: "moved out of New", ar: "نقل من مرحلة جديد" },
+  call: { en: "call", ar: "مكالمة" },
+  whatsapp_out: { en: "WhatsApp message", ar: "رسالة واتساب" },
+  email: { en: "email", ar: "بريد إلكتروني" },
+};
 
 export default function CrmLeadDetail() {
   const { id } = useParams();
@@ -97,7 +118,7 @@ export default function CrmLeadDetail() {
     >
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <section className="flex flex-col gap-4 lg:col-span-1">
-          <InfoCard lead={lead} overdue={overdue} />
+          <InfoCard lead={lead} overdue={overdue} firstReply={data.firstReply} />
           <StageChangeCard lead={lead} onChanged={load} />
           <StageHistoryCard rows={data.stageHistory} />
           <LeadAttachments leadId={lead._id} canEdit={role === "admin" || role === "md"} />
@@ -177,44 +198,87 @@ function ArchiveAction({ lead, onChanged, onArchivedAway }: { lead: CrmLead; onC
   );
 }
 
-function InfoCard({ lead, overdue }: { lead: CrmLead; overdue: boolean }) {
+function InfoCard({ lead, overdue, firstReply }: { lead: CrmLead; overdue: boolean; firstReply?: CrmLeadFirstReply }) {
   const { language, translate, translations } = useLanguage();
   const row = (label: string, value: React.ReactNode) => (
     <div className="flex items-center justify-between gap-2 border-b border-gray-50 py-1.5 text-sm last:border-0">
       <span className="text-gray-500">{label}</span>
-      <span className="font-medium">{value}</span>
+      <span className="text-end font-medium">{value}</span>
     </div>
   );
+  const campaign = lead.campaign || lead.utmCampaign;
+  // Shown only when the original submission differs from when the lead entered the CRM (a CSV
+  // import or a delayed webhook) - the SLA is measured from the original time.
+  const backdated = !!lead.submittedAt && Math.abs(new Date(lead.createdAt).getTime() - new Date(lead.submittedAt).getTime()) > 60_000;
+  const followUpOverdue = isFollowUpOverdue(lead.followUpAt) && lead.stage !== "won" && lead.stage !== "lost";
+  const via = firstReply?.via ? FIRST_REPLY_VIA_LABELS[firstReply.via] : null;
+
   return (
     <div className="rounded-lg border border-gray-100 p-4">
       <h4 className="mb-2">{translate("Lead Details", "تفاصيل العميل المحتمل")}</h4>
-      {row(translate("Phone", "الهاتف"), lead.phoneE164)}
-      {row(translate("Channel", "القناة"), lead.channel)}
-      {row(translate("Segment", "القطاع"), lead.segment)}
+      {row(translate("Phone", "الهاتف"), <span dir="ltr">{lead.phoneE164}</span>)}
+      {lead.email && row(translate("Email", "البريد الإلكتروني"), <TruncatedText text={lead.email} maxWidthClassName="max-w-[180px]" />)}
+      {row(translate("Channel", "القناة"), channelLabel(translate)(lead.channel))}
+      {row(translate("Segment", "القطاع"), segmentLabel(translate)(lead.segment))}
       {row(translate("Source", "المصدر"), lead.source)}
+      {campaign && row(translate("Campaign", "الحملة"), <TruncatedText text={campaign} maxWidthClassName="max-w-[180px]" />)}
       {row(translate("Governorate", "المحافظة"), lead.governorate || "-")}
-      {row(translate("Owner", "المسؤول"), lead.owner?.name || "-")}
+      {row(translate("Owner", "المسؤول"), lead.owner?.name || translate("Unassigned", "غير مخصص"))}
       {row(translate("Value", "القيمة"), lead.valueEgp ? formatAmount(lead.valueEgp, translations.currency) : "-")}
-      {row(translate("Created", "تاريخ الإنشاء"), formatDateAndTime(lead.createdAt, language))}
+      {backdated && row(translate("Originally submitted", "تاريخ الإرسال الأصلي"), formatCairoDateTime(lead.submittedAt, language))}
+      {row(backdated ? translate("Added to the CRM", "أُضيف إلى النظام") : translate("Created", "تاريخ الإنشاء"), formatCairoDateTime(lead.createdAt, language))}
       {row(
         translate("First reply due", "موعد أول رد مستحق"),
         <span className={overdue ? "text-red-600" : ""}>
-          {formatDateAndTime(lead.replyDueAt, language)}
+          {formatCairoDateTime(lead.replyDueAt, language)}
           {overdue && ` (${translate("overdue", "متأخر")})`}
         </span>,
       )}
-      {lead.firstReplyAt && row(translate("First reply", "أول رد"), formatDateAndTime(lead.firstReplyAt, language))}
-      {lead.followUpAt && row(translate("Follow-up", "المتابعة"), formatDateAndTime(lead.followUpAt, language))}
-      {/* First-touch attribution (Change Request 1, Feature 1: "Display the campaign and landing
-          page on the CRM lead details page") - shown only when present, since most leads (phone,
-          walk-in, dealer) never had a web visit to attribute. */}
-      {(lead.utmCampaign || lead.landingPage || lead.utmSource) && (
+      {lead.firstReplyAt &&
+        row(
+          translate("First reply", "أول رد"),
+          <span className="flex flex-col items-end">
+            <span>{formatCairoDateTime(lead.firstReplyAt, language)}</span>
+            {firstReply?.workingHours != null && (
+              <Tooltip
+                label={translate(
+                  `Working hours (Sun-Thu 09:00-18:00 Cairo) from the original submission. The target is ${firstReply.slaWorkingHours} working hours.`,
+                  `ساعات العمل (الأحد-الخميس 9-18 بتوقيت القاهرة) من وقت الإرسال الأصلي. الهدف ${firstReply.slaWorkingHours} ساعات عمل.`,
+                )}
+                multiline
+                w={240}
+              >
+                <span className={`text-xs ${firstReply.withinSla ? "text-teal-700" : "text-red-600"}`}>
+                  {firstReply.workingHours} {translate("working h", "ساعة عمل")}
+                  {via ? ` - ${translate(via.en, via.ar)}` : ""}
+                  {firstReply.withinSla ? ` - ${translate("within SLA", "ضمن المهلة")}` : ` - ${translate("late", "متأخر")}`}
+                </span>
+              </Tooltip>
+            )}
+          </span>,
+        )}
+      {lead.followUpAt &&
+        row(
+          translate("Follow-up", "المتابعة"),
+          <span className={followUpOverdue ? "text-red-600" : ""}>
+            {formatFollowUpDate(lead.followUpAt, language)}
+            {followUpOverdue && ` (${translate("overdue", "متأخر")})`}
+          </span>,
+        )}
+      {/* First-touch attribution (Change Request 1, Feature 1 + Change Request 2 ad lead forms) -
+          shown only when present, since most hand-entered leads never had a web visit or an ad. */}
+      {(lead.utmCampaign || lead.landingPage || lead.utmSource || lead.adSetName || lead.adName || lead.adFormId) && (
         <>
           <h4 className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">{translate("First-touch attribution", "أول نقطة تواصل")}</h4>
           {lead.utmSource && row(translate("UTM Source", "مصدر UTM"), lead.utmSource)}
           {lead.utmMedium && row(translate("UTM Medium", "وسيط UTM"), lead.utmMedium)}
-          {lead.utmCampaign && row(translate("Campaign", "الحملة"), lead.utmCampaign)}
+          {lead.utmCampaign && row(translate("UTM Campaign", "حملة UTM"), lead.utmCampaign)}
           {lead.utmContent && row(translate("UTM Content", "محتوى UTM"), lead.utmContent)}
+          {lead.utmTerm && row(translate("UTM Term", "كلمة UTM"), lead.utmTerm)}
+          {lead.adPlatform && row(translate("Platform", "المنصة"), lead.adPlatform)}
+          {lead.adSetName && row(translate("Ad set", "مجموعة الإعلانات"), <TruncatedText text={lead.adSetName} maxWidthClassName="max-w-[180px]" />)}
+          {lead.adName && row(translate("Ad", "الإعلان"), <TruncatedText text={lead.adName} maxWidthClassName="max-w-[180px]" />)}
+          {lead.adFormId && row(translate("Form ID", "رقم النموذج"), lead.adFormId)}
           {lead.landingPage && row(translate("Landing page", "صفحة الهبوط"), <TruncatedText text={lead.landingPage} maxWidthClassName="max-w-[180px]" />)}
         </>
       )}
@@ -223,7 +287,7 @@ function InfoCard({ lead, overdue }: { lead: CrmLead; overdue: boolean }) {
       {lead.archived && (
         <>
           <h4 className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">{translate("Archive", "الأرشفة")}</h4>
-          {lead.archivedAt && row(translate("Archived at", "تاريخ الأرشفة"), formatDateAndTime(lead.archivedAt, language))}
+          {lead.archivedAt && row(translate("Archived at", "تاريخ الأرشفة"), formatCairoDateTime(lead.archivedAt, language))}
           {lead.archivedBy && row(translate("Archived by", "تمت الأرشفة بواسطة"), lead.archivedBy.name)}
           {lead.archiveReason && row(translate("Reason", "السبب"), <TruncatedText text={lead.archiveReason} maxWidthClassName="max-w-[180px]" />)}
         </>
@@ -240,43 +304,83 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
   const [lostReason, setLostReason] = useState("");
   const [valueEgp, setValueEgp] = useState<string | number>(lead.valueEgp ?? "");
   const [followUpAt, setFollowUpAt] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [overrideForced, setOverrideForced] = useState(false);
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
-  const needsLostReason = to === "lost";
-  const needsValue = to === "won";
-  const needsFollowUp = !["new", "contacted", "won", "lost", ""].includes(to);
+  const normalStages = allowedNextStages(lead.stage, role) as CrmStage[];
+  const overrideStages = overrideOnlyStages(lead.stage, role) as CrmStage[];
+  const { needsLostReason, needsValue, needsFollowUp } = stageExtraFieldRequirements(to);
+  // Change Request 2, item 1: an MD-only override, needed when the chosen stage skips the order
+  // (or when the server says so for a move this screen didn't anticipate).
+  const needsOverride = role === "md" && !!to && (overrideStages.includes(to as CrmStage) || overrideForced);
+
+  function choose(v: string | null) {
+    setTo((v as CrmStage) || "");
+    setOverrideForced(false);
+    setError("");
+  }
 
   function submit() {
     if (!to) return;
     handleRequest(language, setLoading, setError, async () => {
-      await privateRequest({
-        language,
-        method: "PATCH",
-        url: `crm/leads/${lead._id}/stage`,
-        data: {
-          to,
-          lostReason: needsLostReason ? lostReason : undefined,
-          valueEgp: needsValue && valueEgp !== "" ? Number(valueEgp) : undefined,
-          followUpAt: followUpAt || undefined,
-        },
-      });
+      try {
+        await privateRequest({
+          language,
+          method: "PATCH",
+          url: `crm/leads/${lead._id}/stage`,
+          data: {
+            to,
+            lostReason: needsLostReason ? lostReason : undefined,
+            valueEgp: needsValue && valueEgp !== "" ? Number(valueEgp) : undefined,
+            followUpAt: followUpAt || undefined,
+            overrideReason: needsOverride ? overrideReason.trim() : undefined,
+          },
+        });
+      } catch (err) {
+        if (role === "md" && (err as { overridable?: boolean })?.overridable) setOverrideForced(true);
+        throw err;
+      }
       setTo("");
       setLostReason("");
       setFollowUpAt("");
+      setOverrideReason("");
+      setOverrideForced(false);
       onChanged();
     });
   }
 
+  const stageOptions = [
+    { group: translate("Next steps", "الخطوات التالية"), items: normalStages.map((s) => ({ value: s, label: crmStageLabel(translate)(s) })) },
+    ...(overrideStages.length
+      ? [{ group: translate("MD override (reason required)", "تجاوز المدير العام (يتطلب سببًا)"), items: overrideStages.map((s) => ({ value: s, label: `${crmStageLabel(translate)(s)} *` })) }]
+      : []),
+  ].filter((g) => g.items.length > 0);
+
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-gray-100 p-4">
       <h4>{translate("Change Stage", "تغيير المرحلة")}</h4>
+      <p className="text-xs text-gray-400">
+        {translate(
+          "Stages move one step at a time: New, Contacted, Qualified, Site survey, Proposal sent, Won or Lost.",
+          "تتحرك المراحل خطوة واحدة في كل مرة: جديد، تم التواصل، مؤهل، مسح الموقع، تم إرسال العرض، ثم فوز أو خسارة.",
+        )}
+      </p>
       <Select
         value={to || null}
-        onChange={(v) => setTo((v as CrmStage) || "")}
-        data={allowedNextStages(lead.stage, role).map((s) => ({ value: s, label: crmStageLabel(translate)(s as CrmStage) }))}
+        onChange={choose}
+        data={stageOptions}
         placeholder={translate("Move to...", "نقل إلى...")}
         nothingFoundMessage={translate("No further moves are available for this lead.", "لا توجد تحركات إضافية متاحة لهذا العميل المحتمل.")}
       />
+      {needsOverride && (
+        <Alert color="orange" variant="light" p="xs">
+          {translate(
+            "This skips the normal order. It is recorded in the stage history and the timeline with your name, the time and your reason.",
+            "هذا يتخطى الترتيب المعتاد، وسيُسجَّل في سجل المراحل وسجل النشاط باسمك والوقت والسبب.",
+          )}
+        </Alert>
+      )}
       {needsLostReason && (
         <Select
           value={lostReason || null}
@@ -290,15 +394,33 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
         <NumberInput value={valueEgp} onChange={setValueEgp} label={translate("Contract value - EGP", "قيمة العقد - جنيه")} min={0} required />
       )}
       {needsFollowUp && (
-        <TextInput type="date" value={followUpAt} onChange={(e) => setFollowUpAt(e.target.value)} label={translate("Follow-up date", "تاريخ المتابعة")} required />
+        <TextInput
+          type="date"
+          value={followUpAt}
+          onChange={(e) => setFollowUpAt(e.target.value)}
+          label={translate("Follow-up date", "تاريخ المتابعة")}
+          description={translate("A calendar date - shown exactly as entered.", "تاريخ تقويمي - يُعرض كما أُدخل تماماً.")}
+          required
+        />
+      )}
+      {needsOverride && (
+        <Textarea
+          value={overrideReason}
+          onChange={(e) => setOverrideReason(e.target.value)}
+          label={translate("Reason for the override (required)", "سبب التجاوز (مطلوب)")}
+          autosize
+          minRows={2}
+          maxLength={500}
+          required
+        />
       )}
       <Button
         onClick={submit}
         loading={loading}
-        disabled={!to || (needsLostReason && !lostReason) || (needsValue && !valueEgp) || (needsFollowUp && !followUpAt)}
-        color="teal"
+        disabled={!to || (needsLostReason && !lostReason) || (needsValue && !valueEgp) || (needsFollowUp && !followUpAt) || (needsOverride && overrideReason.trim().length < 5)}
+        color={needsOverride ? "orange" : "teal"}
       >
-        {translate("Apply", "تطبيق")}
+        {needsOverride ? translate("Override and apply", "تجاوز وتطبيق") : translate("Apply", "تطبيق")}
       </Button>
       {error && <ErrorAlert error={error} />}
     </div>
@@ -315,11 +437,25 @@ function StageHistoryCard({ rows }: { rows: CrmStageHistory[] }) {
           .slice()
           .reverse()
           .map((h) => (
-            <div key={h._id} className="flex items-center justify-between gap-2 border-b border-gray-50 py-1 last:border-0">
-              <span>
-                {h.from ? crmStageLabel(translate)(h.from) : translate("Created", "أُنشئ")} → {crmStageLabel(translate)(h.to)}
-              </span>
-              <span className="text-xs text-gray-500">{formatDateAndTime(h.createdAt, language)}</span>
+            <div key={h._id} className="flex flex-col gap-0.5 border-b border-gray-50 py-1 last:border-0">
+              <div className="flex items-center justify-between gap-2">
+                <span>
+                  {h.from ? crmStageLabel(translate)(h.from) : translate("Created", "أُنشئ")} → {crmStageLabel(translate)(h.to)}
+                  {h.override && (
+                    <Badge ms={6} size="xs" color="orange" variant="light">
+                      {translate("MD override", "تجاوز المدير")}
+                    </Badge>
+                  )}
+                </span>
+                <span className="text-xs text-gray-500">{formatCairoDateTime(h.createdAt, language)}</span>
+              </div>
+              {(h.changedBy?.name || h.override) && (
+                <span className="text-xs text-gray-400">
+                  {h.changedBy?.name}
+                  {h.override && h.overrideReason ? ` - ${translate("reason", "السبب")}: ${h.overrideReason}` : ""}
+                  {h.lostReason ? ` - ${h.lostReason}` : ""}
+                </span>
+              )}
             </div>
           ))}
       </div>
@@ -346,10 +482,15 @@ function ActivityTimeline({ leadId, activities, onAdded }: { leadId: string; act
     <div className="flex flex-col gap-4 rounded-lg border border-gray-100 p-4">
       <h4>{translate("Activity Timeline", "سجل النشاط")}</h4>
       <form onSubmit={submit} className="flex flex-col gap-2 border-b border-gray-100 pb-4">
-        <div className="flex gap-2">
-          <Select value={type} onChange={(v) => setType((v as CrmActivityType) || "note")} data={ACTIVITY_TYPES.map((a) => ({ value: a.value, label: translate(a.label.en, a.label.ar) }))} w={160} />
-          <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder={translate("Log a note, call, email...", "سجل ملاحظة، مكالمة، بريد...")} flex={1} minRows={1} />
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Select value={type} onChange={(v) => setType((v as CrmActivityType) || "note")} data={ACTIVITY_TYPES.map((a) => ({ value: a.value, label: translate(a.label.en, a.label.ar) }))} w={200} />
+          <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder={translate("Log a note, call, WhatsApp, email...", "سجل ملاحظة، مكالمة، واتساب، بريد...")} flex={1} minRows={1} />
         </div>
+        {["call", "whatsapp_out", "email"].includes(type) && (
+          <p className="text-xs text-gray-400">
+            {translate("A call, WhatsApp message or email counts as the lead's first reply if it is the first one.", "المكالمة أو رسالة واتساب أو البريد تُحتسب كأول رد إذا كانت الأولى.")}
+          </p>
+        )}
         <Button type="submit" loading={loading} disabled={!body.trim()} color="teal" className="self-end">
           {translate("Add", "إضافة")}
         </Button>
@@ -362,14 +503,14 @@ function ActivityTimeline({ leadId, activities, onAdded }: { leadId: string; act
           .slice()
           .reverse()
           .map((a) => (
-            <div key={a._id} className="rounded-md bg-gray-50 p-3 text-sm">
+            <div key={a._id} className={`rounded-md p-3 text-sm ${/MD OVERRIDE/.test(a.body) ? "bg-orange-50" : "bg-gray-50"}`}>
               <div className="mb-1 flex items-center justify-between gap-2">
-                <Badge variant="light" size="sm">
-                  {a.type}
+                <Badge variant="light" size="sm" color={a.type === "system" ? "gray" : "teal"}>
+                  {ACTIVITY_LABELS[a.type] ? translate(ACTIVITY_LABELS[a.type].en, ACTIVITY_LABELS[a.type].ar) : a.type}
                 </Badge>
                 <span className="text-xs text-gray-500">
                   {a.author?.name ? `${a.author.name} - ` : ""}
-                  {formatDateAndTime(a.createdAt, language)}
+                  {formatCairoDateTime(a.createdAt, language)}
                 </span>
               </div>
               <p className="whitespace-pre-wrap">{a.body}</p>

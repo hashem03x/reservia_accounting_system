@@ -20,7 +20,13 @@ const adSpendSchema = new Schema(
     segment: { type: String, enum: [...FORM_SEGMENTS, null], default: null },
     year: { type: Number, required: true },
     month: { type: Number, required: true, min: 1, max: 12 },
+    // The PLANNED budget for the line (Change Request 1, section 5's figures are planned spend).
+    // Name kept for backward compatibility with existing records and API consumers.
     amountEgp: { type: Number, required: true, min: 0 },
+    // Change Request 2, item 5: the ACTUAL amount spent, entered by the MD once known. null until
+    // then - reports fall back to the planned figure and label it as planned
+    // (services/crm/reportService.js#summarizeSpend), never present a plan as an actual.
+    actualAmountEgp: { type: Number, min: 0, default: null },
     setBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }

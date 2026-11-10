@@ -4,7 +4,8 @@ import { useSystemAccess } from "@/context/SystemAccessContext";
 import { CrmLead, CrmRole, CrmStage } from "@/types/crm";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import copyToClipboard from "@/utils/helpers/copy-to-clipboard";
-import { allowedNextStages, channelLabel, isLeadOverdue, ownerInitials, segmentLabel, timeAgo } from "@/pages/crm/_shared/lead-display";
+import { allowedNextStages, channelLabel, isLeadOverdue, overrideOnlyStages, ownerInitials, segmentLabel, timeAgo } from "@/pages/crm/_shared/lead-display";
+import { formatFollowUpDate, isFollowUpOverdue } from "@/pages/crm/_shared/business-date";
 import { crmStageLabel } from "@/pages/crm/_shared/stage";
 import { ActionIcon, Avatar, Badge, Menu, Tooltip } from "@mantine/core";
 import { outlineIcons, solidIcons } from "@/components/icons";
@@ -40,7 +41,9 @@ export default function LeadCard({ lead, draggable, isDragging, isUpdating, onOp
   const [copiedRef, setCopiedRef] = useState(false);
 
   const overdue = isLeadOverdue(lead);
-  const followUpOverdue = !!lead.followUpAt && new Date(lead.followUpAt).getTime() < Date.now() && lead.stage !== "won" && lead.stage !== "lost";
+  // Change Request 2, item 2: a follow-up is a calendar date - overdue only once that Cairo day has
+  // ended (previously a follow-up due today turned red at 02:00 the same morning).
+  const followUpOverdue = isFollowUpOverdue(lead.followUpAt) && lead.stage !== "won" && lead.stage !== "lost";
   const waNumber = lead.phoneE164.replace(/^\+/, "");
 
   // Click anywhere on the card opens it, EXCEPT a text selection in progress or a click that
@@ -56,6 +59,7 @@ export default function LeadCard({ lead, draggable, isDragging, isUpdating, onOp
   }
 
   const moveTargets = allowedNextStages(lead.stage, role) as CrmStage[];
+  const overrideTargets = overrideOnlyStages(lead.stage, role) as CrmStage[];
 
   return (
     <div
@@ -117,6 +121,17 @@ export default function LeadCard({ lead, draggable, isDragging, isUpdating, onOp
                   ))}
                 </>
               )}
+              {overrideTargets.length > 0 && (
+                <>
+                  <Menu.Divider />
+                  <Menu.Label>{translate("MD override (reason required)", "تجاوز المدير العام (يتطلب سببًا)")}</Menu.Label>
+                  {overrideTargets.map((stage) => (
+                    <Menu.Item key={`override-${stage}`} color="orange" onClick={() => onRequestStageChange(stage)}>
+                      {crmStageLabel(translate)(stage)}
+                    </Menu.Item>
+                  ))}
+                </>
+              )}
             </Menu.Dropdown>
           </Menu>
         </div>
@@ -171,7 +186,7 @@ export default function LeadCard({ lead, draggable, isDragging, isUpdating, onOp
         <div className={`flex items-center gap-1 text-[11px] ${followUpOverdue ? "text-red-600 dark:text-red-400" : "text-gray-400"}`}>
           <solidIcons.Calendar size={10} />
           <span>
-            {translate("Follow-up", "المتابعة")}: {new Date(lead.followUpAt).toLocaleDateString(language, { day: "numeric", month: "short" })}
+            {translate("Follow-up", "المتابعة")}: {formatFollowUpDate(lead.followUpAt, language, { withYear: false })}
             {followUpOverdue && ` (${translate("overdue", "متأخر")})`}
           </span>
         </div>

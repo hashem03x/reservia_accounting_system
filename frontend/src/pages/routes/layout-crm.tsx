@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useLanguage } from "@/context/LanguageContext";
 import { useUser } from "@/context/UserContext";
+import { useSystemAccess } from "@/context/SystemAccessContext";
 import paths from "@/utils/constants/paths";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import { Button } from "@mantine/core";
@@ -25,11 +26,16 @@ const NAV_ITEMS = [
   { to: `/${paths.crm}/${paths.pipeline}`, label: { en: "Pipeline", ar: "المسار" }, Icon: outlineIcons.ChartBar },
   { to: `/${paths.crm}/${paths.leads}`, label: { en: "Leads", ar: "العملاء المحتملون" }, Icon: outlineIcons.Users },
   { to: `/${paths.crm}/${paths.performance}`, label: { en: "Performance", ar: "الأداء" }, Icon: outlineIcons.ChartBar },
+  // Change Request 2, section 4 - visible to the roles the API allows (MD/Admin); hiding it from
+  // others is a convenience, the route and API enforce the same rule.
+  { to: `/${paths.crm}/${paths.integrations}`, label: { en: "Integrations", ar: "التكاملات" }, Icon: outlineIcons.Globe, roles: ["md", "admin"] },
 ];
 
 export default function CrmLayout() {
   const { translate } = useLanguage();
   const { user } = useUser();
+  const { systems } = useSystemAccess();
+  const crmRole = systems?.CRM?.role || "";
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -47,8 +53,8 @@ export default function CrmLayout() {
             <img src={logo} alt="" aria-hidden className="h-9 w-9 rounded bg-white object-contain p-0.5" />
             <span>{translate("Reservia CRM", "نظام إدارة العملاء - رزيرفيا")}</span>
           </Link>
-          <nav className="flex items-center gap-1">
-            {NAV_ITEMS.map((item) => {
+          <nav className="flex flex-wrap items-center gap-1">
+            {NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(crmRole)).map((item) => {
               const active = location.pathname.startsWith(item.to);
               return (
                 <Button

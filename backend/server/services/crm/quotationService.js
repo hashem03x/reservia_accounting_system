@@ -3,7 +3,9 @@
 const ApiError = require('../../utils/apiError');
 const Lead = require('../../models/crm/leadModel');
 const Quotation = require('../../models/crm/quotationModel');
+const Activity = require('../../models/crm/activityModel');
 const { computeQuotationTotals, round2 } = require('../../utils/crm/quotationCalc');
+const { evaluateStageTransition, STAGE_LABELS } = require('../../utils/crm/stageRules');
 const leadService = require('./leadService');
 
 // Reservia CRM - Phase 2 "Quotations" (Developer Brief section 4E, due 2026-12-10). This is the
@@ -39,7 +41,13 @@ async function createQuotation(leadId, input, { userId } = {}) {
   });
 }
 
-/** Sending a quotation moves the lead to Proposal sent - the one stage transition this wires automatically. */
+/**
+ * Sending a quotation moves the lead to Proposal sent - the one stage transition this wires
+ * automatically - but ONLY when that move is legal under the stage rules (Change Request 2,
+ * item 1: strict progression, so in practice from Site survey). A lead at an earlier stage keeps
+ * its stage and the timeline records why, instead of the quotation silently skipping Qualified/
+ * Site survey on the lead's behalf. The quotation itself is still marked sent either way.
+ */
 async function sendQuotation(quotationId, { userId, role } = {}) {
   const quotation = await Quotation.findById(quotationId);
   if (!quotation) throw new ApiError('Quotation not found.', 404);
@@ -48,8 +56,19 @@ async function sendQuotation(quotationId, { userId, role } = {}) {
   await quotation.save();
 
   const lead = await Lead.findById(quotation.lead);
-  if (lead && lead.stage !== 'proposal_sent' && lead.stage !== 'negotiation' && lead.stage !== 'won') {
-    await leadService.changeStage(lead._id, { to: 'proposal_sent', followUpAt: lead.followUpAt || new Date(Date.now() + 86400000) }, { userId, role });
+  if (lead && lead.stage !== 'proposal_sent' && lead.stage !== 'negotiation' && lead.stage !== 'won' && lead.stage !== 'lost') {
+    const followUpAt = lead.followUpAt || new Date(Date.now() + 86400000);
+    const violations = evaluateStageTransition({ from: lead.stage, to: 'proposal_sent', role, followUpAt, mdApproved: lead.mdApproved });
+    if (violations.length === 0) {
+      await leadService.changeStage(lead._id, { to: 'proposal_sent', followUpAt }, { userId, role });
+    } else {
+      await Activity.create({
+        lead: lead._id,
+        type: 'system',
+        body: `Quotation v${quotation.version} sent. The lead stays at "${STAGE_LABELS[lead.stage]}" - ${violations.map(v => v.message).join(' ')}`,
+        author: userId || null,
+      });
+    }
   }
   return quotation;
 }

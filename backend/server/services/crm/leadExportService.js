@@ -1,6 +1,7 @@
 'use strict';
 
 const Lead = require('../../models/crm/leadModel');
+const { toDateOnly } = require('../../utils/crm/businessDate');
 
 // Reservia CRM - weekly Marketing Dashboard CSV export (Developer Brief: "weekly CSV export...
 // Arabic/UTF-8... formula-injection protection"). Reuses utils/exportToCsv.js (the same BOM +
@@ -28,9 +29,13 @@ function sanitizeCell(value) {
   return FORMULA_LEAD_CHARS.test(str) ? `'${str}` : str;
 }
 
-const HEADERS = ['RefCode', 'Name', 'Phone', 'Channel', 'Segment', 'Source', 'Governorate', 'Stage', 'Owner', 'ValueEgp', 'CreatedAt', 'FirstReplyAt', 'FollowUpAt'];
+// Change Request 2: new columns are APPENDED (never inserted) so existing consumers that read by
+// position keep working. FollowUpAt is a calendar date (YYYY-MM-DD), never a timestamp.
+const HEADERS = ['RefCode', 'Name', 'Phone', 'Channel', 'Segment', 'Source', 'Governorate', 'Stage', 'Owner', 'ValueEgp', 'CreatedAt', 'FirstReplyAt', 'FollowUpAt', 'Email', 'Campaign', 'SubmittedAt'];
 
 const isoDate = d => (d ? new Date(d).toISOString() : '');
+// `.lean()` skips the model's caster, so a not-yet-migrated legacy Date is converted here too.
+const dateOnly = v => toDateOnly(v) || '';
 
 function rowFor(lead) {
   return [
@@ -46,7 +51,10 @@ function rowFor(lead) {
     lead.valueEgp ?? '',
     isoDate(lead.createdAt),
     isoDate(lead.firstReplyAt),
-    isoDate(lead.followUpAt),
+    dateOnly(lead.followUpAt),
+    sanitizeCell(lead.email),
+    sanitizeCell(lead.campaign || lead.utmCampaign),
+    isoDate(lead.submittedAt || lead.createdAt),
   ];
 }
 

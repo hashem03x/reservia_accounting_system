@@ -118,6 +118,8 @@ import CRM_Pipeline from "@/pages/crm/pipeline";
 import CRM_Leads from "@/pages/crm/leads";
 import CRM_Lead from "@/pages/crm/leads/[id]";
 import CRM_Performance from "@/pages/crm/performance";
+import CRM_Integrations from "@/pages/crm/integrations";
+import CrmRoleGuard from "@/pages/routes/crm-role-guard";
 
 // Reservia Commercial Pages
 import Commercial from "@/pages/commercial";
@@ -346,6 +348,11 @@ export default function App() {
                     <Route path={paths.leads} element={<CRM_Leads />} />
                     <Route path={paths.leads + "/:id"} element={<CRM_Lead />} />
                     <Route path={paths.performance} element={<CRM_Performance />} />
+                    {/* Change Request 2, section 4: lead integrations - MD/Admin only (the API
+                        enforces the same, and key creation/revocation is MD-only server-side). */}
+                    <Route element={<CrmRoleGuard allowedRoles={["md", "admin"]} />}>
+                      <Route path={paths.integrations} element={<CRM_Integrations />} />
+                    </Route>
                   </Route>
                   <Route path={paths.crm + "/*"} element={<NotFound />} />
                 </Route>

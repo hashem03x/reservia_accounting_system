@@ -27,6 +27,13 @@ const sendErrForProd = (err, res) => {
     response.validationErrors = err.details.validationErrors;
   }
 
+  // CRM stage rules (Change Request 2, item 1): tells the MD's UI that this rejection can be
+  // overridden with a reason. Only rule codes, never data.
+  if (err.details && err.details.overridable) {
+    response.overridable = true;
+    response.rules = err.details.rules;
+  }
+
   return res.status(err.statusCode).json(response);
 };
 

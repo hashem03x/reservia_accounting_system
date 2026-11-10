@@ -10,7 +10,9 @@ const sendEmail = require('../../utils/sendEmail');
 // landing_page, whatsapp) - a STAFF member creating a lead by hand through the "New Lead" form
 // already has a human in the loop who can choose (or deliberately leave blank) an owner;
 // auto-assigning over their own explicit choice would be the wrong behaviour.
-const AUTO_ASSIGN_CHANNELS = ['web_form', 'landing_page', 'whatsapp'];
+// Change Request 2: 'ad_lead_form' (Meta / TikTok / Google Ads lead forms, live or via the CSV
+// stopgap) is an automated door too - nobody is in the loop to choose an owner.
+const AUTO_ASSIGN_CHANNELS = ['web_form', 'landing_page', 'whatsapp', 'ad_lead_form'];
 const ROTATION_SEQUENCE = 'crmLeadAssignmentRotation';
 const ROTATION_MAX = 999_999_999;
 
@@ -90,6 +92,10 @@ async function pickAutoAssignee(channel, session) {
   }
 }
 
+// Campaign names arrive from external ad platforms - never interpolate them into HTML unescaped.
+const escapeHtml = value =>
+  String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+
 function frontendBaseUrl() {
   return (process.env.FRONTEND_URL || 'https://reserviafrontend.vercel.app').replace(/\/$/, '');
 }
@@ -107,13 +113,14 @@ function notifyAssignment(owner, lead) {
   const createdAt = new Date(lead.createdAt || Date.now()).toLocaleString('en-GB', { timeZone: 'Africa/Cairo', dateStyle: 'medium', timeStyle: 'short' });
   const subject = `New lead assigned to you - ${lead.refCode}`;
   const html = `
-    <p>Hi ${owner.name || ''},</p>
+    <p>Hi ${escapeHtml(owner.name || '')},</p>
     <p>A new lead has been assigned to you in the Reservia CRM:</p>
     <ul>
       <li><strong>Reference:</strong> ${lead.refCode}</li>
-      <li><strong>Name:</strong> ${lead.name || '(not provided)'}</li>
+      <li><strong>Name:</strong> ${escapeHtml(lead.name || '(not provided)')}</li>
       <li><strong>Phone:</strong> ${lead.phoneE164}</li>
       <li><strong>Source:</strong> ${lead.source || 'Other'}</li>
+      ${lead.campaign ? `<li><strong>Campaign:</strong> ${escapeHtml(lead.campaign)}</li>` : ''}
       <li><strong>Created:</strong> ${createdAt} (Cairo time)</li>
     </ul>
     <p><a href="${leadUrl}">Open this lead in the CRM</a></p>
@@ -128,8 +135,8 @@ function notifyReassignment(owner, lead) {
   const leadUrl = `${frontendBaseUrl()}/crm/leads/${lead._id}`;
   const subject = `A lead was reassigned to you - ${lead.refCode}`;
   const html = `
-    <p>Hi ${owner.name || ''},</p>
-    <p>The lead <strong>${lead.refCode}</strong> (${lead.name || '(not provided)'}, ${lead.phoneE164}) was reassigned to you.</p>
+    <p>Hi ${escapeHtml(owner.name || '')},</p>
+    <p>The lead <strong>${lead.refCode}</strong> (${escapeHtml(lead.name || '(not provided)')}, ${lead.phoneE164}) was reassigned to you.</p>
     <p><a href="${leadUrl}">Open this lead in the CRM</a></p>
   `;
   sendEmail(owner.email, subject, html).catch(() => {});

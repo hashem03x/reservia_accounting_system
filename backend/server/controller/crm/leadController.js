@@ -8,8 +8,9 @@ const factory = require('../handlersFactory');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const { STAGES } = require('../../utils/crm/stageRules');
-const { STAGE_WEIGHTS } = require('../../utils/crm/constants');
 const leadService = require('../../services/crm/leadService');
+const { valuePipeline } = require('../../services/crm/pipelineValuation');
+const { hoursToFirstReply, SLA_WORKING_HOURS, leadOriginAt } = require('../../services/crm/firstReplyService');
 const exportToCsv = require('../../utils/exportToCsv');
 const { buildLeadExportRows, HEADERS: EXPORT_HEADERS } = require('../../services/crm/leadExportService');
 
@@ -50,19 +51,14 @@ exports.getPipelineSummary = asyncHandler(async (req, res) => {
     { $match: { archived: { $ne: true } } },
     { $group: { _id: '$stage', count: { $sum: 1 }, valueEgp: { $sum: { $ifNull: ['$valueEgp', 0] } } } },
   ]);
-  const byStage = Object.fromEntries(rows.map(r => [r._id, { count: r.count, valueEgp: r.valueEgp }]));
   // weightedValueEgp (acceptance report finding 6) - each open stage's value discounted by its
-  // probability of actually closing; Won/Lost have no weight in STAGE_WEIGHTS and so always
-  // contribute 0 (Won is already-realized revenue, not a forecast).
-  const summary = STAGES.map(stage => {
-    const valueEgp = byStage[stage]?.valueEgp || 0;
-    return {
-      stage,
-      count: byStage[stage]?.count || 0,
-      valueEgp,
-      weightedValueEgp: Math.round(valueEgp * (STAGE_WEIGHTS[stage] ?? 0)),
-    };
-  });
+  // probability of actually closing; Won/Lost always contribute 0 (Won is already-realized
+  // revenue, not a forecast). Change Request 2, item 4: the SAME valuation the Dashboard uses
+  // (services/crm/pipelineValuation.js), and every row now carries the `probability` it was
+  // weighted with so the board can print it. Still an array of every stage, for backward
+  // compatibility with existing consumers.
+  const { stages } = valuePipeline(rows, { includeClosedStages: true });
+  const summary = stages.map(({ stage, count, valueEgp, probability, weightedValueEgp }) => ({ stage, count, valueEgp, probability, weightedValueEgp }));
   res.status(200).json(apiResponse('Pipeline summary retrieved successfully', true, summary));
 });
 
@@ -76,7 +72,18 @@ exports.getLeadById = asyncHandler(async (req, res, next) => {
     Activity.find({ lead: lead._id }).sort({ createdAt: 1 }),
     StageHistory.find({ lead: lead._id }).sort({ createdAt: 1 }),
   ]);
-  res.status(200).json(apiResponse('Lead retrieved successfully', true, { lead, activities, stageHistory }));
+  // Change Request 2, item 3: the lead's own first-reply figures, computed by the same service
+  // the Dashboard/Performance metrics use (working hours from the ORIGINAL submission time).
+  const hours = hoursToFirstReply(lead);
+  const firstReply = {
+    originAt: leadOriginAt(lead),
+    at: lead.firstReplyAt,
+    via: lead.firstReplyVia || null,
+    workingHours: hours == null ? null : Math.round(hours * 10) / 10,
+    withinSla: hours == null ? null : hours <= SLA_WORKING_HOURS,
+    slaWorkingHours: SLA_WORKING_HOURS,
+  };
+  res.status(200).json(apiResponse('Lead retrieved successfully', true, { lead, activities, stageHistory, firstReply }));
 });
 
 exports.createLead = asyncHandler(async (req, res) => {

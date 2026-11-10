@@ -18,6 +18,13 @@ const stageHistorySchema = new Schema(
     // lead's own `valueEgp` never rewrites what the deal was actually won at.
     valueEgpAtChange: { type: Number, default: null },
     mdApproved: { type: Boolean, default: false },
+    // Change Request 2, item 1: an MD override of a stage rule (e.g. skipping Qualified). The
+    // record already holds the previous stage (`from`), new stage (`to`), who (`changedBy`) and
+    // when (`createdAt`); these add WHY and WHICH rules were overridden. Only ever true when the
+    // acting user's server-side CRM role was 'md' (services/crm/leadService.js#changeStage).
+    override: { type: Boolean, default: false },
+    overrideReason: { type: String, trim: true, maxlength: 500, default: null },
+    overriddenRules: { type: [String], default: [] },
   },
   { timestamps: true }
 );

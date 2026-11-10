@@ -120,7 +120,13 @@ export default function CrmPerformancePage() {
                   value={`${dash(data.speed.hoursToFirstReply.avgHours)} / ${dash(data.speed.hoursToFirstReply.medianHours)}`}
                   subValue={<SampleTag n={data.speed.hoursToFirstReply.sampleSize} />}
                 />
-                <KpiCard label={translate("% within 8h", "% خلال 8 ساعات")} value={dash(data.speed.hoursToFirstReply.pctWithin8h, "%")} />
+                <KpiCard
+                  label={translate("% within 8 working hours", "% خلال 8 ساعات عمل")}
+                  value={dash(data.speed.hoursToFirstReply.pctWithin8h, "%")}
+                  // Change Request 2, item 3: the SLA % has its own denominator - replied leads plus
+                  // unreplied leads already past their deadline (leads still in time are pending).
+                  subValue={<SampleTag n={data.speed.hoursToFirstReply.slaSampleSize ?? data.speed.hoursToFirstReply.sampleSize} />}
+                />
                 <KpiCard
                   label={translate("Days to quote (avg/median)", "أيام العرض (متوسط/وسيط)")}
                   value={`${dash(data.speed.daysToQuote.avgDays)} / ${dash(data.speed.daysToQuote.medianDays)}`}

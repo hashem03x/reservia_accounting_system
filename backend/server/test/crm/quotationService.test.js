@@ -60,16 +60,33 @@ maybeTest('createQuotation: multi-line totals are the sum of each line, not a re
   assert.equal(quotation.total, 134520);
 });
 
-maybeTest('sendQuotation: sending a draft quote moves an early-stage lead to Proposal sent', async () => {
+maybeTest('sendQuotation: sending a quote moves a lead at Site survey to Proposal sent', async () => {
   const { lead } = await leadService.intakeLead({ phone: '01088899900', channel: 'phone' });
   await leadService.changeStage(lead._id, { to: 'contacted' }, { role: 'sales' });
   await leadService.changeStage(lead._id, { to: 'qualified', followUpAt: new Date() }, { role: 'sales' });
+  await leadService.changeStage(lead._id, { to: 'site_survey', followUpAt: '2026-12-01' }, { role: 'sales' });
 
   const quotation = await quotationService.createQuotation(lead._id, { items: [{ description: 'Kit', unitPriceEgp: 100000, quantity: 1 }] });
   await quotationService.sendQuotation(quotation._id, { role: 'sales' });
 
   const fresh = await Lead.findById(lead._id).lean();
   assert.equal(fresh.stage, 'proposal_sent');
+});
+
+maybeTest('Change Request 2: sending a quote never makes a lead skip stages - a Qualified lead stays Qualified and the timeline says why', async () => {
+  const Activity = require('../../models/crm/activityModel');
+  const { lead } = await leadService.intakeLead({ phone: '01088899901', channel: 'phone' });
+  await leadService.changeStage(lead._id, { to: 'contacted' }, { role: 'sales' });
+  await leadService.changeStage(lead._id, { to: 'qualified', followUpAt: '2026-12-01' }, { role: 'sales' });
+
+  const quotation = await quotationService.createQuotation(lead._id, { items: [{ description: 'Kit', unitPriceEgp: 100000, quantity: 1 }] });
+  const sent = await quotationService.sendQuotation(quotation._id, { role: 'sales' });
+
+  assert.equal(sent.status, 'sent', 'the quotation itself is still sent');
+  const fresh = await Lead.findById(lead._id).lean();
+  assert.equal(fresh.stage, 'qualified');
+  const notes = await Activity.find({ lead: lead._id, type: 'system' }).lean();
+  assert.ok(notes.some(a => /Quotation v1 sent/.test(a.body) && /Site survey first/.test(a.body)));
 });
 
 maybeTest('acceptQuotation: accepting a quote sets the lead\'s valueEgp to the quoted total', async () => {

@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { validateStageTransition } = require('../../utils/crm/stageRules');
+const { validateStageTransition, evaluateStageTransition, canOverride } = require('../../utils/crm/stageRules');
 
 const base = (overrides = {}) => ({ from: 'new', to: 'contacted', role: 'sales', valueEgp: null, lostReason: null, followUpAt: null, mdApproved: false, ...overrides });
 
@@ -46,8 +46,45 @@ test('contracts above EGP 1,000,000 need MD approval unless the actor is the MD'
   assert.deepEqual(validateStageTransition(base({ from: 'negotiation', to: 'won', valueEgp: 1_000_000, role: 'sales' })), []);
 });
 
-test('a lead can move forward any number of stages at once (no forward restriction)', () => {
-  assert.deepEqual(validateStageTransition(base({ from: 'new', to: 'negotiation', role: 'sales', followUpAt: '2026-12-01' })), []);
+// Change Request 2, item 1: strict progression replaces the old "no forward restriction" rule.
+test('Change Request 2: a lead can no longer skip a stage going forward (Contacted -> Site survey is blocked)', () => {
+  const errors = evaluateStageTransition(base({ from: 'contacted', to: 'site_survey', role: 'sales', followUpAt: '2026-11-12' }));
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].code, 'STAGE_SKIP');
+  assert.equal(errors[0].overridable, true);
+  assert.match(errors[0].message, /move it to Qualified first/);
+  assert.match(errors[0].message, /skipping: Qualified/);
+  // Same rule for every open-stage skip, including the old "new -> negotiation" example.
+  assert.equal(evaluateStageTransition(base({ from: 'new', to: 'negotiation', role: 'sales', followUpAt: '2026-12-01' }))[0].code, 'STAGE_SKIP');
+  assert.equal(evaluateStageTransition(base({ from: 'new', to: 'qualified', role: 'sales', followUpAt: '2026-12-01' }))[0].code, 'STAGE_SKIP');
+});
+
+test('Change Request 2: the full ordered path New -> Contacted -> Qualified -> Site survey -> Proposal sent -> Won is allowed step by step', () => {
+  const path = ['new', 'contacted', 'qualified', 'site_survey', 'proposal_sent'];
+  for (let i = 0; i < path.length - 1; i += 1) {
+    assert.deepEqual(validateStageTransition(base({ from: path[i], to: path[i + 1], followUpAt: '2026-11-12' })), [], `${path[i]} -> ${path[i + 1]}`);
+  }
+  assert.deepEqual(validateStageTransition(base({ from: 'proposal_sent', to: 'won', valueEgp: 900000 })), []);
+  assert.deepEqual(validateStageTransition(base({ from: 'proposal_sent', to: 'negotiation', followUpAt: '2026-11-12' })), []);
+});
+
+test('Change Request 2: Lost stays reachable from any open stage (no progression rule applies to losing a deal)', () => {
+  for (const from of ['new', 'contacted', 'qualified', 'site_survey', 'proposal_sent', 'negotiation']) {
+    assert.deepEqual(validateStageTransition(base({ from, to: 'lost', lostReason: 'Price' })), [], from);
+  }
+});
+
+test('Change Request 2: only path/order rules are MD-overridable - data-integrity rules never are', () => {
+  assert.equal(canOverride(evaluateStageTransition(base({ from: 'contacted', to: 'site_survey', role: 'md', followUpAt: '2026-11-12' }))), true);
+  assert.equal(canOverride(evaluateStageTransition(base({ from: 'proposal_sent', to: 'contacted', role: 'md' }))), true); // back two stages
+  assert.equal(canOverride(evaluateStageTransition(base({ from: 'qualified', to: 'won', role: 'md', valueEgp: 100 }))), true);
+  // A skip that is ALSO missing its follow-up date can't be forced through - the data rule stands.
+  assert.equal(canOverride(evaluateStageTransition(base({ from: 'contacted', to: 'site_survey', role: 'md', followUpAt: null }))), false);
+  assert.equal(canOverride(evaluateStageTransition(base({ from: 'won', to: 'negotiation', role: 'md', followUpAt: '2026-11-12' }))), false);
+  assert.equal(canOverride(evaluateStageTransition(base({ from: 'negotiation', to: 'lost', role: 'md', lostReason: null }))), false);
+  assert.equal(canOverride(evaluateStageTransition(base({ from: 'proposal_sent', to: 'won', role: 'md', valueEgp: null }))), false);
+  // Nothing to override on a valid move.
+  assert.equal(canOverride(evaluateStageTransition(base({ from: 'new', to: 'contacted' }))), false);
 });
 
 test('a lead can move back exactly one open stage at a time, never more', () => {
@@ -58,6 +95,7 @@ test('a lead can move back exactly one open stage at a time, never more', () => 
 
 test('a follow-up date is required from Qualified onwards, never for New or Contacted', () => {
   assert.deepEqual(validateStageTransition(base({ from: 'new', to: 'contacted', followUpAt: null })), []);
+  assert.deepEqual(validateStageTransition(base({ from: 'qualified', to: 'contacted', followUpAt: null })), []);
   assert.ok(validateStageTransition(base({ from: 'contacted', to: 'qualified', followUpAt: null })).includes('Set a follow-up date.'));
   assert.ok(validateStageTransition(base({ from: 'qualified', to: 'site_survey', followUpAt: null })).includes('Set a follow-up date.'));
   assert.ok(validateStageTransition(base({ from: 'site_survey', to: 'proposal_sent', followUpAt: null })).includes('Set a follow-up date.'));

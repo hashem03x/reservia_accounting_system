@@ -148,6 +148,10 @@ const mountRoutes = app => {
   // Public website lead-capture (no auth; its own CORS/rate-limit/honeypot - see the route's own
   // header comment for why this is intentionally separate from the authenticated crm/leads above).
   app.use('/api/v1/crm/public', require('./crm/publicLeadRoute'));
+  // Change Request 2, section 4 - the unified, API-key-secured lead intake for every external
+  // channel, plus the Meta Lead Ads and Google Ads lead-form webhooks and their admin screen
+  // (see routes/crm/integrationRoute.js's own header for each endpoint's authorization).
+  app.use('/api/v1/crm/integrations', require('./crm/integrationRoute'));
   // Phase 2 (due 2026-12-10) - quotations (services/crm/quotationService.js).
   app.use('/api/v1/crm/quotations', require('./crm/quotationRoute'));
   // Dashboard + Performance tab (acceptance report sections 4/5) - real, MD-entered targets and

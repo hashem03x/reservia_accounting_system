@@ -3,6 +3,7 @@ const validatorMiddleware = require('../../../middleware/validatorMiddleware');
 const { normalizeEgyptianPhone } = require('../../crm/phone');
 const { FORM_SEGMENTS, CHANNELS, LOST_REASONS, SOURCES, GOVERNORATE_NAMES_EN } = require('../../crm/constants');
 const { STAGES } = require('../../crm/stageRules');
+const { toDateOnly } = require('../../crm/businessDate');
 
 exports.createLeadValidator = [
   check('phone')
@@ -38,6 +39,8 @@ exports.createLeadValidator = [
   check('systemSizeKwp').optional({ nullable: true }).isFloat({ min: 0 }),
   check('valueEgp').optional({ nullable: true }).isFloat({ min: 0 }),
   check('owner').optional({ nullable: true }).isMongoId().withMessage('Invalid owner id'),
+  check('email').optional({ nullable: true, checkFalsy: true }).isEmail().withMessage('Enter a valid email address.').isLength({ max: 200 }),
+  check('campaign').optional({ nullable: true }).isString().trim().isLength({ max: 200 }),
   validatorMiddleware,
 ];
 
@@ -62,7 +65,18 @@ exports.changeStageValidator = [
     .isIn(LOST_REASONS)
     .withMessage('Invalid lost reason'),
   check('valueEgp').optional({ nullable: true }).isFloat({ min: 0 }),
-  check('followUpAt').optional({ nullable: true }).isISO8601().withMessage('Invalid follow-up date'),
+  // Change Request 2, item 2: a follow-up is a calendar date. 'YYYY-MM-DD' is the expected form
+  // and is stored verbatim; a full ISO timestamp from an older client is still accepted and
+  // converted to its Cairo calendar day by the Lead model (never re-shifted through UTC).
+  check('followUpAt')
+    .optional({ nullable: true })
+    .custom(value => {
+      if (toDateOnly(value) === undefined) throw new Error('Follow-up date must be a real calendar date (YYYY-MM-DD).');
+      return true;
+    }),
+  // Change Request 2, item 1: MD-only override reason. Its presence from a non-MD is rejected by
+  // the service (403) - the server-side role decides, never this field.
+  check('overrideReason').optional({ nullable: true }).isString().withMessage('Override reason must be text.').trim().isLength({ max: 500 }),
   // mdApproved is deliberately NOT accepted here - services/crm/leadService.js#changeStage never
   // trusts a client-supplied approval flag (a request body is not proof the MD approved
   // anything); only the acting role genuinely being 'md' can satisfy the >EGP 1M rule.
@@ -77,7 +91,14 @@ exports.reassignLeadValidator = [
 
 exports.recordActivityValidator = [
   check('id').isMongoId().withMessage('Invalid lead id'),
-  check('type').notEmpty().withMessage('Activity type is required').isIn(['note', 'call', 'email', 'survey', 'proposal']).withMessage('Invalid activity type'),
+  // 'whatsapp_out' (Change Request 2, item 3): a rep logging a WhatsApp message they sent from
+  // the sales phone - one of the agreed first-reply events. 'whatsapp_in'/'system' stay
+  // server-only (webhook / automation), never typed in by a user.
+  check('type')
+    .notEmpty()
+    .withMessage('Activity type is required')
+    .isIn(['note', 'call', 'email', 'whatsapp_out', 'survey', 'proposal'])
+    .withMessage('Invalid activity type'),
   check('body').optional({ nullable: true }).isString().trim().isLength({ max: 5000 }),
   validatorMiddleware,
 ];

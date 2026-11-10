@@ -20,6 +20,7 @@ export const CHANNEL_LABELS: Record<string, { en: string; ar: string }> = {
   whatsapp: { en: "WhatsApp", ar: "واتساب" },
   web_form: { en: "Website form", ar: "نموذج الموقع" },
   landing_page: { en: "Landing page", ar: "صفحة هبوط" },
+  ad_lead_form: { en: "Ad lead form", ar: "نموذج إعلان" },
 };
 
 export const SEGMENT_LABELS: Record<string, { en: string; ar: string }> = {
@@ -155,12 +156,27 @@ export function allowedNextStages(from: string, role: string): string[] {
 
     if (to === "won" && !["proposal_sent", "negotiation"].includes(from)) return false;
 
-    if (OPEN_STAGES.includes(from) && OPEN_STAGES.includes(to) && OPEN_STAGES.indexOf(to) < OPEN_STAGES.indexOf(from) - 1) {
-      return false; // more than one stage back
+    if (OPEN_STAGES.includes(from) && OPEN_STAGES.includes(to)) {
+      const step = OPEN_STAGES.indexOf(to) - OPEN_STAGES.indexOf(from);
+      // Change Request 2, item 1: strict progression - one stage forward at a time (no skipping
+      // Qualified on the way to Site survey), and still at most one stage back.
+      if (step > 1 || step < -1) return false;
     }
 
     if (role === "technical" && !["site_survey", "proposal_sent"].includes(to)) return false;
 
     return true;
   });
+}
+
+/**
+ * Change Request 2, item 1: stages the MD can still reach by OVERRIDING a path/order rule (with
+ * a logged reason) - a forward skip, more than one stage back, Won before a proposal, or reopening
+ * a lost lead somewhere other than Contacted. Empty for every other role: the backend refuses an
+ * override from anyone but the MD, so nobody else is ever offered one. Won stays final.
+ */
+export function overrideOnlyStages(from: string, role: string): string[] {
+  if (role !== "md" || isTerminalStage(from)) return [];
+  const normal = new Set(allowedNextStages(from, role));
+  return ALL_STAGES.filter((to) => to !== from && to !== "lost" && !normal.has(to));
 }

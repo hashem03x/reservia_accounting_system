@@ -5,6 +5,8 @@ const ApiError = require('../../utils/apiError');
 const { normalizeEgyptianPhone } = require('../../utils/crm/phone');
 const leadService = require('./leadService');
 const WaRefCode = require('../../models/crm/waRefCodeModel');
+const Activity = require('../../models/crm/activityModel');
+const { parseSubmissionTimestamp } = require('../../utils/crm/businessDate');
 
 // Change Request 1, Feature 1: "WhatsApp message with a recognized Ref code -> Source associated
 // with that code." The code the website appends to every wa.me prefilled message
@@ -13,12 +15,27 @@ const WaRefCode = require('../../models/crm/waRefCodeModel');
 // (services/crm/publicLeadIntakeService.js#registerWaRefCode).
 const WA_REF_PATTERN = /\bWA-\d{4}-[A-Z]{3}-[A-Z0-9]{4}\b/;
 
+/**
+ * The attribution a WhatsApp message carries: the Ref code's registered source and UTM fields
+ * when the message contains a recognized code, else "WhatsApp Direct" with no campaign.
+ */
+async function resolveWhatsAppAttribution(messageText) {
+  const match = String(messageText || '').match(WA_REF_PATTERN);
+  const found = match ? await WaRefCode.findOne({ code: match[0] }).lean() : null;
+  if (!found) return { source: 'WhatsApp Direct', refCode: match ? match[0] : null };
+  return {
+    source: found.source || 'WhatsApp Direct',
+    refCode: found.code,
+    utmSource: found.utmSource || undefined,
+    utmMedium: found.utmMedium || undefined,
+    utmCampaign: found.utmCampaign || undefined,
+    utmContent: found.utmContent || undefined,
+  };
+}
+
 /** @returns {Promise<string>} a real SOURCES value - the recognized code's source, or the "WhatsApp without a recognized Ref code" fallback. */
 async function resolveWhatsAppSource(messageText) {
-  const match = String(messageText || '').match(WA_REF_PATTERN);
-  if (!match) return 'WhatsApp Direct';
-  const found = await WaRefCode.findOne({ code: match[0] }).lean();
-  return found?.source || 'WhatsApp Direct';
+  return (await resolveWhatsAppAttribution(messageText)).source;
 }
 
 // WhatsApp Business Platform (Meta Cloud API) webhook - Developer Brief section 4G. This file is
@@ -118,21 +135,44 @@ async function processWebhookPayload(payload) {
 
 async function handleInboundMessage(message, contactName) {
   const phoneE164 = normalizeEgyptianPhone(message.from);
-  if (!phoneE164) return { skipped: true, reason: 'unrecognized phone', raw: message.from };
+  if (!phoneE164) return { skipped: true, reason: 'unrecognized phone' };
 
-  // Source is resolved from the FIRST message only - intakeLead never overwrites an existing
-  // lead's first-touch source on a repeat enquiry, matching every other channel's own rule.
-  const source = await resolveWhatsAppSource(message.text?.body);
-  const { lead } = await leadService.intakeLead({ phone: phoneE164, channel: 'whatsapp', name: contactName, source });
+  // Change Request 2, item 9 (idempotency): a redelivered message is recognized BEFORE the lead is
+  // touched at all - previously the repeat-enquiry note was written first and only the activity
+  // itself was deduplicated, so every Meta retry still added a "Repeat enquiry" timeline entry.
+  if (message.id) {
+    const seen = await Activity.findOne({ whatsappMessageId: message.id }).select('_id lead').lean();
+    if (seen) return { leadId: seen.lead, activityId: seen._id, replay: true };
+  }
+
+  // Attribution is resolved from the FIRST message only - intakeLead never overwrites an existing
+  // lead's first-touch source/campaign on a repeat contact, matching every other channel's rule.
+  const attribution = await resolveWhatsAppAttribution(message.text?.body);
+  const { refCode, ...attributionFields } = attribution;
+  const { lead, created } = await leadService.intakeLead(
+    {
+      phone: phoneE164,
+      channel: 'whatsapp',
+      name: contactName,
+      ...attributionFields,
+      // Meta's own send time (Unix seconds) - the SLA clock starts when the customer wrote.
+      submittedAt: parseSubmissionTimestamp(message.timestamp) || undefined,
+    },
+    // The inbound message below IS the timeline entry for a repeat contact - no extra note.
+    { skipRepeatNote: true }
+  );
   const activity = await leadService.recordActivity(
     lead._id,
     { type: 'whatsapp_in', body: describeMessage(message), whatsappMessageId: message.id },
     {}
   );
-  return { leadId: lead._id, activityId: activity._id };
+  if (created && refCode) {
+    await Activity.create({ lead: lead._id, type: 'system', body: `WhatsApp Ref code ${refCode} -> source ${attribution.source}.` });
+  }
+  return { leadId: lead._id, activityId: activity._id, created };
 }
 
-module.exports = { verifySubscription, verifySignature, processWebhookPayload, describeMessage, resolveWhatsAppSource };
+module.exports = { verifySubscription, verifySignature, processWebhookPayload, describeMessage, resolveWhatsAppSource, resolveWhatsAppAttribution };
 
 // Re-exported for routes/crm/whatsappRoute.js's error responses without a second import path.
 module.exports.ApiError = ApiError;

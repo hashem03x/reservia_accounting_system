@@ -20,6 +20,9 @@ export interface CsvPreviewResult {
 export interface CsvCommitResult {
   created: { row: number; id: string }[];
   failed: { row: number; errors: CsvRowError[] }[];
+  // Rows an importer recognized as already imported earlier (an idempotent re-import - CRM lead
+  // rows with an original timestamp or external id). Optional: other importers never send it.
+  skipped?: { row: number; message: string }[];
 }
 
 // The shape of a thrown API error body (utils/apiError.js -> errorMiddleware.js) - apiRequest.ts

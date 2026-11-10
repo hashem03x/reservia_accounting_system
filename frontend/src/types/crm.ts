@@ -67,9 +67,11 @@ export type CrmChannel =
   | "email"
   | "whatsapp"
   | "web_form"
-  | "landing_page";
+  | "landing_page"
+  // Change Request 2: an ad platform's own lead form (Meta / TikTok / Google Ads).
+  | "ad_lead_form";
 
-export const CRM_CHANNELS: CrmChannel[] = ["phone", "walk_in", "dealer", "referral", "event", "outreach", "email", "whatsapp", "web_form", "landing_page"];
+export const CRM_CHANNELS: CrmChannel[] = ["phone", "walk_in", "dealer", "referral", "event", "outreach", "email", "whatsapp", "web_form", "landing_page", "ad_lead_form"];
 
 export const CRM_LOST_REASONS = [
   "Price",
@@ -100,6 +102,9 @@ export type CrmLead = {
   systemSizeKwp: number | null;
   valueEgp: number | null;
   owner: { _id: string; name: string; email?: string } | null;
+  email?: string | null;
+  // Change Request 2, item 2: a CALENDAR DATE "YYYY-MM-DD" - never parse it with new Date();
+  // always format it with pages/crm/_shared/business-date.ts#formatFollowUpDate.
   followUpAt: string | null;
   stage: CrmStage;
   stageChangedAt: string;
@@ -107,6 +112,10 @@ export type CrmLead = {
   mdApproved: boolean;
   replyDueAt: string;
   firstReplyAt: string | null;
+  // Change Request 2, item 3: which qualifying event set firstReplyAt.
+  firstReplyVia?: "stage_change" | "call" | "whatsapp_out" | "email" | null;
+  // Change Request 2, item 12: when the customer originally submitted the enquiry.
+  submittedAt?: string | null;
   createdBy: { _id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
@@ -120,7 +129,24 @@ export type CrmLead = {
   utmMedium: string | null;
   utmCampaign: string | null;
   utmContent: string | null;
+  utmTerm?: string | null;
+  campaign?: string | null;
+  adSetName?: string | null;
+  adName?: string | null;
+  adFormId?: string | null;
+  adPlatform?: string | null;
+  externalLeadId?: string | null;
   landingPage: string | null;
+};
+
+// GET /crm/leads/:id - the lead's own first-reply figures (services/crm/firstReplyService.js).
+export type CrmLeadFirstReply = {
+  originAt: string;
+  at: string | null;
+  via: CrmLead["firstReplyVia"];
+  workingHours: number | null;
+  withinSla: boolean | null;
+  slaWorkingHours: number;
 };
 
 export type CrmActivity = {
@@ -142,10 +168,16 @@ export type CrmStageHistory = {
   lostReason: string | null;
   valueEgpAtChange: number | null;
   mdApproved: boolean;
+  // Change Request 2, item 1: an MD override of a stage rule.
+  override?: boolean;
+  overrideReason?: string | null;
+  overriddenRules?: string[];
   createdAt: string;
 };
 
-export type CrmPipelineRow = { stage: CrmStage; count: number; valueEgp: number; weightedValueEgp: number };
+// probability: the configured stage probability (0-1) the weighted value was computed with;
+// null for won/lost (not a forecast). Single source of truth: the API, never a frontend copy.
+export type CrmPipelineRow = { stage: CrmStage; count: number; valueEgp: number; weightedValueEgp: number | null; probability?: number | null };
 
 // ===================== Dashboard (acceptance report section 4) =====================
 // Mirrors backend/server/services/crm/reportService.js's getDashboard() payload exactly.
@@ -158,13 +190,35 @@ export type CrmDashboardTargets = {
   proposals: CrmTargetMetric;
   signed: CrmTargetMetric;
   valueEgp: { target: number | null };
+  targetSet: boolean;
 };
-export type CrmDashboardPipeline = { stages: CrmPipelineRow[]; totalWeightedValueEgp: number };
+export type CrmDashboardPipeline = {
+  stages: CrmPipelineRow[];
+  // Change Request 2, item 4: BOTH figures - the full open value and the probability-weighted one.
+  totalValueEgp: number;
+  totalWeightedValueEgp: number;
+  openLeadCount: number;
+  probabilities: { stage: CrmStage; probability: number | null }[];
+  unconfiguredStages: CrmStage[];
+};
+export type CrmFirstReplyMetrics = {
+  avgHours: number | null;
+  medianHours: number | null;
+  pctWithinSla: number | null;
+  repliedCount: number;
+  withinSlaCount: number;
+  overdueUnrepliedCount: number;
+  pendingCount: number;
+  sampleSize: number;
+  slaSampleSize: number;
+  slaWorkingHours: number;
+};
 export type CrmDashboardSpeed = {
   leadsPastSlaLimit: number;
   leadsWithNoFollowUpDate: number;
   avgHoursToFirstReply: number | null;
   pctWithinSla: number | null;
+  firstReply: CrmFirstReplyMetrics;
 };
 // Change Request 1, Feature 5C: regrouped from marketing SOURCE to SEGMENT, since ad spend is now
 // entered per free-text channel with an optional segment tag (not per ad-platform source) - see
@@ -175,11 +229,27 @@ export type CrmSegmentQualityRow = {
   qualified: number;
   signed: number;
   monthlySpendEgp: number | null;
+  plannedSpendEgp: number | null;
+  actualSpendEgp: number | null;
+  spendBasis: CrmSpendBasis | null;
   costPerQualifiedLead: number | null;
   costPerEnquiry: number | null;
   overCostLimit: boolean;
 };
-export type CrmDashboardSegmentQuality = { segments: CrmSegmentQualityRow[]; costPerQualifiedLeadLimitEgp: number };
+// Which spend figure cost-per-lead was computed from: the actual amount when entered, else the plan.
+export type CrmSpendBasis = "planned" | "actual" | "mixed";
+export type CrmSpendTotals = {
+  plannedSpendEgp: number | null;
+  actualSpendEgp: number | null;
+  effectiveSpendEgp: number | null;
+  basis: CrmSpendBasis | null;
+  lineCount: number;
+  enquiries: number;
+  qualified: number;
+  costPerEnquiry: number | null;
+  costPerQualifiedLead: number | null;
+};
+export type CrmDashboardSegmentQuality = { segments: CrmSegmentQualityRow[]; totals: CrmSpendTotals; costPerQualifiedLeadLimitEgp: number };
 export type CrmSegmentRateRow = { segment: CrmSegment; won: number; lost: number; winRatePct: number | null };
 export type CrmLostReasonRow = { reason: string; count: number };
 export type CrmDashboardWonLost = {
@@ -201,6 +271,8 @@ export type CrmTeamTotals = {
   surveys: number;
   proposals: number;
   signed: number;
+  unassignedEnquiries: number;
+  totalValueEgp: number;
   totalWeightedValueEgp: number;
   wonCount: number;
   lostCount: number;
@@ -223,7 +295,16 @@ export type CrmDashboard = {
 
 export type CrmSegmentSample = { segment: CrmSegment; avgDays: number | null; sampleSize: number };
 export type CrmDaysInStageRow = { stage: CrmStage; avgDays: number | null; medianDays: number | null; sampleSize: number; bySegment: CrmSegmentSample[] };
-export type CrmHoursToFirstReply = { avgHours: number | null; medianHours: number | null; pctWithin8h: number | null; sampleSize: number };
+export type CrmHoursToFirstReply = {
+  avgHours: number | null;
+  medianHours: number | null;
+  pctWithin8h: number | null;
+  sampleSize: number;
+  slaSampleSize?: number;
+  withinSlaCount?: number;
+  overdueUnrepliedCount?: number;
+  pendingCount?: number;
+};
 export type CrmDaysMetric = { avgDays: number | null; medianDays: number | null; sampleSize: number; bySegment: CrmSegmentSample[] };
 export type CrmStuckLead = { leadId: string; stage: CrmStage; days: number; medianDaysForStage: number };
 export type CrmPerfSpeed = {
@@ -292,4 +373,51 @@ export type CrmTarget = {
 // `segment` is an optional tag used only to roll spend up into a segment's cost-per-lead figures;
 // a channel with no segment (SEO, agency fees, ...) still counts toward total spend but is
 // excluded from any one segment's math.
-export type CrmAdSpendRow = { _id: string; channel: string; segment: CrmSegment | null; year: number; month: number; amountEgp: number };
+// amountEgp = PLANNED budget; actualAmountEgp = actual spend once known (Change Request 2, item 5).
+export type CrmAdSpendRow = { _id: string; channel: string; segment: CrmSegment | null; year: number; month: number; amountEgp: number; actualAmountEgp?: number | null };
+
+// ===================== Integrations (Change Request 2, section 4) =====================
+
+export type CrmIntegrationChannel = "website" | "whatsapp" | "meta" | "tiktok" | "google_ads";
+export type CrmIntegrationState = "not_configured" | "awaiting_first_event" | "receiving" | "errors";
+export type CrmIntegrationStatusRow = {
+  channel: CrmIntegrationChannel | "csv";
+  label: string;
+  source: string | null;
+  activeKeys: number;
+  settings: { name: string; set: boolean }[];
+  lastProcessedAt: string | null;
+  last7Days: { processed: number; failed: number; ignored: number };
+  state: CrmIntegrationState;
+};
+export type CrmIntegrationStatus = {
+  channels: CrmIntegrationStatusRow[];
+  assignmentPoolSize: number;
+  endpoints: Record<string, string>;
+};
+export type CrmIntegrationKey = {
+  _id: string;
+  channel: CrmIntegrationChannel;
+  label: string;
+  keyId: string;
+  hint: string;
+  active: boolean;
+  createdBy: { _id: string; name: string } | null;
+  revokedAt: string | null;
+  revokedBy: { _id: string; name: string } | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+};
+export type CrmIntakeEvent = {
+  _id: string;
+  channel: string;
+  externalId: string;
+  status: "processing" | "processed" | "failed" | "ignored";
+  lead: { _id: string; refCode: string } | null;
+  leadCreated: boolean;
+  attempts: number;
+  lastError: string | null;
+  ignoredReason: string | null;
+  createdAt: string;
+  processedAt: string | null;
+};

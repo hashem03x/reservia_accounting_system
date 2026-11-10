@@ -4,8 +4,11 @@
  * identify other test records... do NOT bulk-delete based on assumptions or similar names; only
  * remove positively-verified test records."
  *
- * This script NEVER writes, archives, or deletes anything - it only prints what it finds so the
- * MD can personally verify each record before anyone archives it (PATCH /crm/leads/:id/archive,
+ * By default this script NEVER writes, archives, or deletes anything - it only prints what it finds so the
+ * MD can personally verify each record before anyone archives it. The ONLY write path is the
+ * explicit `--archive=<codes> --actor-email=<MD> --apply` mode added for Change Request 2 (see
+ * archiveConfirmedTestLeads below), which archives - never deletes - confirmed codes only
+ * (PATCH /crm/leads/:id/archive,
  * MD-only, now requires a `reason` - see leadModel.js/leadService.js#setLeadArchived). Candidates
  * beyond the two explicitly-named leads are flagged by an OBJECTIVE, stated reason (same reference
  * batch, a "test"/"demo" string in the name or phone) - they are suggestions to personally check,
@@ -17,8 +20,62 @@
 const mongoose = require('mongoose');
 const { loadEnv, assertDbUriConfigured, assertSafeDatabaseName, assertNotLeopardDatabase, SafetyError } = require('./lib/dbSafety');
 
-const NAMED_REF_CODES = ['RSV-0411-0006', 'RSV-0411-0007'];
+// Change Request 1 named RSV-0411-0006/0007; Change Request 2 adds RSV-0811-0008
+// ("TEST - delete Farm Wadi", at Proposal sent).
+const NAMED_REF_CODES = ['RSV-0411-0006', 'RSV-0411-0007', 'RSV-0811-0008'];
 const TEST_STRING_PATTERN = /test|demo|dummy|sample|example/i;
+
+// Change Request 2, item 13 - archiving mode. Still never automatic and never a delete:
+//   npm run db:audit-crm-test-leads -- --archive=RSV-0811-0008,RSV-0411-0006 --actor-email=<MD email>          (dry run)
+//   npm run db:audit-crm-test-leads -- --archive=RSV-0811-0008,RSV-0411-0006 --actor-email=<MD email> --apply
+// Only the ref codes listed explicitly are touched, and each one must ALSO carry an obvious test
+// marker in its name (or be one of the client-named codes above) - a mistyped code can never
+// archive a real customer. The actor must hold an active CRM 'md' membership (the same rule as the
+// archive button). Archiving goes through leadService#setLeadArchived, so the reason, who and when
+// land in the lead's own audit trail and the lead can be restored at any time.
+function argValue(name) {
+  const hit = process.argv.find(a => a.startsWith(`--${name}=`));
+  return hit ? hit.slice(name.length + 3) : null;
+}
+
+async function archiveConfirmedTestLeads({ Lead, codes, actorEmail, apply }) {
+  // eslint-disable-next-line global-require
+  const User = require('../models/userModel');
+  // eslint-disable-next-line global-require
+  const { setLeadArchived } = require('../services/crm/leadService');
+  const actor = await User.findOne({ email: new RegExp(`^${actorEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }).select('_id name systemMemberships');
+  const isMd = actor?.systemMemberships?.some(m => m.system === 'CRM' && m.role === 'md' && m.isActive);
+  if (!isMd) throw new SafetyError(`--actor-email ${actorEmail} must be a user with an active CRM "md" membership.`);
+
+  console.log(`\n================ Archive confirmed test leads (${apply ? 'APPLY' : 'dry run'}) ================`);
+  const results = [];
+  for (const code of codes) {
+    // eslint-disable-next-line no-await-in-loop
+    const lead = await Lead.findOne({ refCode: code });
+    if (!lead) {
+      console.log(`  ${code}: not found - skipped.`);
+      results.push({ code, outcome: 'not_found' });
+      continue;
+    }
+    const looksTest = TEST_STRING_PATTERN.test(lead.name || '') || NAMED_REF_CODES.includes(code);
+    if (!looksTest) {
+      console.log(`  ${code} ("${lead.name || '(no name)'}"): NO test marker in the name and not a client-named code - refused. Archive it from the lead page if you are sure.`);
+      results.push({ code, outcome: 'refused' });
+      continue;
+    }
+    if (lead.archived) {
+      console.log(`  ${code}: already archived (${lead.archiveReason}).`);
+      results.push({ code, outcome: 'already_archived' });
+      continue;
+    }
+    const reason = `Test record - removed per Change Request ${NAMED_REF_CODES.slice(0, 2).includes(code) ? '1' : '2'} cleanup (${code}).`;
+    console.log(`  ${code} ("${lead.name || '(no name)'}", stage ${lead.stage}): ${apply ? 'ARCHIVED' : 'would archive'} - reason: ${reason}`);
+    // eslint-disable-next-line no-await-in-loop
+    if (apply) await setLeadArchived(lead._id, true, { userId: actor._id, reason });
+    results.push({ code, outcome: apply ? 'archived' : 'would_archive' });
+  }
+  return results;
+}
 
 function printLead(lead, reason) {
   console.log(`\n  refCode:     ${lead.refCode}`);
@@ -54,7 +111,7 @@ async function auditCrmTestLeads({ connect = true } = {}) {
   // eslint-disable-next-line global-require
   const Lead = require('../models/crm/leadModel');
 
-  console.log('\n================ Section 1: the two explicitly-named leads ================');
+  console.log('\n================ Section 1: the explicitly-named leads (Change Requests 1 and 2) ================');
   const named = await Lead.find({ refCode: { $in: NAMED_REF_CODES } }).lean();
   const foundCodes = new Set(named.map(l => l.refCode));
   for (const code of NAMED_REF_CODES) {
@@ -67,13 +124,13 @@ async function auditCrmTestLeads({ connect = true } = {}) {
   console.log('\n\n================ Section 2: other candidates worth personally checking ================');
   console.log('(Objective signals only - NONE of these are archived automatically. Verify each one yourself.)\n');
 
-  // Same day-of-month reference batch as the two named leads (RSV-DDMM-xxxx) - leads created on
-  // the same calendar day a known test lead was, which is weak but worth a look, never a reason
-  // to act alone.
-  const sameBatch = await Lead.find({ refCode: { $regex: /^RSV-0411-/, $nin: NAMED_REF_CODES } }).lean();
+  // Same day-of-month reference batch as the named leads (RSV-DDMM-xxxx) - leads created on the
+  // same calendar day a known test lead was, which is weak but worth a look, never a reason to
+  // act alone.
+  const sameBatch = await Lead.find({ refCode: { $regex: /^RSV-(0411|0811)-/, $nin: NAMED_REF_CODES } }).lean();
   if (sameBatch.length) {
-    console.log(`-- Same reference batch (RSV-0411-*), excluding the two named leads: ${sameBatch.length} found --`);
-    for (const lead of sameBatch) printLead(lead, 'same RSV-0411-* batch as the two named test leads - check if this was also created while testing');
+    console.log(`-- Same reference batches (RSV-0411-*, RSV-0811-*), excluding the named leads: ${sameBatch.length} found --`);
+    for (const lead of sameBatch) printLead(lead, 'same reference batch as a named test lead - check if this was also created while testing');
   }
 
   // Name or phone containing an obvious test/demo string - still just a flag, not a verdict (a
@@ -97,8 +154,17 @@ async function auditCrmTestLeads({ connect = true } = {}) {
   console.log('  PATCH /api/v1/crm/leads/:id/archive   (MD role required)');
   console.log('  body: { "reason": "<why this is a test record>" }');
   console.log('This is reversible (PATCH .../restore) and keeps the full audit trail - see leadService.js#setLeadArchived.');
+  console.log('Or, for codes you have confirmed, the --archive=<codes> --actor-email=<MD> [--apply] mode of this script.');
 
-  return { named, sameBatch, textMatches: newTextMatches };
+  let archived = null;
+  const archiveCodes = (argValue('archive') || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (archiveCodes.length) {
+    const actorEmail = argValue('actor-email');
+    if (!actorEmail) throw new SafetyError('--archive needs --actor-email=<the MD user archiving these leads>.');
+    archived = await archiveConfirmedTestLeads({ Lead, codes: archiveCodes, actorEmail, apply: process.argv.includes('--apply') });
+  }
+
+  return { named, sameBatch, textMatches: newTextMatches, archived };
 }
 
 if (require.main === module) {

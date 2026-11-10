@@ -15,11 +15,29 @@ import img from "@/assets/unauthorized.png";
 // target system independently verifies the authenticated identity and required authorization".
 export default function SystemGuard({ systemId }: { systemId: SystemId }) {
   const { translate } = useLanguage();
-  const { systems, loading } = useSystemAccess();
+  const { systems, loading, error, reFetch } = useSystemAccess();
 
   if (loading) return <LoadingSection className="h-screen" />;
 
   if (systems?.[systemId]?.active) return <Outlet />;
+
+  // Change Request 2, item 0: a FAILED access check (network error, expired session, server down)
+  // used to render the same "Access Not Granted" page as a real revocation - which makes a
+  // transient outage indistinguishable from lost permissions. It now says what actually happened.
+  if (!systems && error) {
+    return (
+      <div className="flex-center h-screen flex-col gap-3 pb-20">
+        <h1 className="text-center text-xl sm:text-3xl">{translate("Could not check your access", "تعذر التحقق من صلاحياتك")}</h1>
+        <p className="max-w-md text-center text-gray-500">{error}</p>
+        <div className="flex gap-2">
+          <Button onClick={reFetch}>{translate("Try again", "حاول مرة أخرى")}</Button>
+          <Link to={`/${paths.portal}`}>
+            <Button variant="light">{translate("Back to Portal", "العودة إلى البوابة")}</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-center h-screen flex-col gap-3 pb-20">

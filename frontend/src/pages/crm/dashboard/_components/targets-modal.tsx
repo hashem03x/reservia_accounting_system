@@ -39,6 +39,8 @@ export default function TargetsModal({ opened, close, onSaved }: { opened: boole
   const [spendSegment, setSpendSegment] = useState<string>("");
   const [spendMonth, setSpendMonth] = useState<Date | null>(new Date());
   const [spendAmount, setSpendAmount] = useState<number | "">("");
+  // Change Request 2, item 5: the actual amount spent, once known (planned budget stays above).
+  const [spendActual, setSpendActual] = useState<number | "">("");
   const [savingSpend, setSavingSpend] = useState(false);
   const [existingSpend, setExistingSpend] = useState<CrmAdSpendRow[]>([]);
 
@@ -110,7 +112,7 @@ export default function TargetsModal({ opened, close, onSaved }: { opened: boole
 
   async function saveSpend() {
     if (!spendMonth || !spendChannel.trim() || spendAmount === "") {
-      notifyError({ language, message: translate("Enter a channel name, month and amount.", "أدخل اسم القناة والشهر والمبلغ.") });
+      notifyError({ language, message: translate("Enter a channel name, month and planned amount.", "أدخل اسم القناة والشهر والمبلغ المخطط.") });
       return;
     }
     const [year, m] = toMonthOnly(spendMonth).split("-").map(Number);
@@ -119,13 +121,14 @@ export default function TargetsModal({ opened, close, onSaved }: { opened: boole
       await privateRequest({
         url: "crm/ad-spend",
         method: "PUT",
-        data: { channel: spendChannel.trim(), segment: spendSegment || null, year, month: m, amountEgp: spendAmount },
+        data: { channel: spendChannel.trim(), segment: spendSegment || null, year, month: m, amountEgp: spendAmount, actualAmountEgp: spendActual === "" ? null : spendActual },
         language,
       });
       notifySuccess({ language, message: translate("Spend saved.", "تم حفظ الإنفاق.") });
       setSpendChannel("");
       setSpendSegment("");
       setSpendAmount("");
+      setSpendActual("");
       loadSpend(spendMonth);
       onSaved();
     } catch (err) {
@@ -136,6 +139,8 @@ export default function TargetsModal({ opened, close, onSaved }: { opened: boole
   }
 
   const spendTotal = existingSpend.reduce((sum, s) => sum + s.amountEgp, 0);
+  const actualEntered = existingSpend.filter(s => s.actualAmountEgp != null);
+  const actualTotal = actualEntered.reduce((sum, s) => sum + (s.actualAmountEgp || 0), 0);
 
   return (
     <Modal opened={opened} onClose={close} title={translate("Targets & Advertising Spend", "الأهداف والإنفاق الإعلاني")} size="lg">
@@ -223,9 +228,16 @@ export default function TargetsModal({ opened, close, onSaved }: { opened: boole
                 clearable
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <MonthPickerInput label={translate("Month", "الشهر")} value={spendMonth} onChange={setSpendMonth} />
-              <NumberInput label={translate("Amount (EGP)", "المبلغ (جنيه)")} value={spendAmount} onChange={v => setSpendAmount(v as number | "")} min={0} />
+              <NumberInput label={translate("Planned (EGP)", "المخطط (جنيه)")} value={spendAmount} onChange={v => setSpendAmount(v as number | "")} min={0} required />
+              <NumberInput
+                label={translate("Actual (EGP)", "الفعلي (جنيه)")}
+                description={translate("Leave empty until known", "اتركه فارغاً حتى يُعرف")}
+                value={spendActual}
+                onChange={v => setSpendActual(v as number | "")}
+                min={0}
+              />
             </div>
             <Button onClick={saveSpend} loading={savingSpend} color="teal" className="self-end">
               {translate("Save Spend", "حفظ الإنفاق")}
@@ -238,7 +250,8 @@ export default function TargetsModal({ opened, close, onSaved }: { opened: boole
                     {translate("Spend already entered for this month", "الإنفاق المُدخل لهذا الشهر")}
                   </h4>
                   <span className="text-xs font-semibold text-gray-600">
-                    {translate("Total", "الإجمالي")}: {formatAmount(spendTotal, "EGP")}
+                    {translate("Planned", "المخطط")}: {formatAmount(spendTotal, "EGP")}
+                    {actualEntered.length > 0 && ` - ${translate("Actual", "الفعلي")}: ${formatAmount(actualTotal, "EGP")}`}
                   </span>
                 </div>
                 <Table verticalSpacing={2} fz="xs">
@@ -246,7 +259,8 @@ export default function TargetsModal({ opened, close, onSaved }: { opened: boole
                     <Table.Tr>
                       <Table.Th>{translate("Channel", "القناة")}</Table.Th>
                       <Table.Th>{translate("Segment", "القطاع")}</Table.Th>
-                      <Table.Th className="text-right">{translate("Amount", "المبلغ")}</Table.Th>
+                      <Table.Th className="text-right">{translate("Planned", "المخطط")}</Table.Th>
+                      <Table.Th className="text-right">{translate("Actual", "الفعلي")}</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -255,6 +269,7 @@ export default function TargetsModal({ opened, close, onSaved }: { opened: boole
                         <Table.Td>{s.channel}</Table.Td>
                         <Table.Td className="text-gray-500">{s.segment ? segLabel(s.segment) : "-"}</Table.Td>
                         <Table.Td className="text-right">{formatAmount(s.amountEgp, "EGP")}</Table.Td>
+                        <Table.Td className="text-right text-gray-500">{s.actualAmountEgp != null ? formatAmount(s.actualAmountEgp, "EGP") : "-"}</Table.Td>
                       </Table.Tr>
                     ))}
                   </Table.Tbody>

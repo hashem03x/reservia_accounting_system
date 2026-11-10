@@ -9,6 +9,7 @@ import {
   isTerminalStage,
   isObviouslyInvalidDropTarget,
   allowedNextStages,
+  overrideOnlyStages,
 } from "./lead-display.ts";
 
 test("isLeadOverdue: true only when replyDueAt has passed AND there has been no first reply yet", () => {
@@ -87,14 +88,24 @@ test("allowedNextStages: Lost can be reopened to Contacted only, and only by adm
   assert.deepEqual(allowedNextStages("lost", "md"), ["contacted"]);
 });
 
-test("allowedNextStages: moving backward is capped at one stage; forward has no such cap", () => {
+test("allowedNextStages: moving backward is capped at one stage; Change Request 2 - forward is capped at one stage too", () => {
   const fromNegotiation = allowedNextStages("negotiation", "md");
   assert.ok(fromNegotiation.includes("proposal_sent"), "one stage back is fine");
   assert.ok(!fromNegotiation.includes("site_survey"), "two stages back is not");
   assert.ok(!fromNegotiation.includes("qualified"), "three stages back is not");
   assert.ok(!fromNegotiation.includes("new"), "four stages back is not");
-  // Forward: New can reach Negotiation directly (no sequential-forward requirement in the spec).
-  assert.ok(allowedNextStages("new", "md").includes("negotiation"));
+  // Change Request 2, item 1: no more skipping (the old "New can reach Negotiation directly").
+  assert.ok(!allowedNextStages("new", "md").includes("negotiation"));
+  assert.ok(!allowedNextStages("contacted", "sales").includes("site_survey"), "Contacted -> Site survey skips Qualified");
+  assert.ok(allowedNextStages("contacted", "sales").includes("qualified"));
+});
+
+test("overrideOnlyStages: only the MD is offered override targets, and they are exactly the blocked path moves", () => {
+  assert.deepEqual(overrideOnlyStages("contacted", "sales"), []);
+  assert.deepEqual(overrideOnlyStages("contacted", "admin"), []);
+  assert.deepEqual(overrideOnlyStages("contacted", "md"), ["site_survey", "proposal_sent", "negotiation", "won"]);
+  assert.deepEqual(overrideOnlyStages("won", "md"), [], "a won deal stays won");
+  assert.ok(!overrideOnlyStages("qualified", "md").includes("lost"), "Lost is always a normal move");
 });
 
 test("allowedNextStages: Lost is always offered as a destination from any open stage", () => {
@@ -103,12 +114,13 @@ test("allowedNextStages: Lost is always offered as a destination from any open s
   }
 });
 
-test("allowedNextStages: technical can only move a lead to Site survey or Proposal sent", () => {
-  assert.deepEqual(allowedNextStages("new", "technical"), ["site_survey", "proposal_sent"]);
-  assert.deepEqual(allowedNextStages("qualified", "technical"), ["site_survey", "proposal_sent"]);
+test("allowedNextStages: technical can only move a lead to Site survey or Proposal sent - and only along the path", () => {
+  assert.deepEqual(allowedNextStages("new", "technical"), []);
+  assert.deepEqual(allowedNextStages("qualified", "technical"), ["site_survey"]);
+  assert.deepEqual(allowedNextStages("site_survey", "technical"), ["proposal_sent"]);
   assert.deepEqual(allowedNextStages("negotiation", "technical"), ["proposal_sent"]);
 });
 
-test("allowedNextStages: a sales/md/admin user sees every structurally valid stage from New", () => {
-  assert.deepEqual(allowedNextStages("new", "sales"), ["contacted", "qualified", "site_survey", "proposal_sent", "negotiation", "lost"]);
+test("allowedNextStages: from New a sales/md/admin user sees the next stage and Lost only (Change Request 2)", () => {
+  assert.deepEqual(allowedNextStages("new", "sales"), ["contacted", "lost"]);
 });

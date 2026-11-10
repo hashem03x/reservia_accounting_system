@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useLanguage } from "@/context/LanguageContext";
+import { useSystemAccess } from "@/context/SystemAccessContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import translateHelper from "@/utils/helpers/translate";
@@ -15,7 +16,7 @@ import EmptySection from "@/components/ui/sections/empty";
 import LeadModal from "@/components/global/lead-modal";
 import { Button } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
-import { isTerminalStage, stageExtraFieldRequirements } from "../_shared/lead-display";
+import { isTerminalStage, overrideOnlyStages, stageExtraFieldRequirements } from "../_shared/lead-display";
 import PipelineHeader, { PipelineFilters } from "./_components/pipeline-header";
 import StageColumn from "./_components/stage-column";
 import PipelineListView from "./_components/pipeline-list-view";
@@ -43,6 +44,8 @@ function extractErrorMessage(err: unknown, language: Language): string {
 export default function CrmPipeline() {
   const { language, translate } = useLanguage();
   const navigate = useNavigate();
+  const { systems } = useSystemAccess();
+  const role = (systems?.CRM?.role as string | null | undefined) || "";
 
   const { privateRequest, loading, setLoading, error, setError, data, setData } = useDataHandler<PipelineData | null>({
     initialData: null,
@@ -117,16 +120,21 @@ export default function CrmPipeline() {
   // raw values and a client-side weight table, so this figure can never drift from the one source
   // of truth for a business-critical KPI.
   const totalWeightedValueEgp = useMemo(
-    () => (data?.summary ?? []).filter((r) => OPEN_STAGES.includes(r.stage)).reduce((sum, r) => sum + r.weightedValueEgp, 0),
+    () => (data?.summary ?? []).filter((r) => OPEN_STAGES.includes(r.stage)).reduce((sum, r) => sum + (r.weightedValueEgp || 0), 0),
     [data],
   );
 
   // ===================== Stage changes (menu or drag-and-drop) =====================
   const [movingLeadId, setMovingLeadId] = useState<string | null>(null);
-  const [pendingChange, setPendingChange] = useState<{ lead: CrmLead; to: CrmStage } | null>(null);
+  const [pendingChange, setPendingChange] = useState<{ lead: CrmLead; to: CrmStage; override?: boolean } | null>(null);
 
   function requestStageChange(lead: CrmLead, to: CrmStage) {
     if (movingLeadId) return; // one change in flight at a time - no duplicate/overlapping requests
+    // Change Request 2, item 1: a move that skips the pipeline order needs the MD's logged reason.
+    if (overrideOnlyStages(lead.stage, role).includes(to)) {
+      setPendingChange({ lead, to, override: true });
+      return;
+    }
     const { needsLostReason, needsValue, needsFollowUp } = stageExtraFieldRequirements(to);
     if (needsLostReason || needsValue || needsFollowUp) {
       setPendingChange({ lead, to });
@@ -235,6 +243,7 @@ export default function CrmPipeline() {
                   stage={stage}
                   count={leads.length}
                   valueEgp={valueEgp}
+                  probability={data.summary.find((r) => r.stage === stage)?.probability ?? null}
                   leads={leads}
                   collapsed={collapsedStages.has(stage)}
                   onToggleCollapse={() =>
@@ -267,6 +276,7 @@ export default function CrmPipeline() {
       <QuickStageChangeModal
         lead={pendingChange?.lead || null}
         to={pendingChange?.to || null}
+        requiresOverride={!!pendingChange?.override}
         onClose={() => setPendingChange(null)}
         onChanged={() => load({ silent: true })}
       />

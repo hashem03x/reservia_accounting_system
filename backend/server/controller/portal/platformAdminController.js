@@ -16,6 +16,21 @@ const { SYSTEMS, isValidSystemId, isValidRoleForSystem } = require('../../utils/
 
 const SAFE_FIELDS = '-password -passwordResetCode -passwordResetCodeExpires';
 
+// Roles that only ever have to exist somewhere for the system to stay fully usable (MD-only
+// targets/spend/archive/stage override/integration keys in CRM; MD final sign-off in Commercial).
+const SOLE_AUTHORITY_ROLES = { CRM: 'md', COMMERCIAL: 'md' };
+
+/**
+ * @description  The systems registry (ids, names, implemented flag, valid roles) - so the admin UI
+ *               offers each system's REAL roles instead of a hand-copied list that can drift (the
+ *               drift that caused the 9 Nov 2026 MD access loss - see Change Request 2, item 0).
+ * @route        GET /api/v1/admin/platform/systems
+ * @access       Private/PlatformAdmin
+ */
+exports.listSystems = asyncHandler(async (req, res) => {
+  res.status(200).json(apiResponse('OK', true, Object.values(SYSTEMS)));
+});
+
 function logAudit({ actor, action, targetUser, before, after }) {
   // Best-effort - an audit-log write failure must never block the real mutation it's recording.
   return PlatformAuditLog.create({
@@ -154,8 +169,30 @@ exports.updateUserSystems = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.params.id);
   if (!user) return next(new ApiError('No user found with that id.', 404));
 
+  const next_ = systemMemberships.map(({ system, role, isActive }) => ({ system, role, isActive: isActive !== false }));
+
+  // Change Request 2, item 0 - lock-out protection. Removing (or deactivating) the LAST active
+  // holder of a system's sole-authority role would make that system's MD-only functions
+  // unreachable for everyone - exactly how the MD lost CRM/Commercial on 9 Nov 2026. Same
+  // principle as the "never revoke the last platform admin" guard below.
+  for (const [system, role] of Object.entries(SOLE_AUTHORITY_ROLES)) {
+    const holds = list => list.some(m => m.system === system && m.role === role && m.isActive !== false);
+    if (holds(user.systemMemberships) && !holds(next_)) {
+      // eslint-disable-next-line no-await-in-loop
+      const others = await User.countDocuments({ _id: { $ne: user._id }, systemMemberships: { $elemMatch: { system, role, isActive: true } } });
+      if (others === 0) {
+        return next(
+          new ApiError(
+            `Refusing to remove the last active ${SYSTEMS[system].name} "${role}" membership - nobody would be left who can use ${SYSTEMS[system].name}'s MD-only functions. Grant "${role}" to another user first.`,
+            400
+          )
+        );
+      }
+    }
+  }
+
   const before = user.systemMemberships;
-  user.systemMemberships = systemMemberships.map(({ system, role, isActive }) => ({ system, role, isActive: isActive !== false }));
+  user.systemMemberships = next_;
   await user.save();
 
   await logAudit({ actor: req.user, action: 'user.systems.update', targetUser: user, before, after: user.systemMemberships });

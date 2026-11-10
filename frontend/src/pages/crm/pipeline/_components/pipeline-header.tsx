@@ -66,7 +66,7 @@ export default function PipelineHeader({
             )}
             {!!totalValueEgp && (
               <span className="text-gray-500" title={translate("Each open stage's value, discounted by its chance of closing", "قيمة كل مرحلة مفتوحة، مخصومة حسب احتمال إغلاقها")}>
-                {translate("Weighted", "القيمة المرجحة")}:{" "}
+                {translate("Weighted pipeline value", "القيمة المرجحة للمسار")}:{" "}
                 <span className="font-semibold text-gray-700">{formatAmount(totalWeightedValueEgp, translations.currency)}</span>
               </span>
             )}

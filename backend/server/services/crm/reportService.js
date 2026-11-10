@@ -4,22 +4,33 @@ const Lead = require('../../models/crm/leadModel');
 const StageHistory = require('../../models/crm/stageHistoryModel');
 const CrmTarget = require('../../models/crm/targetModel');
 const CrmAdSpend = require('../../models/crm/adSpendModel');
-const { STAGE_WEIGHTS, SEGMENTS } = require('../../utils/crm/constants');
-const { workingHoursBetween } = require('../../utils/crm/workingHours');
+const { SEGMENTS } = require('../../utils/crm/constants');
+const { cairoMonthBounds } = require('../../utils/crm/businessDate');
+const { valuePipeline, stageProbabilities } = require('./pipelineValuation');
+const { computeFirstReplyMetrics } = require('./firstReplyService');
 
 // Reservia CRM - the main Dashboard (acceptance report section 4). Every figure here is computed
 // at read time from real Lead/StageHistory/CrmTarget/CrmAdSpend documents - nothing is hardcoded,
 // mocked, or precomputed/cached in a way that could drift from the Leads list. "With the three
 // test leads removed and ten seeded leads loaded, every figure matches a manual count from the
 // Leads list" (the report's own acceptance line) is the standard every function here is held to.
+//
+// Change Request 2 adjustments, applied uniformly to every block:
+//   - Months are CAIRO calendar months (utils/crm/businessDate.js#cairoMonthBounds), not UTC.
+//   - A lead belongs to the month it was ORIGINALLY submitted (Lead.submittedAt, falling back to
+//     createdAt for legacy leads), so a CSV-imported lead is never moved into the import month.
+//   - Archived leads are excluded from every count, not only from "enquiries".
+//   - A funnel stage counts every lead that REACHED it - including a lead that skipped it on the
+//     way to a later stage (legacy data from before strict progression, or an MD override) - so
+//     "Qualified 0, Surveys 1" can no longer happen.
 
 const OPEN_STAGES = ['new', 'contacted', 'qualified', 'site_survey', 'proposal_sent', 'negotiation'];
+// Funnel order for the "reached at least this stage" counts. Lost is not a funnel step.
+const FUNNEL_ORDER = ['new', 'contacted', 'qualified', 'site_survey', 'proposal_sent', 'negotiation', 'won'];
 
-/** [start, end) UTC bounds for a calendar month - `month` is 1-12, matching CrmTarget's own field. */
+/** [start, end) of a Cairo calendar month - `month` is 1-12, matching CrmTarget's own field. */
 function monthBounds(year, month) {
-  const start = new Date(Date.UTC(year, month - 1, 1));
-  const end = new Date(Date.UTC(year, month, 1));
-  return { start, end };
+  return cairoMonthBounds(year, month);
 }
 
 function median(values) {
@@ -34,49 +45,95 @@ function average(values) {
   return values.reduce((sum, v) => sum + v, 0) / values.length;
 }
 
-function leadMatch({ start, end, ownerId }) {
-  const match = { createdAt: { $gte: start, $lt: end }, archived: { $ne: true } };
-  if (ownerId) match.owner = new mongoose.Types.ObjectId(ownerId);
+const oid = id => new mongoose.Types.ObjectId(id);
+
+/**
+ * Mongo filter: the lead's ORIGIN time (submittedAt, else createdAt) is inside [start, end).
+ * `prefix` targets a $lookup'd lead document (e.g. 'leadDoc').
+ */
+function originInRange(start, end, prefix = '') {
+  const p = prefix ? `${prefix}.` : '';
+  return {
+    $or: [{ [`${p}submittedAt`]: { $gte: start, $lt: end } }, { [`${p}submittedAt`]: null, [`${p}createdAt`]: { $gte: start, $lt: end } }],
+  };
+}
+
+function leadMatch({ start, end, ownerId, segment }) {
+  const match = { ...originInRange(start, end), archived: { $ne: true } };
+  if (ownerId) match.owner = oid(ownerId);
+  if (segment) match.segment = segment;
   return match;
 }
 
 /**
- * Block 1: Targets. "Enquiries"/qualified/surveys/proposals/signed are each the count of DISTINCT
- * leads that reached at least that stage during the period - enquiries from Lead.createdAt,
- * everything else from the StageHistory event that actually moved a lead INTO that stage (never
- * "currently sitting in" it, which would undercount leads that passed through and moved on).
+ * Distinct (non-archived) leads that reached `stage` during [start, end) - the ONE definition of
+ * "reached" every Dashboard/Performance funnel count uses.
+ *   - direct: a StageHistory event moved the lead INTO `stage` within the period (unchanged rule);
+ *   - implicit: the lead never entered `stage` at all but its FIRST move to a later funnel stage
+ *     happened within the period (it skipped `stage`; it still passed that point of the funnel).
+ * Returns [{ _id, segment, owner, source }].
+ */
+async function reachedStageLeads({ stage, start, end, ownerId = null, segment = null }) {
+  const idx = FUNNEL_ORDER.indexOf(stage);
+  const atOrBeyond = idx === -1 ? [stage] : FUNNEL_ORDER.slice(idx);
+  const leadFilter = { 'leadDoc.archived': { $ne: true } };
+  if (ownerId) leadFilter['leadDoc.owner'] = oid(ownerId);
+  if (segment) leadFilter['leadDoc.segment'] = segment;
+
+  const rows = await StageHistory.aggregate([
+    { $match: { to: { $in: atOrBeyond }, createdAt: { $gte: start, $lt: end } } },
+    { $lookup: { from: 'crmleads', localField: 'lead', foreignField: '_id', as: 'leadDoc' } },
+    { $unwind: '$leadDoc' },
+    { $match: leadFilter },
+    {
+      $group: {
+        _id: '$lead',
+        direct: { $max: { $cond: [{ $eq: ['$to', stage] }, 1, 0] } },
+        segment: { $first: '$leadDoc.segment' },
+        owner: { $first: '$leadDoc.owner' },
+        source: { $first: '$leadDoc.source' },
+      },
+    },
+  ]);
+  const direct = rows.filter(r => r.direct === 1);
+  const candidates = rows.filter(r => r.direct !== 1);
+  if (candidates.length === 0) return direct;
+
+  const firstReach = await StageHistory.aggregate([
+    { $match: { lead: { $in: candidates.map(r => r._id) }, to: { $in: atOrBeyond } } },
+    {
+      $group: {
+        _id: '$lead',
+        firstAt: { $min: '$createdAt' },
+        enteredStage: { $max: { $cond: [{ $eq: ['$to', stage] }, 1, 0] } },
+      },
+    },
+  ]);
+  const implicit = new Set(firstReach.filter(r => r.enteredStage === 0 && r.firstAt >= start && r.firstAt < end).map(r => String(r._id)));
+  return [...direct, ...candidates.filter(r => implicit.has(String(r._id)))];
+}
+
+const countReached = async args => (await reachedStageLeads(args)).length;
+
+/**
+ * Block 1: Targets. Enquiries = leads originally submitted in the month; qualified/surveys/
+ * proposals/signed = distinct leads that REACHED that stage in the month (reachedStageLeads).
  *
  * Targets come from CrmTarget, keyed by (segment, month) (Change Request 1, Feature 5A) - the
  * Dashboard itself has no segment filter, so it always reads the single company-wide `segment:
  * 'all'` record for the month, regardless of which owner's ACTUAL counts are shown alongside it.
- * A segment/month with none set reports `target: null` for every field, never a fabricated
- * number (acceptance report: real MD-entered targets only).
+ * A field with no target set reports `target: null`, never a fabricated number.
  */
 async function getTargetsBlock({ year, month, ownerId }) {
   const { start, end } = monthBounds(year, month);
-  const leadFilter = leadMatch({ start, end, ownerId });
-
-  const stageReached = async stage => {
-    const match = { to: stage, createdAt: { $gte: start, $lt: end } };
-    if (!ownerId) {
-      return (await StageHistory.distinct('lead', match)).length;
-    }
-    const rows = await StageHistory.aggregate([
-      { $match: match },
-      { $lookup: { from: 'crmleads', localField: 'lead', foreignField: '_id', as: 'leadDoc' } },
-      { $unwind: '$leadDoc' },
-      { $match: { 'leadDoc.owner': new mongoose.Types.ObjectId(ownerId) } },
-      { $group: { _id: '$lead' } },
-    ]);
-    return rows.length;
-  };
+  const range = { start, end, ownerId };
 
   const [actualEnquiries, actualQualified, actualSurveys, actualProposals, actualSigned, target] = await Promise.all([
-    Lead.countDocuments(leadFilter),
-    stageReached('qualified'),
-    stageReached('site_survey'),
-    stageReached('proposal_sent'),
-    stageReached('won'),
+    Lead.countDocuments(leadMatch(range)),
+    countReached({ stage: 'qualified', ...range }),
+    countReached({ stage: 'site_survey', ...range }),
+    countReached({ stage: 'proposal_sent', ...range }),
+    countReached({ stage: 'won', ...range }),
     CrmTarget.findOne({ segment: 'all', year, month }).lean(),
   ]);
   const field = f => (target && target[f] != null ? target[f] : null);
@@ -88,125 +145,144 @@ async function getTargetsBlock({ year, month, ownerId }) {
     proposals: { actual: actualProposals, target: field('targetProposals') },
     signed: { actual: actualSigned, target: field('targetSigned') },
     valueEgp: { target: field('targetValueEgp') },
+    targetSet: !!target,
   };
 }
 
 /**
  * Block 2: Pipeline by stage - the SAME computation GET /crm/leads/pipeline uses
- * (controller/crm/leadController.js#getPipelineSummary), factored out here so the dashboard can
- * never report a different weighted-pipeline figure than the Pipeline board itself. Owner-filtered
- * when a specific owner is selected; always every stage (count/EGP/weighted), even stages with no
- * leads, since every open stage is meaningful even when currently empty.
+ * (services/crm/pipelineValuation.js), so the Dashboard can never report a different figure than
+ * the Pipeline board. A point-in-time snapshot of OPEN, non-archived leads (owner-filtered when an
+ * owner is selected) - deliberately not month-filtered: an open deal's value is in the pipeline
+ * today regardless of the month it arrived. Returns BOTH the full pipeline value and the weighted
+ * value (Change Request 2, item 4), and every stage's probability.
  */
 async function getPipelineBlock({ ownerId }) {
   const match = { archived: { $ne: true } };
-  if (ownerId) match.owner = new mongoose.Types.ObjectId(ownerId);
+  if (ownerId) match.owner = oid(ownerId);
   const rows = await Lead.aggregate([{ $match: match }, { $group: { _id: '$stage', count: { $sum: 1 }, valueEgp: { $sum: { $ifNull: ['$valueEgp', 0] } } } }]);
-  const byStage = Object.fromEntries(rows.map(r => [r._id, { count: r.count, valueEgp: r.valueEgp }]));
-  const stages = OPEN_STAGES.map(stage => {
-    const valueEgp = byStage[stage]?.valueEgp || 0;
-    return { stage, count: byStage[stage]?.count || 0, valueEgp, weightedValueEgp: Math.round(valueEgp * (STAGE_WEIGHTS[stage] ?? 0)) };
-  });
-  return { stages, totalWeightedValueEgp: stages.reduce((sum, s) => sum + s.weightedValueEgp, 0) };
+  const valuation = valuePipeline(rows);
+  return {
+    stages: valuation.stages.map(({ stage, count, valueEgp, probability, weightedValueEgp }) => ({ stage, count, valueEgp, probability, weightedValueEgp })),
+    totalValueEgp: valuation.totalValueEgp,
+    totalWeightedValueEgp: valuation.totalWeightedValueEgp,
+    openLeadCount: valuation.openLeadCount,
+    probabilities: stageProbabilities(),
+    unconfiguredStages: valuation.unconfiguredStages,
+  };
 }
 
-const SLA_HOURS = 8;
-
-/** Block 3: Speed - leads past the 8-working-hour first-reply SLA, leads with no follow-up date, average hours to first reply. */
+/**
+ * Block 3: Speed - leads past the 8-working-hour first-reply SLA, leads with no follow-up date,
+ * and the first-reply metrics (services/crm/firstReplyService.js#computeFirstReplyMetrics - the
+ * SAME function the Performance tab uses).
+ */
 async function getSpeedBlock({ year, month, ownerId }) {
   const { start, end } = monthBounds(year, month);
   const filter = leadMatch({ start, end, ownerId });
   const now = new Date();
 
-  const [pastSlaCount, noFollowUpCount, repliedLeads] = await Promise.all([
+  const [pastSlaCount, noFollowUpCount, leads] = await Promise.all([
     Lead.countDocuments({ ...filter, stage: { $in: OPEN_STAGES }, firstReplyAt: null, replyDueAt: { $lt: now } }),
     Lead.countDocuments({ ...filter, stage: { $in: OPEN_STAGES }, followUpAt: null }),
-    Lead.find({ ...filter, firstReplyAt: { $ne: null } })
-      .select('createdAt firstReplyAt')
-      .lean(),
+    Lead.find(filter).select('createdAt submittedAt firstReplyAt replyDueAt').lean(),
   ]);
-
-  // Working hours, not raw wall-clock hours - a reply that merely spans a Fri/Sat weekend must
-  // never be reported as if the team took ~65 hours to respond (see utils/crm/workingHours.js).
-  const hours = repliedLeads.map(l => workingHoursBetween(l.createdAt, l.firstReplyAt));
-  const avgHoursToFirstReply = average(hours);
-  const withinSla = hours.length === 0 ? null : (hours.filter(h => h <= SLA_HOURS).length / hours.length) * 100;
+  const firstReply = computeFirstReplyMetrics(leads, { now });
 
   return {
     leadsPastSlaLimit: pastSlaCount,
     leadsWithNoFollowUpDate: noFollowUpCount,
-    avgHoursToFirstReply: avgHoursToFirstReply == null ? null : Math.round(avgHoursToFirstReply * 10) / 10,
-    pctWithinSla: withinSla == null ? null : Math.round(withinSla * 10) / 10,
+    avgHoursToFirstReply: firstReply.avgHours,
+    pctWithinSla: firstReply.pctWithinSla,
+    firstReply,
   };
 }
 
 const COST_PER_QUALIFIED_LEAD_LIMIT_EGP = 3500;
 
 /**
- * Block 4: Segment quality (Change Request 1, Feature 5C) - leads/qualified/signed by SEGMENT,
- * cost per qualified lead AND cost per enquiry against the real monthly ad spend entered for that
- * segment (CrmAdSpend.segment, summed across every channel/budget-line tagged with it) -
- * `costPerQualifiedLead`/`costPerEnquiry: null` when no spend was entered for the segment or
- * there were zero leads/qualified, never a fabricated/zero cost. Previously grouped by marketing
- * SOURCE (Google Ads/Meta Ads/...), back when ad spend was entered per source; spend is now
- * entered per free-text channel with an optional segment tag (client's own real budget line items
- * - "Farm test", "Farms", "Villas", "Compounds" - don't correspond to any ad-platform source), so
- * this block regroups by segment to match what spend can actually be attributed to. A channel row
- * with no segment tag (e.g. "SEO", "Agency fees") contributes to total spend elsewhere but is
- * deliberately excluded here - it isn't anyone's segment to charge against.
+ * Spend for one line item: `amountEgp` is the PLANNED budget (what Change Request 1, section 5
+ * gave), `actualAmountEgp` the real spend once the MD enters it. Cost-per-lead figures use the
+ * actual figure when it exists and the planned one otherwise, and always say which (`basis`).
+ */
+function effectiveSpend(row) {
+  return row.actualAmountEgp != null ? row.actualAmountEgp : row.amountEgp;
+}
+
+function summarizeSpend(rows) {
+  const planned = rows.reduce((sum, r) => sum + (r.amountEgp || 0), 0);
+  const withActual = rows.filter(r => r.actualAmountEgp != null);
+  const actual = withActual.length ? withActual.reduce((sum, r) => sum + r.actualAmountEgp, 0) : null;
+  let basis = null;
+  if (rows.length) basis = withActual.length === 0 ? 'planned' : withActual.length === rows.length ? 'actual' : 'mixed';
+  return { plannedSpendEgp: rows.length ? planned : null, actualSpendEgp: actual, effectiveSpendEgp: rows.length ? rows.reduce((s, r) => s + effectiveSpend(r), 0) : null, basis, lineCount: rows.length };
+}
+
+const safeDivide = (amount, count) => (amount == null || !count ? null : Math.round((amount / count) * 100) / 100);
+
+/**
+ * Block 4: Segment quality (Change Request 1, Feature 5C) + overall marketing cost (Change Request
+ * 2, item 5) - leads/qualified/signed by SEGMENT, cost per qualified lead and cost per enquiry
+ * against the month's ad spend for that segment (CrmAdSpend.segment, summed across every
+ * channel/budget line tagged with it). A segment WITH spend but no leads yet is still listed (its
+ * cost per lead is null - "no enquiries yet", never a misleading zero or infinity). A line with no
+ * segment tag (e.g. "SEO", "Agency fees") is excluded from segment rows but included in `totals`.
  */
 async function getSegmentQualityBlock({ year, month, ownerId }) {
   const { start, end } = monthBounds(year, month);
-  const filter = leadMatch({ start, end, ownerId });
+  const range = { start, end, ownerId };
 
-  const [bySegment, wonRows, spendRows] = await Promise.all([
-    Lead.aggregate([{ $match: filter }, { $group: { _id: '$segment', leads: { $sum: 1 } } }]),
-    StageHistory.aggregate([
-      { $match: { to: 'won', createdAt: { $gte: start, $lt: end } } },
-      { $lookup: { from: 'crmleads', localField: 'lead', foreignField: '_id', as: 'leadDoc' } },
-      { $unwind: '$leadDoc' },
-      ...(ownerId ? [{ $match: { 'leadDoc.owner': new mongoose.Types.ObjectId(ownerId) } }] : []),
-      { $group: { _id: '$leadDoc.segment', signed: { $sum: 1 } } },
-    ]),
+  const [bySegment, signedLeads, qualifiedLeads, spendRows] = await Promise.all([
+    Lead.aggregate([{ $match: leadMatch(range) }, { $group: { _id: '$segment', leads: { $sum: 1 } } }]),
+    reachedStageLeads({ stage: 'won', ...range }),
+    reachedStageLeads({ stage: 'qualified', ...range }),
     CrmAdSpend.find({ year, month }).lean(),
   ]);
 
-  // "Qualified" per segment, same reached-stage definition as the Targets block.
-  const qualifiedRows = await StageHistory.aggregate([
-    { $match: { to: 'qualified', createdAt: { $gte: start, $lt: end } } },
-    { $lookup: { from: 'crmleads', localField: 'lead', foreignField: '_id', as: 'leadDoc' } },
-    { $unwind: '$leadDoc' },
-    ...(ownerId ? [{ $match: { 'leadDoc.owner': new mongoose.Types.ObjectId(ownerId) } }] : []),
-    { $group: { _id: '$leadDoc.segment', qualified: { $sum: 1 } } },
-  ]);
-
-  const qualifiedBySegment = Object.fromEntries(qualifiedRows.map(r => [r._id, r.qualified]));
-  const signedBySegment = Object.fromEntries(wonRows.map(r => [r._id, r.signed]));
+  const tally = rows => rows.reduce((acc, r) => ({ ...acc, [r.segment || 'unknown']: (acc[r.segment || 'unknown'] || 0) + 1 }), {});
+  const qualifiedBySegment = tally(qualifiedLeads);
+  const signedBySegment = tally(signedLeads);
+  const leadsBySegment = Object.fromEntries(bySegment.map(r => [r._id || 'unknown', r.leads]));
   const spendBySegment = {};
   for (const row of spendRows) {
     if (!row.segment) continue; // not attributable to one segment (SEO, agency fees, ...)
-    spendBySegment[row.segment] = (spendBySegment[row.segment] || 0) + row.amountEgp;
+    spendBySegment[row.segment] = spendBySegment[row.segment] || [];
+    spendBySegment[row.segment].push(row);
   }
 
-  const segments = bySegment.map(r => {
-    const segment = r._id || 'unknown';
+  const segmentIds = [...new Set([...Object.keys(leadsBySegment), ...Object.keys(spendBySegment)])];
+  const segments = segmentIds.map(segment => {
+    const leads = leadsBySegment[segment] || 0;
     const qualified = qualifiedBySegment[segment] || 0;
-    const spend = spendBySegment[segment];
-    const costPerQualifiedLead = spend == null || qualified === 0 ? null : Math.round((spend / qualified) * 100) / 100;
-    const costPerEnquiry = spend == null || r.leads === 0 ? null : Math.round((spend / r.leads) * 100) / 100;
+    const spend = spendBySegment[segment] ? summarizeSpend(spendBySegment[segment]) : null;
+    const costPerQualifiedLead = safeDivide(spend?.effectiveSpendEgp ?? null, qualified);
     return {
       segment,
-      leads: r.leads,
+      leads,
       qualified,
       signed: signedBySegment[segment] || 0,
-      monthlySpendEgp: spend ?? null,
+      monthlySpendEgp: spend?.effectiveSpendEgp ?? null,
+      plannedSpendEgp: spend?.plannedSpendEgp ?? null,
+      actualSpendEgp: spend?.actualSpendEgp ?? null,
+      spendBasis: spend?.basis ?? null,
       costPerQualifiedLead,
-      costPerEnquiry,
+      costPerEnquiry: safeDivide(spend?.effectiveSpendEgp ?? null, leads),
       overCostLimit: costPerQualifiedLead != null && costPerQualifiedLead > COST_PER_QUALIFIED_LEAD_LIMIT_EGP,
     };
   });
 
-  return { segments, costPerQualifiedLeadLimitEgp: COST_PER_QUALIFIED_LEAD_LIMIT_EGP };
+  // Overall figures - every spend line for the month, every enquiry/qualified lead in scope.
+  const totalSpend = summarizeSpend(spendRows);
+  const enquiries = Object.values(leadsBySegment).reduce((s, n) => s + n, 0);
+  const totals = {
+    ...totalSpend,
+    enquiries,
+    qualified: qualifiedLeads.length,
+    costPerEnquiry: safeDivide(totalSpend.effectiveSpendEgp, enquiries),
+    costPerQualifiedLead: safeDivide(totalSpend.effectiveSpendEgp, qualifiedLeads.length),
+  };
+
+  return { segments, totals, costPerQualifiedLeadLimitEgp: COST_PER_QUALIFIED_LEAD_LIMIT_EGP };
 }
 
 /** Block 5: Won and lost - win rate by segment, median days to close, lost reasons ranked. All 7 segments always listed, even at zero. */
@@ -218,7 +294,7 @@ async function getWonLostBlock({ year, month, ownerId }) {
       { $match: match },
       { $lookup: { from: 'crmleads', localField: 'lead', foreignField: '_id', as: 'leadDoc' } },
       { $unwind: '$leadDoc' },
-      ...(ownerId ? [{ $match: { 'leadDoc.owner': new mongoose.Types.ObjectId(ownerId) } }] : []),
+      { $match: { 'leadDoc.archived': { $ne: true }, ...(ownerId ? { 'leadDoc.owner': oid(ownerId) } : {}) } },
     ]);
   };
 
@@ -243,7 +319,7 @@ async function getWonLostBlock({ year, month, ownerId }) {
     winRatePct: won + lost === 0 ? null : Math.round((won / (won + lost)) * 1000) / 10,
   }));
 
-  const daysToClose = wonEvents.map(e => (e.createdAt - e.leadDoc.createdAt) / 86400000);
+  const daysToClose = wonEvents.map(e => (e.createdAt - (e.leadDoc.submittedAt || e.leadDoc.createdAt)) / 86400000);
   const medianDaysToClose = median(daysToClose);
 
   const lostReasonCounts = {};
@@ -268,7 +344,7 @@ async function getWonLostBlock({ year, month, ownerId }) {
 async function getThisWeekBlock({ ownerId }) {
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 86400000);
-  const ownerFilter = ownerId ? { owner: new mongoose.Types.ObjectId(ownerId) } : {};
+  const ownerFilter = ownerId ? { owner: oid(ownerId) } : {};
 
   const [newLeadsCount, movesCount, oldestUnanswered] = await Promise.all([
     Lead.countDocuments({ ...ownerFilter, createdAt: { $gte: weekAgo }, archived: { $ne: true } }),
@@ -276,7 +352,7 @@ async function getThisWeekBlock({ ownerId }) {
       { $match: { createdAt: { $gte: weekAgo } } },
       { $lookup: { from: 'crmleads', localField: 'lead', foreignField: '_id', as: 'leadDoc' } },
       { $unwind: '$leadDoc' },
-      ...(ownerId ? [{ $match: { 'leadDoc.owner': new mongoose.Types.ObjectId(ownerId) } }] : []),
+      { $match: { 'leadDoc.archived': { $ne: true }, ...(ownerId ? { 'leadDoc.owner': oid(ownerId) } : {}) } },
       { $count: 'total' },
     ]),
     Lead.find({ ...ownerFilter, stage: { $in: OPEN_STAGES }, firstReplyAt: null, archived: { $ne: true } })
@@ -294,39 +370,32 @@ async function getThisWeekBlock({ ownerId }) {
 }
 
 /**
- * Change Request 1, Feature 3: "The pipeline shows two leads, but the Dashboard reports only one
- * enquiry... Sales users: can also see team-level aggregate totals." Root cause of the original
- * complaint: the Pipeline board (controller/crm/leadController.js#getPipelineSummary) has NEVER
- * had an owner filter - it shows every non-archived lead, org-wide, to everyone. A sales user's
- * own Dashboard, scoped to just their leads, will legitimately show a smaller number than that
- * org-wide Pipeline total - comparing the two looks like a bug ("the unassigned lead is missing")
- * even though each number is individually correct for what it represents. The fix is not to make
- * the Dashboard's "mine" figures org-wide (that would leak nothing, but it would defeat the point
- * of a personal view) - it is to ALSO expose the same org-wide total the Pipeline board already
- * shows, so the two screens can be read side by side instead of silently disagreeing.
- *
- * Deliberately a NARROW, aggregate-only block - counts and the weighted pipeline total, nothing
- * that lists or names another rep's individual leads (the Dashboard's own "This week" block is
- * never included here), matching "must not receive access to other users' restricted lead details
- * through dashboard APIs."
+ * Change Request 1, Feature 3: org-wide reconciliation figures, shown beside a single-owner view
+ * so a sales user's own numbers and the always-org-wide Pipeline board can be read side by side
+ * (an unassigned web lead is in the org-wide figures, never silently missing). Aggregate-only -
+ * nothing here lists or names another rep's individual leads.
  */
 async function getTeamTotals({ year, month }) {
   const { start, end } = monthBounds(year, month);
-  const [enquiries, qualified, surveys, proposals, signed, pipeline, wonLost] = await Promise.all([
-    Lead.countDocuments(leadMatch({ start, end, ownerId: null })),
-    StageHistory.distinct('lead', { to: 'qualified', createdAt: { $gte: start, $lt: end } }).then(r => r.length),
-    StageHistory.distinct('lead', { to: 'site_survey', createdAt: { $gte: start, $lt: end } }).then(r => r.length),
-    StageHistory.distinct('lead', { to: 'proposal_sent', createdAt: { $gte: start, $lt: end } }).then(r => r.length),
-    StageHistory.distinct('lead', { to: 'won', createdAt: { $gte: start, $lt: end } }).then(r => r.length),
+  const range = { start, end, ownerId: null };
+  const [enquiries, unassignedEnquiries, qualified, surveys, proposals, signed, pipeline, wonLost] = await Promise.all([
+    Lead.countDocuments(leadMatch(range)),
+    Lead.countDocuments({ ...leadMatch(range), owner: null }),
+    countReached({ stage: 'qualified', ...range }),
+    countReached({ stage: 'site_survey', ...range }),
+    countReached({ stage: 'proposal_sent', ...range }),
+    countReached({ stage: 'won', ...range }),
     getPipelineBlock({ ownerId: null }),
     getWonLostBlock({ year, month, ownerId: null }),
   ]);
   return {
     enquiries,
+    unassignedEnquiries,
     qualified,
     surveys,
     proposals,
     signed,
+    totalValueEgp: pipeline.totalValueEgp,
     totalWeightedValueEgp: pipeline.totalWeightedValueEgp,
     wonCount: wonLost.wonCount,
     lostCount: wonLost.lostCount,
@@ -336,10 +405,8 @@ async function getTeamTotals({ year, month }) {
 /**
  * The full Dashboard payload. `ownerId` null/undefined means "all owners" (MD/admin view); a
  * sales/technical caller should always pass their own id (enforced by the controller, never
- * trusted from the client) - see controller/crm/reportController.js. When `ownerId` is set (a
- * single-owner view, whether a sales user's own scope or an MD drilling into one person), `team`
- * carries the SAME organization-wide totals the Pipeline board shows, so the two screens
- * reconcile instead of silently disagreeing (Feature 3, above).
+ * trusted from the client) - see controller/crm/reportController.js. When `ownerId` is set,
+ * `team` carries the SAME organization-wide totals the Pipeline board shows.
  */
 async function getDashboard({ year, month, ownerId }) {
   const [targets, pipeline, speed, segmentQuality, wonLost, thisWeek, team] = await Promise.all([
@@ -363,7 +430,12 @@ module.exports = {
   getWonLostBlock,
   getThisWeekBlock,
   getTeamTotals,
+  reachedStageLeads,
+  originInRange,
+  leadMatch,
+  summarizeSpend,
   monthBounds,
   median,
   average,
+  FUNNEL_ORDER,
 };
