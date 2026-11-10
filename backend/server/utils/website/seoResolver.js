@@ -1,13 +1,21 @@
 // Website Management - the ONE place every SEO decision for the public website is made (SEO brief
 // sections 2.1-2.6). Pure and DB-free: given the published pages, the site settings and a locale,
 // it returns the final head metadata and breadcrumbs. Used by:
-//   - the public site endpoint the website build reads (routes/website/publicRoute.js), so the
-//     website only RENDERS these values and never re-derives them;
-//   - publish validation (a page can't go live without a usable title/description per language);
-//   - the dashboard's SEO preview (GET /website/pages/:id/seo-preview).
+//   - the public site feed the website build reads (controller/website/publicSiteController.js),
+//     so the website only RENDERS these values and never re-derives them;
+//   - publish validation (a managed page can't go live without a usable title/description);
+//   - the dashboard's live SEO preview (POST /website/pages/:id/seo-preview).
 //
 // Defaults are COMPUTED, never stored: an empty SEO field means "use the default", and nothing
 // here writes back to the page - so an editor's own text is never overwritten automatically.
+//
+// Two kinds of page (websitePageModel.js#pageType):
+//   - 'managed': the body is CMS sections, so a missing title/description is derived from the
+//     page's own content (first heading, hero subheading...), then the site default.
+//   - 'legacy':  the body is hand-written code in the website repo, which already carries its own
+//     per-page title/description. An empty field here is NOT derived - it resolves to source
+//     'website' with an empty value, and the website keeps its own text for that field. Only what
+//     an editor actually typed overrides the code.
 
 const LOCALES = ['ar', 'en'];
 const SUFFIX = { ar: 'Ar', en: 'En' };
@@ -19,6 +27,7 @@ const DESCRIPTION_MIN = 50;
 const NON_PUBLIC_PATH = /^\/(admin|dashboard|api|website|portal|crm|commercial|login)(\/|$)/i;
 
 const field = (obj, base, locale) => (obj ? String(obj[`${base}${SUFFIX[locale]}`] || '').trim() : '');
+const isLegacy = page => page.pageType === 'legacy';
 
 /** "/services/" -> "/services", "" -> "/" */
 function normalizePath(path) {
@@ -38,12 +47,21 @@ function localeUrl(origin, locale, path) {
   return `${trimOrigin(origin)}/${locale}${p === '/' ? '' : p}`;
 }
 
-/** An editor's canonical override, made absolute; '' when it is empty or unusable. */
-function resolveCanonicalOverride(value, origin) {
+/**
+ * An editor's canonical override, made absolute; '' when it is empty or unusable. A site path is
+ * taken as language-agnostic ("/services") and prefixed with the page's own language, matching
+ * how every URL on the site is built; an absolute https URL is used exactly as typed.
+ */
+function resolveCanonicalOverride(value, origin, locale) {
   const v = String(value || '').trim();
   if (!v) return '';
-  if (/^https?:\/\//i.test(v)) return v.replace(/\/+$/, '') || v;
-  if (v.startsWith('/') && !NON_PUBLIC_PATH.test(v)) return `${trimOrigin(origin)}${normalizePath(v)}`;
+  if (/^https:\/\/[^/\s]+\.[^/\s]+/i.test(v)) return v.length > 8 ? v.replace(/(.)\/+$/, '$1') : v;
+  if (v.startsWith('/') && !v.startsWith('//') && !NON_PUBLIC_PATH.test(v)) {
+    const p = normalizePath(v);
+    // Already language-prefixed ("/ar/services") - keep it.
+    if (/^\/(ar|en)(\/|$)/.test(p)) return `${trimOrigin(origin)}${p}`;
+    return locale ? localeUrl(origin, locale, p) : `${trimOrigin(origin)}${p}`;
+  }
   return '';
 }
 
@@ -52,7 +70,8 @@ function summarize(text, limit) {
   const clean = String(text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   if (clean.length <= limit) return clean;
   const cut = clean.slice(0, limit - 1);
-  const atWord = cut.slice(0, cut.lastIndexOf(' ') > limit * 0.6 ? cut.lastIndexOf(' ') : cut.length);
+  const space = cut.lastIndexOf(' ');
+  const atWord = space > limit * 0.6 ? cut.slice(0, space) : cut;
   return `${atWord.replace(/[\s,.;:،-]+$/, '')}…`;
 }
 
@@ -86,13 +105,13 @@ function derivedImage(sections) {
 }
 
 function applyTemplate(title, template, siteName) {
-  if (!title) return siteName || '';
+  if (!title) return '';
   if (!template || !template.includes('%s')) return title;
   if (siteName && title.includes(siteName)) return title; // never "Reservia | Reservia"
   return template.replace('%s', title);
 }
 
-/** Which languages a published page is actually available in (page AND site enabled). */
+/** Which languages a page is available in: its own list AND the site's enabled languages. */
 function pageLocales(page, settings) {
   const enabled = Array.isArray(settings?.enabledLocales) && settings.enabledLocales.length ? settings.enabledLocales : LOCALES;
   const own = Array.isArray(page.locales) && page.locales.length ? page.locales : LOCALES;
@@ -101,19 +120,22 @@ function pageLocales(page, settings) {
 
 /**
  * The plain (un-templated) title of a page in a language and where it came from.
- * @returns {{ value: string, source: 'custom'|'content'|'none' }}
+ * @returns {{ value: string, source: 'custom'|'content'|'website'|'none' }}
  */
 function baseTitle(page, sections, locale) {
   const custom = field(page.seo, 'title', locale);
   if (custom) return { value: custom, source: 'custom' };
+  if (isLegacy(page)) return { value: '', source: 'website' };
   const heading = derivedHeading(sections, locale);
   if (heading) return { value: heading, source: 'content' };
   return { value: '', source: 'none' };
 }
 
+/** @returns {{ value: string, source: 'custom'|'content'|'site_default'|'website'|'none' }} */
 function baseDescription(page, sections, settings, locale) {
   const custom = field(page.seo, 'description', locale);
   if (custom) return { value: custom, source: 'custom' };
+  if (isLegacy(page)) return { value: '', source: 'website' };
   const fromContent = derivedDescription(sections, locale);
   if (fromContent) return { value: fromContent, source: 'content' };
   const fallback = field(settings, 'defaultDescription', locale);
@@ -122,7 +144,7 @@ function baseDescription(page, sections, settings, locale) {
 }
 
 /** Breadcrumb trail for a page from the parentSlug hierarchy, Home first (brief 2.6). */
-function breadcrumbsFor(page, bySlug, origin, locale) {
+function breadcrumbsFor(page, locale, ctx) {
   if (page.isHomePage || page.seo?.showBreadcrumbs === false) return [];
   const chain = [];
   const seen = new Set();
@@ -130,45 +152,49 @@ function breadcrumbsFor(page, bySlug, origin, locale) {
   while (current && !seen.has(current.slug)) {
     seen.add(current.slug);
     chain.unshift(current);
-    current = current.parentSlug ? bySlug.get(current.parentSlug) : null;
+    current = current.parentSlug ? ctx.bySlug.get(current.parentSlug) : null;
   }
-  // A parent that is unpublished, or not available in this language, breaks the trail there:
-  // a breadcrumb never links to a page a visitor can't open.
-  const usable = chain.filter((p, i) => i === chain.length - 1 || pageLocalesCache.get(p.slug)?.includes(locale));
-  const crumbs = [{ name: HOME_LABEL[locale], url: localeUrl(origin, locale, '/') }];
+  // An ancestor that is unpublished, or not available in this language, is left out: a
+  // breadcrumb never links to a page a visitor can't open.
+  const usable = chain.filter((p, i) => i === chain.length - 1 || (ctx.localesBySlug.get(p.slug) || []).includes(locale));
+  const crumbs = [{ name: HOME_LABEL[locale], url: localeUrl(ctx.origin, locale, '/') }];
   for (const p of usable) {
     if (p.isHomePage) continue;
-    const label = field(p.seo, 'breadcrumbLabel', locale) || baseTitle(p, p.sections, locale).value || p.slug;
-    crumbs.push({ name: label, url: localeUrl(origin, locale, p.path) });
+    const label = field(p.seo, 'breadcrumbLabel', locale) || baseTitle(p, p.sections, locale).value || '';
+    // A legacy page with no CMS label: the website supplies the label from its own navigation.
+    crumbs.push({ name: label, url: localeUrl(ctx.origin, locale, p.path), path: normalizePath(p.path) });
   }
   return crumbs;
 }
-// Populated per resolveSite call - which locales each slug is published in.
-let pageLocalesCache = new Map();
 
 /**
  * Resolves the head metadata of one page in one language.
- * @param {object} page - a published page: { slug, path, isHomePage, parentSlug, locales, seo, sections }
- *   where `seo` and `sections` come from its PUBLISHED revision snapshot
- * @param {object} ctx - { settings, origin, locales (this page's available locales), bySlug }
+ * @param {object} page - { slug, path, pageType, isHomePage, parentSlug, locales, seo, sections }
+ *   where `seo`, `locales` and `sections` come from its PUBLISHED revision snapshot (or the draft,
+ *   for the dashboard preview)
+ * @param {object} ctx - { settings, origin, locales (this page's available locales), bySlug, localesBySlug }
  */
 function resolvePageLocale(page, locale, ctx) {
   const { settings, origin } = ctx;
   const siteName = field(settings, 'siteName', locale);
   const title = baseTitle(page, page.sections, locale);
   const description = baseDescription(page, page.sections, settings, locale);
-  const fullTitle = page.isHomePage && title.source !== 'custom' ? siteName || title.value : applyTemplate(title.value, field(settings, 'titleTemplate', locale), siteName);
+  // The home page's default title is the site name; any other page gets the title template.
+  let fullTitle;
+  if (page.isHomePage && title.source !== 'custom' && !isLegacy(page)) fullTitle = siteName || title.value;
+  else fullTitle = applyTemplate(title.value, field(settings, 'titleTemplate', locale), siteName);
 
   const selfUrl = localeUrl(origin, locale, page.path);
-  const canonical = resolveCanonicalOverride(field(page.seo, 'canonical', locale), origin) || selfUrl;
+  const canonical = resolveCanonicalOverride(field(page.seo, 'canonical', locale), origin, locale) || selfUrl;
   const noindex = !!page.seo?.noindex || NON_PUBLIC_PATH.test(normalizePath(page.path));
   const nofollow = !!page.seo?.nofollow;
 
-  // hreflang (brief 2.2): only between languages this page is actually published in, reciprocal by
-  // construction (every version lists the same set), x-default -> the default-language version.
-  // A single-language page declares none. A noindex page declares none either.
+  // hreflang (brief 2.2): only between languages this page is actually available in, reciprocal
+  // by construction (every version lists the same set), x-default -> the default-language version.
+  // A single-language page declares none; neither does a noindex page or one whose canonical
+  // points elsewhere (hreflang on a non-canonical URL contradicts the canonical).
   let alternates = [];
-  if (!noindex && ctx.locales.length > 1) {
+  if (!noindex && canonical === selfUrl && ctx.locales.length > 1) {
     alternates = ctx.locales.map(l => ({ hreflang: l, href: localeUrl(origin, l, page.path) }));
     const def = ctx.locales.includes(settings?.defaultLocale) ? settings.defaultLocale : ctx.locales[0];
     alternates.push({ hreflang: 'x-default', href: localeUrl(origin, def, page.path) });
@@ -180,13 +206,14 @@ function resolvePageLocale(page, locale, ctx) {
 
   const warnings = [];
   if (title.source === 'none') warnings.push('missing_title');
-  else if (title.source !== 'custom') warnings.push('title_generated');
+  else if (title.source === 'content') warnings.push('title_generated');
   if (fullTitle.length > TITLE_LIMIT) warnings.push('title_too_long');
   if (description.source === 'none') warnings.push('missing_description');
-  else if (description.source !== 'custom') warnings.push('description_generated');
+  else if (description.source === 'content' || description.source === 'site_default') warnings.push('description_generated');
   if (description.value && description.value.length > DESCRIPTION_LIMIT) warnings.push('description_too_long');
   if (description.value && description.value.length < DESCRIPTION_MIN) warnings.push('description_too_short');
   if (canonical !== selfUrl) warnings.push('canonical_overridden');
+  if (noindex) warnings.push('noindex');
 
   return {
     locale,
@@ -200,7 +227,7 @@ function resolvePageLocale(page, locale, ctx) {
     indexable: !noindex,
     alternates,
     openGraph: {
-      type: page.isHomePage ? 'website' : 'website',
+      type: 'website',
       title: ogTitle,
       description: ogDescription,
       image: ogImage,
@@ -215,31 +242,30 @@ function resolvePageLocale(page, locale, ctx) {
       image: ogImage,
       site: settings?.twitterHandle ? `@${String(settings.twitterHandle).replace(/^@/, '')}` : null,
     },
-    breadcrumbs: breadcrumbsFor(page, ctx.bySlug, origin, locale),
+    breadcrumbs: breadcrumbsFor(page, locale, ctx),
     warnings,
   };
 }
 
-/**
- * Resolves every published page in every language it exists in, plus site-level checks (duplicate
- * titles/descriptions across pages - brief Test D).
- * @param {object[]} pages - published pages (see resolvePageLocale)
- * @param {object} settings - WebsiteSettings (plain object)
- * @param {object} [opts] - { origin } overrides settings.publicSiteUrl
- */
-function resolveSite(pages, settings, opts = {}) {
+function buildContext(pages, settings, opts) {
   const origin = trimOrigin(opts.origin || settings?.publicSiteUrl || '');
-  const bySlug = new Map(pages.map(p => [p.slug, p]));
-  pageLocalesCache = new Map(pages.map(p => [p.slug, pageLocales(p, settings)]));
+  return {
+    settings: settings || {},
+    origin,
+    bySlug: new Map(pages.map(p => [p.slug, p])),
+    localesBySlug: new Map(pages.map(p => [p.slug, pageLocales(p, settings)])),
+  };
+}
 
-  const resolved = pages.map(page => {
-    const locales = pageLocalesCache.get(page.slug);
-    const seo = {};
-    for (const locale of locales) seo[locale] = resolvePageLocale(page, locale, { settings, origin, locales, bySlug });
-    return { slug: page.slug, locales, seo };
-  });
+function resolveOne(page, ctx) {
+  const locales = ctx.localesBySlug.get(page.slug) || pageLocales(page, ctx.settings);
+  const seo = {};
+  for (const locale of locales) seo[locale] = resolvePageLocale(page, locale, { ...ctx, locales });
+  return { slug: page.slug, locales, seo };
+}
 
-  // Duplicate titles / descriptions among INDEXABLE pages in the same language.
+/** Adds duplicate_title / duplicate_description among INDEXABLE pages in the same language (brief Test D). */
+function flagDuplicates(resolved) {
   for (const locale of LOCALES) {
     for (const key of ['title', 'description']) {
       const counts = new Map();
@@ -249,20 +275,49 @@ function resolveSite(pages, settings, opts = {}) {
       }
       for (const r of resolved) {
         const s = r.seo[locale];
-        if (s && s.indexable && counts.get(s[key]) > 1) s.warnings.push(`duplicate_${key}`);
+        if (s && s.indexable && s[key] && counts.get(s[key]) > 1) s.warnings.push(`duplicate_${key}`);
       }
     }
   }
-  return { origin, pages: resolved };
 }
 
 /**
- * Publish gate: every language the page is published in needs a usable title AND description -
- * typed by the editor or derivable from the page's own content. Returns problems, [] = OK.
+ * Resolves every published page in every language it exists in, plus site-level checks.
+ * @param {object[]} pages - published pages (see resolvePageLocale)
+ * @param {object} settings - WebsiteSettings (plain object)
+ * @param {object} [opts] - { origin } overrides settings.publicSiteUrl
+ */
+function resolveSite(pages, settings, opts = {}) {
+  const ctx = buildContext(pages, settings, opts);
+  const resolved = pages.map(page => resolveOne(page, ctx));
+  flagDuplicates(resolved);
+  return { origin: ctx.origin, pages: resolved };
+}
+
+/**
+ * The dashboard preview: resolves ONE page's draft in the context of the published site (so its
+ * breadcrumbs and duplicate checks are against what is actually live). The draft replaces the
+ * page's own published version, if any.
+ */
+function resolveDraft(draft, publishedPages, settings, opts = {}) {
+  const others = publishedPages.filter(p => p.slug !== draft.slug);
+  const all = [...others, draft];
+  const ctx = buildContext(all, settings, opts);
+  const resolved = all.map(page => resolveOne(page, ctx));
+  flagDuplicates(resolved);
+  return { origin: ctx.origin, ...resolved[resolved.length - 1], problems: publishProblems(draft, draft.sections, settings) };
+}
+
+/**
+ * Publish gate: every language a MANAGED page is available in needs a usable title AND
+ * description - typed by the editor or derivable from the page's own content. A legacy page has
+ * the website's own text to fall back on, so it has no such requirement. Returns problems, [] = OK.
  */
 function publishProblems(page, sections, settings) {
   const problems = [];
-  for (const locale of pageLocales(page, settings)) {
+  const locales = pageLocales(page, settings);
+  if (!locales.length) problems.push('at least one language that is enabled for the site');
+  for (const locale of locales) {
     const label = locale === 'ar' ? 'Arabic' : 'English';
     if (baseTitle(page, sections, locale).source === 'none') problems.push(`${label} SEO title (or a heading in the page content)`);
     if (baseDescription(page, sections, settings, locale).source === 'none') problems.push(`${label} meta description (or descriptive text in the page content)`);
@@ -283,5 +338,6 @@ module.exports = {
   pageLocales,
   resolvePageLocale,
   resolveSite,
+  resolveDraft,
   publishProblems,
 };

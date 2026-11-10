@@ -14,6 +14,9 @@ const websiteRevisionSchema = new Schema(
     snapshot: {
       seo: { type: Schema.Types.Mixed, required: true },
       sections: { type: [Schema.Types.Mixed], required: true },
+      // Which languages the page was published in (SEO brief 2.2). Revisions created before this
+      // field existed don't have it; readers fall back to the page's own `locales`.
+      locales: { type: [String], default: undefined },
     },
     publishedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     publishedAt: { type: Date, default: Date.now },

@@ -7,15 +7,31 @@ const apiResponse = require('../../utils/apiResponse');
 const ApiFeatures = require('../../utils/apiFeatures');
 const { logWebsiteActivity } = require('../../utils/website/activityLog');
 const { triggerPublishDeploy, triggerPreviewDeploy, getPreviewUrl } = require('../../services/website/deployService');
+const { loadSettings, loadPublishedPages, loadDraftPages } = require('../../services/website/publishedSite');
+const { publishProblems, resolveDraft, resolveSite, normalizePath } = require('../../utils/website/seoResolver');
 
 // Website Management - Pages. Mirrors chartOfAccountController.js's CRUD conventions
 // (asyncHandler, ApiError/apiResponse, duplicate-key translation, soft-deactivate instead of
 // hard delete for anything another record can reference).
 
+/**
+ * Two active pages on the same path would serve the same URL with two different heads (and two
+ * self-referencing canonicals) - refused. Returns an error message, or null when the path is free.
+ */
+async function pathConflict(path, exceptId) {
+  if (path === undefined) return null;
+  const filter = { isActive: true, path: normalizePath(path) };
+  if (exceptId) filter._id = { $ne: exceptId };
+  const other = await WebsitePage.findOne(filter).select('slug').lean();
+  return other ? `The path ${normalizePath(path)} is already used by the page "${other.slug}".` : null;
+}
+
 const createPage = asyncHandler(async (req, res, next) => {
   try {
-    const { slug, path, isHomePage, pageType, parentSlug, sortOrder, seo } = req.body;
-    const page = await WebsitePage.create({ slug, path, isHomePage, pageType, parentSlug, sortOrder, seo, createdBy: req.user._id });
+    const { slug, path, isHomePage, pageType, parentSlug, sortOrder, locales, seo } = req.body;
+    const conflict = await pathConflict(path);
+    if (conflict) return next(new ApiError(conflict, 400));
+    const page = await WebsitePage.create({ slug, path: normalizePath(path), isHomePage, pageType, parentSlug, sortOrder, locales, seo, createdBy: req.user._id });
     await logWebsiteActivity({ actor: req.user, action: 'page.create', targetType: 'WebsitePage', targetId: page._id, targetLabel: page.slug, after: page.toObject() });
     res.status(201).json(apiResponse('Page created successfully', true, page));
   } catch (err) {
@@ -56,12 +72,18 @@ const updatePage = asyncHandler(async (req, res, next) => {
 
   try {
     const before = page.toObject();
-    const { path, isHomePage, pageType, parentSlug, sortOrder, seo } = req.body;
-    if (path !== undefined) page.path = path;
+    const { path, isHomePage, pageType, parentSlug, sortOrder, locales, seo } = req.body;
+    const conflict = await pathConflict(path, page._id);
+    if (conflict) return next(new ApiError(conflict, 400));
+    if (parentSlug && parentSlug === page.slug) return next(new ApiError('A page cannot be its own parent.', 400));
+    if (path !== undefined) page.path = normalizePath(path);
     if (isHomePage !== undefined) page.isHomePage = isHomePage;
     if (pageType !== undefined) page.pageType = pageType;
-    if (parentSlug !== undefined) page.parentSlug = parentSlug;
+    if (parentSlug !== undefined) page.parentSlug = parentSlug || null;
     if (sortOrder !== undefined) page.sortOrder = sortOrder;
+    if (locales !== undefined) page.locales = locales;
+    // A partial merge: only the SEO fields the request names change; every other field the
+    // editor set earlier is kept exactly as it was.
     if (seo !== undefined) page.seo = { ...page.seo.toObject(), ...seo };
     page.updatedBy = req.user._id;
     await page.save();
@@ -81,16 +103,21 @@ const duplicatePage = asyncHandler(async (req, res, next) => {
   if (!original || !original.isActive) return next(new ApiError('No page found with that id', 404));
   const { slug, path } = req.body;
   if (!slug || !path) return next(new ApiError('A new slug and path are required to duplicate a page.', 400));
+  const conflict = await pathConflict(path);
+  if (conflict) return next(new ApiError(conflict, 400));
 
   try {
     const copy = await WebsitePage.create({
       slug,
-      path,
+      path: normalizePath(path),
       isHomePage: false,
       pageType: original.pageType,
       parentSlug: original.parentSlug,
       sortOrder: original.sortOrder,
-      seo: original.seo,
+      locales: original.locales,
+      // The copy's canonical must not point at the original's URL by accident: a canonical
+      // override is cleared, everything else is copied for the editor to adjust.
+      seo: { ...original.seo.toObject(), canonicalEn: '', canonicalAr: '' },
       createdBy: req.user._id,
     });
     const sections = await WebsiteSection.find({ page: original._id }).sort({ sortOrder: 1 }).lean();
@@ -128,15 +155,18 @@ const publishPage = asyncHandler(async (req, res, next) => {
   const page = await WebsitePage.findById(req.params.id);
   if (!page || !page.isActive) return next(new ApiError('No page found with that id', 404));
 
-  if (!page.seo?.titleEn?.trim() || !page.seo?.descriptionEn?.trim()) {
-    return next(new ApiError('This page cannot be published without an English SEO title and description.', 400));
+  const sections = await WebsiteSection.find({ page: page._id }).sort({ sortOrder: 1 }).lean();
+  // Every language the page is published in needs a title and description - typed, or (managed
+  // pages) derivable from the page's own content. See seoResolver.js#publishProblems.
+  const problems = publishProblems(page.toObject(), sections, await loadSettings());
+  if (problems.length) {
+    return next(new ApiError(`This page cannot be published yet. It needs: ${problems.join('; ')}.`, 400));
   }
 
-  const sections = await WebsiteSection.find({ page: page._id }).sort({ sortOrder: 1 }).lean();
   const revision = await WebsiteRevision.create({
     page: page._id,
     label: req.body?.label || null,
-    snapshot: { seo: page.seo.toObject(), sections },
+    snapshot: { seo: page.seo.toObject(), sections, locales: [...page.locales] },
     publishedBy: req.user._id,
   });
 
@@ -188,6 +218,7 @@ const revertPageToRevision = asyncHandler(async (req, res, next) => {
     await WebsiteSection.insertMany(restoredSections.map(s => ({ page: page._id, type: s.type, sortOrder: s.sortOrder, isVisible: s.isVisible, content: s.content, createdBy: req.user._id, updatedBy: req.user._id })));
   }
   page.seo = revision.snapshot.seo;
+  if (Array.isArray(revision.snapshot.locales) && revision.snapshot.locales.length) page.locales = revision.snapshot.locales;
 
   const newRevision = await WebsiteRevision.create({
     page: page._id,
@@ -213,4 +244,57 @@ const requestPreviewDeploy = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Preview deploy requested', true, { ...deploy, previewUrl: getPreviewUrl() }));
 });
 
-module.exports = { createPage, getPages, getPage, updatePage, duplicatePage, deletePage, publishPage, unpublishPage, getPageRevisions, revertPageToRevision, requestPreviewDeploy };
+// The dashboard's live SEO preview (brief 2.3): the page's saved draft with the editor's UNSAVED
+// changes laid over it (`req.body` - nothing is written), resolved by the same seoResolver the
+// public feed uses, in the context of what is currently live. The editor sees exactly the
+// title/description/canonical/hreflang the website will render, plus what still blocks publishing.
+const previewPageSeo = asyncHandler(async (req, res, next) => {
+  const page = await WebsitePage.findById(req.params.id).lean();
+  if (!page || !page.isActive) return next(new ApiError('No page found with that id', 404));
+
+  const { seo, locales, path, parentSlug, pageType, isHomePage } = req.body || {};
+  const sections = await WebsiteSection.find({ page: page._id }).sort({ sortOrder: 1 }).lean();
+  const draft = {
+    ...page,
+    path: path !== undefined ? normalizePath(path) : page.path,
+    parentSlug: parentSlug !== undefined ? parentSlug || null : page.parentSlug,
+    pageType: pageType !== undefined ? pageType : page.pageType,
+    isHomePage: isHomePage !== undefined ? isHomePage : page.isHomePage,
+    locales: locales !== undefined ? locales : page.locales,
+    seo: { ...(page.seo || {}), ...(seo || {}) },
+    sections: sections.filter(s => s.isVisible !== false),
+  };
+  const [settings, published] = await Promise.all([loadSettings(), loadPublishedPages()]);
+  res.status(200).json(apiResponse('SEO preview generated', true, resolveDraft(draft, published, settings)));
+});
+
+// SEO health of every page's CURRENT DRAFT, for the Pages list (missing/duplicate titles and
+// descriptions, generated defaults, noindex) - "what would be live if everything were published".
+const getSeoAudit = asyncHandler(async (req, res) => {
+  const [settings, drafts] = await Promise.all([loadSettings(), loadDraftPages()]);
+  const site = resolveSite(drafts, settings);
+  const byId = new Map(drafts.map(d => [d.slug, d]));
+  const data = site.pages.map(p => {
+    const d = byId.get(p.slug);
+    const warnings = {};
+    for (const [locale, s] of Object.entries(p.seo)) warnings[locale] = s.warnings;
+    return { pageId: d._id, slug: p.slug, locales: p.locales, warnings, problems: publishProblems(d, d.sections, settings) };
+  });
+  res.status(200).json(apiResponse('SEO audit generated', true, { origin: site.origin, pages: data }));
+});
+
+module.exports = {
+  createPage,
+  getPages,
+  getPage,
+  updatePage,
+  duplicatePage,
+  deletePage,
+  publishPage,
+  unpublishPage,
+  getPageRevisions,
+  revertPageToRevision,
+  requestPreviewDeploy,
+  previewPageSeo,
+  getSeoAudit,
+};

@@ -6,7 +6,16 @@ import { WebsitePage } from "@/types/website";
 
 type Pagination = { currentPage: number; numberOfPages: number; limit: number };
 
-export type CreatePageInput = { slug: string; path: string; isHomePage?: boolean; pageType?: string; parentSlug?: string | null; sortOrder?: number; seo?: Partial<WebsitePage["seo"]> };
+export type CreatePageInput = {
+  slug: string;
+  path: string;
+  isHomePage?: boolean;
+  pageType?: string;
+  parentSlug?: string | null;
+  sortOrder?: number;
+  locales?: WebsitePage["locales"];
+  seo?: Partial<WebsitePage["seo"]>;
+};
 export type UpdatePageInput = Partial<Omit<CreatePageInput, "slug">>;
 
 /**

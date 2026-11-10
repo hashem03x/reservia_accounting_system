@@ -130,6 +130,10 @@ import COM_Materials from "@/pages/commercial/materials";
 
 // Website Management Pages
 import WebsiteOverview from "@/pages/website";
+import WebsitePages from "@/pages/website/pages";
+import WebsitePageEditor from "@/pages/website/pages/[id]";
+import WebsiteSettingsPage from "@/pages/website/settings";
+import WebsiteRoleGuard from "@/pages/routes/website-role-guard";
 
 export default function App() {
   useColorScheme();
@@ -397,6 +401,12 @@ export default function App() {
               <Route element={<SystemGuard systemId="WEBSITE" />}>
                 <Route element={<WebsiteLayout />}>
                   <Route path={paths.website} element={<WebsiteOverview />} />
+                  <Route path={paths.website + "/" + paths.websitePages} element={<WebsitePages />} />
+                  <Route path={paths.website + "/" + paths.websitePages + "/:id"} element={<WebsitePageEditor />} />
+                  {/* Site settings: website admins only (backend: settings.manage). */}
+                  <Route element={<WebsiteRoleGuard allowedRoles={["admin"]} />}>
+                    <Route path={paths.website + "/" + paths.websiteSettings} element={<WebsiteSettingsPage />} />
+                  </Route>
                 </Route>
                 <Route path={paths.website + "/*"} element={<NotFound />} />
               </Route>

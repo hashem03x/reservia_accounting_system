@@ -158,13 +158,113 @@ export const SECTION_TYPE_FIELDS: Record<SectionType, { fields: SectionField[] }
 
 export type WebsiteImageRef = { url: string; publicId: string } | null;
 
+export type WebsiteLocale = "ar" | "en";
+export const WEBSITE_LOCALES: WebsiteLocale[] = ["ar", "en"];
+
+// Mirrors backend websitePageModel.js#seo. Every field is optional; empty = "use the generated
+// default" (or, for a legacy page, "keep the website's own text") - seoResolver.js.
 export interface WebsiteSeo {
   titleEn?: string;
   titleAr?: string;
   descriptionEn?: string;
   descriptionAr?: string;
-  ogImage?: WebsiteImageRef;
+  ogImage?: WebsiteImageRef | { url: string | null; publicId: string | null };
   noindex?: boolean;
+  nofollow?: boolean;
+  canonicalEn?: string;
+  canonicalAr?: string;
+  ogTitleEn?: string;
+  ogTitleAr?: string;
+  ogDescriptionEn?: string;
+  ogDescriptionAr?: string;
+  twitterCard?: "" | "summary" | "summary_large_image";
+  breadcrumbLabelEn?: string;
+  breadcrumbLabelAr?: string;
+  showBreadcrumbs?: boolean;
+}
+
+// Mirrors backend utils/validators/website/pageValidators.js#SEO_TEXT_LIMITS (hard limits) and
+// seoResolver.js's recommended lengths (soft - a warning, not an error).
+export const SEO_LIMITS = { title: 70, description: 160, canonical: 500, ogTitle: 95, ogDescription: 200, breadcrumbLabel: 60 } as const;
+export const SEO_RECOMMENDED = { titleMax: 60, descriptionMin: 50, descriptionMax: 160 } as const;
+
+export type SeoSource = "custom" | "content" | "site_default" | "website" | "none";
+export type SeoWarning =
+  | "missing_title"
+  | "title_generated"
+  | "title_too_long"
+  | "missing_description"
+  | "description_generated"
+  | "description_too_long"
+  | "description_too_short"
+  | "canonical_overridden"
+  | "noindex"
+  | "duplicate_title"
+  | "duplicate_description";
+
+/** One page in one language, exactly as the website will render it (seoResolver.js#resolvePageLocale). */
+export interface ResolvedSeo {
+  locale: WebsiteLocale;
+  url: string;
+  title: string;
+  titleSource: SeoSource;
+  description: string;
+  descriptionSource: SeoSource;
+  canonical: string;
+  robots: string;
+  indexable: boolean;
+  alternates: { hreflang: string; href: string }[];
+  openGraph: { type: string; title: string; description: string; image: string | null; url: string; locale: string; siteName: string };
+  twitter: { card: string; title: string; description: string; image: string | null; site: string | null };
+  breadcrumbs: { name: string; url: string }[];
+  warnings: SeoWarning[];
+}
+
+export interface SeoPreview {
+  origin: string;
+  slug: string;
+  locales: WebsiteLocale[];
+  seo: Partial<Record<WebsiteLocale, ResolvedSeo>>;
+  problems: string[];
+}
+
+export interface SeoAuditEntry {
+  pageId: string;
+  slug: string;
+  locales: WebsiteLocale[];
+  warnings: Partial<Record<WebsiteLocale, SeoWarning[]>>;
+  problems: string[];
+}
+
+export interface WebsiteSettings {
+  siteNameEn: string;
+  siteNameAr: string;
+  taglineEn: string;
+  taglineAr: string;
+  logo?: { url: string | null; publicId: string | null };
+  defaultOgImage?: { url: string | null; publicId: string | null };
+  publicSiteUrl: string;
+  defaultLocale: WebsiteLocale;
+  enabledLocales: WebsiteLocale[];
+  titleTemplateEn: string;
+  titleTemplateAr: string;
+  defaultDescriptionEn: string;
+  defaultDescriptionAr: string;
+  twitterHandle: string;
+  organization: {
+    schemaType: "Organization" | "LocalBusiness" | "ProfessionalService" | "HomeAndConstructionBusiness";
+    legalName: string;
+    descriptionEn: string;
+    descriptionAr: string;
+    foundingDate: string;
+    streetAddress: string;
+    addressLocality: string;
+    addressRegion: string;
+    postalCode: string;
+    addressCountry: string;
+    priceRange: string;
+  };
+  updatedAt?: string;
 }
 
 export type WebsitePageStatus = "never_published" | "published" | "unpublished";
@@ -178,6 +278,7 @@ export interface WebsitePage {
   pageType: WebsitePageType;
   parentSlug: string | null;
   sortOrder: number;
+  locales: WebsiteLocale[];
   seo: WebsiteSeo;
   status: WebsitePageStatus;
   publishedAt: string | null;

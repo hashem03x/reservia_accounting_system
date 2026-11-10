@@ -34,6 +34,7 @@
     "db:audit-crm-test-leads": "node server/scripts/auditCrmTestLeads.js",
     "db:migrate-crm-cr2": "node server/scripts/migrateCrmChangeRequest2.js",
     "db:restore-system-access": "node server/scripts/restoreSystemAccess.js",
+    "db:seed-website-pages": "node server/scripts/seedWebsitePages.js",
     "db:seed-commercial-materials": "node server/scripts/seedCommercialMaterials.js",
     "start": "node server.js",
     "dev": "cross-env NODE_ENV=development nodemon server.js",

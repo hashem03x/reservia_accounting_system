@@ -65,6 +65,8 @@ const paths = {
   integrations: "integrations",
   website: "website",
   websiteOverview: "overview",
+  websitePages: "pages",
+  websiteSettings: "settings",
   // Reservia Commercial
   commercial: "commercial",
   commercialProjects: "projects",

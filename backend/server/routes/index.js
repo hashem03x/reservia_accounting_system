@@ -181,6 +181,10 @@ const mountRoutes = app => {
   // matrix - same pattern as CRM/Commercial above.
   app.use('/api/v1/website/pages', require('./website/pageRoute'));
   app.use('/api/v1/website/media', require('./website/mediaRoute'));
+  app.use('/api/v1/website/settings', require('./website/settingsRoute'));
+  // Public, read-only, published-content-only feed for the website build (no auth - see the
+  // route's own header comment).
+  app.use('/api/v1/website/public', require('./website/publicSiteRoute'));
 
   app.all('/api/v1', (req, res) => {
     res.status(200).json({ message: 'App is running 🚀' });

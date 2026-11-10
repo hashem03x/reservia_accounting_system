@@ -1,4 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useSystemAccess } from "@/context/SystemAccessContext";
+import { hasWebsiteCapability, WebsiteCapability, WebsiteRole } from "@/types/website";
 import { useLanguage } from "@/context/LanguageContext";
 import { useUser } from "@/context/UserContext";
 import paths from "@/utils/constants/paths";
@@ -11,9 +13,12 @@ import logo from "@/assets/logo_no_bg.png";
 // permission matrix, which has no meaning for Website Management's own admin/editor/viewer role
 // vocabulary - see nav-config.ts#useAdminNavigation).
 //
-// Nav items are added here as each milestone ships a real page - Milestone 1 only has Overview.
-const NAV_ITEMS = [
+// Nav items are added here as each milestone ships a real page. `capability` hides an item the
+// user's role can't open (the backend enforces the same capability on every request).
+const NAV_ITEMS: { to: string; label: { en: string; ar: string }; Icon: (typeof outlineIcons)[keyof typeof outlineIcons]; capability?: WebsiteCapability }[] = [
   { to: `/${paths.website}`, label: { en: "Overview", ar: "نظرة عامة" }, Icon: outlineIcons.Squares },
+  { to: `/${paths.website}/${paths.websitePages}`, label: { en: "Pages & SEO", ar: "الصفحات وتحسين البحث" }, Icon: outlineIcons.Document },
+  { to: `/${paths.website}/${paths.websiteSettings}`, label: { en: "Settings", ar: "الإعدادات" }, Icon: outlineIcons.Globe, capability: "settings.manage" },
 ];
 
 export default function WebsiteLayout() {
@@ -21,6 +26,8 @@ export default function WebsiteLayout() {
   const { user } = useUser();
   const location = useLocation();
   const navigate = useNavigate();
+  const { systems } = useSystemAccess();
+  const role = systems?.WEBSITE?.role as WebsiteRole | null | undefined;
 
   return (
     <div className="flex min-h-full flex-col">
@@ -34,7 +41,7 @@ export default function WebsiteLayout() {
             <span>{translate("Reservia Website", "موقع رزيرفيا")}</span>
           </Link>
           <nav className="flex items-center gap-1">
-            {NAV_ITEMS.map((item) => {
+            {NAV_ITEMS.filter((item) => !item.capability || hasWebsiteCapability(role, item.capability)).map((item) => {
               const active = location.pathname === item.to || (item.to !== `/${paths.website}` && location.pathname.startsWith(item.to));
               return (
                 <Button

@@ -36,8 +36,8 @@ export default function WebsiteOverview() {
         </p>
         <p className="mt-2 text-sm text-gray-500">
           {translate(
-            "Page and section management, the Media Library, Navigation, SEO, Tracking and Custom Code screens are being built in upcoming milestones.",
-            "سيتم إضافة إدارة الصفحات والأقسام ومكتبة الوسائط والتنقل وتحسين محركات البحث والتتبع والكود المخصص في مراحل قادمة.",
+            "Pages & SEO and Settings are available from the menu. Section editing, the Media Library, Navigation, Articles, Redirects, Tracking and Custom Code screens are being built in upcoming milestones.",
+            "الصفحات وتحسين البحث والإعدادات متاحة من القائمة. سيتم إضافة تحرير الأقسام ومكتبة الوسائط والتنقل والمقالات والتحويلات والتتبع والكود المخصص في مراحل قادمة.",
           )}
         </p>
       </div>
