@@ -63,7 +63,8 @@ test('mapWebsitePayload: maps the website\'s own segment/source vocabulary to th
   assert.equal(mapped.utmSource, 'test');
   assert.equal(mapped.utmMedium, 'qa');
   assert.equal(mapped.utmCampaign, 'brief-check');
-  assert.equal(mapped.landingPage, 'https://reservia-energy.com/en/lp/villas');
+  // Stored as a PATH (CRM launch blocker C1: the CRM shows landing page '/en/farms', never a full URL with a query string).
+  assert.equal(mapped.landingPage, '/en/lp/villas');
   // Acceptance report finding 4: source is a fixed list, not free text - an unrecognized UTM
   // value (here 'test') normalizes to 'Other', never passed through verbatim.
   assert.equal(mapped.source, 'Other');

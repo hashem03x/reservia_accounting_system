@@ -129,6 +129,51 @@ function notifyAssignment(owner, lead) {
   sendEmail(owner.email, subject, html).catch(() => {});
 }
 
+/** Active CRM managers (MD / Admin) - who must hear about a lead nobody could be assigned to. */
+async function crmManagers() {
+  return User.find({
+    isActive: true,
+    isDeleted: { $ne: true },
+    systemMemberships: { $elemMatch: { system: 'CRM', role: { $in: ['md', 'admin'] }, isActive: true } },
+  })
+    .select('_id name email')
+    .lean();
+}
+
+/**
+ * QA finding (Integrations): "no active user holds the CRM sales role, so leads ... will arrive
+ * unassigned and nobody is notified". When an automated-channel lead could not be auto-assigned
+ * (empty Sales pool), every CRM manager is emailed so the lead never sits unseen. Best-effort,
+ * fire-and-forget, never blocks lead creation. Returns the managers notified (for the timeline).
+ */
+async function notifyUnassigned(lead) {
+  let managers = [];
+  try {
+    managers = await crmManagers();
+  } catch {
+    return [];
+  }
+  const leadUrl = `${frontendBaseUrl()}/crm/leads/${lead._id}`;
+  const subject = `UNASSIGNED new lead - ${lead.refCode} (no CRM Sales user available)`;
+  for (const m of managers) {
+    if (!m.email) continue;
+    const html = `
+      <p>Hi ${escapeHtml(m.name || '')},</p>
+      <p>A new lead arrived but could <strong>not be assigned automatically</strong>: no active user currently holds the CRM <em>Sales</em> role.</p>
+      <ul>
+        <li><strong>Reference:</strong> ${lead.refCode}</li>
+        <li><strong>Name:</strong> ${escapeHtml(lead.name || '(not provided)')}</li>
+        <li><strong>Phone:</strong> ${lead.phoneE164}</li>
+        <li><strong>Source:</strong> ${escapeHtml(lead.source || 'Other')}</li>
+        ${lead.campaign ? `<li><strong>Campaign:</strong> ${escapeHtml(lead.campaign)}</li>` : ''}
+      </ul>
+      <p><a href="${leadUrl}">Open the lead and assign an owner</a>. To stop this, grant the CRM Sales role to the sales team in the Central Portal (Admin &rarr; Users &rarr; system access).</p>
+    `;
+    sendEmail(m.email, subject, html).catch(() => {});
+  }
+  return managers;
+}
+
 /** Reassignment notification (Change Request 1, Feature 2: "Notify the new owner" on manual reassignment). */
 function notifyReassignment(owner, lead) {
   if (!owner?.email) return;
@@ -142,4 +187,4 @@ function notifyReassignment(owner, lead) {
   sendEmail(owner.email, subject, html).catch(() => {});
 }
 
-module.exports = { pickAutoAssignee, notifyAssignment, notifyReassignment, eligibleSalesEngineers, AUTO_ASSIGN_CHANNELS, assignmentStrategy };
+module.exports = { pickAutoAssignee, notifyAssignment, notifyReassignment, notifyUnassigned, crmManagers, eligibleSalesEngineers, AUTO_ASSIGN_CHANNELS, assignmentStrategy };

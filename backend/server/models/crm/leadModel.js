@@ -12,6 +12,53 @@ function castFollowUpDate(value) {
   return dateOnly;
 }
 
+// One attributable arrival (utils/crm/attribution.js) - first touch, last touch and every entry of
+// the attribution history share this shape.
+const touchSchema = new Schema(
+  {
+    channel: { type: String, trim: true, maxlength: 40, default: null },
+    source: { type: String, trim: true, maxlength: 100, default: null },
+    utmSource: { type: String, trim: true, maxlength: 150, default: null },
+    utmMedium: { type: String, trim: true, maxlength: 150, default: null },
+    utmCampaign: { type: String, trim: true, maxlength: 150, default: null },
+    utmTerm: { type: String, trim: true, maxlength: 150, default: null },
+    utmContent: { type: String, trim: true, maxlength: 150, default: null },
+    gclid: { type: String, trim: true, maxlength: 150, default: null },
+    gbraid: { type: String, trim: true, maxlength: 150, default: null },
+    wbraid: { type: String, trim: true, maxlength: 150, default: null },
+    fbclid: { type: String, trim: true, maxlength: 150, default: null },
+    ttclid: { type: String, trim: true, maxlength: 150, default: null },
+    campaign: { type: String, trim: true, maxlength: 200, default: null },
+    adSetName: { type: String, trim: true, maxlength: 200, default: null },
+    adName: { type: String, trim: true, maxlength: 200, default: null },
+    landingPage: { type: String, trim: true, maxlength: 300, default: null },
+    landingUrl: { type: String, trim: true, maxlength: 600, default: null },
+    referrer: { type: String, trim: true, maxlength: 300, default: null },
+    at: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
+// CRM -> Commercial handoff state (QA finding B5 / Developer Brief 6.1) - the Commercial deal this
+// lead created, the identifiers Commercial returned, and the synchronization status per event.
+const commercialLinkSchema = new Schema(
+  {
+    project: { type: Schema.Types.ObjectId, ref: 'CommercialProject', default: null },
+    projectCode: { type: String, trim: true, default: null },
+    dealNumber: { type: String, trim: true, default: null },
+    proposalNumber: { type: String, trim: true, default: null },
+    proposedErpProjectNumber: { type: String, trim: true, default: null },
+    erpProjectNumber: { type: String, trim: true, default: null },
+    // 'pending' | 'synced' | 'failed' - of the most recent event (proposal / won / lost)
+    syncStatus: { type: String, enum: ['pending', 'synced', 'failed', null], default: null },
+    lastEvent: { type: String, enum: ['proposal', 'won', 'lost', null], default: null },
+    lastSyncAt: { type: Date, default: null },
+    lastError: { type: String, trim: true, maxlength: 500, default: null },
+    attempts: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
 // Reservia CRM - a Lead (Developer Brief section 4B "Lead management" + section 7 "Rules that
 // must not change"). One document per real customer enquiry, keyed by its normalized phone number
 // - repeated enquiries from the same number MERGE into this same document (see
@@ -83,6 +130,22 @@ const leadSchema = new Schema(
     // the URL, a bookmark, or a referrer the browser didn't disclose). Never itself shown as the
     // lead's source; only an input to sourceNormalization.js.
     referrer: { type: String, trim: true, maxlength: 300, default: null },
+    // Ad click ids of the FIRST touch (Google Ads gclid/gbraid/wbraid, Meta fbclid, TikTok ttclid) -
+    // top-level so offline-conversion uploads / reports can query them directly.
+    gclid: { type: String, trim: true, maxlength: 150, default: null },
+    gbraid: { type: String, trim: true, maxlength: 150, default: null },
+    wbraid: { type: String, trim: true, maxlength: 150, default: null },
+    fbclid: { type: String, trim: true, maxlength: 150, default: null },
+    ttclid: { type: String, trim: true, maxlength: 150, default: null },
+    // First-touch / last-touch attribution and the full history (utils/crm/attribution.js). The
+    // legacy first-touch fields above (utm*, campaign, landingPage, referrer, source) stay populated
+    // from the first touch for every existing report and API consumer.
+    firstTouch: { type: touchSchema, default: null },
+    lastTouch: { type: touchSchema, default: null },
+    attributionHistory: { type: [touchSchema], default: [] },
+
+    // CRM -> Commercial linkage (services/crm/commercialHandoffService.js).
+    commercial: { type: commercialLinkSchema, default: null },
 
     stage: { type: String, enum: STAGES, default: 'new' },
     stageChangedAt: { type: Date, default: Date.now },
@@ -143,6 +206,8 @@ leadSchema.index({ segment: 1 });
 leadSchema.index({ archived: 1 });
 leadSchema.index({ createdAt: -1 });
 leadSchema.index({ submittedAt: -1 });
+leadSchema.index({ gclid: 1 }, { sparse: true });
+leadSchema.index({ 'commercial.project': 1 }, { sparse: true });
 // Supports the dashboard's "search by name, phone or Reservia reference code" (brief section 4A).
 leadSchema.index({ name: 'text', refCode: 'text' });
 

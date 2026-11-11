@@ -144,3 +144,37 @@ test('with FRONTEND_URL unset, the ERP/CRM frontend still preflights via the bui
     restore();
   }
 });
+
+// ===================== public website lead intake (/api/v1/crm/public/*) =====================
+// CRM launch blocker W3: the public, cookie-less lead route has its OWN policy. The global
+// credentialed policy must not answer its preflight first (it used to: `cors` ends every OPTIONS
+// request, so an origin allowed only via WEBSITE_ALLOWED_ORIGINS never reached the route's policy).
+
+test('public lead route: an origin allowed ONLY by WEBSITE_ALLOWED_ORIGINS preflights successfully, with Idempotency-Key and no credentials', async () => {
+  const previous = process.env.WEBSITE_ALLOWED_ORIGINS;
+  process.env.WEBSITE_ALLOWED_ORIGINS = 'https://www.reservia-energy.com,https://preview-reservia.vercel.app';
+  const { app, restore } = freshApp({ FRONTEND_URL: 'https://reserviafrontend.vercel.app' });
+  const { baseUrl: url, close } = await listen(app);
+  try {
+    const res = await preflight(url, 'https://preview-reservia.vercel.app', { path: '/api/v1/crm/public/leads' });
+    assert.ok(res.statusCode < 300, `status ${res.statusCode}`);
+    assert.equal(res.headers['access-control-allow-origin'], 'https://preview-reservia.vercel.app');
+    assert.ok((res.headers['access-control-allow-headers'] || '').toLowerCase().includes('idempotency-key'));
+    assert.equal(res.headers['access-control-allow-credentials'], undefined, 'anonymous endpoint - never credentialed');
+
+    const prod = await preflight(url, 'https://www.reservia-energy.com', { path: '/api/v1/crm/public/leads' });
+    assert.equal(prod.headers['access-control-allow-origin'], 'https://www.reservia-energy.com');
+
+    const evil = await preflight(url, 'https://evil.example.com', { path: '/api/v1/crm/public/leads' });
+    assert.equal(evil.headers['access-control-allow-origin'], undefined, 'still an allow-list, never a wildcard');
+
+    // ...and that origin gets NOTHING from the authenticated, credentialed API.
+    const authed = await preflight(url, 'https://preview-reservia.vercel.app', { path: '/api/v1/crm/leads' });
+    assert.equal(authed.headers['access-control-allow-origin'], undefined);
+  } finally {
+    await close();
+    restore();
+    if (previous === undefined) delete process.env.WEBSITE_ALLOWED_ORIGINS;
+    else process.env.WEBSITE_ALLOWED_ORIGINS = previous;
+  }
+});

@@ -2,6 +2,7 @@
 
 const ApiError = require('../../utils/apiError');
 const { normalizeSource } = require('../../utils/crm/sourceNormalization');
+const { touchesFromWebsite } = require('../../utils/crm/attribution');
 const WaRefCode = require('../../models/crm/waRefCodeModel');
 const Lead = require('../../models/crm/leadModel');
 const { processIntake } = require('./leadIntakeService');
@@ -45,6 +46,7 @@ const MAX_NOTE_LENGTH = 2000;
 function buildIntakeNote(payload) {
   const lines = [];
   if (payload.message) lines.push(`Message: ${String(payload.message).slice(0, MAX_NOTE_LENGTH)}`);
+  if (payload.submittedFrom && typeof payload.submittedFrom === 'string') lines.push(`Submitted from: ${payload.submittedFrom.slice(0, 200)}`);
   if (payload.siteInput !== undefined && payload.siteInput !== null) {
     lines.push(`Figure entered on the form (bill/consumption/pump size - unit depends on the segment): ${payload.siteInput}`);
   }
@@ -74,6 +76,13 @@ function mapWebsitePayload(body) {
 
   const calc = body.calculator && typeof body.calculator === 'object' ? body.calculator : null;
 
+  // CRM launch blocker C1: the website now sends the visitor's FIRST touch (the campaign/page that
+  // acquired them, preserved across internal navigation) and LAST touch (most recent campaign).
+  // The lead's source, UTM fields, click ids and landing page come from the FIRST touch - never
+  // from the page the form happened to be submitted on. Older website builds (utm/pageUrl/referrer
+  // only) map to the same shape.
+  const { first, last } = touchesFromWebsite(body, channel);
+
   return {
     name: body.name,
     phone: body.phone,
@@ -82,18 +91,20 @@ function mapWebsitePayload(body) {
     governorate: body.governorate || undefined,
     // Centralized source-mapping rules (Change Request 1, Feature 1) - see
     // utils/crm/sourceNormalization.js's own header for the full table (Google Ads needs BOTH
-    // source=google and medium=cpc, Meta Ads needs a paid medium, TikTok, Organic vs Direct by
-    // referrer when there's no UTM at all).
-    source: normalizeSource({ utmSource: body.utm?.utm_source, utmMedium: body.utm?.utm_medium, referrer: body.referrer }),
-    utmSource: body.utm?.utm_source || undefined,
-    utmMedium: body.utm?.utm_medium || undefined,
-    utmCampaign: body.utm?.utm_campaign || undefined,
-    utmContent: body.utm?.utm_content || undefined,
+    // source=google and medium=cpc - or a Google click id - Meta Ads needs a paid medium, TikTok,
+    // Organic vs Direct by referrer when there's no UTM at all).
+    source: first.source,
+    utmSource: first.utmSource || undefined,
+    utmMedium: first.utmMedium || undefined,
+    utmCampaign: first.utmCampaign || undefined,
+    utmContent: first.utmContent || undefined,
     // Change Request 2, item 7: utm_term was dropped; campaign is the one displayed field.
-    utmTerm: body.utm?.utm_term || undefined,
-    campaign: body.utm?.utm_campaign || undefined,
-    landingPage: body.pageUrl || undefined,
-    referrer: body.referrer || undefined,
+    utmTerm: first.utmTerm || undefined,
+    campaign: first.campaign || undefined,
+    landingPage: first.landingPage || undefined,
+    referrer: first.referrer || undefined,
+    firstTouch: first,
+    lastTouch: last,
     // Only set from the calculator's own typed estimate (a clean, known-unit figure) - never from
     // the generic `siteInput` number, whose unit depends on a form field (`extraKind`) the
     // website does not currently send with the submission; see buildIntakeNote for how that

@@ -160,8 +160,9 @@ function breadcrumbsFor(page, locale, ctx) {
   const crumbs = [{ name: HOME_LABEL[locale], url: localeUrl(ctx.origin, locale, '/') }];
   for (const p of usable) {
     if (p.isHomePage) continue;
-    const label = field(p.seo, 'breadcrumbLabel', locale) || baseTitle(p, p.sections, locale).value || '';
-    // A legacy page with no CMS label: the website supplies the label from its own navigation.
+    // A legacy page's label is only ever the explicit breadcrumb label (empty = the website keeps
+    // its own short navigation label - an SEO title is usually far too long for a breadcrumb).
+    const label = field(p.seo, 'breadcrumbLabel', locale) || (isLegacy(p) ? '' : baseTitle(p, p.sections, locale).value);
     crumbs.push({ name: label, url: localeUrl(ctx.origin, locale, p.path), path: normalizePath(p.path) });
   }
   return crumbs;
@@ -189,16 +190,8 @@ function resolvePageLocale(page, locale, ctx) {
   const noindex = !!page.seo?.noindex || NON_PUBLIC_PATH.test(normalizePath(page.path));
   const nofollow = !!page.seo?.nofollow;
 
-  // hreflang (brief 2.2): only between languages this page is actually available in, reciprocal
-  // by construction (every version lists the same set), x-default -> the default-language version.
-  // A single-language page declares none; neither does a noindex page or one whose canonical
-  // points elsewhere (hreflang on a non-canonical URL contradicts the canonical).
-  let alternates = [];
-  if (!noindex && canonical === selfUrl && ctx.locales.length > 1) {
-    alternates = ctx.locales.map(l => ({ hreflang: l, href: localeUrl(origin, l, page.path) }));
-    const def = ctx.locales.includes(settings?.defaultLocale) ? settings.defaultLocale : ctx.locales[0];
-    alternates.push({ hreflang: 'x-default', href: localeUrl(origin, def, page.path) });
-  }
+  // hreflang alternates are filled in by resolveOne once every language version is known.
+  const alternates = [];
 
   const ogImage = page.seo?.ogImage?.url || derivedImage(page.sections) || settings?.defaultOgImage?.url || null;
   const ogTitle = field(page.seo, 'ogTitle', locale) || fullTitle;
@@ -237,6 +230,8 @@ function resolvePageLocale(page, locale, ctx) {
     },
     twitter: {
       card: page.seo?.twitterCard || (ogImage ? 'summary_large_image' : 'summary'),
+      // 'custom' = an editor chose the card; 'auto' = derived from whether there is an image.
+      cardSource: page.seo?.twitterCard ? 'custom' : 'auto',
       title: ogTitle,
       description: ogDescription,
       image: ogImage,
@@ -261,6 +256,19 @@ function resolveOne(page, ctx) {
   const locales = ctx.localesBySlug.get(page.slug) || pageLocales(page, ctx.settings);
   const seo = {};
   for (const locale of locales) seo[locale] = resolvePageLocale(page, locale, { ...ctx, locales });
+
+  // hreflang (brief 2.2): declared only between the language versions that are indexable AND
+  // their own canonical - a noindex version, or one canonicalised to another URL, is never named
+  // as an alternate (that would contradict its own robots/canonical), and lists none itself.
+  // Reciprocal by construction: every eligible version lists exactly the same set. x-default ->
+  // the site's default language when that version is eligible, else the first eligible one. One
+  // eligible version (e.g. an Arabic-only page) declares none.
+  const eligible = locales.filter(l => seo[l].indexable && seo[l].canonical === seo[l].url);
+  if (eligible.length > 1) {
+    const def = eligible.includes(ctx.settings?.defaultLocale) ? ctx.settings.defaultLocale : eligible[0];
+    const set = [...eligible.map(l => ({ hreflang: l, href: seo[l].url })), { hreflang: 'x-default', href: seo[def].url }];
+    for (const l of eligible) seo[l].alternates = set.map(a => ({ ...a }));
+  }
   return { slug: page.slug, locales, seo };
 }
 

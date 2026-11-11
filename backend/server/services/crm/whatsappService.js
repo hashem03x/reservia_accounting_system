@@ -64,10 +64,12 @@ async function resolveWhatsAppSource(messageText) {
  * The GET /webhook handshake Meta performs once per subscription. Returns the challenge string to
  * echo back verbatim, or null if the verify token doesn't match (caller should 403).
  */
-function verifySubscription({ mode, token, challenge }) {
+function verifySubscription({ mode, token, challenge }, expectedToken = process.env.WHATSAPP_VERIFY_TOKEN) {
   if (mode !== 'subscribe') return null;
-  if (!process.env.WHATSAPP_VERIFY_TOKEN) return null;
-  if (token !== process.env.WHATSAPP_VERIFY_TOKEN) return null;
+  if (!expectedToken) return null;
+  const a = Buffer.from(String(token || ''));
+  const b = Buffer.from(String(expectedToken));
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   return challenge;
 }
 
@@ -77,9 +79,8 @@ function verifySubscription({ mode, token, challenge }) {
  * the shared app secret. Constant-time compare - a signature check that short-circuits on the
  * first differing byte leaks timing information an attacker can use to forge a valid signature.
  */
-function verifySignature(rawBody, signatureHeader) {
-  const secret = process.env.WHATSAPP_APP_SECRET;
-  if (!secret) return false;
+function verifySignature(rawBody, signatureHeader, secret = process.env.WHATSAPP_APP_SECRET) {
+  if (!secret || !rawBody) return false;
   if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return false;
   const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
   const given = signatureHeader.slice('sha256='.length);
@@ -128,9 +129,33 @@ async function processWebhookPayload(payload) {
         // eslint-disable-next-line no-await-in-loop
         results.push(await handleInboundMessage(message, contactsByWaId[message.from] || null));
       }
+      // Coexistence: a reply a salesperson types in the WhatsApp Business APP on the same number is
+      // echoed to the webhook (field "smb_message_echoes"). It is a genuine human reply (C7), so it
+      // is recorded as whatsapp_out and offered as the lead's first reply. Echoes never create a lead.
+      const echoes = Array.isArray(value.message_echoes) ? value.message_echoes : [];
+      for (const echo of echoes) {
+        // eslint-disable-next-line no-await-in-loop
+        results.push(await handleOutboundEcho(echo));
+      }
     }
   }
   return results;
+}
+
+async function handleOutboundEcho(echo) {
+  const phoneE164 = normalizeEgyptianPhone(echo.to);
+  if (!phoneE164 || !echo.id) return { skipped: true, reason: 'unrecognized echo' };
+  // eslint-disable-next-line global-require
+  const Lead = require('../../models/crm/leadModel');
+  const lead = await Lead.findOne({ phoneE164 }).select('_id').lean();
+  if (!lead) return { skipped: true, reason: 'no lead for this number' };
+  const sentAt = parseSubmissionTimestamp(echo.timestamp) || new Date();
+  const activity = await leadService.recordActivity(lead._id, { type: 'whatsapp_out', body: `[Sent from the WhatsApp Business app] ${describeMessage(echo)}`.slice(0, 2000), whatsappMessageId: echo.id }, {});
+  // recordActivity offered the activity's own createdAt; the real send time can be earlier (a delayed delivery).
+  // eslint-disable-next-line global-require
+  const { offerFirstReply } = require('./firstReplyService');
+  await offerFirstReply(lead._id, sentAt, 'whatsapp_out');
+  return { leadId: lead._id, activityId: activity._id, echo: true };
 }
 
 async function handleInboundMessage(message, contactName) {

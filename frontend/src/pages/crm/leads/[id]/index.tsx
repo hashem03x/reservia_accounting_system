@@ -1,3 +1,5 @@
+import LeadCommercialCard from "./_components/lead-commercial-card";
+import LeadAttributionCard from "./_components/lead-attribution-card";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDisclosure } from "@mantine/hooks";
@@ -119,6 +121,8 @@ export default function CrmLeadDetail() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <section className="flex flex-col gap-4 lg:col-span-1">
           <InfoCard lead={lead} overdue={overdue} firstReply={data.firstReply} />
+          <LeadCommercialCard lead={lead} onChanged={load} />
+          <LeadAttributionCard lead={lead} />
           <StageChangeCard lead={lead} onChanged={load} />
           <StageHistoryCard rows={data.stageHistory} />
           <LeadAttachments leadId={lead._id} canEdit={role === "admin" || role === "md"} />
@@ -265,23 +269,7 @@ function InfoCard({ lead, overdue, firstReply }: { lead: CrmLead; overdue: boole
             {followUpOverdue && ` (${translate("overdue", "متأخر")})`}
           </span>,
         )}
-      {/* First-touch attribution (Change Request 1, Feature 1 + Change Request 2 ad lead forms) -
-          shown only when present, since most hand-entered leads never had a web visit or an ad. */}
-      {(lead.utmCampaign || lead.landingPage || lead.utmSource || lead.adSetName || lead.adName || lead.adFormId) && (
-        <>
-          <h4 className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">{translate("First-touch attribution", "أول نقطة تواصل")}</h4>
-          {lead.utmSource && row(translate("UTM Source", "مصدر UTM"), lead.utmSource)}
-          {lead.utmMedium && row(translate("UTM Medium", "وسيط UTM"), lead.utmMedium)}
-          {lead.utmCampaign && row(translate("UTM Campaign", "حملة UTM"), lead.utmCampaign)}
-          {lead.utmContent && row(translate("UTM Content", "محتوى UTM"), lead.utmContent)}
-          {lead.utmTerm && row(translate("UTM Term", "كلمة UTM"), lead.utmTerm)}
-          {lead.adPlatform && row(translate("Platform", "المنصة"), lead.adPlatform)}
-          {lead.adSetName && row(translate("Ad set", "مجموعة الإعلانات"), <TruncatedText text={lead.adSetName} maxWidthClassName="max-w-[180px]" />)}
-          {lead.adName && row(translate("Ad", "الإعلان"), <TruncatedText text={lead.adName} maxWidthClassName="max-w-[180px]" />)}
-          {lead.adFormId && row(translate("Form ID", "رقم النموذج"), lead.adFormId)}
-          {lead.landingPage && row(translate("Landing page", "صفحة الهبوط"), <TruncatedText text={lead.landingPage} maxWidthClassName="max-w-[180px]" />)}
-        </>
-      )}
+      {/* Attribution (first/last touch, click ids, history) is shown in LeadAttributionCard. */}
       {/* Archive audit trail (Change Request 1, Feature 6: "record who/when... audit trail") -
           shown only once archived, to the MD who can already see this page's archive/restore action. */}
       {lead.archived && (

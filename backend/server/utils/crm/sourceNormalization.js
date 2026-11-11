@@ -12,6 +12,9 @@ const { SOURCES } = require('./constants');
 // | utm_source=tiktok                                          | TikTok            |
 // | WhatsApp message with a recognized Ref code                 | the code's source |
 // | WhatsApp without a recognized Ref code                     | WhatsApp Direct   |
+// | No UTM + gclid / gbraid / wbraid (Google Ads auto-tagging)  | Google Ads        |
+// | No UTM + ttclid (TikTok ad click)                           | TikTok            |
+// | No UTM + fbclid only (Meta click, paid/organic unknown)      | Other             |
 // | No UTM + search engine referrer                             | Organic           |
 // | No UTM + no referrer                                        | Direct            |
 // | Manually entered lead                                       | user must select  |
@@ -56,15 +59,27 @@ function isSearchReferrer(referrer) {
  *   consulted when there is no utm_source at all.
  * @returns {string} one of SOURCES
  */
-function normalizeSource({ utmSource, utmMedium, referrer } = {}) {
+function normalizeSource({ utmSource, utmMedium, referrer, gclid, gbraid, wbraid, ttclid, fbclid } = {}) {
   const source = norm(utmSource);
   const medium = norm(utmMedium);
+  // Ad click ids (CRM launch blocker C1/C5). Google Ads auto-tagging appends ONLY gclid (or
+  // gbraid/wbraid for iOS app/web-to-app traffic) - no UTM at all - and these ids are only ever
+  // issued for a paid Google Ads click, so they are conclusive. ttclid is likewise only issued for
+  // a TikTok ad click. fbclid is deliberately NOT used: Meta appends it to every outbound link
+  // click, organic posts included, so on its own it cannot prove a paid Meta Ads click.
+  const googleClick = !!(norm(gclid) || norm(gbraid) || norm(wbraid));
+  const tiktokClick = !!norm(ttclid);
 
   if (!source) {
+    if (googleClick) return 'Google Ads';
+    if (tiktokClick) return 'TikTok';
+    // Came from a Meta property (fbclid) but paid vs organic is unknown: never "Direct", never
+    // silently promoted to "Meta Ads" either - the fbclid itself stays on the lead for review.
+    if (norm(fbclid)) return 'Other';
     return isSearchReferrer(referrer) ? 'Organic' : 'Direct';
   }
 
-  if (GOOGLE_SOURCES.includes(source) && GOOGLE_PAID_MEDIA.includes(medium)) return 'Google Ads';
+  if (GOOGLE_SOURCES.includes(source) && (GOOGLE_PAID_MEDIA.includes(medium) || googleClick)) return 'Google Ads';
   if (META_SOURCES.includes(source) && META_PAID_MEDIA.includes(medium)) return 'Meta Ads';
   if (TIKTOK_SOURCES.includes(source)) return 'TikTok';
 

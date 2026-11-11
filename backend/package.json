@@ -52,7 +52,10 @@
     "pm2:save": "pm2 save",
     "pm2:resurrect": "pm2 resurrect",
     "pm2:startup": "pm2 startup",
-    "pm2:unstartup": "pm2 unstartup"
+    "pm2:unstartup": "pm2 unstartup",
+    "db:seed-commercial-offgrid": "node server/scripts/seedCommercialOffGridItems.js",
+    "db:commercial-qa-cleanup": "node server/scripts/commercialQaCleanup.js",
+    "db:normalize-commercial-regions": "node server/scripts/normalizeCommercialRegions.js"
   },
   "keywords": [],
   "author": "",

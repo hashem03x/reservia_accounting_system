@@ -173,6 +173,10 @@ const mountRoutes = app => {
   app.use('/api/v1/commercial/approvals', require('./commercial/approvalRoute'));
   app.use('/api/v1/commercial/proposals', require('./commercial/proposalRoute'));
   app.use('/api/v1/commercial/dashboard', require('./commercial/dashboardRoute'));
+  // QA finding B3 - the Finance-managed pricing configuration (levers + VAT).
+  app.use('/api/v1/commercial/pricing-config', require('./commercial/pricingConfigRoute'));
+  // QA finding B5 - CRM -> Commercial handoff (staff-session, CRM-access gated; see the route file).
+  app.use('/api/v1/commercial/handoff', require('./commercial/handoffRoute'));
   app.use('/api/v1/commercial/attachments', require('./commercial/projectAttachmentRoute').byId);
 
   // Website Management (CMS for the public Reservia website, Reservia_Website repo) - Pages,

@@ -215,7 +215,7 @@ export interface ResolvedSeo {
   indexable: boolean;
   alternates: { hreflang: string; href: string }[];
   openGraph: { type: string; title: string; description: string; image: string | null; url: string; locale: string; siteName: string };
-  twitter: { card: string; title: string; description: string; image: string | null; site: string | null };
+  twitter: { card: string; cardSource: "custom" | "auto"; title: string; description: string; image: string | null; site: string | null };
   breadcrumbs: { name: string; url: string }[];
   warnings: SeoWarning[];
 }

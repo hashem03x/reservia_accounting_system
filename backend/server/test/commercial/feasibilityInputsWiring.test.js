@@ -2,20 +2,12 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const boqService = require('../../services/commercial/boqService');
 
-// Regression suite for: "the Feasibility tab shows 'Enter the feasibility inputs on the
-// Engineering Input tab' but the Engineering Input tab has no feasibility fields." The gap was
-// that `boqService.js#runOffGrid`/`runOnGridOrUtility` either never read certain `engineeringInput`
-// keys at all, or read them but the frontend forms never sent them. This file exercises the
-// Off-Grid path end-to-end through `boqService.buildBoq` - Off-Grid's engine and feasibility model
-// are both pure (no Price Book/DB lookups), so this runs with no database connection, the same
-// DB-free strategy used by boqService.test.js.
-//
-// The On-Grid/Utility path needs a live Price Book (DB) to resolve the PV module, so its new
-// `tariffEgpPerKwh`/`maintenancePctOfCapex`/`escalationScenario2`/`escalationScenario3` wiring in
-// `runOnGridOrUtility` is covered at the calculation level by
-// test/commercial/onGridFeasibility.test.js's override test instead - the boqService.js change
-// itself is a one-line `engineeringInput.X ?? excelDefault` pass-through, the same pattern proven
-// here for Off-Grid.
+// Regression suite for the feasibility inputs reaching the models (originally: "the Feasibility tab
+// says enter inputs, but the Engineering Input tab has none"), updated for QA findings B4/U7/U8:
+//   - feasibility now runs AFTER pricing (boqService.computeFeasibility), because its capex is the
+//     revision's FINAL PRICE incl VAT - never the raw BOQ cost;
+//   - Off-Grid installation comes from the Rates matrix in Egypt; outside Egypt (no Rates matrix) the
+//     typed rate is used, which is what lets this file run with no database.
 
 const OFF_GRID_INPUT_BASE = {
   appliances: [
@@ -31,46 +23,73 @@ const OFF_GRID_INPUT_BASE = {
   installationRatePerKwp: 650, transportationRatePerKwp: 500, contingencyRate: 0.02, profitMarginRate: 0.1, vatRate: 0.14,
 };
 
-test('Off-Grid: dieselComparison is null when generatorPurchasePrice is omitted (no regression from the new fields)', async () => {
-  const result = await boqService.buildBoq({ category: 'Off-Grid', engineeringInput: OFF_GRID_INPUT_BASE, country: 'Egypt', region: 'Cairo' });
-  assert.equal(result.dieselComparison, null);
+const PRICING = { netExclVat: 600000, vatPct: 0.14, vatAmt: 84000, grossInclVat: 684000 };
+
+async function offGrid(input) {
+  const built = await boqService.buildBoq({ category: 'Off-Grid', engineeringInput: input, country: 'Other Country', region: null });
+  const f = boqService.computeFeasibility({ category: 'Off-Grid', engineeringInput: input, pricing: PRICING, boqTotal: built.boqTotal, kWp: built.kWp, engineeringResult: built.engineeringResult });
+  return { built, ...f };
+}
+
+test('Off-Grid: dieselComparison is null when generatorPurchasePrice is omitted', async () => {
+  const { dieselComparison } = await offGrid(OFF_GRID_INPUT_BASE);
+  assert.equal(dieselComparison, null);
 });
 
-test('Off-Grid: previously-missing analysisPeriodYears now flows from engineeringInput into the diesel comparison (Feasibility Study!B21)', async () => {
-  const input25 = { ...OFF_GRID_INPUT_BASE, generatorPurchasePrice: 70000, dieselPriceEgpPerL: 20 };
-  const input10 = { ...input25, analysisPeriodYears: 10 };
-
-  const result25 = await boqService.buildBoq({ category: 'Off-Grid', engineeringInput: input25, country: 'Egypt', region: 'Cairo' });
-  const result10 = await boqService.buildBoq({ category: 'Off-Grid', engineeringInput: input10, country: 'Egypt', region: 'Cairo' });
-
-  assert.equal(result25.dieselComparison.years.length, 26); // year 0 + 25
-  assert.equal(result10.dieselComparison.years.length, 11); // year 0 + 10
-  assert.notEqual(result25.dieselComparison.headline.twentyFiveYearNetSavings, result10.dieselComparison.headline.twentyFiveYearNetSavings);
+test('Off-Grid: the diesel comparison uses the revision FINAL PRICE incl VAT as the solar capex (QA B4)', async () => {
+  const { dieselComparison } = await offGrid({ ...OFF_GRID_INPUT_BASE, generatorPurchasePrice: 70000 });
+  // year 0 net = -solar capex + generator purchase (Feasibility Study!G28)
+  assert.equal(dieselComparison.years[0].netSavings, -684000 + 70000);
 });
 
-test('Off-Grid: every diesel/feasibility input field is honored when supplied, not silently defaulted', async () => {
-  const defaulted = await boqService.buildBoq({
-    category: 'Off-Grid',
-    engineeringInput: { ...OFF_GRID_INPUT_BASE, generatorPurchasePrice: 70000, dieselPriceEgpPerL: 20 },
-    country: 'Egypt', region: 'Cairo',
-  });
-  const overridden = await boqService.buildBoq({
-    category: 'Off-Grid',
-    engineeringInput: {
-      ...OFF_GRID_INPUT_BASE,
-      generatorPurchasePrice: 70000, dieselPriceEgpPerL: 20,
-      dieselTransportEgpPerL: 5, dieselAnnualEscalation: 0.05, generatorSpecificFuelUseLPerKwh: 0.4,
-      generatorMaintenancePct: 0.15, generatorReplacementIntervalYears: 5, solarAnnualOmPct: 0.04,
-      batteryReplacementIntervalYears: 5, analysisPeriodYears: 25, discountRate: 0.15,
-    },
-    country: 'Egypt', region: 'Cairo',
-  });
+test('Off-Grid: analysisPeriodYears flows from engineeringInput into the diesel comparison (Feasibility Study!B21)', async () => {
+  const r25 = await offGrid({ ...OFF_GRID_INPUT_BASE, generatorPurchasePrice: 70000, dieselPriceEgpPerL: 20 });
+  const r10 = await offGrid({ ...OFF_GRID_INPUT_BASE, generatorPurchasePrice: 70000, dieselPriceEgpPerL: 20, analysisPeriodYears: 10 });
+  assert.equal(r25.dieselComparison.years.length, 26);
+  assert.equal(r10.dieselComparison.years.length, 11);
+});
 
+test('Off-Grid: every diesel/feasibility input is honored, and none of them changes the BOQ', async () => {
+  const defaulted = await offGrid({ ...OFF_GRID_INPUT_BASE, generatorPurchasePrice: 70000, dieselPriceEgpPerL: 20 });
+  const overridden = await offGrid({
+    ...OFF_GRID_INPUT_BASE, generatorPurchasePrice: 70000, dieselPriceEgpPerL: 20,
+    dieselTransportEgpPerL: 5, dieselAnnualEscalation: 0.05, generatorSpecificFuelUseLPerKwh: 0.4,
+    generatorMaintenancePct: 0.15, generatorReplacementIntervalYears: 5, solarAnnualOmPct: 0.04,
+    batteryReplacementIntervalYears: 5, analysisPeriodYears: 25, discountRate: 0.15,
+  });
   assert.notEqual(defaulted.dieselComparison.headline.npv, overridden.dieselComparison.headline.npv);
-  assert.notEqual(defaulted.dieselComparison.headline.twentyFiveYearNetSavings, overridden.dieselComparison.headline.twentyFiveYearNetSavings);
-  // Engineering design/BOQ (unrelated to feasibility inputs) must stay identical - these fields
-  // only feed the Feasibility Study model, never the Load Assessment/Design/BOQ chain.
-  assert.equal(defaulted.boqTotal, overridden.boqTotal);
-  assert.equal(defaulted.kWp, overridden.kWp);
-  assert.deepEqual(defaulted.lines.map(l => l.total), overridden.lines.map(l => l.total));
+  assert.equal(defaulted.built.boqTotal, overridden.built.boqTotal);
+  assert.deepEqual(defaulted.built.lines.map(l => l.total), overridden.built.lines.map(l => l.total));
+});
+
+test('Off-Grid without Price Book keys: typed prices still calculate but are FLAGGED as manual (QA U7)', async () => {
+  const { built } = await offGrid(OFF_GRID_INPUT_BASE);
+  for (const component of ['Solar PV Modules', 'Battery Bank', 'Off-Grid Inverter']) {
+    const line = built.lines.find(l => l.component === component);
+    assert.match(line.flag || '', /MANUAL PRICE/);
+  }
+});
+
+test('On-Grid feasibility (brief 3.4): capex = final price incl VAT; 10% headline with 3% and flat sensitivities; no O&M deducted by default', () => {
+  const pricing = { netExclVat: 1762669, vatPct: 0.14, vatAmt: 246774, grossInclVat: 2009443 };
+  const { feasibility } = boqService.computeFeasibility({ category: 'On-Grid C&I', engineeringInput: {}, pricing, boqTotal: 1191565, kWp: 80 });
+  assert.equal(feasibility.priceBasis.capex, 2009443);
+  assert.equal(feasibility.priceBasis.capexBasis, 'Final price incl VAT (year 0)');
+  assert.equal(feasibility.headline.escalation, 0.1);
+  assert.deepEqual(feasibility.sensitivities.map(s => s.escalation), [0.03, 0]);
+  assert.equal(feasibility.assumptions.maintenancePctOfCapex, 0);
+  assert.ok(feasibility.headline.years.every(y => y.maintenance === 0));
+  assert.ok(feasibility.internalCostView.paybackYears < feasibility.headline.paybackYears, 'the cost-side view is a separate, labelled line - never the headline');
+});
+
+test('On-Grid feasibility: legacy R74 escalation inputs (3% / 10%) still produce the 10% headline', () => {
+  const pricing = { netExclVat: 1762669, vatPct: 0.14, vatAmt: 246774, grossInclVat: 2009443 };
+  const { feasibility } = boqService.computeFeasibility({ category: 'On-Grid C&I', engineeringInput: { escalationScenario2: 0.03, escalationScenario3: 0.1 }, pricing, boqTotal: 1191565, kWp: 80 });
+  assert.equal(feasibility.headline.escalation, 0.1);
+});
+
+test('Agriculture Pumping: no feasibility model (none in Solar_Pumping3.xlsx)', () => {
+  const r = boqService.computeFeasibility({ category: 'Agriculture Pumping', engineeringInput: {}, pricing: PRICING, boqTotal: 1, kWp: 1 });
+  assert.equal(r.feasibility, null);
+  assert.equal(r.dieselComparison, null);
 });

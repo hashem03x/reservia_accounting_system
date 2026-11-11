@@ -85,6 +85,14 @@ test('hreflang: noindex pages and pages canonicalised elsewhere declare none', (
   assert.deepEqual(one(page({ seo: { ...page().seo, canonicalAr: '/services' } })).seo.ar.alternates, []);
 });
 
+test('hreflang: a version that is noindex or canonicalised elsewhere is never named as an alternate by the other version', () => {
+  const r = one(page({ seo: { ...page().seo, canonicalEn: '/services' } }));
+  assert.deepEqual(r.seo.ar.alternates, [], 'only one eligible version left -> no pair claimed');
+  const twitter = one(page({ seo: { ...page().seo, twitterCard: 'summary' } })).seo.en.twitter;
+  assert.equal(twitter.cardSource, 'custom');
+  assert.equal(one(page()).seo.en.twitter.cardSource, 'auto');
+});
+
 test('robots: index,follow by default; noindex / nofollow flags; staff paths are always noindex', () => {
   assert.equal(one(page()).seo.ar.robots, 'index,follow');
   assert.equal(one(page({ seo: { ...page().seo, noindex: true, nofollow: true } })).seo.ar.robots, 'noindex,nofollow');

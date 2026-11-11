@@ -91,3 +91,49 @@ function round(n, dp) {
   const f = 10 ** dp;
   return Math.round(n * f) / f;
 }
+
+// ---------------------------------------------------------------- brief 3.4 customer feasibility (QA B4)
+const { runCustomerFeasibility, CUSTOMER_FEASIBILITY_DEFAULTS } = require('../../services/commercial/onGridFeasibility');
+
+test('brief 3.4 defaults: yield 1,800, degradation 0.7%, tariff 2.80, headline 10% with 3% and flat sensitivities, discount 22%, O&M 0', () => {
+  assert.equal(CUSTOMER_FEASIBILITY_DEFAULTS.yieldKwhPerKwp, 1800);
+  assert.equal(CUSTOMER_FEASIBILITY_DEFAULTS.degradationPct, 0.007);
+  assert.equal(CUSTOMER_FEASIBILITY_DEFAULTS.tariffEgpPerKwh, 2.8);
+  assert.equal(CUSTOMER_FEASIBILITY_DEFAULTS.headlineEscalation, 0.1);
+  assert.deepEqual(CUSTOMER_FEASIBILITY_DEFAULTS.sensitivityEscalations, [0.03, 0]);
+  assert.equal(CUSTOMER_FEASIBILITY_DEFAULTS.discountRate, 0.22);
+  assert.equal(CUSTOMER_FEASIBILITY_DEFAULTS.maintenancePctOfCapex, 0);
+});
+
+test('brief section 8 acceptance: capex 2,009,443 (final incl VAT) -> payback 4.2775 y, IRR 28.98%, NPV 948,944, 25-year avoided cost 35,338,644', () => {
+  const pricing = { netExclVat: 1762668.9972850003, vatPct: 0.14, vatAmt: 246773.6596, grossInclVat: 2009442.6569049004 };
+  const f = runCustomerFeasibility({ pricing, designKwp: 80, boqCost: 1191565 });
+  assert.ok(Math.abs(f.headline.paybackYears - 4.2775) < 0.0001, `payback ${f.headline.paybackYears}`);
+  assert.ok(Math.abs(f.headline.irr - 0.2898) < 0.0001, `irr ${f.headline.irr}`);
+  assert.ok(Math.abs(f.headline.npv - 948944) <= 1, `npv ${f.headline.npv}`);
+  assert.ok(Math.abs(f.headline.lifetimeSavings - 35338644) <= 1, `life ${f.headline.lifetimeSavings}`);
+  assert.equal(f.priceBasis.capex, pricing.grossInclVat);
+  assert.equal(f.headline.year1GenerationKwh, 144000);
+});
+
+test('QA B4: on the QA final price 2,028,016 incl VAT the payback is about 4.3 years at 10% escalation and about 5 years flat - never the 3 y 1 m the BOQ-cost basis gave', () => {
+  const pricing = { netExclVat: 1778961.51, vatPct: 0.14, vatAmt: 249054.61, grossInclVat: 2028016 };
+  const f = runCustomerFeasibility({ pricing, designKwp: 80, boqCost: 1189886.37 });
+  assert.ok(Math.abs(f.headline.paybackYears - 4.3) < 0.05, `10% payback ${f.headline.paybackYears}`);
+  const flat = f.sensitivities.find(s => s.escalation === 0);
+  assert.ok(flat.paybackYears > 5 && flat.paybackYears < 5.3, `flat payback ${flat.paybackYears}`);
+  assert.ok(f.internalCostView.paybackYears < 3.5, 'BOQ-cost view stays a separate internal line');
+});
+
+test('an entered maintenance % is deducted; the default (O&M in the EPC offer) deducts nothing', () => {
+  const pricing = { netExclVat: 1, vatPct: 0.14, vatAmt: 0, grossInclVat: 2009443 };
+  const none = runCustomerFeasibility({ pricing, designKwp: 80 });
+  const om = runCustomerFeasibility({ pricing, designKwp: 80, inputs: { maintenancePctOfCapex: 0.01 } });
+  assert.ok(om.headline.paybackYears > none.headline.paybackYears);
+  assert.equal(none.assumptions.omIncludedInEpc, true);
+});
+
+test('no feasibility without a priced revision or design kWp', () => {
+  assert.equal(runCustomerFeasibility({ pricing: { grossInclVat: 0 }, designKwp: 80 }), null);
+  assert.equal(runCustomerFeasibility({ pricing: { grossInclVat: 100 }, designKwp: 0 }), null);
+});

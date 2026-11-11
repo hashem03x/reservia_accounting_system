@@ -12,8 +12,28 @@ const { addWorkingHours } = require('../../utils/crm/workingHours');
 const { generateRefCode } = require('../../utils/crm/refCode');
 const { evaluateStageTransition, canOverride, STAGES, STAGE_LABELS } = require('../../utils/crm/stageRules');
 const { trackEvent } = require('./amplitudeService');
-const { pickAutoAssignee, notifyAssignment, notifyReassignment, assignmentStrategy } = require('./leadAssignmentService');
+const { pickAutoAssignee, notifyAssignment, notifyReassignment, notifyUnassigned, assignmentStrategy, AUTO_ASSIGN_CHANNELS } = require('./leadAssignmentService');
 const { offerFirstReply, replyViaForActivityType, SLA_WORKING_HOURS } = require('./firstReplyService');
+const { touchFromIntakeInput, isAttributable, sameTouch, HISTORY_LIMIT } = require('../../utils/crm/attribution');
+
+/**
+ * The (first, last) touches an intake carries: explicit ones (the website sends both), else one
+ * touch built from the intake's own attribution fields (ad lead forms, WhatsApp, CSV, manual).
+ */
+function intakeTouches(input, now) {
+  const first = input.firstTouch || touchFromIntakeInput(input, now);
+  const last = input.lastTouch || first;
+  return { first, last };
+}
+
+/** Appends touches to a history array, skipping ones identical to an entry already present; keeps the newest HISTORY_LIMIT. */
+function appendHistory(history, touches) {
+  const out = [...(history || [])];
+  for (const t of touches) {
+    if (t && !out.some(h => sameTouch(h, t))) out.push(t);
+  }
+  return out.slice(-HISTORY_LIMIT);
+}
 
 // Reservia CRM - lead intake, dedup/merge, activity logging and stage transitions (Developer Brief
 // section 4B/4D + section 7 "Rules that must not change"). This is the one place a Lead document
@@ -107,10 +127,12 @@ async function intakeLead(input, { userId = null, autoAssign = false, skipRepeat
 
   const now = new Date();
   const submittedAt = resolveSubmittedAt(input.submittedAt, now);
+  const { first: firstTouch, last: lastTouch } = intakeTouches(input, now);
   const session = await mongoose.startSession();
   try {
     let created;
     let autoAssignee = null;
+    let unassignedAutomated = false;
     await session.withTransaction(async () => {
       const refCode = await generateRefCode(now, session);
       // Acceptance report finding 2 + Change Request 1, Feature 2: a lead with no human owner in
@@ -154,8 +176,16 @@ async function intakeLead(input, { userId = null, autoAssign = false, skipRepeat
             adFormId: input.adFormId || null,
             adPlatform: input.adPlatform || null,
             externalLeadId: input.externalLeadId || null,
-            landingPage: input.landingPage || null,
-            referrer: input.referrer || null,
+            landingPage: input.landingPage || firstTouch.landingPage || null,
+            referrer: input.referrer || firstTouch.referrer || null,
+            gclid: firstTouch.gclid || null,
+            gbraid: firstTouch.gbraid || null,
+            wbraid: firstTouch.wbraid || null,
+            fbclid: firstTouch.fbclid || null,
+            ttclid: firstTouch.ttclid || null,
+            firstTouch,
+            lastTouch,
+            attributionHistory: appendHistory([], [firstTouch, lastTouch]),
             submittedAt,
             // Change Request 2, item 12: the 8-working-hour clock starts at the ORIGINAL
             // submission time - a lead submitted Monday 10:00 and imported Tuesday 09:00 is due
@@ -178,10 +208,18 @@ async function intakeLead(input, { userId = null, autoAssign = false, skipRepeat
           { session }
         );
       }
+      unassignedAutomated = !owner && AUTO_ASSIGN_CHANNELS.includes(input.channel);
+      if (unassignedAutomated) {
+        await Activity.create(
+          [{ lead: created._id, type: 'system', body: 'Not assigned automatically: no active user holds the CRM Sales role. CRM managers (MD/Admin) were notified by email.' }],
+          { session }
+        );
+      }
       await StageHistory.create([{ lead: created._id, from: null, to: 'new', changedBy: userId }], { session });
     });
     trackEvent('crm_lead_created', { ampDeviceId: created.ampDeviceId, channel: created.channel, segment: created.segment });
     if (autoAssignee) notifyAssignment(autoAssignee, created); // fire-and-forget, after the commit
+    if (unassignedAutomated) notifyUnassigned(created).catch(() => {}); // fire-and-forget
     return { lead: shapeLead(created), created: true };
   } catch (err) {
     if (err?.code === 11000 && (!err.keyPattern || err.keyPattern.phoneE164)) {
@@ -198,11 +236,30 @@ async function intakeLead(input, { userId = null, autoAssign = false, skipRepeat
   }
 }
 
-/** Records a repeat enquiry on an existing lead and fills only its still-empty contact fields. */
+/**
+ * Records a repeat enquiry on an existing lead and fills only its still-empty contact fields.
+ *
+ * Attribution on a merge (C1): the existing first touch, source, campaign and landing page are
+ * NEVER changed. The incoming touches are appended to the lead's attribution history, and an
+ * attributable incoming touch (campaign / click id / ad platform) newer than the stored last touch
+ * becomes the new last touch - so a duplicate enquiry from a later campaign is credited as the
+ * last touch without destroying how the customer was originally acquired.
+ */
 async function mergeRepeatEnquiry(lead, input, { userId, skipRepeatNote }) {
   const fill = {};
   if (!lead.name && input.name) fill.name = input.name;
   if (!lead.email && input.email) fill.email = String(input.email).toLowerCase();
+
+  const now = new Date();
+  const { first, last } = intakeTouches(input, now);
+  const history = appendHistory(lead.attributionHistory, [first, last]);
+  if (history.length !== (lead.attributionHistory || []).length) fill.attributionHistory = history;
+  const candidate = isAttributable(last) ? last : isAttributable(first) ? first : null;
+  const currentLastAt = lead.lastTouch?.at ? new Date(lead.lastTouch.at).getTime() : 0;
+  if (candidate && new Date(candidate.at).getTime() >= currentLastAt && !sameTouch(candidate, lead.lastTouch)) fill.lastTouch = candidate;
+  // A legacy lead (created before touches existed) gets no fabricated first touch here - its legacy
+  // first-touch fields remain the record (see utils/crm/attribution.js#effectiveFirstTouch).
+
   if (Object.keys(fill).length) {
     await Lead.updateOne({ _id: lead._id }, { $set: fill });
     Object.assign(lead, fill);
@@ -364,6 +421,13 @@ async function changeStage(leadId, input, { userId = null, role } = {}) {
     // Operational log line (no PII) in addition to the immutable stage-history record.
     console.info(`[CRM] MD stage override on lead ${lead.refCode}: ${STAGE_LABELS[from]} -> ${STAGE_LABELS[input.to]} by user ${userId} (${overridden.map(v => v.code).join(',')})`);
   }
+
+  // QA finding B5 / brief 6.1 - Proposal sent creates the Commercial deal; Won / Lost / reopen update
+  // its outcome. Runs AFTER the stage change committed and never fails it: a sync failure is
+  // recorded on the lead (commercial.syncStatus) and can be retried from the lead page.
+  // eslint-disable-next-line global-require
+  const { onStageChanged } = require('./commercialHandoffService');
+  await onStageChanged(lead._id, from, input.to, { userId });
 
   return shapeLead(await Lead.findById(lead._id));
 }

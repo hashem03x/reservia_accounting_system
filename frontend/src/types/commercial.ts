@@ -19,7 +19,61 @@ export const COMMERCIAL_SCOPES: CommercialScope[] = ["Supply & Installation", "S
 export type ApprovalStatus = "Pending" | "Approved" | "Rejected";
 export type ApprovalStageKey = "stage1" | "stage2" | "md";
 
-export type ApprovalStage = { status: ApprovalStatus; approver: { _id: string; name: string } | null; decidedAt: string | null; note: string };
+export type ApprovalStage = {
+  status: ApprovalStatus;
+  // populated by the API ({_id, name}); older payloads may carry only the id
+  approver: { _id: string; name: string } | string | null;
+  approverName?: string | null;
+  approverRole?: string | null;
+  decidedAt: string | null;
+  note: string;
+};
+
+/** The 8 Egyptian Rates matrix regions (QA B2) - mirrors backend utils/commercial/regions.js. */
+export const EGYPT_REGIONS = [
+  "Cairo - 10th of Ramadan",
+  "Sharqia - Ismailia",
+  "Banha - Tanta - Menoufia",
+  "Damanhour - Kafr El Sheikh - Mansoura",
+  "Fayoum - Beni Suef",
+  "Minya - Sohag - Assiut",
+  "Qena - Luxor - Aswan",
+  "Kharga - Dakhla - Farafra Oases",
+] as const;
+export const REGION_REQUIRED_COUNTRIES = ["Egypt"];
+export const COMMERCIAL_COUNTRIES = ["Egypt", "Saudi Arabia", "United Arab Emirates", "South Africa", "Europe", "Other Country"];
+
+export type PricingLevers = {
+  overheadPct: number;
+  contingencyPct: number;
+  profitPct: number;
+  salesBonusPct: number;
+  engineeringIncentivePct: number;
+  categoryAdditionPct: number;
+  discountPct: number;
+};
+
+export type PricingConfig = {
+  _id: string;
+  version: number;
+  levers: PricingLevers;
+  vatPctByCountry: Record<string, number>;
+  categoryOverrides: Partial<Record<CommercialCategory, Partial<PricingLevers>>>;
+  discountAuthorityPct: number;
+  note: string;
+  updatedByName: string | null;
+  updatedAt: string;
+  canManage?: boolean;
+};
+
+export type PricingConfigApplied = {
+  configVersion: number | null;
+  appliedAt: string | null;
+  source: "config" | "revision" | "legacy" | null;
+  levers: PricingLevers | null;
+  vatPct: number | null;
+  discountAuthorityPct: number | null;
+};
 
 export type BoqLine = {
   lineNo: number | string;
@@ -47,12 +101,19 @@ export type CommercialPricing = {
   engineeringIncentivePct: number; engineeringIncentiveAmt: number;
   categoryAdditionPct: number; categoryAdditionAmt: number;
   discountPct: number; discountAmt: number;
+  poolAmt?: number | null;
+  basePrice?: number | null;
   netExclVat: number | null;
   vatPct: number; vatAmt: number | null;
   grossInclVat: number | null;
   perKwpExclVat: number | null;
+  perKwpInclVat?: number | null;
+  designKwp?: number | null;
   grossProfit: number | null;
   grossProfitPct: number | null;
+  operatingProfit?: number | null;
+  operatingProfitPct?: number | null;
+  discountAboveAuthority?: boolean;
 };
 
 export type CommercialRevision = {
@@ -72,6 +133,11 @@ export type CommercialRevision = {
   md: ApprovalStage;
   mdRequired: boolean;
   releaseStatus: "NOT RELEASED" | "APPROVED FOR ISSUE";
+  status?: "Calculated" | "Draft";
+  invalidatedAt?: string | null;
+  invalidationReason?: string | null;
+  pricingConfigApplied?: PricingConfigApplied;
+  waitingOn?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -95,6 +161,37 @@ export type CommercialProject = {
   createdBy: { _id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
+  dealNumber?: string | null;
+  proposalNumber?: string | null;
+  proposedErpProjectNumber?: string | null;
+  erpProject?: string | null;
+  erpProjectNumber?: string | null;
+  crmLead?: string | null;
+  crmLeadRef?: string | null;
+  crmSync?: { status: "synced" | "failed" | null; lastEvent: string | null; lastSyncAt: string | null; lastError: string | null } | null;
+  estimatedValueEgp?: number | null;
+  estimatedKwp?: number | null;
+  leadSource?: string | null;
+  leadCampaign?: string | null;
+  regionNote?: string | null;
+  outcome?: "Open" | "Won" | "Lost";
+  outcomeAt?: string | null;
+  lostReason?: string | null;
+  wonValueEgp?: number | null;
+  erpBudget?: { lines: { costCode: string; line: string; budgetEgp: number }[]; totalBudgetEgp: number; check: number; capturedAt: string } | null;
+  editHistory?: { at: string; byName: string | null; changes: { field: string; from: unknown; to: unknown }[]; revisionReset: boolean }[];
+};
+
+export type CommercialSyncEvent = {
+  _id: string;
+  event: "proposal" | "won" | "lost" | "reopen";
+  status: "synced" | "failed" | "skipped";
+  replay: boolean;
+  trigger: string;
+  error: string | null;
+  identifiers: { dealNumber: string | null; projectCode: string | null; proposalNumber: string | null; proposedErpProjectNumber: string | null };
+  actor: { _id: string; name: string } | null;
+  createdAt: string;
 };
 
 export type MaterialItem = {

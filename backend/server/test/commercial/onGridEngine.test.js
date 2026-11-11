@@ -45,11 +45,13 @@ test('On-Grid Design: PV module sizing (On-Grid Design!C8/D8/G8)', () => {
   assert.equal(design.pv.selectedCapacityKwp, 80.275);
 });
 
-test('On-Grid Design: string design (On-Grid Design!B10/D10/E10)', () => {
+test('On-Grid Design: string design (On-Grid Design!B10/D10/E10) - an engineering CHECK only, never billed', () => {
   const { design } = referenceScenario();
   assert.equal(design.strings.parallelStrings, 13);
   assert.equal(design.strings.finalModules, 182);
   assert.equal(design.strings.unassignedModules, -13);
+  // QA finding section 4: keep 169 as the BOQ quantity and show the layout count as a check.
+  assert.deepEqual(design.layoutCheck, { boqModules: 169, layoutModules: 182, modulesPerString: 14, strings: 13, difference: 13, layoutCapacityKwp: 86.45 });
 });
 
 test('On-Grid Design: inverter nearest-match selection (On-Grid Design!B14/C14)', () => {
@@ -59,21 +61,21 @@ test('On-Grid Design: inverter nearest-match selection (On-Grid Design!B14/C14)'
   assert.equal(design.inverter.price, 253030);
 });
 
-test('On-Grid Design: DC cable sizing (On-Grid Design!B26/C26/D26/E26/F26/G26)', () => {
+test('On-Grid Design: DC cable = design kWp x 8 m route allowance (brief 3.1; QA: 640 m, not the string-layout length)', () => {
   const { design } = referenceScenario();
   assert.equal(design.dcCable.designCurrentA, 14.7125);
   assert.equal(design.dcCable.cableSizeMm2, 4);
-  assert.equal(design.dcCable.lengthM, 692);
+  assert.equal(design.dcCable.lengthM, 640);
   assert.equal(design.dcCable.brand, 'Suntree');
   assert.equal(design.dcCable.pricePerM, 46);
-  assert.equal(design.dcCable.totalCost, 31832);
+  assert.equal(design.dcCable.totalCost, 29440);
 });
 
-test('On-Grid Design: mounting structure (On-Grid Design!C40/D40/E40)', () => {
+test('On-Grid Design: mounting structure on the design kWp (brief 3.1)', () => {
   const { design } = referenceScenario();
-  assert.equal(design.structure.capacityKwp, 86.45);
+  assert.equal(design.structure.capacityKwp, 80);
   assert.equal(design.structure.ratePerKwp, 1450);
-  assert.equal(design.structure.totalCost, 125352.5);
+  assert.equal(design.structure.totalCost, 116000);
 });
 
 test('On-Grid Design: AC cable sizing (On-Grid Design!C44/D44/E44/G44/H44) - permanently flagged VERIFY ENGINEERING', () => {
@@ -88,9 +90,9 @@ test('On-Grid Design: AC cable sizing (On-Grid Design!C44/D44/E44/G44/H44) - per
 
 test('On-Grid Design: cable tray roll combination (On-Grid Design!D48/E48/F48/G48)', () => {
   const { design } = referenceScenario();
-  assert.equal(design.tray.requiredLengthM, 381);
+  assert.equal(design.tray.requiredLengthM, 355);
   assert.equal(design.tray.totalRolls, 8);
-  assert.equal(design.tray.totalCost, 3180);
+  assert.equal(design.tray.totalCost, 2965);
 });
 
 test('On-Grid Design: AC breaker selection (On-Grid Design!B60/C60/D60/E60)', () => {
@@ -112,24 +114,27 @@ test('On-Grid Design: AC distribution board sized against PRE-string capacity (O
   assert.equal(design.adb.totalCost, 4880);
 });
 
-test('BOQ On-Grid Design: full line-by-line total (verified correct sum, see file header note on the stale cached G23)', () => {
+test('BOQ: 169 modules billed (ceil of design kWp / module W), every per-kWp line on the 80 design kWp', () => {
   const { boq } = referenceScenario();
   const byComponent = Object.fromEntries(boq.lines.map(l => [l.component, l.total]));
-  assert.equal(byComponent['PV Modules'], 752115);
+  assert.equal(byComponent['PV Modules'], 698392.5);
+  assert.equal(boq.lines.find(l => l.component === 'PV Modules').qty, 169);
+  assert.match(boq.lines.find(l => l.component === 'PV Modules').notes, /182 modules/);
   assert.equal(byComponent['Solar Inverters'], 253030);
-  assert.equal(byComponent['DC Solar Cable'], 31832);
-  assert.equal(byComponent['Mounting Structure'], 125352.5);
+  assert.equal(byComponent['DC Solar Cable'], 29440);
+  assert.equal(byComponent['Mounting Structure'], 116000);
   assert.equal(byComponent['AC Cable'], 23900);
-  assert.equal(byComponent['Cable Tray'], 3180);
+  assert.equal(byComponent['Cable Tray'], 2965);
   assert.equal(byComponent['AC Circuit Breaker'], 3100);
   assert.equal(byComponent['MC4 Connectors'], 1200);
   assert.equal(byComponent['AC Distribution Board'], 4880);
-  assert.equal(byComponent['Earthing'], 8645);
-  assert.equal(byComponent['Accessories'], 7348.25); // Excel's 85 EGP/kWp, NOT the HTML brief's 150
-  assert.equal(byComponent['Installation'], 31122);
+  assert.equal(byComponent['Earthing'], 8000);
+  assert.equal(byComponent['Accessories'], 6800); // R74's 85 EGP/kWp unless the Rates matrix says otherwise
+  assert.equal(byComponent['Installation'], 28800);
   assert.equal(byComponent['Transportation'], 2500);
-  assert.equal(boq.total, 1248204.75);
-  assert.equal(round(boq.perKwp, 2), 14438.46);
+  assert.equal(boq.total, 1179007.5);
+  assert.equal(boq.designKwp, 80);
+  assert.equal(round(boq.perKwp, 5), 14737.59375);
 });
 
 test('Installation rate band collapses band 2 into band 1 (BOQ On-Grid Design!F21 quirk, preserved)', () => {

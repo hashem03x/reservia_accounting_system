@@ -113,7 +113,7 @@ function selectGridInverter({ selectedCapacityKwp, inverters }) {
  * installed kWp x 8 m/kWp (D26 - already covers both positive and negative conductors, no doubling
  * needed per the sheet's own note at A36).
  */
-function sizeDcCable({ module, finalModules, cables }) {
+function sizeDcCable({ module, finalModules, cables, designKwp = null, routeMPerKwp = 8, brand = null }) {
   const designCurrentA = round(module.isc * 1.25, 6); // B26
   let cableSizeMm2;
   if (designCurrentA <= 30) cableSizeMm2 = 4;
@@ -126,17 +126,28 @@ function sizeDcCable({ module, finalModules, cables }) {
   else if (designCurrentA <= 190) cableSizeMm2 = 70;
   else throw new Error(`DC design current ${designCurrentA}A exceeds the sizing table (ERROR: SIZE in the source sheet)`);
 
-  const lengthM = ceil(finalModules * module.pmaxW * 0.008); // D26 = ROUNDUP(D10*moduleW/1000*8,0)
+  // QA finding (section 4/5) + Developer Brief 3.1: "DC cable = kWp x 8 m/kWp route allowance" on
+  // the DESIGN kWp (80 kWp -> 640 m). The R74 sheet's D26 sized it on the post-string-rounding
+  // module count instead (650 m for 171 modules), which the QA rejects. `routeMPerKwp` comes from
+  // the Rates matrix (dcCableRouteMPerKwp). Callers that pass no designKwp keep the old basis.
+  const lengthM = designKwp > 0 ? ceil(designKwp * routeMPerKwp) : ceil(finalModules * module.pmaxW * 0.008); // D26
   const candidates = cables.filter(c => c.sizeMm2 === cableSizeMm2);
   if (!candidates.length) throw new Error(`No DC cable of ${cableSizeMm2} mm2 in the Price Book`);
-  const cheapest = candidates.reduce((a, b) => (b.pricePerM < a.pricePerM ? b : a)); // E26/F26 = MINIFS by size
+  // An explicitly chosen brand wins (e.g. the reference deal's "HIS 4 mm2"); otherwise the cheapest
+  // cable of the required size (E26/F26 = MINIFS by size, the R74 rule).
+  const branded = brand ? candidates.filter(c => String(c.brand).toLowerCase() === String(brand).toLowerCase()) : [];
+  if (brand && !branded.length) throw new Error(`No ${brand} DC cable of ${cableSizeMm2} mm2 in the Price Book`);
+  const pool = branded.length ? branded : candidates;
+  const cheapest = pool.reduce((a, b) => (b.pricePerM < a.pricePerM ? b : a));
   const totalCost = round(lengthM * cheapest.pricePerM, 2); // G26
   return { designCurrentA, cableSizeMm2, lengthM, brand: cheapest.brand, pricePerM: cheapest.pricePerM, totalCost };
 }
 
 /** On-Grid Design!A40:E40 - mounting structure cost against the FINAL (post-string) capacity. */
-function sizeMountingStructure({ finalModules, module, structureType, structureRates }) {
-  const capacityKwp = round((finalModules * module.pmaxW) / 1000, 6); // C40
+function sizeMountingStructure({ finalModules, module, structureType, structureRates, capacityKwp: basisKwp = null }) {
+  // Brief 3.1: "Mounting structure = kWp x EGP/kWp by type" on the design kWp when given; the R74
+  // post-string capacity otherwise (C40).
+  const capacityKwp = basisKwp > 0 ? basisKwp : round((finalModules * module.pmaxW) / 1000, 6);
   const ratePerKwp = structureRates[structureType];
   if (ratePerKwp === undefined) throw new Error(`No mounting-structure rate for type "${structureType}"`);
   const totalCost = round(capacityKwp * ratePerKwp, 2); // E40
@@ -251,13 +262,41 @@ function transportBand(kWp) {
 }
 
 /**
+ * Developer Brief 3.2 site costs: Greater Cairo has no travel, hotel or per diem; elsewhere
+ * fares = crew x fare; room-nights = ceil(crew / 2) x days; hotels = room-nights x rate; per diem =
+ * crew x days x EGP 250. Personnel allowance = crew x days x EGP 300 per person-day (ASSUMPTION
+ * rates per brief section 9, overridable per project). Returns zeros when no crew/days are entered,
+ * so a project without site-cost inputs prices exactly as before.
+ */
+function computeSiteCosts({ region, crew = 0, days = 0, fareEgp = 1200, hotelEgpPerRoomNight = 1800, perDiemEgp = 250, allowanceEgpPerPersonDay = 300, greaterCairo = 'Cairo - 10th of Ramadan' }) {
+  const c = Number(crew) || 0;
+  const d = Number(days) || 0;
+  if (!(c > 0 && d > 0)) return { crew: c, days: d, fares: 0, roomNights: 0, hotels: 0, perDiem: 0, travel: 0, personnel: 0 };
+  const gc = region === greaterCairo;
+  const fares = gc ? 0 : c * fareEgp;
+  const roomNights = gc ? 0 : Math.ceil(c / 2) * d;
+  const hotels = roomNights * hotelEgpPerRoomNight;
+  const perDiem = gc ? 0 : c * d * perDiemEgp;
+  const personnel = c * d * allowanceEgpPerPersonDay;
+  return { crew: c, days: d, fares, roomNights, hotels, perDiem, travel: fares + hotels + perDiem, personnel, rates: { fareEgp, hotelEgpPerRoomNight, perDiemEgp, allowanceEgpPerPersonDay } };
+}
+
+/**
  * Runs the full On-Grid Design chain for one set of inputs and returns both the raw design
  * results and the BOQ On-Grid Design line items + total, in the sheet's own row order.
+ *
+ * Commercial quantity basis (QA findings section 4 + Developer Brief 3.1/3.2): the BOQ bills
+ * ceil(design kWp x 1000 / module W) modules (169 for the 80 kWp / 475 W reference), and every
+ * per-kWp line (structure, DC-cable route, earthing, accessories, installation and its size band)
+ * is measured on the DESIGN kWp. The string layout (modules per string x strings, 171 for the
+ * reference) is an engineering CHECK only - reported in `design.layoutCheck` and on the PV line's
+ * notes, never billed.
  */
 function runOnGridDesign(input, catalog) {
   const {
     kWp, module, inverterCandidates, structureType, modulesPerStringOverride,
     acLengthM, acPricePerMOverride, country, region, minCellTempC = 0,
+    dcCableBrand = null, siteCosts: siteCostInput = null,
   } = input;
 
   const pv = sizePvModules({ kWp, module });
@@ -269,29 +308,48 @@ function runOnGridDesign(input, catalog) {
   const inverterQty = 1; // On-Grid Design!D14 - manual input, default 1 in the reference scenario
   const dcAcRatio = round(pv.selectedCapacityKwp / (inverter.ratedKw * inverterQty), 6); // G14
 
-  const dcCable = sizeDcCable({ module, finalModules: strings.finalModules, cables: catalog.DC_CABLES });
-  const structure = sizeMountingStructure({ finalModules: strings.finalModules, module, structureType, structureRates: catalog.MOUNTING_STRUCTURE_RATES });
+  const designKwp = kWp;
+  const dcRoute = catalog.DC_CABLE_ROUTE_M_PER_KWP > 0 ? catalog.DC_CABLE_ROUTE_M_PER_KWP : 8;
+  const dcCable = sizeDcCable({ module, finalModules: strings.finalModules, cables: catalog.DC_CABLES, designKwp, routeMPerKwp: dcRoute, brand: dcCableBrand });
+  const structure = sizeMountingStructure({ finalModules: strings.finalModules, module, structureType, structureRates: catalog.MOUNTING_STRUCTURE_RATES, capacityKwp: designKwp });
   const acCable = sizeAcCable({ inverterRatedKw: inverter.ratedKw, acLengthM, overridePricePerM: acPricePerMOverride, catalog });
   const tray = sizeCableTray({ dcCableLengthM: dcCable.lengthM, acCableLengthM: acLengthM, rolls: catalog.CABLE_TRAY_ROLLS });
   const breaker = selectAcBreaker({ inverterRatedKw: inverter.ratedKw, inverterQty, breakers: catalog.AC_BREAKERS });
   const mc4 = sizeMc4({ totalStrings: strings.parallelStrings, pricePerPiece: catalog.MC4_CONNECTOR_PRICE_PER_PIECE });
   const adb = selectAcDistributionBoard({ selectedCapacityKwp: pv.selectedCapacityKwp, boards: catalog.AC_DISTRIBUTION_BOARDS });
 
-  const finalCapacityKwp = structure.capacityKwp; // BOQ!B5
   const isEgypt = country === 'Egypt';
-  const earthing = { qty: finalCapacityKwp, rate: 100, total: round(finalCapacityKwp * 100, 2) }; // BOQ!E18/F18/G18
-  const accessories = { qty: finalCapacityKwp, rate: 85, total: round(finalCapacityKwp * 85, 2) }; // BOQ!E19/F19/G19 (Excel: 85, NOT the HTML brief's 150)
-  const installRate = isEgypt ? catalog.INSTALL_RATES_BY_REGION[region]?.[installationBand(finalCapacityKwp) - 1] : null;
+  // Standing per-kWp rates from the Rates matrix (Finance/admin-editable), defaulting to the R74
+  // workbook's own values when a Rates config predates these fields.
+  const earthingRate = catalog.EARTHING_RATE_EGP_PER_KWP > 0 ? catalog.EARTHING_RATE_EGP_PER_KWP : 100;
+  const accessoriesRate = catalog.ACCESSORIES_RATE_EGP_PER_KWP > 0 ? catalog.ACCESSORIES_RATE_EGP_PER_KWP : 85;
+  const earthing = { qty: designKwp, rate: earthingRate, total: round(designKwp * earthingRate, 2) }; // BOQ!E18/F18/G18
+  const accessories = { qty: designKwp, rate: accessoriesRate, total: round(designKwp * accessoriesRate, 2) }; // BOQ!E19/F19/G19
+  const installRate = isEgypt ? catalog.INSTALL_RATES_BY_REGION[region]?.[installationBand(designKwp) - 1] : null;
   if (isEgypt && installRate === undefined) throw new Error(`Region "${region}" is not in the installation Rates matrix`);
-  const installation = { qty: finalCapacityKwp, rate: installRate ?? null, total: installRate != null ? round(finalCapacityKwp * installRate, 2) : null };
-  const transportRate = isEgypt ? catalog.TRANSPORT_RATES_BY_REGION[region]?.[transportBand(kWp) - 1] : null;
+  const installation = { qty: designKwp, rate: installRate ?? null, total: installRate != null ? round(designKwp * installRate, 2) : null };
+  const transportRate = isEgypt ? catalog.TRANSPORT_RATES_BY_REGION[region]?.[transportBand(designKwp) - 1] : null;
   if (isEgypt && transportRate === undefined) throw new Error(`Region "${region}" is not in the transport Rates matrix`);
   const transportation = { qty: isEgypt ? 1 : null, rate: isEgypt ? transportRate : null, total: isEgypt ? round(transportRate, 2) : null };
+  const site = computeSiteCosts({ region, ...(siteCostInput || {}) });
+
+  // String layout = engineering check only (QA: "keep 169 as BOQ qty and show the layout count as a check").
+  const layoutCheck = {
+    boqModules: pv.modulesRequired,
+    layoutModules: strings.finalModules,
+    modulesPerString: strings.modulesPerString,
+    strings: strings.parallelStrings,
+    difference: strings.finalModules - pv.modulesRequired,
+    layoutCapacityKwp: round((strings.finalModules * module.pmaxW) / 1000, 6),
+  };
+  const layoutNote = layoutCheck.difference
+    ? `Layout check: ${strings.parallelStrings} strings x ${strings.modulesPerString} = ${strings.finalModules} modules (${layoutCheck.difference > 0 ? '+' : ''}${layoutCheck.difference} vs BOQ). BOQ quantity stays ceil(design kWp / module W).`
+    : '';
 
   const lines = [
-    // BOQ!E9/G9 bill the FINAL installed module count (post string-rounding), not the
-    // theoretical "required" count - you pay for whole strings, not fractional modules.
-    { no: 1, component: 'PV Modules', description: module.model, unit: 'pcs', qty: strings.finalModules, unitPrice: pv.unitPrice, total: round(strings.finalModules * pv.unitPrice, 2) },
+    // QA finding section 4: the BOQ bills ceil(design kWp x 1000 / module W) modules - 169 for the
+    // 80 kWp reference - not the string-rounded layout count (171). The layout is in the notes.
+    { no: 1, component: 'PV Modules', description: module.model, unit: 'pcs', qty: pv.modulesRequired, unitPrice: pv.unitPrice, total: round(pv.modulesRequired * pv.unitPrice, 2), notes: layoutNote },
     { no: 2, component: 'Solar Inverters', description: inverter.model, unit: 'pcs', qty: inverterQty, unitPrice: inverter.price, total: round(inverterQty * inverter.price, 2) },
     { no: 3, component: 'DC Solar Cable', description: `${dcCable.brand} ${dcCable.cableSizeMm2} mm2`, unit: 'm', qty: dcCable.lengthM, unitPrice: dcCable.pricePerM, total: dcCable.totalCost },
     { no: 4, component: 'Mounting Structure', description: `${structureType}`, unit: 'kWp', qty: structure.capacityKwp, unitPrice: structure.ratePerKwp, total: structure.totalCost },
@@ -300,17 +358,25 @@ function runOnGridDesign(input, catalog) {
     { no: 7, component: 'AC Circuit Breaker', description: `${breaker.ratingA} A ${breaker.type}`, unit: 'pcs', qty: inverterQty, unitPrice: breaker.unitPrice, total: breaker.totalCost },
     { no: 8, component: 'MC4 Connectors', description: 'MC4 PV Connector', unit: 'pcs', qty: mc4.quantity, unitPrice: mc4.unitPrice, total: mc4.totalCost },
     { no: 9, component: 'AC Distribution Board', description: adb.dimensionsCm, unit: 'pcs', qty: adb.quantity ?? null, unitPrice: adb.unitPrice, total: adb.totalCost },
-    { no: 11, component: 'Earthing', description: 'Earthing works - 100 EGP per installed kWp', unit: 'kWp', qty: earthing.qty, unitPrice: earthing.rate, total: earthing.total },
-    { no: 12, component: 'Accessories', description: 'PV system accessories - 85 EGP per installed kWp', unit: 'kWp', qty: accessories.qty, unitPrice: accessories.rate, total: accessories.total },
+    { no: 11, component: 'Earthing', description: `Earthing works - ${earthingRate} EGP per design kWp`, unit: 'kWp', qty: earthing.qty, unitPrice: earthing.rate, total: earthing.total },
+    { no: 12, component: 'Accessories', description: `PV system accessories - ${accessoriesRate} EGP per design kWp`, unit: 'kWp', qty: accessories.qty, unitPrice: accessories.rate, total: accessories.total },
     { no: 13, component: 'Installation', description: 'Installation labor - automatic rate by location and capacity', unit: 'kWp', qty: installation.qty, unitPrice: installation.rate, total: installation.total },
     { no: 14, component: 'Transportation', description: isEgypt ? region : 'Transportation - quote required outside Egypt', unit: 'lot', qty: transportation.qty, unitPrice: transportation.rate, total: transportation.total },
   ];
+  if (site.travel > 0) {
+    lines.push({ no: 15, component: 'Travel & Accommodation', description: `Fares ${site.fares} + hotels ${site.roomNights} room-nights + per diem (crew ${site.crew}, ${site.days} days)`, unit: 'lot', qty: 1, unitPrice: round(site.travel, 2), total: round(site.travel, 2), costGroup: 'Site' });
+  }
+  if (site.personnel > 0) {
+    lines.push({ no: 16, component: 'Site Personnel Allowance', description: `${site.crew} crew x ${site.days} days x ${site.rates.allowanceEgpPerPersonDay} EGP`, unit: 'person-day', qty: site.crew * site.days, unitPrice: site.rates.allowanceEgpPerPersonDay, total: round(site.personnel, 2), costGroup: 'Site' });
+  }
   const total = round(lines.reduce((s, l) => s + (l.total || 0), 0), 2); // BOQ!G23
-  const perKwp = finalCapacityKwp ? round(total / finalCapacityKwp, 10) : null; // BOQ!G24
+  const perKwp = designKwp ? round(total / designKwp, 10) : null; // BOQ!G24
 
   return {
-    design: { pv, modulesPerString, strings, inverter, inverterQty, dcAcRatio, dcCable, structure, acCable, tray, breaker, mc4, adb },
-    boq: { lines, total, perKwp, finalCapacityKwp },
+    design: { pv, modulesPerString, strings, layoutCheck, inverter, inverterQty, dcAcRatio, dcCable, structure, acCable, tray, breaker, mc4, adb, siteCosts: site },
+    // `finalCapacityKwp` keeps its name for API compatibility; it is now the DESIGN kWp (the basis
+    // every per-kWp line and the price per kWp use). The string-layout capacity is in design.layoutCheck.
+    boq: { lines, total, perKwp, finalCapacityKwp: designKwp, designKwp },
   };
 }
 
@@ -329,5 +395,6 @@ module.exports = {
   selectAcDistributionBoard,
   installationBand,
   transportBand,
+  computeSiteCosts,
   runOnGridDesign,
 };

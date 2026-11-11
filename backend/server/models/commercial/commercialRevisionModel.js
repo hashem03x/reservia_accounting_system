@@ -40,6 +40,9 @@ const approvalStageSchema = new Schema(
   {
     status: { type: String, enum: APPROVAL_STATUSES, default: 'Pending' },
     approver: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    // Denormalized name of the user who signed (QA U4) - the log (CommercialApproval) keeps the id.
+    approverName: { type: String, default: null },
+    approverRole: { type: String, default: null },
     decidedAt: { type: Date, default: null },
     note: { type: String, default: '' },
   },
@@ -68,6 +71,8 @@ const commercialRevisionSchema = new Schema(
       contingencyAmt: { type: Number, default: 0 },
       profitPct: { type: Number, default: 0 },
       profitAmt: { type: Number, default: 0 },
+      poolAmt: { type: Number, default: null },
+      basePrice: { type: Number, default: null },
       salesBonusPct: { type: Number, default: 0 },
       salesBonusAmt: { type: Number, default: 0 },
       engineeringIncentivePct: { type: Number, default: 0 },
@@ -81,9 +86,36 @@ const commercialRevisionSchema = new Schema(
       vatAmt: { type: Number, default: null },
       grossInclVat: { type: Number, default: null },
       perKwpExclVat: { type: Number, default: null },
+      perKwpInclVat: { type: Number, default: null },
+      // The kWp the per-kWp figures divide by - the DESIGN capacity (QA finding section 4).
+      designKwp: { type: Number, default: null },
       grossProfit: { type: Number, default: null },
       grossProfitPct: { type: Number, default: null },
+      operatingProfit: { type: Number, default: null },
+      operatingProfitPct: { type: Number, default: null },
+      discountAboveAuthority: { type: Boolean, default: false },
     },
+
+    // The pricing configuration this revision was priced with (QA finding B3: "show the rate used
+    // on each revision"). Snapshotted when the revision is created; a later Finance change to the
+    // configuration never rewrites it. `source`: 'config' (configuration defaults at creation),
+    // 'revision' (levers edited on this revision since), 'legacy' (priced before configuration
+    // existed - levers as stored).
+    pricingConfigApplied: {
+      configVersion: { type: Number, default: null },
+      appliedAt: { type: Date, default: null },
+      source: { type: String, enum: ['config', 'revision', 'legacy', null], default: null },
+      levers: { type: Schema.Types.Mixed, default: null },
+      vatPct: { type: Number, default: null },
+      discountAuthorityPct: { type: Number, default: null },
+    },
+
+    // 'Calculated' - figures are current. 'Draft' - an input the figures depend on changed outside
+    // the engineering form (e.g. the project's region - QA finding B1) and the revision must be
+    // recalculated before it can be approved or issued. Stored figures stay visible, flagged stale.
+    status: { type: String, enum: ['Calculated', 'Draft'], default: 'Calculated' },
+    invalidatedAt: { type: Date, default: null },
+    invalidationReason: { type: String, default: null },
 
     feasibility: { type: Schema.Types.Mixed, default: null },
     // Off-Grid only - services/commercial/offGridFeasibility.js. Absent for every other category.

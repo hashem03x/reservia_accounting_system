@@ -88,7 +88,55 @@ export const CRM_LOST_REASONS = [
 
 export type CrmActivityType = "note" | "call" | "email" | "survey" | "proposal" | "whatsapp_in" | "whatsapp_out" | "system";
 
+/** One attributable arrival (backend utils/crm/attribution.js) - first touch, last touch and history entries. */
+export type CrmTouch = {
+  channel: string | null;
+  source: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmTerm: string | null;
+  utmContent: string | null;
+  gclid: string | null;
+  gbraid: string | null;
+  wbraid: string | null;
+  fbclid: string | null;
+  ttclid: string | null;
+  campaign: string | null;
+  adSetName: string | null;
+  adName: string | null;
+  landingPage: string | null;
+  landingUrl: string | null;
+  referrer: string | null;
+  at: string | null;
+};
+
+/** CRM -> Commercial handoff state on a lead (backend services/crm/commercialHandoffService.js). */
+export type CrmCommercialLink = {
+  project: string | null;
+  projectCode: string | null;
+  dealNumber: string | null;
+  proposalNumber: string | null;
+  proposedErpProjectNumber: string | null;
+  erpProjectNumber: string | null;
+  syncStatus: "pending" | "synced" | "failed" | null;
+  lastEvent: "proposal" | "won" | "lost" | null;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  attempts: number;
+};
+
 export type CrmLead = {
+  firstTouch?: CrmTouch | null;
+  lastTouch?: CrmTouch | null;
+  attributionHistory?: CrmTouch[];
+  commercial?: CrmCommercialLink | null;
+  gclid?: string | null;
+  gbraid?: string | null;
+  wbraid?: string | null;
+  fbclid?: string | null;
+  ttclid?: string | null;
+  referrer?: string | null;
   _id: string;
   refCode: string;
   name: string | null;
@@ -379,20 +427,40 @@ export type CrmAdSpendRow = { _id: string; channel: string; segment: CrmSegment 
 // ===================== Integrations (Change Request 2, section 4) =====================
 
 export type CrmIntegrationChannel = "website" | "whatsapp" | "meta" | "tiktok" | "google_ads";
-export type CrmIntegrationState = "not_configured" | "awaiting_first_event" | "receiving" | "errors";
+// CRM C6: what has actually been VERIFIED - credentials alone are never "connected".
+export type CrmIntegrationState = "not_configured" | "awaiting_verification" | "connected" | "error" | "disabled";
+export type CrmIntegrationSetting = {
+  key: string;
+  label: string;
+  env: string;
+  secret: boolean;
+  required: boolean;
+  set: boolean;
+  source: "page" | "env" | null;
+  /** A 4-character hint for secrets, the value for plain identifiers - never a secret itself. */
+  display: string | null;
+};
 export type CrmIntegrationStatusRow = {
   channel: CrmIntegrationChannel | "csv";
   label: string;
   source: string | null;
   activeKeys: number;
-  settings: { name: string; set: boolean }[];
+  settings: CrmIntegrationSetting[];
   lastProcessedAt: string | null;
   last7Days: { processed: number; failed: number; ignored: number };
   state: CrmIntegrationState;
+  enabled: boolean;
+  setup: string[];
+  webhookVerifiedAt?: string | null;
+  lastTest?: { at: string; ok: boolean | null; message: string | null } | null;
+  lastError?: { at: string; message: string | null } | null;
+  lastSuccessAt?: string | null;
+  secretsStorageAvailable?: boolean;
 };
 export type CrmIntegrationStatus = {
   channels: CrmIntegrationStatusRow[];
   assignmentPoolSize: number;
+  secretsStorageAvailable: boolean;
   endpoints: Record<string, string>;
 };
 export type CrmIntegrationKey = {

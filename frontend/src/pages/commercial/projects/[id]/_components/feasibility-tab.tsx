@@ -1,33 +1,53 @@
+import { Badge, Table } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import SectionCard from "@/components/ui/section-card";
 import EmptySection from "@/components/ui/sections/empty";
 import { CommercialProject, CommercialRevision } from "@/types/commercial";
 
-type OnGridFeasibility = {
-  headline: { payback: { label: string } | null; roi: number; irr: number | null };
-  scenarios: {
-    flat: { finalCumulative: number };
-    escalation3pct: { finalCumulative: number };
-    escalation10pct: { finalCumulative: number };
-  };
+type Scenario = {
+  escalation: number;
+  paybackYears: number | null;
+  paybackLabel: string;
+  irr: number | null;
+  npv: number;
+  lifetimeSavings: number;
+  lifetimeGenerationKwh: number;
+  year1GenerationKwh: number;
+  year1Savings: number;
+  levelisedCostPerKwh: number | null;
+  years: { n: number; generationKwh: number; tariff: number; savings: number; cumulative: number }[];
+};
+type CustomerFeasibility = {
+  model: "brief-3.4";
+  priceBasis: { netExclVat: number; vatPct: number; vatAmt: number; grossInclVat: number; capex: number; capexBasis: string };
+  assumptions: { yieldKwhPerKwp: number; degradationPct: number; tariffEgpPerKwh: number; headlineEscalation: number; discountRate: number; maintenancePctOfCapex: number; designKwp: number; omIncludedInEpc: boolean };
+  annualConsumptionKwh: number | null;
+  year1CoverageOfConsumption: number | null;
+  headline: Scenario;
+  sensitivities: Scenario[];
+  internalCostView: { capex: number; paybackYears: number | null; paybackLabel: string; label: string } | null;
 };
 type DieselComparison = {
   headline: { written: string; roi: number; irr: number | null; npv: number; twentyFiveYearNetSavings: number };
+  years: { n: number; netSavings: number }[];
 };
 
-// Displays whichever feasibility model actually applies (On_Grid.xlsx `Feasibility Table` or
-// Off_Grid.xlsx `Feasibility Study` diesel comparison) - Agriculture Pumping has NEITHER (no
-// financial sheet exists in Solar_Pumping3.xlsx), so this tab says so rather than inventing one.
+const pct = (v: number | null | undefined, dp = 1) => (v != null ? `${(v * 100).toFixed(dp)}%` : "-");
+const num = (v: number) => Math.round(v).toLocaleString("en-US");
+
+// Customer feasibility (QA findings B4/U8; Developer Brief 3.4): capex = the FINAL PRICE incl VAT the
+// customer pays, headline case 10% tariff escalation with 3% and flat sensitivities, no O&M deducted
+// (O&M is in the EPC offer). The price basis is shown so the link to the Pricing tab is visible.
+// Off-Grid shows the Off_Grid.xlsx solar-vs-diesel comparison (also on the final price).
 export default function FeasibilityTab({ project, revision }: { project: CommercialProject; revision: CommercialRevision }) {
   const { translate } = useLanguage();
-  const feasibility = revision.feasibility as OnGridFeasibility | null;
+  const raw = revision.feasibility as (CustomerFeasibility & { model?: string }) | null;
+  const feasibility = raw && raw.model === "brief-3.4" ? raw : null;
+  const legacy = raw && !feasibility;
   const diesel = revision.dieselComparison as DieselComparison | null;
-  const engineeringInput = (revision.engineeringInput || {}) as Record<string, number>;
-  const escalationScenario2 = engineeringInput.escalationScenario2 ?? 0.03;
-  const escalationScenario3 = engineeringInput.escalationScenario3 ?? 0.1;
-  const discountRatePct = ((engineeringInput.discountRate ?? 0.1) * 100).toFixed(0);
-  const analysisPeriodYears = engineeringInput.analysisPeriodYears ?? 25;
+  const cur = project.currency;
+  const ei = (revision.engineeringInput || {}) as Record<string, number>;
 
   if (!feasibility && !diesel) {
     return (
@@ -36,61 +56,139 @@ export default function FeasibilityTab({ project, revision }: { project: Commerc
         message={
           project.category === "Agriculture Pumping"
             ? translate("Solar_Pumping3.xlsx has no financial feasibility worksheet - none is modeled here.", "لا يوجد نموذج جدوى مالية في ملف الضخ الزراعي المرجعي.")
-            : translate("Enter the feasibility inputs on the Engineering Input tab to see this.", "أدخل مدخلات الجدوى في تبويب المدخلات الفنية لعرض هذا التبويب.")
+            : legacy
+              ? translate("This revision was calculated with the old cost-basis model - recalculate it on the Engineering Input tab to see the customer feasibility on the final price.", "تم حساب هذه النسخة بالنموذج القديم - أعد الحساب لعرض الجدوى على السعر النهائي.")
+              : project.category === "Off-Grid"
+                ? translate("Enter the generator price on the Engineering Input tab to compare against diesel.", "أدخل سعر المولد في تبويب المدخلات الفنية للمقارنة مع الديزل.")
+                : translate("Recalculate the revision to see the feasibility.", "أعد حساب النسخة لعرض الجدوى.")
         }
       />
     );
   }
 
-  return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      {feasibility && (
-        <SectionCard title={translate("Grid-Tariff Feasibility (On_Grid.xlsx)", "جدوى مالية مقابل تعريفة الشبكة")}>
-          <Metric label={translate("Simple Payback", "فترة الاسترداد البسيطة")} value={feasibility.headline.payback?.label || "-"} />
-          <Metric label={translate("ROI (25-year)", "العائد على الاستثمار (25 سنة)")} value={`${(feasibility.headline.roi * 100).toFixed(1)}%`} />
-          <Metric label={translate("IRR", "معدل العائد الداخلي")} value={feasibility.headline.irr != null ? `${(feasibility.headline.irr * 100).toFixed(1)}%` : "-"} />
-          <p className="mt-3 text-xs text-gray-400">
-            {translate(
-              "Headline figures use the flat (no-escalation) tariff scenario, the literal 25-year degradation table, and the raw BOQ cost as CapEx - exactly as On_Grid.xlsx computes it.",
-              "يستخدم سيناريو التعريفة الثابتة وجدول التدهور الفعلي وتكلفة جدول الكميات كرأس مال، كما في ملف الإكسل الأصلي."
-            )}
-          </p>
-          {feasibility.scenarios && (
-            <div className="mt-3 border-t border-gray-100 pt-3">
-              <p className="mb-1 text-xs font-semibold text-gray-500">
-                {translate("25-Year Cumulative Cash Flow by Tariff Scenario", "صافي التدفق النقدي التراكمي على 25 سنة لكل سيناريو تعريفة")}
-              </p>
-              <Metric label={translate("Flat Tariff", "تعريفة ثابتة")} value={formatAmount(feasibility.scenarios.flat.finalCumulative, project.currency)} />
-              <Metric
-                label={translate(`+${(escalationScenario2 * 100).toFixed(0)}%/yr Escalation`, `تصاعد +${(escalationScenario2 * 100).toFixed(0)}%/سنة`)}
-                value={formatAmount(feasibility.scenarios.escalation3pct.finalCumulative, project.currency)}
-              />
-              <Metric
-                label={translate(`+${(escalationScenario3 * 100).toFixed(0)}%/yr Escalation`, `تصاعد +${(escalationScenario3 * 100).toFixed(0)}%/سنة`)}
-                value={formatAmount(feasibility.scenarios.escalation10pct.finalCumulative, project.currency)}
-              />
-            </div>
-          )}
-        </SectionCard>
-      )}
-      {diesel && (
-        <SectionCard title={translate("Solar vs. Diesel Generator (Off_Grid.xlsx)", "الطاقة الشمسية مقابل المولد الديزل")}>
-          <Metric label={translate("Simple Payback", "فترة الاسترداد البسيطة")} value={diesel.headline.written} />
-          <Metric label={translate(`ROI (${analysisPeriodYears}-year)`, `العائد على الاستثمار (${analysisPeriodYears} سنة)`)} value={`${(diesel.headline.roi * 100).toFixed(1)}%`} />
-          <Metric label={translate("IRR", "معدل العائد الداخلي")} value={diesel.headline.irr != null ? `${(diesel.headline.irr * 100).toFixed(1)}%` : "-"} />
-          <Metric label={translate(`NPV @ ${discountRatePct}%`, `صافي القيمة الحالية @ ${discountRatePct}%`)} value={formatAmount(diesel.headline.npv, project.currency)} />
-          <Metric label={translate(`${analysisPeriodYears}-Year Net Savings`, `صافي التوفير على ${analysisPeriodYears} سنة`)} value={formatAmount(diesel.headline.twentyFiveYearNetSavings, project.currency)} />
-        </SectionCard>
-      )}
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
+  const Metric = ({ label, value, strong }: { label: string; value: string; strong?: boolean }) => (
     <div className="flex justify-between gap-3 border-b border-gray-50 py-1.5 text-sm">
       <span className="text-gray-500">{label}</span>
-      <span className="font-semibold text-gray-800">{value}</span>
+      <span className={strong ? "font-bold text-gray-900" : "font-semibold text-gray-800"}>{value}</span>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      {feasibility && (
+        <>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <SectionCard title={translate("Price basis (from the Pricing tab)", "أساس السعر (من تبويب التسعير)")}>
+              <Metric label={translate("Net price excl. VAT", "السعر الصافي قبل الضريبة")} value={formatAmount(feasibility.priceBasis.netExclVat, cur)} />
+              <Metric label={`${translate("VAT", "الضريبة")} (${pct(feasibility.priceBasis.vatPct, 0)})`} value={formatAmount(feasibility.priceBasis.vatAmt, cur)} />
+              <Metric label={translate("Final price incl. VAT", "السعر النهائي شامل الضريبة")} value={formatAmount(feasibility.priceBasis.grossInclVat, cur)} />
+              <Metric label={translate("CapEx used (year 0)", "رأس المال المستخدم (السنة 0)")} value={formatAmount(feasibility.priceBasis.capex, cur)} strong />
+              <p className="pt-1 text-xs text-gray-400">{translate("CapEx = final price incl. VAT - what the customer actually pays.", "رأس المال = السعر النهائي شامل الضريبة - ما يدفعه العميل فعلياً.")}</p>
+            </SectionCard>
+
+            <SectionCard title={`${translate("Headline case", "الحالة الرئيسية")}: +${pct(feasibility.headline.escalation, 0)} ${translate("tariff escalation / yr", "تصاعد التعريفة / سنة")}`}>
+              <Metric label={translate("Simple payback", "فترة الاسترداد")} value={feasibility.headline.paybackLabel} strong />
+              <Metric label={translate("IRR (25 years)", "معدل العائد الداخلي (25 سنة)")} value={pct(feasibility.headline.irr)} />
+              <Metric label={`${translate("NPV", "صافي القيمة الحالية")} @ ${pct(feasibility.assumptions.discountRate, 0)}`} value={formatAmount(feasibility.headline.npv, cur)} />
+              <Metric label={translate("25-year avoided cost", "الوفر على 25 سنة")} value={formatAmount(feasibility.headline.lifetimeSavings, cur)} />
+              <Metric label={translate("Levelised cost per kWh", "التكلفة المعيارية لكل كيلوواط ساعة")} value={feasibility.headline.levelisedCostPerKwh != null ? `${feasibility.headline.levelisedCostPerKwh.toFixed(3)} ${cur}` : "-"} />
+            </SectionCard>
+
+            <SectionCard title={translate("Generation & assumptions", "الإنتاج والافتراضات")}>
+              <Metric label={translate("Design capacity", "القدرة التصميمية")} value={`${feasibility.assumptions.designKwp} kWp`} />
+              <Metric label={translate("Year-1 generation", "إنتاج السنة الأولى")} value={`${num(feasibility.headline.year1GenerationKwh)} kWh`} />
+              <Metric label={translate("Year-1 savings", "وفر السنة الأولى")} value={formatAmount(feasibility.headline.year1Savings, cur)} />
+              <Metric label={translate("Specific yield", "الإنتاجية النوعية")} value={`${num(feasibility.assumptions.yieldKwhPerKwp)} kWh/kWp`} />
+              <Metric label={translate("Degradation", "التدهور السنوي")} value={`${pct(feasibility.assumptions.degradationPct)} / ${translate("yr", "سنة")}`} />
+              <Metric label={translate("Tariff (year 1)", "التعريفة (السنة 1)")} value={`${feasibility.assumptions.tariffEgpPerKwh.toFixed(2)} ${cur}/kWh`} />
+              <Metric
+                label={translate("O&M", "التشغيل والصيانة")}
+                value={feasibility.assumptions.omIncludedInEpc ? translate("Included in the EPC offer (0%)", "مشمولة في عرض EPC (0%)") : `${pct(feasibility.assumptions.maintenancePctOfCapex)} ${translate("of CapEx / yr", "من رأس المال / سنة")}`}
+              />
+              {feasibility.year1CoverageOfConsumption != null && (
+                <Metric label={translate("Year-1 coverage of consumption", "تغطية الاستهلاك في السنة 1")} value={`${pct(feasibility.year1CoverageOfConsumption, 0)} ${translate("of", "من")} ${num(feasibility.annualConsumptionKwh!)} kWh`} />
+              )}
+            </SectionCard>
+          </div>
+
+          <SectionCard title={translate("Tariff escalation scenarios", "سيناريوهات تصاعد التعريفة")}>
+            <Table striped>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{translate("Scenario", "السيناريو")}</Table.Th>
+                  <Table.Th>{translate("Payback", "الاسترداد")}</Table.Th>
+                  <Table.Th>IRR</Table.Th>
+                  <Table.Th>NPV</Table.Th>
+                  <Table.Th>{translate("25-year savings", "الوفر على 25 سنة")}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {[feasibility.headline, ...feasibility.sensitivities].map((s, i) => (
+                  <Table.Tr key={s.escalation}>
+                    <Table.Td>
+                      {s.escalation === 0 ? translate("Flat tariff (0%)", "تعريفة ثابتة (0%)") : `+${pct(s.escalation, 0)} / ${translate("yr", "سنة")}`}{" "}
+                      {i === 0 ? <Badge size="xs" variant="light" color="teal">{translate("Headline", "رئيسي")}</Badge> : <Badge size="xs" variant="light" color="gray">{translate("Sensitivity", "حساسية")}</Badge>}
+                    </Table.Td>
+                    <Table.Td>{s.paybackLabel}</Table.Td>
+                    <Table.Td>{pct(s.irr)}</Table.Td>
+                    <Table.Td>{formatAmount(s.npv, cur)}</Table.Td>
+                    <Table.Td>{formatAmount(s.lifetimeSavings, cur)}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+            {feasibility.internalCostView && (
+              <p className="mt-3 rounded bg-gray-50 p-2 text-xs text-gray-500">
+                {translate("Internal cost-side check only - not the customer case", "مراجعة داخلية لجانب التكلفة فقط - ليست حالة العميل")}: {translate("payback on the raw BOQ cost", "الاسترداد على تكلفة جدول الكميات")} ({formatAmount(feasibility.internalCostView.capex, cur)}) = {feasibility.internalCostView.paybackLabel}.
+              </p>
+            )}
+          </SectionCard>
+
+          <SectionCard title={translate("Year-by-year (headline case)", "سنة بسنة (الحالة الرئيسية)")}>
+            <div className="max-h-80 overflow-auto">
+              <Table striped stickyHeader>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{translate("Year", "السنة")}</Table.Th>
+                    <Table.Th>{translate("Generation (kWh)", "الإنتاج (ك.و.س)")}</Table.Th>
+                    <Table.Th>{translate("Tariff", "التعريفة")}</Table.Th>
+                    <Table.Th>{translate("Savings", "الوفر")}</Table.Th>
+                    <Table.Th>{translate("Cumulative", "التراكمي")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  <Table.Tr>
+                    <Table.Td>0</Table.Td>
+                    <Table.Td>-</Table.Td>
+                    <Table.Td>-</Table.Td>
+                    <Table.Td>-</Table.Td>
+                    <Table.Td className="text-red-600">{formatAmount(-feasibility.priceBasis.capex, cur)}</Table.Td>
+                  </Table.Tr>
+                  {feasibility.headline.years.map((y) => (
+                    <Table.Tr key={y.n}>
+                      <Table.Td>{y.n}</Table.Td>
+                      <Table.Td>{num(y.generationKwh)}</Table.Td>
+                      <Table.Td>{y.tariff.toFixed(2)}</Table.Td>
+                      <Table.Td>{formatAmount(y.savings, cur)}</Table.Td>
+                      <Table.Td className={y.cumulative < 0 ? "text-red-600" : "text-teal-700"}>{formatAmount(y.cumulative, cur)}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </div>
+          </SectionCard>
+        </>
+      )}
+      {diesel && (
+        <SectionCard title={translate("Solar vs. Diesel Generator (Off_Grid.xlsx) - solar CapEx = final price incl. VAT", "الطاقة الشمسية مقابل المولد - رأس المال = السعر النهائي")}>
+          <Metric label={translate("Solar CapEx used (final price incl. VAT)", "رأس مال الطاقة الشمسية (السعر النهائي)")} value={formatAmount(revision.pricing?.grossInclVat, cur)} />
+          <Metric label={translate("Simple Payback", "فترة الاسترداد البسيطة")} value={diesel.headline.written} strong />
+          <Metric label={translate("ROI", "العائد على الاستثمار")} value={pct(diesel.headline.roi)} />
+          <Metric label={translate("IRR", "معدل العائد الداخلي")} value={pct(diesel.headline.irr)} />
+          <Metric label={`NPV @ ${pct(ei.discountRate ?? 0.1, 0)}`} value={formatAmount(diesel.headline.npv, cur)} />
+          <Metric label={translate("Net savings over the period", "صافي الوفر خلال الفترة")} value={formatAmount(diesel.headline.twentyFiveYearNetSavings, cur)} />
+        </SectionCard>
+      )}
     </div>
   );
 }

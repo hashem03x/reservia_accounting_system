@@ -71,6 +71,7 @@ const paths = {
   commercial: "commercial",
   commercialProjects: "projects",
   commercialMaterials: "materials",
+  commercialPricingConfig: "pricing-config",
 };
 
 export default paths;
