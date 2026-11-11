@@ -70,8 +70,8 @@ test('fix preserves every original BOQ value (component/description/unit/qty/uni
     assert.equal(fixed.total, raw.total);
   });
   const byComponent = Object.fromEntries(lines.map(l => [l.component, l.total]));
-  assert.equal(byComponent['PV Modules'], 752115);
-  assert.equal(lines.reduce((s, l) => s + (l.total || 0), 0), 1248204.75);
+  assert.equal(byComponent['PV Modules'], 698392.5); // 169 modules (QA: ceil of design kWp / module W)
+  assert.equal(lines.reduce((s, l) => s + (l.total || 0), 0), 1179007.5);
 });
 
 test('fix applies equally to Off-Grid (13 lines, numbered 1-13, no gaps)', () => {
@@ -145,7 +145,7 @@ test('manual overrides still apply correctly alongside the lineNo fix (qty/price
   assert.equal(pvLine.unitPrice, 5000);
   assert.equal(pvLine.total, 1000000);
   assert.equal(pvLine.source, 'override');
-  assert.equal(pvLine.autoQty, 182); // the original auto-calculated quantity is retained, not discarded
+  assert.equal(pvLine.autoQty, 169); // the original auto-calculated quantity (ceil(80 kWp / 475 W)) is retained, not discarded
   assert.equal(pvLine.autoUnitPrice, pv182UnitPrice(boq.lines));
   assert.equal(fakeRevisionDoc(lines).validateSync(), undefined);
 

@@ -14,6 +14,7 @@ const { normalizeEgyptianPhone } = require('../../crm/phone');
 
 const WEBSITE_SEGMENTS = ['villas', 'compounds', 'agriculture', 'industrial', 'service', 'general', 'calc'];
 const WEBSITE_SOURCES = ['contact_form', 'landing_form'];
+const { PARAM_KEYS: ATTRIBUTION_PARAM_KEYS } = require('../../crm/attribution');
 
 exports.publicLeadValidators = [
   check('name').trim().notEmpty().withMessage('Name is required.').isLength({ max: 150 }),
@@ -43,6 +44,25 @@ exports.publicLeadValidators = [
   check('utm.utm_campaign').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
   check('utm.utm_content').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
   check('utm.utm_term').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  check('utm.gclid').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  check('utm.gbraid').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  check('utm.wbraid').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  check('utm.fbclid').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  check('utm.ttclid').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  // CRM launch blocker C1 - first/last-touch attribution from src/analytics/attribution.ts. Client
+  // supplied, so every field is shape/length-checked here and only ever ADDED to a lead
+  // (utils/crm/attribution.js), never allowed to overwrite an existing lead's first touch.
+  check('submittedFrom').optional({ nullable: true }).isString().trim().isLength({ max: 300 }),
+  check('attribution').optional({ nullable: true }).isObject(),
+  ...['first', 'last'].flatMap(t => [
+    check(`attribution.${t}`).optional({ nullable: true }).isObject(),
+    check(`attribution.${t}.params`).optional({ nullable: true }).isObject(),
+    ...ATTRIBUTION_PARAM_KEYS.map(k => check(`attribution.${t}.params.${k}`).optional({ nullable: true }).isString().trim().isLength({ max: 150 })),
+    check(`attribution.${t}.landingPage`).optional({ nullable: true }).isString().trim().isLength({ max: 300 }),
+    check(`attribution.${t}.landingUrl`).optional({ nullable: true }).isString().trim().isLength({ max: 600 }),
+    check(`attribution.${t}.referrer`).optional({ nullable: true }).isString().trim().isLength({ max: 300 }),
+    check(`attribution.${t}.at`).optional({ nullable: true }).isISO8601().withMessage('attribution timestamps must be ISO 8601.'),
+  ]),
   check('calculator').optional({ nullable: true }).isObject(),
   check('calculator.systemSizeKwp').optional({ nullable: true }).isFloat({ min: 0, max: 100_000 }),
   check('calculator.indicativePriceEgp').optional({ nullable: true }).isFloat({ min: 0, max: 1_000_000_000 }),

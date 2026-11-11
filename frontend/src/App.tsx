@@ -127,6 +127,7 @@ import COM_Dashboard from "@/pages/commercial/dashboard";
 import COM_Projects from "@/pages/commercial/projects";
 import COM_Project from "@/pages/commercial/projects/[id]";
 import COM_Materials from "@/pages/commercial/materials";
+import COM_PricingConfig from "@/pages/commercial/pricing-config";
 
 // Website Management Pages
 import WebsiteOverview from "@/pages/website";
@@ -381,6 +382,7 @@ export default function App() {
                     <Route path={paths.commercialProjects} element={<COM_Projects />} />
                     <Route path={paths.commercialProjects + "/:id"} element={<COM_Project />} />
                     <Route path={paths.commercialMaterials} element={<COM_Materials />} />
+                    <Route path={paths.commercialPricingConfig} element={<COM_PricingConfig />} />
                   </Route>
                   <Route path={paths.commercial + "/*"} element={<NotFound />} />
                 </Route>

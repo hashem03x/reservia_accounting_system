@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const ApiError = require('../../utils/apiError');
 const { processIntake, formatExtraAnswers } = require('./leadIntakeService');
 const { parseSubmissionTimestamp } = require('../../utils/crm/businessDate');
+const IntakeEvent = require('../../models/crm/intakeEventModel');
 
 // Reservia CRM - Meta Lead Ads (Facebook + Instagram instant forms), Change Request 2, item 9.
 //
@@ -38,17 +39,16 @@ function isConfigured() {
 }
 
 /** GET handshake: echo hub.challenge only for mode=subscribe and OUR verify token. */
-function verifySubscription({ mode, token, challenge }) {
-  if (mode !== 'subscribe' || !process.env.META_VERIFY_TOKEN) return null;
+function verifySubscription({ mode, token, challenge }, expectedToken = process.env.META_VERIFY_TOKEN) {
+  if (mode !== 'subscribe' || !expectedToken) return null;
   const a = Buffer.from(String(token || ''));
-  const b = Buffer.from(process.env.META_VERIFY_TOKEN);
+  const b = Buffer.from(String(expectedToken));
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   return challenge;
 }
 
 /** X-Hub-Signature-256 over the RAW body, constant-time compare. */
-function verifySignature(rawBody, signatureHeader) {
-  const secret = appSecret();
+function verifySignature(rawBody, signatureHeader, secret = appSecret()) {
   if (!secret || !rawBody || typeof signatureHeader !== 'string' || !signatureHeader.startsWith('sha256=')) return false;
   const expected = Buffer.from(crypto.createHmac('sha256', secret).update(rawBody).digest('hex'), 'hex');
   const given = Buffer.from(signatureHeader.slice(7), 'hex');
@@ -67,13 +67,14 @@ function extractLeadgenChanges(payload) {
 }
 
 /** Fetches one lead from the Graph API. `fetchImpl` is injectable for tests. */
-async function fetchLead(leadgenId, { fetchImpl = globalThis.fetch } = {}) {
-  const token = process.env.META_PAGE_ACCESS_TOKEN;
+async function fetchLead(leadgenId, { fetchImpl = globalThis.fetch, credentials = {} } = {}) {
+  const token = credentials.pageAccessToken || process.env.META_PAGE_ACCESS_TOKEN;
+  const secret = credentials.appSecret || appSecret();
   if (!token) throw new ApiError('Meta Lead Ads is not configured: META_PAGE_ACCESS_TOKEN is missing.', 503);
   const version = process.env.META_GRAPH_API_VERSION || DEFAULT_GRAPH_VERSION;
   const params = new URLSearchParams({ fields: LEAD_FIELDS });
   // appsecret_proof proves the call comes from our server even if the token leaked.
-  if (appSecret()) params.set('appsecret_proof', crypto.createHmac('sha256', appSecret()).update(token).digest('hex'));
+  if (secret) params.set('appsecret_proof', crypto.createHmac('sha256', secret).update(token).digest('hex'));
   const url = `https://graph.facebook.com/${version}/${encodeURIComponent(leadgenId)}?${params}`;
   let res;
   try {
@@ -158,13 +159,13 @@ function toIntake(lead, change) {
  * is true when at least one lead failed for a TRANSIENT reason, so the controller can answer
  * non-200 and let Meta redeliver - safe, because already-processed leads replay idempotently.
  */
-async function processWebhookPayload(payload, { fetchImpl } = {}) {
+async function processWebhookPayload(payload, { fetchImpl, credentials } = {}) {
   const results = [];
   let retryable = false;
   for (const change of extractLeadgenChanges(payload)) {
     try {
       // eslint-disable-next-line no-await-in-loop
-      const lead = await fetchLead(change.leadgen_id, { fetchImpl });
+      const lead = await fetchLead(change.leadgen_id, { fetchImpl, credentials });
       const args = toIntake(lead, change);
       if (!args.lead.phone) {
         results.push({ leadgenId: change.leadgen_id, skipped: 'no phone number in the form' });
@@ -176,10 +177,30 @@ async function processWebhookPayload(payload, { fetchImpl } = {}) {
     } catch (err) {
       const transient = !err.statusCode || err.statusCode >= 500;
       if (transient) retryable = true;
+      // Make the failure visible on the Integrations screen and retryable from there - a Graph lookup
+      // can fail before the unified intake ever created an event for this lead.
+      // eslint-disable-next-line no-await-in-loop
+      await IntakeEvent.updateOne(
+        { channel: 'meta', externalId: String(change.leadgen_id).slice(0, 200), status: { $ne: 'processed' } },
+        { $set: { status: 'failed', lastError: String(err.message || 'failed').slice(0, 300) }, $setOnInsert: { channel: 'meta', externalId: String(change.leadgen_id).slice(0, 200) } },
+        { upsert: true }
+      ).catch(() => {});
       results.push({ leadgenId: change.leadgen_id, error: err.message });
     }
   }
   return { results, retryable };
 }
 
-module.exports = { isConfigured, verifySubscription, verifySignature, extractLeadgenChanges, fetchLead, mapFieldData, toIntake, processWebhookPayload };
+/**
+ * Re-processes one Meta lead by its leadgen id (retry of a failed delivery from the Integrations
+ * page). Nothing is stored from the original delivery (no PII at rest), so the lead is fetched
+ * again from the Graph API - idempotent through the unified intake, keyed on the same id.
+ */
+async function reprocessLead(leadgenId, { fetchImpl, credentials } = {}) {
+  const lead = await fetchLead(leadgenId, { fetchImpl, credentials });
+  const args = toIntake(lead, { leadgen_id: leadgenId });
+  if (!args.lead.phone) return { leadgenId, skipped: 'no phone number in the form' };
+  return { leadgenId, ...(await processIntake({ channel: 'meta', ...args })) };
+}
+
+module.exports = { reprocessLead, isConfigured, verifySubscription, verifySignature, extractLeadgenChanges, fetchLead, mapFieldData, toIntake, processWebhookPayload };

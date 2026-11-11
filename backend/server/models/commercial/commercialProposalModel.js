@@ -10,6 +10,8 @@ const commercialProposalSchema = new Schema(
     revision: { type: Schema.Types.ObjectId, ref: 'CommercialRevision', required: true },
     project: { type: Schema.Types.ObjectId, ref: 'CommercialProject', required: true },
     version: { type: Number, required: true, default: 1 },
+    // <deal #>-P<nn> (services/commercial/dealNumberService.js). Absent on proposals issued before deal numbers existed.
+    proposalNumber: { type: String, trim: true, default: null },
     issuedAt: { type: Date, required: true, default: Date.now },
     validUntil: { type: Date, required: true },
     // Immutable copies, not live references - taken verbatim from the revision at issue time.

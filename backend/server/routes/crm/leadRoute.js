@@ -39,6 +39,10 @@ router.patch('/:id/stage', changeStageValidator, leadController.changeStage);
 // lead off their own desk (or anyone else's) onto another rep.
 router.patch('/:id/owner', requireCrmRole('admin', 'md'), reassignLeadValidator, leadController.reassignLead);
 router.post('/:id/activities', recordActivityValidator, leadController.recordActivity);
+// QA finding B5 - CRM -> Commercial handoff: retry a failed sync (or re-send the identifiers), and
+// the per-lead sync history. Any CRM role that can move the lead's stage may retry its sync.
+router.post('/:id/commercial-sync', leadIdValidator, leadController.retryCommercialSync);
+router.get('/:id/commercial-sync', leadIdValidator, leadController.getCommercialSyncLog);
 // File upload (acceptance report section 7) - a lead's attached documents (e.g. an electricity
 // bill), stored the same private-GridFS way every other attachment in this ERP already is.
 router.use('/:leadId/attachments', leadAttachmentRoute);

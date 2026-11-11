@@ -136,8 +136,11 @@ function mapUnifiedPayload(channel, body) {
     throw new ApiError('submittedAt must be an ISO 8601 timestamp with a timezone (e.g. 2026-11-09T10:00:00+02:00) or a Unix timestamp.', 400);
   }
 
+  const clickId = key => (typeof utm[key] === 'string' && utm[key]) || (typeof body[key] === 'string' && body[key]) || undefined;
+  const clickIds = { gclid: clickId('gclid'), gbraid: clickId('gbraid'), wbraid: clickId('wbraid'), fbclid: clickId('fbclid'), ttclid: clickId('ttclid') };
+
   let source = config.source;
-  if (channel === 'website') source = normalizeSource({ utmSource: utm.utm_source, utmMedium: utm.utm_medium, referrer: body.referrer });
+  if (channel === 'website') source = normalizeSource({ utmSource: utm.utm_source, utmMedium: utm.utm_medium, referrer: body.referrer, ...clickIds });
   // A relay forwarding WhatsApp chats may pass the Ref-code source it resolved; anything not on the
   // fixed list falls back to WhatsApp Direct, exactly like the native webhook.
   if (channel === 'whatsapp') source = SOURCES.includes(body.source) ? body.source : 'WhatsApp Direct';
@@ -161,6 +164,7 @@ function mapUnifiedPayload(channel, body) {
     utmCampaign: utm.utm_campaign || undefined,
     utmContent: utm.utm_content || undefined,
     utmTerm: utm.utm_term || undefined,
+    ...clickIds,
     landingPage: body.pageUrl || undefined,
     referrer: body.referrer || undefined,
     submittedAt: submittedAt || undefined,

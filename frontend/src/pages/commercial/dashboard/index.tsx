@@ -105,7 +105,7 @@ export default function CommercialDashboardPage() {
           )}
         </SectionCard>
 
-        <SectionCard title={translate("Recently Created Projects", "المشاريع المنشأة حديثاً")} viewAllTo={paths.commercialProjects} viewAllLabel={translate("View all", "عرض الكل")}>
+        <SectionCard title={translate("Recently Created Projects", "المشاريع المنشأة حديثاً")} viewAllTo={`/${paths.commercial}/${paths.commercialProjects}`} viewAllLabel={translate("View all", "عرض الكل")}>
           {loading ? (
             <Skeleton height={220} />
           ) : !data?.recentProjects.length ? (

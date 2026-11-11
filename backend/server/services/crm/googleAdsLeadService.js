@@ -60,6 +60,9 @@ function toIntake(body) {
       campaign,
       adFormId: body.form_id ? String(body.form_id) : undefined,
       adPlatform: 'google_ads',
+      // Google's click id for this lead-form submission - stored on the lead so an offline
+      // conversion (Won) can later be attributed back to the click.
+      gclid: body.gcl_id ? String(body.gcl_id).slice(0, 150) : undefined,
       externalLeadId: externalId || undefined,
       submittedAt: parseSubmissionTimestamp(body.lead_submit_time) || undefined,
     },

@@ -137,3 +137,25 @@ exports.exportLeadsCron = asyncHandler(async (req, res, next) => {
   const rows = await buildLeadExportRows();
   await exportToCsv(res, `reservia-crm-leads-${new Date().toISOString().slice(0, 10)}.csv`, EXPORT_HEADERS, rows);
 });
+
+// ---------------------------------------------------------------- CRM -> Commercial handoff (QA B5)
+
+/** POST /crm/leads/:id/commercial-sync - re-runs the Commercial sync for the lead's current stage (retry after a failure). */
+exports.retryCommercialSync = asyncHandler(async (req, res) => {
+  // eslint-disable-next-line global-require
+  const { retrySync } = require('../../services/crm/commercialHandoffService');
+  const result = await retrySync(req.params.id, { userId: req.user._id });
+  const lead = await Lead.findById(req.params.id);
+  if (!result.ok) {
+    return res.status(422).json(apiResponse(`Commercial sync failed: ${result.error}`, false, { lead, error: result.error }));
+  }
+  res.status(200).json(apiResponse(result.skipped ? 'Nothing to send to Commercial for this lead.' : 'Synchronized with Commercial.', true, { lead, identifiers: result.identifiers || null }));
+});
+
+/** GET /crm/leads/:id/commercial-sync - the append-only sync history for this lead. */
+exports.getCommercialSyncLog = asyncHandler(async (req, res) => {
+  // eslint-disable-next-line global-require
+  const CommercialSyncEvent = require('../../models/commercial/commercialSyncEventModel');
+  const events = await CommercialSyncEvent.find({ lead: req.params.id }).sort({ createdAt: -1 }).limit(50).populate({ path: 'actor', select: 'name' }).lean();
+  res.status(200).json(apiResponse('Commercial sync history', true, events));
+});

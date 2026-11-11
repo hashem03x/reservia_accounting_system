@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ActionIcon, Button, NumberInput, Table } from "@mantine/core";
+import { ActionIcon, Alert, Button, NumberInput, Select, Table } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import SectionCard from "@/components/ui/section-card";
 import { outlineIcons, solidIcons } from "@/components/icons";
-import { CommercialProject, CommercialRevision } from "@/types/commercial";
+import { CommercialProject, CommercialRevision, MaterialItem } from "@/types/commercial";
+import useMaterialOptions from "../../../_shared/useMaterialOptions";
 
 type Appliance = { description: string; qty: number; watts: number; hoursPerDay: number; daytimeHours: number };
 
@@ -15,29 +16,30 @@ const DEFAULT_APPLIANCES: Appliance[] = [
   { description: "Refrigerator", qty: 1, watts: 400, hoursPerDay: 24, daytimeHours: 6 },
 ];
 
-// Off-Grid engineering inputs - mirrors services/commercial/offGridEngine.js's
-// `runOffGridDesign` input shape exactly (Off_Grid.xlsx `Load Assessment`/`Design`/`BOQ`).
-// Unlike On-Grid, most Off-Grid materials are manually priced in the source workbook (confirmed
-// in the implementation plan) - so this form asks for prices directly rather than pretending a
-// Price Book lookup exists for them.
+// Off-Grid engineering inputs - services/commercial/offGridEngine.js#runOffGridDesign (the Rev05
+// Off_Grid.xlsx Load Assessment -> Design -> BOQ method, unchanged). QA finding U7: the PV module,
+// battery and inverter are SELECTED from the Price Book - their prices and ratings come from the
+// selected item - and installation uses the Rates matrix [region, band] for Egyptian projects
+// instead of a typed flat rate.
 export default function OffGridForm({ project, revision, onSaved }: { project: CommercialProject; revision: CommercialRevision | null; onSaved: () => void }) {
   const { translate, language } = useLanguage();
   const input = (revision?.engineeringInput || {}) as Record<string, unknown>;
+  const pvModules = useMaterialOptions("PV Modules");
+  const batteries = useMaterialOptions("Lithium Batteries");
+  const inverters = useMaterialOptions("Off-Grid Inverter");
+  const [moduleKey, setModuleKey] = useState<string>((input.moduleKey as string) || "");
+  const [batteryKey, setBatteryKey] = useState<string>((input.batteryKey as string) || "");
+  const [inverterKey, setInverterKey] = useState<string>((input.inverterKey as string) || "");
+  const usesRatesMatrix = project.country === "Egypt";
+  const legacyTypedPrices = !!revision && !input.moduleKey && !input.batteryKey && !input.inverterKey;
 
   const [appliances, setAppliances] = useState<Appliance[]>((input.appliances as Appliance[]) || DEFAULT_APPLIANCES);
   const [peakSunHours, setPeakSunHours] = useState<number>((input.peakSunHours as number) || 5.5);
   const [performanceFactor, setPerformanceFactor] = useState<number>((input.performanceFactor as number) || 0.8);
-  const [moduleWattage, setModuleWattage] = useState<number>((input.moduleWattage as number) || 625);
-  const [moduleUnitPrice, setModuleUnitPrice] = useState<number>((input.moduleUnitPrice as number) || 5375);
   const [autonomyNights, setAutonomyNights] = useState<number>((input.autonomyNights as number) || 1);
   const [depthOfDischarge, setDepthOfDischarge] = useState<number>((input.depthOfDischarge as number) || 1);
   const [systemEfficiency, setSystemEfficiency] = useState<number>((input.systemEfficiency as number) || 0.9);
-  const [batteryUnitVoltage, setBatteryUnitVoltage] = useState<number>((input.batteryUnitVoltage as number) || 51.2);
-  const [batteryUnitAh, setBatteryUnitAh] = useState<number>((input.batteryUnitAh as number) || 314);
-  const [batteryUnitPrice, setBatteryUnitPrice] = useState<number>((input.batteryUnitPrice as number) || 105000);
-  const [inverterAcRatingW, setInverterAcRatingW] = useState<number>((input.inverterAcRatingW as number) || 10000);
   const [maxPvInputW, setMaxPvInputW] = useState<number>((input.maxPvInputW as number) || 12000);
-  const [inverterUnitPrice, setInverterUnitPrice] = useState<number>((input.inverterUnitPrice as number) || 92000);
   const [dcCablePricePerM, setDcCablePricePerM] = useState<number>((input.dcCablePricePerM as number) || 51);
   const [acLengthM, setAcLengthM] = useState<number>((input.acLengthM as number) || 20);
   const [acCablePricePerM, setAcCablePricePerM] = useState<number>((input.acCablePricePerM as number) || 110);
@@ -66,13 +68,17 @@ export default function OffGridForm({ project, revision, onSaved }: { project: C
 
   function handleSubmit() {
     handleRequest(language, setLoading, setError, async () => {
+      if (!moduleKey || !batteryKey || !inverterKey) {
+        throw new Error(translate("Select the PV module, battery and inverter from the Price Book.", "اختر الوحدة الشمسية والبطارية والعاكس من قائمة الأسعار."));
+      }
       const engineeringInput = {
-        appliances, peakSunHours, performanceFactor, moduleWattage, moduleUnitPrice,
-        autonomyNights, depthOfDischarge, systemEfficiency, batteryUnitVoltage, batteryUnitAh, batteryUnitPrice,
-        simultaneityFactor: 1, safetyMargin: 0.25, inverterAcRatingW, maxPvInputW, inverterUnitPrice,
+        appliances, peakSunHours, performanceFactor, moduleKey, batteryKey, inverterKey,
+        autonomyNights, depthOfDischarge, systemEfficiency,
+        simultaneityFactor: 1, safetyMargin: 0.25, maxPvInputW,
         dcCablePricePerM, acLengthM, acCablePricePerM, mc4Pairs: 4, mc4PricePerPair: 90, dcProtectionPrice: 2500,
         mountingStructureRatePerKwp, earthingRatePerKwp: 100, miscRatePerKwp: { cableTrayPerM: 70, accessoriesPerKwp: 150 },
-        installationRatePerKwp, transportationRatePerKwp: 500,
+        // Egypt: the backend prices installation from the Rates matrix; elsewhere the typed rate applies.
+        ...(usesRatesMatrix ? {} : { installationRatePerKwp }), transportationRatePerKwp: 500,
         contingencyRate: 0.02, profitMarginRate: 0.1, vatRate: project.country === "Saudi Arabia" ? 0.15 : 0.14,
         generatorPurchasePrice: generatorPurchasePrice || undefined, dieselPriceEgpPerL,
         dieselTransportEgpPerL, dieselAnnualEscalation: dieselAnnualEscalation / 100,
@@ -128,21 +134,25 @@ export default function OffGridForm({ project, revision, onSaved }: { project: C
         </Table>
       </SectionCard>
 
+      {legacyTypedPrices && (
+        <Alert color="yellow" variant="light">
+          {translate(
+            "This revision was priced with typed-in module/battery/inverter prices. Select the items from the Price Book below and recalculate.",
+            "تم تسعير هذه النسخة بأسعار مكتوبة يدوياً. اختر العناصر من قائمة الأسعار وأعد الحساب."
+          )}
+        </Alert>
+      )}
       <SectionCard title={translate("PV / Battery / Inverter Sizing", "حجم الألواح / البطاريات / العاكس")}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <NumberInput label={translate("Peak Sun Hours", "ساعات الشمس القصوى")} value={peakSunHours} onChange={(v) => setPeakSunHours((v as number) || 0)} step={0.1} />
           <NumberInput label={translate("PV Performance Factor", "معامل كفاءة الألواح")} value={performanceFactor} onChange={(v) => setPerformanceFactor((v as number) || 0)} step={0.05} />
-          <NumberInput label={translate("Module Wattage (W)", "قدرة الوحدة (واط)")} value={moduleWattage} onChange={(v) => setModuleWattage((v as number) || 0)} />
-          <NumberInput label={translate("Module Unit Price", "سعر الوحدة")} value={moduleUnitPrice} onChange={(v) => setModuleUnitPrice((v as number) || 0)} />
+          <PriceBookSelect label={translate("PV Module (Price Book)", "الوحدة الشمسية (قائمة الأسعار)")} items={pvModules} value={moduleKey} onChange={setModuleKey} spec={(i) => `${i.n1 ?? ""} W`} />
           <NumberInput label={translate("Autonomy (nights)", "أيام الاستقلالية")} value={autonomyNights} onChange={(v) => setAutonomyNights((v as number) || 0)} />
           <NumberInput label={translate("Depth of Discharge", "عمق التفريغ")} value={depthOfDischarge} onChange={(v) => setDepthOfDischarge((v as number) || 0)} step={0.05} />
           <NumberInput label={translate("Battery System Efficiency", "كفاءة نظام البطارية")} value={systemEfficiency} onChange={(v) => setSystemEfficiency((v as number) || 0)} step={0.05} />
-          <NumberInput label={translate("Battery Unit Voltage (V)", "جهد وحدة البطارية")} value={batteryUnitVoltage} onChange={(v) => setBatteryUnitVoltage((v as number) || 0)} />
-          <NumberInput label={translate("Battery Unit Capacity (Ah)", "سعة وحدة البطارية")} value={batteryUnitAh} onChange={(v) => setBatteryUnitAh((v as number) || 0)} />
-          <NumberInput label={translate("Battery Unit Price", "سعر وحدة البطارية")} value={batteryUnitPrice} onChange={(v) => setBatteryUnitPrice((v as number) || 0)} />
-          <NumberInput label={translate("Inverter AC Rating (W)", "قدرة العاكس")} value={inverterAcRatingW} onChange={(v) => setInverterAcRatingW((v as number) || 0)} />
-          <NumberInput label={translate("Max PV Input (W)", "أقصى دخل للألواح")} value={maxPvInputW} onChange={(v) => setMaxPvInputW((v as number) || 0)} />
-          <NumberInput label={translate("Inverter Unit Price", "سعر العاكس")} value={inverterUnitPrice} onChange={(v) => setInverterUnitPrice((v as number) || 0)} />
+          <PriceBookSelect label={translate("Battery (Price Book)", "البطارية (قائمة الأسعار)")} items={batteries} value={batteryKey} onChange={setBatteryKey} spec={(i) => `${i.n1 ?? ""} V / ${i.n2 ?? ""} Ah`} />
+          <PriceBookSelect label={translate("Inverter (Price Book)", "العاكس (قائمة الأسعار)")} items={inverters} value={inverterKey} onChange={setInverterKey} spec={(i) => `${i.n1 ?? ""} kW`} />
+          <NumberInput label={translate("Inverter Max PV Input (W)", "أقصى دخل للألواح في العاكس")} description={translate("From the inverter datasheet.", "من بيانات العاكس.")} value={maxPvInputW} onChange={(v) => setMaxPvInputW((v as number) || 0)} />
         </div>
       </SectionCard>
 
@@ -152,12 +162,18 @@ export default function OffGridForm({ project, revision, onSaved }: { project: C
           <NumberInput label={translate("AC Cable Length (m)", "طول كابل التيار المتردد")} value={acLengthM} onChange={(v) => setAcLengthM((v as number) || 0)} />
           <NumberInput label={translate("AC Cable Price/m", "سعر كابل التيار المتردد/م")} value={acCablePricePerM} onChange={(v) => setAcCablePricePerM((v as number) || 0)} />
           <NumberInput label={translate("Mounting Structure Rate/kWp", "سعر التثبيت/كيلوواط")} value={mountingStructureRatePerKwp} onChange={(v) => setMountingStructureRatePerKwp((v as number) || 0)} />
-          <NumberInput
-            label={translate("Installation Rate/kWp", "سعر التركيب/كيلوواط")}
-            description={translate("Off_Grid.xlsx uses a flat 650, not the Egypt Rates matrix", "ملف خارج الشبكة يستخدم سعراً ثابتاً 650")}
-            value={installationRatePerKwp}
-            onChange={(v) => setInstallationRatePerKwp((v as number) || 0)}
-          />
+          {usesRatesMatrix ? (
+            <div className="rounded border border-gray-100 p-2 text-xs text-gray-600">
+              {translate("Installation rate: from the Rates matrix for", "سعر التركيب: من جدول الأسعار لمنطقة")} <strong>{project.region || "-"}</strong> {translate("and the system size band.", "وفئة حجم النظام.")}
+            </div>
+          ) : (
+            <NumberInput
+              label={translate("Installation Rate/kWp", "سعر التركيب/كيلوواط")}
+              description={translate("No Rates matrix outside Egypt - enter the quoted rate.", "لا يوجد جدول أسعار خارج مصر - أدخل السعر.")}
+              value={installationRatePerKwp}
+              onChange={(v) => setInstallationRatePerKwp((v as number) || 0)}
+            />
+          )}
         </div>
       </SectionCard>
 
@@ -244,5 +260,20 @@ export default function OffGridForm({ project, revision, onSaved }: { project: C
         {revision ? translate("Recalculate", "إعادة الحساب") : translate("Calculate & Create Revision", "حساب وإنشاء النسخة")}
       </Button>
     </div>
+  );
+}
+
+/** A Price Book item picker showing brand, model, key spec and the current unit price. */
+function PriceBookSelect({ label, items, value, onChange, spec }: { label: string; items: MaterialItem[]; value: string; onChange: (v: string) => void; spec: (i: MaterialItem) => string }) {
+  return (
+    <Select
+      label={label}
+      searchable
+      required
+      data={items.map((i) => ({ value: i.key, label: `${i.brand} ${i.model} - ${spec(i)} - ${Math.round(i.unitPrice).toLocaleString("en-US")} ${i.currency}` }))}
+      value={value || null}
+      onChange={(v) => onChange(v || "")}
+      nothingFoundMessage="-"
+    />
   );
 }

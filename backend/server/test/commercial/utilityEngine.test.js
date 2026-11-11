@@ -17,7 +17,7 @@ test('Utility-Scale reuses the On-Grid equipment chain and adds 11 manual adder 
   assert.equal(adders.length, 11);
   assert.ok(adders.every(l => l.total === null));
   // Equipment total is unaffected by the (unentered) manual adders.
-  assert.equal(result.boq.total, 1248204.75);
+  assert.equal(result.boq.total, 1179007.5);
 });
 
 test('Manually entered adder amounts DO flow into the BOQ total (not silently dropped)', () => {
@@ -29,5 +29,5 @@ test('Manually entered adder amounts DO flow into the BOQ total (not silently dr
     catalog,
     { 16: { qty: 1, unitPrice: 50000 } } // SCADA system quoted manually
   );
-  assert.equal(result.boq.total, 1248204.75 + 50000);
+  assert.equal(result.boq.total, 1179007.5 + 50000);
 });

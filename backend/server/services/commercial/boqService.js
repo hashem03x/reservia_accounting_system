@@ -75,6 +75,10 @@ async function buildOnGridCatalog(country, region) {
     MOUNTING_STRUCTURE_RATES: rates.MOUNTING_STRUCTURE_RATES || onGridCatalogData.MOUNTING_STRUCTURE_RATES,
     INSTALL_RATES_BY_REGION: rates.INSTALL_RATES_BY_REGION || {},
     TRANSPORT_RATES_BY_REGION: rates.TRANSPORT_RATES_BY_REGION || {},
+    // Standing per-kWp rates stored on the Rates matrix (earthing, accessories, DC route allowance).
+    EARTHING_RATE_EGP_PER_KWP: rates.EARTHING_RATE_EGP_PER_KWP ?? null,
+    ACCESSORIES_RATE_EGP_PER_KWP: rates.ACCESSORIES_RATE_EGP_PER_KWP ?? null,
+    DC_CABLE_ROUTE_M_PER_KWP: rates.DC_CABLE_ROUTE_M_PER_KWP ?? null,
   };
 }
 
@@ -82,71 +86,193 @@ async function runOnGridOrUtility({ category, engineeringInput, country, region,
   const catalog = await buildOnGridCatalog(country, region);
   const module_ = catalog.PV_MODULES.find(m => m.model === engineeringInput.pvModuleModel);
   if (!module_) throw new ApiError(`PV module "${engineeringInput.pvModuleModel}" not found in the Price Book`, 400);
-  const input = { ...engineeringInput, module: module_, inverterCandidates: catalog.GRID_INVERTERS, country, region };
+  const siteCosts = engineeringInput.siteCrew > 0 && engineeringInput.siteDays > 0
+    ? {
+      crew: engineeringInput.siteCrew,
+      days: engineeringInput.siteDays,
+      ...(engineeringInput.fareEgp > 0 ? { fareEgp: engineeringInput.fareEgp } : {}),
+      ...(engineeringInput.hotelEgpPerRoomNight > 0 ? { hotelEgpPerRoomNight: engineeringInput.hotelEgpPerRoomNight } : {}),
+      ...(engineeringInput.perDiemEgp > 0 ? { perDiemEgp: engineeringInput.perDiemEgp } : {}),
+      ...(engineeringInput.allowanceEgpPerPersonDay > 0 ? { allowanceEgpPerPersonDay: engineeringInput.allowanceEgpPerPersonDay } : {}),
+    }
+    : null;
+  const input = {
+    ...engineeringInput,
+    module: module_,
+    inverterCandidates: catalog.GRID_INVERTERS,
+    country,
+    region,
+    dcCableBrand: engineeringInput.dcCableBrand || null,
+    siteCosts,
+  };
   const result = category === 'Utility Scale'
     ? utility.runUtilityScaleDesign(input, catalog, engineeringInput.manualAdders || {})
     : onGrid.runOnGridDesign(input, catalog);
   const lines = applyManualOverrides(result.boq.lines, manualOverrides);
   const boqTotal = lines.reduce((s, l) => s + (l.total || 0), 0);
-  const kWp = result.boq.finalCapacityKwp;
+  // DESIGN kWp - the basis of the per-kWp lines and the price per kWp (QA finding section 4).
+  const kWp = result.boq.designKwp ?? result.boq.finalCapacityKwp;
 
-  // Feasibility (On_Grid.xlsx `Feasibility Table`) needs the annual consumption figure, which has
-  // no engineering-sizing role - it's a customer-billing input, only ever supplied when the
-  // commercial team wants a feasibility view run. Annual production is derived from the same
-  // monthly-reference-profile scaling `Estimator Input` itself uses (not a fabricated yield),
-  // using the sheet's own default 8 m2/kWp area ratio since this flow sizes from kWp directly
-  // rather than from an area input.
-  // Feasibility Table!G4 (tariff), !C4 (maintenance %), !M7/!T7 (the two escalation-scenario
-  // rates) are genuine editable input cells in the sheet, not formulas - the commercial team may
-  // override any of them per project; the defaults are the sheet's own live values, never guessed.
-  let feasibility = null;
-  if (engineeringInput.annualConsumptionKwh > 0) {
-    const { annualProductionKwh } = onGrid.estimateCapacityFromArea({ areaM2: kWp * 8, areaPerKwp: 8 }, onGridCatalogData.MONTHLY_PRODUCTION_30KWP_REFERENCE);
-    feasibility = onGridFeasibility.runOnGridFeasibility({
-      capex: boqTotal, annualProductionKwhYear1: annualProductionKwh, annualConsumptionKwh: engineeringInput.annualConsumptionKwh,
-      baseTariffEgpPerKwh: engineeringInput.tariffEgpPerKwh ?? 2.8,
-      maintenancePctOfCapex: engineeringInput.maintenancePctOfCapex ?? 0.01,
-      escalationScenario2: engineeringInput.escalationScenario2 ?? 0.03,
-      escalationScenario3: engineeringInput.escalationScenario3 ?? 0.1,
-    });
-  }
-
-  return { engineeringResult: result.design, lines, boqTotal, kWp, feasibility };
+  // Feasibility is no longer computed here: its capex is the FINAL PRICE incl VAT (QA finding B4 /
+  // brief 3.4), which only exists after pricing - see computeFeasibility() below.
+  return { engineeringResult: result.design, lines, boqTotal, kWp };
 }
 
-async function runOffGrid({ engineeringInput, manualOverrides }) {
-  const result = offGrid.runOffGridDesign(engineeringInput);
-  const lines = applyManualOverrides(result.lineItems, manualOverrides);
-  // Off-Grid's own commercial pricing (contingency/profit/VAT) is already embedded in its BOQ
-  // engine (Off_Grid.xlsx has no other pricing path) - callers still run commercialPricingService
-  // afterwards for consistency, with the Off-Grid defaults, which reproduce the same numbers.
-  const boqTotal = lines.reduce((s, l) => s + (l.total || 0), 0);
+/**
+ * Customer feasibility for a priced revision (QA findings B4/U8, brief 3.4). On-Grid and Utility:
+ * the brief 3.4 yield model with capex = final price incl VAT, 10% headline escalation, 3% and flat
+ * sensitivities, no O&M deduction by default. Off-Grid: the Off_Grid.xlsx solar-vs-diesel model,
+ * whose solar capex is likewise the revision's final price incl VAT. Agriculture Pumping: none
+ * (Solar_Pumping3.xlsx has no financial sheet).
+ *
+ * Feasibility inputs on the engineering form (all optional): tariffEgpPerKwh, headlineEscalation,
+ * sensitivityEscalations, yieldKwhPerKwp, degradationPct, discountRate, maintenancePctOfCapex,
+ * annualConsumptionKwh. Legacy inputs from the R74 form (escalationScenario2/3) are honoured as
+ * the two escalation values so an older revision recalculates sensibly.
+ */
+function computeFeasibility({ category, engineeringInput = {}, pricing, boqTotal, kWp, engineeringResult }) {
+  if (category === 'On-Grid C&I' || category === 'Utility Scale') {
+    const ei = engineeringInput;
+    const legacyEsc = [ei.escalationScenario2, ei.escalationScenario3].filter(v => typeof v === 'number');
+    const headlineEscalation = typeof ei.headlineEscalation === 'number' ? ei.headlineEscalation : legacyEsc.includes(0.1) ? 0.1 : undefined;
+    const sensitivities = Array.isArray(ei.sensitivityEscalations) ? ei.sensitivityEscalations : undefined;
+    return {
+      feasibility: onGridFeasibility.runCustomerFeasibility({
+        pricing,
+        designKwp: kWp,
+        boqCost: boqTotal,
+        annualConsumptionKwh: ei.annualConsumptionKwh > 0 ? ei.annualConsumptionKwh : null,
+        inputs: {
+          tariffEgpPerKwh: ei.tariffEgpPerKwh,
+          headlineEscalation,
+          sensitivityEscalations: sensitivities,
+          yieldKwhPerKwp: ei.yieldKwhPerKwp,
+          degradationPct: ei.degradationPct,
+          discountRate: ei.discountRate,
+          maintenancePctOfCapex: ei.maintenancePctOfCapex,
+        },
+      }),
+      dieselComparison: null,
+    };
+  }
+  if (category === 'Off-Grid' && engineeringInput.generatorPurchasePrice > 0) {
+    const r = engineeringResult || {};
+    return {
+      feasibility: null,
+      dieselComparison: offGridFeasibility.runOffGridDieselFeasibility({
+        dailyWh: r.load?.dailyWh || 0,
+        generatorPurchasePrice: engineeringInput.generatorPurchasePrice,
+        dieselPriceEgpPerL: engineeringInput.dieselPriceEgpPerL ?? 20,
+        dieselTransportEgpPerL: engineeringInput.dieselTransportEgpPerL ?? 2,
+        dieselAnnualEscalation: engineeringInput.dieselAnnualEscalation ?? 0.025,
+        generatorSpecificFuelUseLPerKwh: engineeringInput.generatorSpecificFuelUseLPerKwh ?? 0.3,
+        generatorMaintenancePct: engineeringInput.generatorMaintenancePct ?? 0.1,
+        generatorReplacementIntervalYears: engineeringInput.generatorReplacementIntervalYears ?? 10,
+        solarAnnualOmPct: engineeringInput.solarAnnualOmPct ?? 0.025,
+        batteryReplacementIntervalYears: engineeringInput.batteryReplacementIntervalYears ?? 10,
+        batteryReplacementCost: r.batteryLineTotal || 0,
+        // The customer's real solar investment: the revision's final price incl VAT.
+        solarInitialCapex: pricing.grossInclVat,
+        discountRate: engineeringInput.discountRate ?? 0.1,
+        analysisPeriodYears: engineeringInput.analysisPeriodYears ?? 25,
+      }),
+    };
+  }
+  return { feasibility: null, dieselComparison: null };
+}
 
-  // Diesel-generator comparison (Off_Grid.xlsx `Feasibility Study`) - the only feasibility model
-  // for Off-Grid (see the implementation plan: no vs-grid-tariff model applies to a site with no
-  // grid connection). Runs only when the commercial team supplies the diesel/generator
-  // assumptions; otherwise left null rather than guessed.
-  let dieselComparison = null;
-  if (engineeringInput.generatorPurchasePrice > 0) {
-    dieselComparison = offGridFeasibility.runOffGridDieselFeasibility({
-      dailyWh: result.load.dailyWh,
-      generatorPurchasePrice: engineeringInput.generatorPurchasePrice,
-      dieselPriceEgpPerL: engineeringInput.dieselPriceEgpPerL ?? 20,
-      dieselTransportEgpPerL: engineeringInput.dieselTransportEgpPerL ?? 2,
-      dieselAnnualEscalation: engineeringInput.dieselAnnualEscalation ?? 0.025,
-      generatorSpecificFuelUseLPerKwh: engineeringInput.generatorSpecificFuelUseLPerKwh ?? 0.3,
-      generatorMaintenancePct: engineeringInput.generatorMaintenancePct ?? 0.1,
-      generatorReplacementIntervalYears: engineeringInput.generatorReplacementIntervalYears ?? 10,
-      solarAnnualOmPct: engineeringInput.solarAnnualOmPct ?? 0.025,
-      batteryReplacementIntervalYears: engineeringInput.batteryReplacementIntervalYears ?? 10,
-      batteryReplacementCost: result.lineItems.find(l => l.component === 'Battery Bank')?.total || 0,
-      solarInitialCapex: result.pricing.grandTotalInclVat,
-      discountRate: engineeringInput.discountRate ?? 0.1,
-      analysisPeriodYears: engineeringInput.analysisPeriodYears ?? 25,
-    });
+/**
+ * QA finding U7: the Off-Grid module, battery and inverter are SELECTED from the Price Book (by key)
+ * and priced from it - their ratings (module W, battery V/Ah, inverter kW) come from the same item -
+ * and installation uses the Rates matrix [region, band] instead of the flat 650 EGP/kWp that used to
+ * be typed in. The Rev05 sizing method itself (Load Assessment -> Design -> BOQ) is unchanged.
+ *
+ * Legacy revisions without keys keep their typed prices so they still recalculate, but those lines
+ * are flagged so nobody mistakes them for Price Book prices.
+ */
+async function resolveOffGridInput(engineeringInput, country, region) {
+  const ei = { ...engineeringInput };
+  const keys = {};
+  if (ei.moduleKey) {
+    const it = await priceBook.getItemByKey(ei.moduleKey);
+    ei.moduleWattage = it.attrs?.pmaxW || it.n1;
+    ei.moduleUnitPrice = it.unitPrice;
+    keys.module = it;
+  }
+  if (ei.batteryKey) {
+    const it = await priceBook.getItemByKey(ei.batteryKey);
+    ei.batteryUnitVoltage = it.attrs?.voltageV ?? it.n1;
+    ei.batteryUnitAh = it.attrs?.capacityAh ?? it.n2;
+    ei.batteryUnitPrice = it.unitPrice;
+    keys.battery = it;
+  }
+  if (ei.inverterKey) {
+    const it = await priceBook.getItemByKey(ei.inverterKey);
+    const kw = it.attrs?.ratedKw ?? it.n1;
+    if (!(kw > 0)) throw new ApiError(`Price Book inverter "${it.key}" has no kW rating - cannot size the Off-Grid inverter.`, 400);
+    ei.inverterAcRatingW = kw * 1000;
+    ei.inverterUnitPrice = it.unitPrice;
+    keys.inverter = it;
+  }
+  for (const [field, label] of [['moduleUnitPrice', 'PV module'], ['batteryUnitPrice', 'battery'], ['inverterUnitPrice', 'inverter']]) {
+    if (!(ei[field] >= 0)) throw new ApiError(`Select the ${label} from the Price Book.`, 400);
   }
 
-  return { engineeringResult: { pv: result.pv, battery: result.battery, inverter: result.inverter }, lines, boqTotal, kWp: result.installedKwp, dieselComparison };
+  let installSource = 'manual';
+  let installRates = null;
+  if (country === 'Egypt') {
+    installRates = ratesMatrix.toEngineCatalogShape(await ratesMatrix.getActiveRatesConfig('Egypt'));
+    installSource = 'rates';
+  }
+  return { ei, keys, installRates, installSource };
+}
+
+async function runOffGrid({ engineeringInput, manualOverrides, country, region }) {
+  const { ei, keys, installRates, installSource } = await resolveOffGridInput(engineeringInput, country, region);
+  // Sizing never depends on prices, so a first pass gives the installed kWp the install band needs.
+  let result = offGrid.runOffGridDesign({ ...ei, installationRatePerKwp: ei.installationRatePerKwp ?? 0 });
+  let installBand = null;
+  if (installRates) {
+    installBand = onGrid.installationBand(result.installedKwp);
+    ei.installationRatePerKwp = ratesMatrix.installRateFor(installRates, region, installBand);
+    result = offGrid.runOffGridDesign(ei);
+  }
+
+  const keyByComponent = { 'Solar PV Modules': keys.module, 'Battery Bank': keys.battery, 'Off-Grid Inverter': keys.inverter };
+  const tagged = result.lineItems.map(l => {
+    if (l.component in keyByComponent) {
+      const item = keyByComponent[l.component];
+      return item
+        ? { ...l, materialItemKey: item.key, description: `${item.brand} ${item.model} - ${item.spec}`.slice(0, 200) }
+        : { ...l, flag: 'MANUAL PRICE - select the item from the Price Book' };
+    }
+    if (l.component === 'Installation & Testing') {
+      return installSource === 'rates'
+        ? { ...l, description: `Rates matrix: ${region}, band ${installBand}` }
+        : { ...l, description: 'Manual rate (no Rates matrix outside Egypt)' };
+    }
+    return l;
+  });
+  const lines = applyManualOverrides(tagged, manualOverrides);
+  const boqTotal = lines.reduce((s, l) => s + (l.total || 0), 0);
+
+  return {
+    engineeringResult: {
+      pv: result.pv,
+      battery: result.battery,
+      inverter: result.inverter,
+      load: result.load,
+      installedKwp: result.installedKwp,
+      installation: { source: installSource, band: installBand, ratePerKwp: ei.installationRatePerKwp },
+      batteryLineTotal: lines.find(l => l.component === 'Battery Bank')?.total || 0,
+      // The Rev05 workbook's own internal costing (contingency 2% + profit on cost) - reference only;
+      // the revision is priced by the standard Commercial pricing stack.
+      rev05InternalPricing: result.pricing,
+    },
+    lines,
+    boqTotal,
+    kWp: result.installedKwp,
+  };
 }
 
 async function runAgriculturePumping({ engineeringInput, manualOverrides }) {
@@ -203,16 +329,22 @@ function buildPumpingBoqLines({ pump, motor, module_, strings, dcCable, submersi
 
 async function buildBoq({ category, engineeringInput, country, region, manualOverrides = {} }) {
   if (category === 'On-Grid C&I' || category === 'Utility Scale') return runOnGridOrUtility({ category, engineeringInput, country, region, manualOverrides });
-  if (category === 'Off-Grid') return runOffGrid({ engineeringInput, manualOverrides });
+  if (category === 'Off-Grid') return runOffGrid({ engineeringInput, manualOverrides, country, region });
   if (category === 'Agriculture Pumping') return runAgriculturePumping({ engineeringInput, manualOverrides });
   // Street Lighting / Solar Water Heating: no complete engineering source in any of the three
   // workbooks (see the implementation plan) - flagged rather than faked.
   throw new ApiError(`Category "${category}" has no complete engineering/BOQ model yet - its source workbooks only have placeholder Price Book entries, not a sizing formula. Enter BOQ lines manually.`, 400);
 }
 
-async function priceBoq({ category, boqTotal, kWp, vatPct, overrides = {} }) {
-  const defaults = pricingService.defaultsForCategory(category);
-  return pricingService.priceCommercialRevision({ cogs: boqTotal, kWp, vatPct, ...defaults, ...overrides });
+/**
+ * Prices a BOQ with an explicit set of levers (the caller - revisionService.js - resolves them from
+ * the Finance configuration for a new revision, or from the revision's own stored levers on a
+ * recalculation). There are no hidden defaults here: a lever not supplied is 0.
+ */
+function priceBoq({ boqTotal, kWp, vatPct, levers = {}, discountAuthorityPct = null }) {
+  const pricing = pricingService.priceCommercialRevision({ cogs: boqTotal, kWp, vatPct, ...pricingService.pickLevers(levers) });
+  pricing.discountAboveAuthority = discountAuthorityPct != null && pricing.discountPct > discountAuthorityPct;
+  return pricing;
 }
 
-module.exports = { buildBoq, priceBoq, applyManualOverrides, buildPumpingBoqLines };
+module.exports = { buildBoq, priceBoq, computeFeasibility, applyManualOverrides, buildPumpingBoqLines };

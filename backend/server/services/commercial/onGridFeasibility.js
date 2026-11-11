@@ -106,10 +106,152 @@ function runOnGridFeasibility({
   return { scenarios, headline: { payback, roi, irr } };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Customer feasibility - Developer Brief section 3.4 (the contract; QA finding B4). This is the
+// HEADLINE model the Feasibility tab shows; the R74 `Feasibility Table` port above is kept only for
+// its existing tests and is no longer used by the revision pipeline.
+//
+//   Capex                   = FINAL PRICE INCL VAT, at year 0 (what the customer actually pays)
+//   Yield year n            = design kWp x specific yield x (1 - degradation)^(n - 1)
+//   Market tariff year n    = tariff x (1 + escalation)^(n - 1)
+//   Avoided cost (savings)  = yield x tariff
+//   Simple payback          = first year cumulative cash turns positive, interpolated
+//   IRR                     = over the discrete cash flows, year 0 to 25
+//   NPV                     = -capex + sum of savings discounted at the discount rate
+//   Levelised cost per kWh  = capex / sum of 25-year yield
+//   O&M                     = included in the EPC offer, so NOTHING is deducted by default (0%)
+//
+// Headline case: 10% tariff escalation. Sensitivities: 3% and flat (0%). Defaults are the brief's
+// section 9 values (yield 1,800 kWh/kWp, degradation 0.7%/yr, tariff 2.80 EGP/kWh, discount rate
+// 22%) and every one is an editable input. Reference acceptance (brief section 8): capex 2,009,443
+// -> payback 4.2775 years, IRR 28.98%, NPV 948,944, 25-year avoided cost 35,338,644.
+
+const CUSTOMER_FEASIBILITY_DEFAULTS = Object.freeze({
+  yieldKwhPerKwp: 1800,
+  degradationPct: 0.007,
+  tariffEgpPerKwh: 2.8,
+  headlineEscalation: 0.1,
+  sensitivityEscalations: [0.03, 0],
+  discountRate: 0.22,
+  maintenancePctOfCapex: 0,
+  years: 25,
+});
+
+function irrOfCashflows(cf) {
+  return irrBisection(cf);
+}
+
+/** One escalation scenario of the brief 3.4 model. */
+function runCustomerScenario({ capex, designKwp, yieldKwhPerKwp, degradationPct, tariffEgpPerKwh, escalation, discountRate, maintenancePctOfCapex, years }) {
+  const yr1 = designKwp * yieldKwhPerKwp;
+  const cf = [-capex];
+  const rows = [];
+  let cum = -capex;
+  let payback = null;
+  let yieldSum = 0;
+  let savingsSum = 0;
+  let npv = -capex;
+  for (let n = 1; n <= years; n++) {
+    const generationKwh = yr1 * (1 - degradationPct) ** (n - 1);
+    const tariff = tariffEgpPerKwh * (1 + escalation) ** (n - 1);
+    const savings = generationKwh * tariff;
+    // O&M is in the EPC offer - deducted only if the estimator deliberately enters a percentage.
+    const maintenance = maintenancePctOfCapex > 0 ? capex * maintenancePctOfCapex : 0;
+    const net = savings - maintenance;
+    const prev = cum;
+    cum += net;
+    if (payback === null && prev < 0 && cum >= 0) payback = n - 1 + -prev / net;
+    cf.push(net);
+    npv += net / (1 + discountRate) ** n;
+    yieldSum += generationKwh;
+    savingsSum += savings;
+    rows.push({ n, generationKwh, tariff, savings, maintenance, net, cumulative: cum });
+  }
+  return {
+    escalation,
+    paybackYears: payback,
+    paybackLabel: payback === null ? `Beyond ${years} years` : paybackLabel(payback),
+    irr: irrOfCashflows(cf),
+    npv,
+    lifetimeSavings: savingsSum,
+    lifetimeGenerationKwh: yieldSum,
+    year1GenerationKwh: yr1,
+    year1Savings: rows[0]?.savings ?? 0,
+    levelisedCostPerKwh: yieldSum ? capex / yieldSum : null,
+    years: rows,
+  };
+}
+
+function paybackLabel(years) {
+  const whole = Math.floor(years);
+  const months = Math.round((years - whole) * 12);
+  const y = months === 12 ? whole + 1 : whole;
+  const m = months === 12 ? 0 : months;
+  return `${y} years ${m} months`;
+}
+
+/**
+ * Brief 3.4 customer feasibility for a priced revision.
+ * @param {object} args
+ * @param {{netExclVat:number, vatAmt:number, grossInclVat:number, vatPct:number}} args.pricing
+ * @param {number} args.designKwp
+ * @param {number} [args.boqCost] - internal cost-side view only (QA note 14), never the headline
+ * @param {object} [args.inputs] - per-project overrides of CUSTOMER_FEASIBILITY_DEFAULTS
+ */
+function runCustomerFeasibility({ pricing, designKwp, boqCost = null, annualConsumptionKwh = null, inputs = {} }) {
+  if (!(pricing?.grossInclVat > 0) || !(designKwp > 0)) return null;
+  const pick = (k, d) => (typeof inputs[k] === 'number' && Number.isFinite(inputs[k]) ? inputs[k] : d);
+  const a = {
+    yieldKwhPerKwp: pick('yieldKwhPerKwp', CUSTOMER_FEASIBILITY_DEFAULTS.yieldKwhPerKwp),
+    degradationPct: pick('degradationPct', CUSTOMER_FEASIBILITY_DEFAULTS.degradationPct),
+    tariffEgpPerKwh: pick('tariffEgpPerKwh', CUSTOMER_FEASIBILITY_DEFAULTS.tariffEgpPerKwh),
+    headlineEscalation: pick('headlineEscalation', CUSTOMER_FEASIBILITY_DEFAULTS.headlineEscalation),
+    discountRate: pick('discountRate', CUSTOMER_FEASIBILITY_DEFAULTS.discountRate),
+    maintenancePctOfCapex: pick('maintenancePctOfCapex', CUSTOMER_FEASIBILITY_DEFAULTS.maintenancePctOfCapex),
+    years: CUSTOMER_FEASIBILITY_DEFAULTS.years,
+  };
+  const sens = Array.isArray(inputs.sensitivityEscalations) && inputs.sensitivityEscalations.every(v => typeof v === 'number' && Number.isFinite(v))
+    ? inputs.sensitivityEscalations
+    : CUSTOMER_FEASIBILITY_DEFAULTS.sensitivityEscalations;
+
+  const capex = pricing.grossInclVat;
+  const common = { capex, designKwp, yieldKwhPerKwp: a.yieldKwhPerKwp, degradationPct: a.degradationPct, tariffEgpPerKwh: a.tariffEgpPerKwh, discountRate: a.discountRate, maintenancePctOfCapex: a.maintenancePctOfCapex, years: a.years };
+  const headline = runCustomerScenario({ ...common, escalation: a.headlineEscalation });
+  const sensitivities = sens.filter(e => e !== a.headlineEscalation).map(e => runCustomerScenario({ ...common, escalation: e }));
+
+  // Internal, cost-side check only (QA note 14: "keep it as a second, clearly labelled line, never as
+  // the headline") - payback if the customer paid the raw BOQ cost.
+  const internalCostView = boqCost > 0 ? (() => {
+    const s = runCustomerScenario({ ...common, capex: boqCost, escalation: a.headlineEscalation });
+    return { capex: boqCost, paybackYears: s.paybackYears, paybackLabel: s.paybackLabel, label: 'Internal cost-side check only (raw BOQ cost) - not the customer case' };
+  })() : null;
+
+  return {
+    model: 'brief-3.4',
+    priceBasis: {
+      netExclVat: pricing.netExclVat,
+      vatPct: pricing.vatPct,
+      vatAmt: pricing.vatAmt,
+      grossInclVat: pricing.grossInclVat,
+      capex,
+      capexBasis: 'Final price incl VAT (year 0)',
+    },
+    assumptions: { ...a, sensitivityEscalations: sens, designKwp, omIncludedInEpc: a.maintenancePctOfCapex === 0 },
+    annualConsumptionKwh: annualConsumptionKwh || null,
+    year1CoverageOfConsumption: annualConsumptionKwh > 0 ? headline.year1GenerationKwh / annualConsumptionKwh : null,
+    headline,
+    sensitivities,
+    internalCostView,
+  };
+}
+
 module.exports = {
   DEGRADATION_TABLE_25YR,
   runScenario,
   simplePaybackWithMonths,
   irrBisection,
   runOnGridFeasibility,
+  CUSTOMER_FEASIBILITY_DEFAULTS,
+  runCustomerScenario,
+  runCustomerFeasibility,
 };

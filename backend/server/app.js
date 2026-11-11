@@ -62,8 +62,20 @@ console.log(
 
 const app = express();
 
+// The public website lead-intake route (/api/v1/crm/public/*) has its OWN, non-credentialed CORS
+// policy and origin allow-list (routes/crm/publicLeadRoute.js, WEBSITE_ALLOWED_ORIGINS). The
+// global policy below must not answer that route's preflights first: `cors` ends every OPTIONS
+// request itself, so an origin allowed only by WEBSITE_ALLOWED_ORIGINS (e.g. a website preview
+// domain) used to fail the preflight here before the route's own policy ever ran, and a credentialed
+// policy has no business on an anonymous, cookie-less endpoint anyway.
+const PUBLIC_CORS_PREFIX = '/api/v1/crm/public/';
+const skipForPublicRoutes = middleware => (req, res, next) => (req.path.startsWith(PUBLIC_CORS_PREFIX) ? next() : middleware(req, res, next));
+// ...and the public route's own policy answers its preflights right here, before
+// ensureDbConnected - a preflight never needs the database.
+app.use(PUBLIC_CORS_PREFIX, require('./middleware/publicLeadCors'));
+
 app.use(
-  cors({
+  skipForPublicRoutes(cors({
     origin(origin, callback) {
       // Requests with no Origin header (curl, server-to-server, same-origin navigation) aren't
       // subject to CORS in the first place - only a browser cross-origin fetch sends one.
@@ -79,7 +91,7 @@ app.use(
     // it ever reaches the server.
     allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
     exposedHeaders: ['set-cookie', 'Content-Disposition'],
-  })
+  }))
 );
 
 app.use(compression());

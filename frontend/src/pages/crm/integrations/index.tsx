@@ -17,8 +17,10 @@ import ErrorSection from "@/components/ui/sections/error";
 import Modal from "@/components/ui/modal";
 import DeleteModal from "@/components/ui/delete-modal";
 import { solidIcons } from "@/components/icons";
-import { CrmIntakeEvent, CrmIntegrationChannel, CrmIntegrationKey, CrmIntegrationState, CrmIntegrationStatus } from "@/types/crm";
+import { CrmIntakeEvent, CrmIntegrationChannel, CrmIntegrationKey, CrmIntegrationStatus } from "@/types/crm";
 import { formatCairoDateTime } from "../_shared/business-date";
+import ChannelConfig, { STATE_BADGE } from "./_components/channel-config";
+import errorMessage from "@/utils/helpers/error-message";
 
 // Reservia CRM - the five lead doors (Change Request 2, section 4) for MD/Admin: whether each one
 // is configured and actually receiving leads, its API keys, and recent deliveries. A door is only
@@ -33,13 +35,6 @@ const CHANNELS: { value: CrmIntegrationChannel; label: string }[] = [
   { value: "tiktok", label: "TikTok Lead Generation" },
   { value: "google_ads", label: "Google Ads lead form" },
 ];
-
-const STATE_BADGE: Record<CrmIntegrationState, { color: string; en: string; ar: string }> = {
-  not_configured: { color: "gray", en: "Not configured", ar: "غير مُعد" },
-  awaiting_first_event: { color: "yellow", en: "Waiting for the first lead", ar: "بانتظار أول عميل" },
-  receiving: { color: "teal", en: "Receiving leads", ar: "يستقبل العملاء" },
-  errors: { color: "red", en: "Errors in the last 7 days", ar: "أخطاء خلال 7 أيام" },
-};
 
 const EVENT_COLOR: Record<CrmIntakeEvent["status"], string> = { processed: "teal", failed: "red", ignored: "gray", processing: "blue" };
 
@@ -100,9 +95,34 @@ export default function CrmIntegrations() {
                 )}
               </Alert>
             )}
+            {!data.status.secretsStorageAvailable && (
+              <Alert color="yellow" variant="light" title={translate("Credentials can only come from server environment variables", "بيانات الاعتماد من متغيرات الخادم فقط")}>
+                {translate(
+                  "The backend has no INTEGRATION_SECRETS_KEY, so secrets cannot be saved from this page (they are never stored unencrypted). Set it in the backend environment to enable saving here.",
+                  "لا يوجد INTEGRATION_SECRETS_KEY في الخادم، لذا لا يمكن حفظ الأسرار من هذه الصفحة (لا تُخزن أبداً دون تشفير).",
+                )}
+              </Alert>
+            )}
             <StatusTable status={data.status} />
+            <Section title={translate("Configuration", "الإعداد")}>
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                {data.status.channels
+                  .filter((c) => ["whatsapp", "meta", "tiktok", "google_ads"].includes(c.channel))
+                  .map((c) => (
+                    <ChannelConfig
+                      key={c.channel}
+                      row={c}
+                      isMd={isMd}
+                      canTest={isMd || systems?.CRM?.role === "admin"}
+                      webhookUrl={c.channel === "whatsapp" ? `${apiBase()}${data.status.endpoints.whatsappWebhook}` : c.channel === "meta" ? `${apiBase()}${data.status.endpoints.metaWebhook}` : c.channel === "google_ads" ? `${apiBase()}${data.status.endpoints.googleAdsWebhook}` : `${apiBase()}/api/v1/crm/integrations/tiktok/leads`}
+                      onChanged={load}
+                    />
+                  ))}
+              </div>
+              <GoogleAdsExport />
+            </Section>
             <KeysSection keys={data.keys} isMd={isMd} onChanged={load} />
-            <EventsSection events={data.events} />
+            <EventsSection events={data.events} onChanged={load} />
             <EndpointsSection endpoints={data.status.endpoints} />
           </div>
         )
@@ -156,10 +176,10 @@ function StatusTable({ status }: { status: CrmIntegrationStatus }) {
                     <span className="text-xs text-gray-400">{c.channel === "website" || c.channel === "csv" ? translate("none needed", "لا يلزم") : translate("API key only", "مفتاح فقط")}</span>
                   ) : (
                     <div className="flex flex-wrap gap-1">
-                      {c.settings.map(s => (
-                        <Tooltip key={s.name} label={s.set ? translate("Set on the server", "مُعد على الخادم") : translate("Missing - set it in the backend environment", "مفقود - أضفه إلى بيئة الخادم")}>
+                      {c.settings.filter(s => s.required || s.set).map(s => (
+                        <Tooltip key={s.key} label={s.set ? (s.source === "env" ? translate("From the server environment", "من بيئة الخادم") : translate("Saved on this page (encrypted)", "محفوظ هنا (مشفر)")) : translate("Missing", "مفقود")}>
                           <Badge size="xs" variant="outline" color={s.set ? "teal" : "red"} className="font-mono normal-case">
-                            {s.set ? "✓" : "✗"} {s.name}
+                            {s.set ? "✓" : "✗"} {s.env}
                           </Badge>
                         </Tooltip>
                       ))}
@@ -331,7 +351,7 @@ function KeysSection({ keys, isMd, onChanged }: { keys: CrmIntegrationKey[]; isM
   );
 }
 
-function EventsSection({ events }: { events: CrmIntakeEvent[] }) {
+function EventsSection({ events, onChanged }: { events: CrmIntakeEvent[]; onChanged: () => void }) {
   const { language, translate } = useLanguage();
   return (
     <Section title={translate("Recent deliveries", "آخر الإرسالات")}>
@@ -361,7 +381,8 @@ function EventsSection({ events }: { events: CrmIntakeEvent[] }) {
                 </Table.Td>
                 <Table.Td>{e.lead ? <Link className="font-mono text-teal-700 hover:underline" to={`/${paths.crm}/${paths.leads}/${e.lead._id}`}>{e.lead.refCode}</Link> : "-"}</Table.Td>
                 <Table.Td className="text-gray-500">
-                  {e.lastError || e.ignoredReason || (e.attempts > 1 ? translate(`${e.attempts} attempts`, `${e.attempts} محاولات`) : "")}
+                  {e.lastError || e.ignoredReason || (e.attempts > 1 ? translate(`${e.attempts} attempts`, `${e.attempts} محاولات`) : "")}{" "}
+                  <RetryEventButton event={e} onChanged={onChanged} />
                 </Table.Td>
               </Table.Tr>
             ))}
@@ -401,5 +422,59 @@ function EndpointsSection({ endpoints }: { endpoints: Record<string, string> }) 
         {translate("Full setup steps per platform: docs/crm-integrations.md in the repository.", "خطوات الإعداد الكاملة لكل منصة: docs/crm-integrations.md في المستودع.")}
       </p>
     </Section>
+  );
+}
+
+/** Google Ads offline conversions (Won deals with a click id) as an import file - see the setup steps. */
+function GoogleAdsExport() {
+  const { language, translate } = useLanguage();
+  const privateRequest = usePrivateRequest();
+  const [busy, setBusy] = useState(false);
+  async function download() {
+    setBusy(true);
+    try {
+      await privateRequest({ url: "crm/integrations/google_ads/offline-conversions.csv", download: true, filename: "google-ads-offline-conversions.csv", language });
+    } catch (e) {
+      notifyError({ language, message: errorMessage(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+      <Button size="xs" variant="light" loading={busy} onClick={download}>
+        {translate("Export Google Ads offline conversions (CSV)", "تصدير تحويلات Google Ads (CSV)")}
+      </Button>
+      <span>{translate("Won deals from the last 90 days that carry a gclid / gbraid / wbraid.", "الصفقات الرابحة خلال 90 يوماً التي تحمل معرف نقرة.")}</span>
+    </div>
+  );
+}
+
+/** Re-processes one failed Meta delivery (fetched again from the Graph API - idempotent). */
+export function RetryEventButton({ event, onChanged }: { event: CrmIntakeEvent; onChanged: () => void }) {
+  const { language, translate } = useLanguage();
+  const privateRequest = usePrivateRequest();
+  const [busy, setBusy] = useState(false);
+  if (event.status !== "failed" || event.channel !== "meta") return null;
+  return (
+    <Button
+      size="compact-xs"
+      variant="light"
+      loading={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const res = await privateRequest({ url: `crm/integrations/events/${event._id}/retry`, method: "POST", language });
+          notifySuccess({ language, message: res.message || translate("Reprocessed.", "تمت إعادة المعالجة.") });
+          onChanged();
+        } catch (e) {
+          notifyError({ language, message: errorMessage(e) });
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {translate("Retry", "إعادة")}
+    </Button>
   );
 }

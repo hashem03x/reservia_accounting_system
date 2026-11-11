@@ -59,7 +59,10 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                     </Tooltip>
                   )}
                 </Table.Td>
-                <Table.Td className="max-w-[260px] truncate text-xs text-gray-500">{line.description}</Table.Td>
+                <Table.Td className="max-w-[320px] text-xs text-gray-500">
+                  <div className="truncate">{line.description}</div>
+                  {line.notes && <div className="whitespace-normal text-[11px] text-amber-700">{line.notes}</div>}
+                </Table.Td>
                 <Table.Td>{line.unit}</Table.Td>
                 <Table.Td className="text-right">
                   <NumberInput size="xs" value={overrides[line.component]?.qty ?? line.qty ?? undefined} onChange={(v) => setOverride(line.component, "qty", v as number)} w={90} />

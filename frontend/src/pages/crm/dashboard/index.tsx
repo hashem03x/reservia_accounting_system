@@ -267,8 +267,14 @@ export default function CrmDashboardPage() {
                     label={translate("Avg hrs to reply", "متوسط ساعات الرد")}
                     value={
                       <>
-                        {data.speed.avgHoursToFirstReply ?? "-"}
-                        <SampleSize n={data.speed.firstReply?.repliedCount ?? 0} />
+                        {data.speed.avgHoursToFirstReply != null ? (
+                          <>
+                            {data.speed.avgHoursToFirstReply}
+                            <SampleSize n={data.speed.firstReply?.repliedCount ?? 0} />
+                          </>
+                        ) : (
+                          <span className="text-xs font-normal text-gray-500">{translate("No replies recorded yet", "لا توجد ردود مسجلة بعد")}</span>
+                        )}
                       </>
                     }
                     hint={translate(
@@ -280,8 +286,17 @@ export default function CrmDashboardPage() {
                     label={translate("% within 8h", "% خلال 8 ساعات")}
                     value={
                       <>
-                        {data.speed.pctWithinSla != null ? `${data.speed.pctWithinSla}%` : "-"}
-                        <SampleSize n={data.speed.firstReply?.slaSampleSize ?? 0} />
+                        {data.speed.pctWithinSla != null ? (
+                          <>
+                            {`${data.speed.pctWithinSla}%`}
+                            <span className="ms-1 text-xs font-normal text-gray-500">
+                              ({data.speed.firstReply?.withinSlaCount ?? 0}/{data.speed.firstReply?.slaSampleSize ?? 0}
+                              {data.speed.firstReply?.overdueUnrepliedCount ? `, ${data.speed.firstReply.overdueUnrepliedCount} ${translate("overdue unreplied", "متأخرة بلا رد")}` : ""})
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-xs font-normal text-gray-500">{translate("No leads with a known outcome yet", "لا يوجد عملاء بنتيجة معروفة بعد")}</span>
+                        )}
                       </>
                     }
                     hint={translate(

@@ -1,6 +1,6 @@
 const express = require('express');
-const cors = require('cors');
-const { PUBLIC_LEAD_ALLOWED_ORIGINS, isAllowedWebsiteOrigin } = require('../../utils/crm/publicLeadOrigins');
+const { PUBLIC_LEAD_ALLOWED_ORIGINS } = require('../../utils/crm/publicLeadOrigins');
+const publicLeadCors = require('../../middleware/publicLeadCors');
 const publicLeadRateLimit = require('../../middleware/publicLeadRateLimit');
 const { publicLeadValidators, waRefValidators } = require('../../utils/validators/crm/publicLeadValidators');
 const publicLeadController = require('../../controller/crm/publicLeadController');
@@ -19,18 +19,7 @@ console.log(`[STARTUP] CRM public lead intake - allowed website origins: ${PUBLI
 
 const router = express.Router();
 
-router.use(
-  cors({
-    origin(origin, callback) {
-      if (isAllowedWebsiteOrigin(origin)) return callback(null, true);
-      console.warn(`[CORS] Rejected public lead submission from disallowed origin: ${origin}`);
-      return callback(null, false);
-    },
-    credentials: false,
-    methods: ['POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Idempotency-Key'],
-  })
-);
+router.use(publicLeadCors);
 
 router.post('/leads', publicLeadRateLimit, publicLeadValidators, publicLeadController.submitPublicLead);
 router.post('/wa-ref', publicLeadRateLimit, waRefValidators, publicLeadController.registerWaRef);
