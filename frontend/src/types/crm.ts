@@ -393,7 +393,21 @@ export type CrmPerformance = {
   speed: CrmPerfSpeed;
   conversion: CrmPerfConversion;
   valueCost: CrmPerfValueCost;
+  // CRM Changes Required (12 Nov 2026), item 4 - official Source (first touch) with the last touch.
+  sources?: CrmPerfSources;
 };
+
+export type CrmPerfSourceRow = {
+  source: string;
+  campaign: string | null;
+  lastTouchSource: string | null;
+  lastTouchCampaign: string | null;
+  leads: number;
+  qualified: number;
+  won: number;
+  lost: number;
+};
+export type CrmPerfSources = { rows: CrmPerfSourceRow[]; total: number; lastTouchDiffers: number };
 
 // Change Request 1, Feature 5A: keyed by (segment, month), not (owner, month) - 'all' is itself a
 // selectable segment value, the single company-wide target entered when a month isn't broken

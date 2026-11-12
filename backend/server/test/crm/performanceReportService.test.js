@@ -201,3 +201,39 @@ maybeTest('getValueCostSection: with a segment filter active, spend and target a
   assert.equal(farmView.costPerQualifiedLeadEgp, 2000, '2000 / 1, only the farm-tagged spend counted');
   assert.equal(farmView.pipelineCoverage.remainingTargetEgp, 500000, "the farm segment's own target, not the 'all' one");
 });
+
+// CRM Changes Required (12 Nov 2026), item 4: Source stays the first touch; Performance and the CSV
+// export also show the last touch (source and campaign).
+maybeTest('item 4: Performance groups leads by first-touch Source with the Last touch (source + campaign) alongside; the CSV export appends the last touch', async () => {
+  const nov = new Date('2026-11-10T09:00:00.000Z');
+  const organicThenAd = await createLeadAt(
+    { source: 'Organic', lastTouch: { source: 'Meta Ads', campaign: 'Cangrow Nov', at: new Date('2026-11-11T09:00:00.000Z') } },
+    nov
+  );
+  await createLeadAt({ source: 'Organic' }, nov);
+  const won = await createLeadAt({ source: 'Google Ads', campaign: 'Search Q4', stage: 'won', lastTouch: { source: 'Google Ads', campaign: 'Search Q4', at: nov } }, nov);
+  await createStageHistoryAt({ lead: won._id, from: 'contacted', to: 'qualified' }, nov);
+  await createLeadAt({ source: 'Organic' }, new Date('2026-10-10T09:00:00.000Z')); // other month
+
+  const s = await performanceReportService.getSourceSection({ year: 2026, month: 11 });
+  assert.equal(s.total, 3);
+  assert.equal(s.lastTouchDiffers, 1);
+  const byKey = Object.fromEntries(s.rows.map(r => [`${r.source}|${r.lastTouchSource}|${r.lastTouchCampaign}`, r]));
+  assert.equal(byKey['Organic|Meta Ads|Cangrow Nov'].leads, 1, 'the official Source stays Organic; the ad is the last touch');
+  assert.equal(byKey['Organic|null|null'].leads, 1);
+  assert.deepEqual(
+    { leads: byKey['Google Ads|Google Ads|Search Q4'].leads, qualified: byKey['Google Ads|Google Ads|Search Q4'].qualified, won: byKey['Google Ads|Google Ads|Search Q4'].won },
+    { leads: 1, qualified: 1, won: 1 }
+  );
+  assert.ok((await performanceReportService.getPerformance({ year: 2026, month: 11 })).sources, 'getPerformance includes the section');
+
+  const { buildLeadExportRows, HEADERS } = require('../../services/crm/leadExportService');
+  assert.deepEqual(HEADERS.slice(-3), ['LastTouchSource', 'LastTouchCampaign', 'LastTouchAt']);
+  assert.equal(HEADERS.indexOf('Source'), 5, 'existing columns keep their positions');
+  const rows = await buildLeadExportRows({ _id: organicThenAd._id });
+  const row = Object.fromEntries(HEADERS.map((h, i) => [h, rows[0][i]]));
+  assert.equal(row.Source, 'Organic');
+  assert.equal(row.LastTouchSource, 'Meta Ads');
+  assert.equal(row.LastTouchCampaign, 'Cangrow Nov');
+  assert.equal(row.LastTouchAt, '2026-11-11T09:00:00.000Z');
+});

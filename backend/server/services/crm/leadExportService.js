@@ -31,7 +31,9 @@ function sanitizeCell(value) {
 
 // Change Request 2: new columns are APPENDED (never inserted) so existing consumers that read by
 // position keep working. FollowUpAt is a calendar date (YYYY-MM-DD), never a timestamp.
-const HEADERS = ['RefCode', 'Name', 'Phone', 'Channel', 'Segment', 'Source', 'Governorate', 'Stage', 'Owner', 'ValueEgp', 'CreatedAt', 'FirstReplyAt', 'FollowUpAt', 'Email', 'Campaign', 'SubmittedAt'];
+// CRM Changes Required (12 Nov 2026), item 4: Source/Campaign stay the FIRST touch; the last touch is
+// appended as its own columns.
+const HEADERS = ['RefCode', 'Name', 'Phone', 'Channel', 'Segment', 'Source', 'Governorate', 'Stage', 'Owner', 'ValueEgp', 'CreatedAt', 'FirstReplyAt', 'FollowUpAt', 'Email', 'Campaign', 'SubmittedAt', 'LastTouchSource', 'LastTouchCampaign', 'LastTouchAt'];
 
 const isoDate = d => (d ? new Date(d).toISOString() : '');
 // `.lean()` skips the model's caster, so a not-yet-migrated legacy Date is converted here too.
@@ -55,6 +57,9 @@ function rowFor(lead) {
     sanitizeCell(lead.email),
     sanitizeCell(lead.campaign || lead.utmCampaign),
     isoDate(lead.submittedAt || lead.createdAt),
+    sanitizeCell(lead.lastTouch?.source),
+    sanitizeCell(lead.lastTouch?.campaign || lead.lastTouch?.utmCampaign),
+    isoDate(lead.lastTouch?.at),
   ];
 }
 

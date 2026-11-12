@@ -315,13 +315,54 @@ async function getValueCostSection({ year, month, ownerId, segment }) {
   };
 }
 
+// Stages at or past Qualified - a lead that ever entered one of them counts as qualified.
+const QUALIFIED_OR_LATER = ['qualified', 'site_survey', 'proposal_sent', 'negotiation', 'won'];
+const lastTouchCampaign = t => (t && (t.campaign || t.utmCampaign)) || null;
+
+/**
+ * CRM Changes Required (12 Nov 2026), item 4: the lead's Source stays the FIRST touch (decided by
+ * the MD); reports also show the LAST touch (source and campaign) so a lead that first came in
+ * organically and later clicked an ad is visible as such. One row per (first-touch source, last-touch
+ * source, last-touch campaign) for the leads that arrived in the month.
+ */
+async function getSourceSection({ year, month, ownerId, segment }) {
+  const { start, end } = monthBounds(year, month);
+  const leads = await Lead.find(leadIdsFilter({ start, end, ownerId, segment }))
+    .select('_id source campaign utmCampaign lastTouch stage')
+    .lean();
+  const qualified = new Set(
+    (await StageHistory.distinct('lead', { lead: { $in: leads.map(l => l._id) }, to: { $in: QUALIFIED_OR_LATER } })).map(String)
+  );
+  const groups = new Map();
+  for (const l of leads) {
+    const source = l.source || 'Other';
+    const lastSource = (l.lastTouch && l.lastTouch.source) || null;
+    const lastCampaign = lastTouchCampaign(l.lastTouch);
+    const key = JSON.stringify([source, lastSource, lastCampaign]);
+    const g = groups.get(key) || { source, campaign: l.campaign || l.utmCampaign || null, lastTouchSource: lastSource, lastTouchCampaign: lastCampaign, leads: 0, qualified: 0, won: 0, lost: 0 };
+    g.leads += 1;
+    if (qualified.has(String(l._id)) || l.stage === 'won') g.qualified += 1;
+    if (l.stage === 'won') g.won += 1;
+    if (l.stage === 'lost') g.lost += 1;
+    groups.set(key, g);
+  }
+  const rows = [...groups.values()].sort((a, b) => b.leads - a.leads || a.source.localeCompare(b.source));
+  return {
+    rows,
+    total: leads.length,
+    // Leads whose last touch credits a different source than the official (first-touch) Source.
+    lastTouchDiffers: leads.filter(l => l.lastTouch && l.lastTouch.source && l.lastTouch.source !== (l.source || 'Other')).length,
+  };
+}
+
 async function getPerformance({ year, month, ownerId, segment }) {
-  const [speed, conversion, valueCost] = await Promise.all([
+  const [speed, conversion, valueCost, sources] = await Promise.all([
     getSpeedSection({ year, month, ownerId, segment }),
     getConversionSection({ year, month, ownerId, segment }),
     getValueCostSection({ year, month, ownerId, segment }),
+    getSourceSection({ year, month, ownerId, segment }),
   ]);
-  return { year, month, owner: ownerId || null, segment: segment || null, speed, conversion, valueCost };
+  return { year, month, owner: ownerId || null, segment: segment || null, speed, conversion, valueCost, sources };
 }
 
-module.exports = { getPerformance, getSpeedSection, getConversionSection, getValueCostSection, computeStageDurations, SMALL_SAMPLE_THRESHOLD };
+module.exports = { getPerformance, getSpeedSection, getConversionSection, getValueCostSection, getSourceSection, computeStageDurations, SMALL_SAMPLE_THRESHOLD };

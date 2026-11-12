@@ -293,6 +293,58 @@ export default function CrmPerformancePage() {
                 </div>
               </div>
             </section>
+
+            {/* D. Sources - CRM Changes Required, item 4: Source is the first touch; Last touch alongside. */}
+            {data.sources && (
+              <section data-testid="perf-sources">
+                <h3 className="mb-2 text-sm font-semibold" style={{ color: TEAL }}>
+                  {translate("Leads by source", "العملاء حسب المصدر")}
+                </h3>
+                <div className="rounded-lg border border-gray-100 p-3">
+                  <p className="mb-2 text-xs text-gray-500">
+                    {translate(
+                      "Source is the first touch (it never changes). Last touch is the most recent campaign or ad click, for reference.",
+                      "المصدر هو أول نقطة تواصل (لا يتغير). آخر نقطة تواصل هي أحدث حملة أو نقرة إعلان، للاطلاع فقط.",
+                    )}{" "}
+                    {data.sources.lastTouchDiffers > 0 &&
+                      translate(
+                        `${data.sources.lastTouchDiffers} of ${data.sources.total} leads have a different last touch.`,
+                        `${data.sources.lastTouchDiffers} من ${data.sources.total} عملاء لديهم آخر نقطة تواصل مختلفة.`,
+                      )}
+                  </p>
+                  {data.sources.rows.length === 0 ? (
+                    <p className="text-xs text-gray-400">{translate("No leads in this month.", "لا يوجد عملاء في هذا الشهر.")}</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table verticalSpacing={2} fz="xs" miw={560}>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>{translate("Source (first touch)", "المصدر (أول تواصل)")}</Table.Th>
+                            <Table.Th>{translate("Campaign", "الحملة")}</Table.Th>
+                            <Table.Th>{translate("Last touch", "آخر تواصل")}</Table.Th>
+                            <Table.Th className="text-right">{translate("Leads", "العملاء")}</Table.Th>
+                            <Table.Th className="text-right">{translate("Qualified", "مؤهل")}</Table.Th>
+                            <Table.Th className="text-right">{translate("Won", "فوز")}</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {data.sources.rows.map((r) => (
+                            <Table.Tr key={`${r.source}|${r.lastTouchSource}|${r.lastTouchCampaign}`}>
+                              <Table.Td>{r.source}</Table.Td>
+                              <Table.Td className="text-gray-500">{r.campaign || "-"}</Table.Td>
+                              <Table.Td>{r.lastTouchSource ? [r.lastTouchSource, r.lastTouchCampaign].filter(Boolean).join(" · ") : "-"}</Table.Td>
+                              <Table.Td className="text-right">{r.leads}</Table.Td>
+                              <Table.Td className="text-right">{r.qualified}</Table.Td>
+                              <Table.Td className="text-right">{r.won}</Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
           </div>
         )
       )}
