@@ -140,6 +140,8 @@ import WebsiteNavigationPage from "@/pages/website/navigation";
 import WebsiteIntegrationsPage from "@/pages/website/integrations";
 import WebsiteCustomCodePage from "@/pages/website/custom-code";
 import WebsiteActivityPage from "@/pages/website/activity";
+import WebsiteVisualEditor from "@/pages/website/visual-editor";
+import WebsiteCodeWorkspace from "@/pages/website/code";
 
 export default function App() {
   useColorScheme();
@@ -413,12 +415,14 @@ export default function App() {
                   <Route path={paths.website + "/" + paths.websiteMedia} element={<WebsiteMediaLibrary />} />
                   <Route path={paths.website + "/" + paths.websiteNavigation} element={<WebsiteNavigationPage />} />
                   <Route path={paths.website + "/" + paths.websiteActivity} element={<WebsiteActivityPage />} />
+                  <Route path={paths.website + "/" + paths.websiteVisualEditor} element={<WebsiteVisualEditor />} />
                   {/* Site settings: website admins only (backend: settings.manage). */}
                   <Route element={<WebsiteRoleGuard allowedRoles={["admin"]} />}>
                     <Route path={paths.website + "/" + paths.websiteSettings} element={<WebsiteSettingsPage />} />
                     {/* Tracking and executable code: administrators only (backend: integrations.manage / code.manage). */}
                     <Route path={paths.website + "/" + paths.websiteIntegrations} element={<WebsiteIntegrationsPage />} />
                     <Route path={paths.website + "/" + paths.websiteCustomCode} element={<WebsiteCustomCodePage />} />
+                    <Route path={paths.website + "/" + paths.websiteCode} element={<WebsiteCodeWorkspace />} />
                   </Route>
                 </Route>
                 <Route path={paths.website + "/*"} element={<NotFound />} />

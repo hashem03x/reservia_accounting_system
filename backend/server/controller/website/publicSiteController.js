@@ -11,6 +11,7 @@ const { resolveSite, resolveDraft, normalizePath } = require('../../utils/websit
 const { publicNavigation } = require('../../utils/website/navigation');
 const { publicIntegrations } = require('./integrationController');
 const { verifyPreviewToken } = require('../../utils/website/previewToken');
+const { publishedVisual } = require('./visualController');
 
 // Website Management - the public, read-only feed the website build reads (Reservia_Website's
 // scripts/build-site.mjs fetches it once per build; a Publish triggers that build through the
@@ -106,7 +107,7 @@ const getPublicSite = asyncHandler(async (req, res) => {
   const [settings, pages, integrationsDoc] = await Promise.all([loadSettings(), loadPublishedPages(), WebsiteIntegration.findById(WebsiteIntegration.SINGLETON_ID).lean()]);
   const site = resolveSite(pages, settings);
   const seoBySlug = new Map(site.pages.map(p => [p.slug, p]));
-  const [navigation, customCode] = await Promise.all([loadNavigation(pages), loadCustomCode(pages)]);
+  const [navigation, customCode, visual] = await Promise.all([loadNavigation(pages), loadCustomCode(pages), publishedVisual()]);
 
   const data = {
     // Bumped only when the shape changes INCOMPATIBLY - every field added since v1 is optional,
@@ -118,6 +119,8 @@ const getPublicSite = asyncHandler(async (req, res) => {
     navigation,
     integrations: publicIntegrations(integrationsDoc),
     customCode,
+    // The published Visual Editor design of the real website (applied by the website build).
+    visual,
     pages: pages.map(p => pageOutput(p, seoBySlug.get(p.slug))),
   };
 

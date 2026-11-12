@@ -72,7 +72,8 @@ const PUBLIC_CORS_PREFIX = '/api/v1/crm/public/';
 // The website's draft-preview read (/api/v1/website/public/preview/*) is likewise anonymous and
 // cookie-less, with its own GET-only website-origin policy (routes/website/publicSiteRoute.js).
 const PREVIEW_CORS_PREFIX = '/api/v1/website/public/preview/';
-const skipForPublicRoutes = middleware => (req, res, next) => (req.path.startsWith(PUBLIC_CORS_PREFIX) || req.path.startsWith(PREVIEW_CORS_PREFIX) ? next() : middleware(req, res, next));
+const VISUAL_PREVIEW_CORS_PREFIX = '/api/v1/website/public/visual-preview/';
+const skipForPublicRoutes = middleware => (req, res, next) => (req.path.startsWith(PUBLIC_CORS_PREFIX) || req.path.startsWith(PREVIEW_CORS_PREFIX) || req.path.startsWith(VISUAL_PREVIEW_CORS_PREFIX) ? next() : middleware(req, res, next));
 // ...and the public route's own policy answers its preflights right here, before
 // ensureDbConnected - a preflight never needs the database.
 app.use(PUBLIC_CORS_PREFIX, require('./middleware/publicLeadCors'));
