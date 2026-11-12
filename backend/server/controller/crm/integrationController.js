@@ -156,7 +156,10 @@ exports.getStatus = asyncHandler(async (req, res) => {
     if (channel === 'website' || channel === 'csv') {
       // No external credentials: connected once real submissions arrive; an error if the newest event failed.
       const failedAt = failBy[channel] ? new Date(failBy[channel]) : null;
-      const state = failedAt && (!lastProcessedAt || failedAt > new Date(lastProcessedAt)) ? 'error' : lastProcessedAt ? 'connected' : 'awaiting_verification';
+      // CRM Changes Required, item 7: CSV import needs no credentials - before the first import it is
+      // 'ready' (not 'awaiting verification', which read as "not working yet").
+      const idle = channel === 'csv' ? 'ready' : 'awaiting_verification';
+      const state = failedAt && (!lastProcessedAt || failedAt > new Date(lastProcessedAt)) ? 'error' : lastProcessedAt ? 'connected' : idle;
       channels.push({ ...base, state, enabled: true, settings: [], lastSuccessAt: lastProcessedAt, lastError: state === 'error' ? { at: failedAt, message: 'The latest submission failed - see the event log.' } : null });
       continue;
     }

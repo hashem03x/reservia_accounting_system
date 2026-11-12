@@ -442,7 +442,7 @@ export type CrmAdSpendRow = { _id: string; channel: string; segment: CrmSegment 
 
 export type CrmIntegrationChannel = "website" | "whatsapp" | "meta" | "tiktok" | "google_ads";
 // CRM C6: what has actually been VERIFIED - credentials alone are never "connected".
-export type CrmIntegrationState = "not_configured" | "awaiting_verification" | "connected" | "error" | "disabled";
+export type CrmIntegrationState = "not_configured" | "awaiting_verification" | "ready" | "connected" | "error" | "disabled";
 export type CrmIntegrationSetting = {
   key: string;
   label: string;

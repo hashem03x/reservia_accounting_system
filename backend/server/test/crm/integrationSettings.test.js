@@ -145,3 +145,24 @@ maybeTest('WhatsApp webhook uses the verify token / app secret saved on the page
   await post({ entry: [{ changes: [{ field: 'smb_message_echoes', value: { message_echoes: [{ id: 'wamid.OUT1', to: '201011112222', timestamp: String(now - 60), type: 'text', text: { body: 'dup' } }] } }] }] });
   assert.equal(await Activity.countDocuments({ lead: lead._id, type: 'whatsapp_out' }), 1, 'a redelivered echo is recorded once');
 });
+
+// CRM Changes Required (12 Nov 2026), item 5: "WhatsApp's last test failed" - with no server key the
+// token cannot be saved on the page, so the test can only fail; the message now names the real fix.
+maybeTest('item 5: a WhatsApp test that fails for a missing token while secrets cannot be stored names INTEGRATION_SECRETS_KEY', async () => {
+  const saved = process.env.INTEGRATION_SECRETS_KEY;
+  const savedToken = process.env.WHATSAPP_ACCESS_TOKEN;
+  delete process.env.INTEGRATION_SECRETS_KEY;
+  delete process.env.WHATSAPP_ACCESS_TOKEN;
+  try {
+    const r = await settings.testConnection('whatsapp', { fetchImpl: async () => { throw new Error('must not call Meta without a token'); } });
+    assert.equal(r.ok, false);
+    assert.match(r.message, /access token and phone number ID/);
+    assert.match(r.message, /INTEGRATION_SECRETS_KEY is set on the server/);
+  } finally {
+    process.env.INTEGRATION_SECRETS_KEY = saved;
+    if (savedToken !== undefined) process.env.WHATSAPP_ACCESS_TOKEN = savedToken;
+  }
+  // With the key configured, the same failure keeps its plain message.
+  const r2 = await settings.testConnection('whatsapp', { fetchImpl: async () => { throw new Error('no call'); } });
+  assert.doesNotMatch(r2.message, /INTEGRATION_SECRETS_KEY/);
+});

@@ -325,3 +325,53 @@ npm run db:audit-crm-test-leads -- --archive=RSV-0811-0008 --actor-email=<MD ema
 
 Archiving keeps the lead, its history and its timeline. It can be undone from the lead page
 (Restore). Nothing is ever deleted.
+
+## 12. CRM Changes Required, 12 November 2026 - what changed and what Reservia must do
+
+| # | Change | Where |
+|---|---|---|
+| 1 | A lead needs a governorate to move to Qualified or later (and to Won). The stage dialog asks for it. Won is refused while the Deal Engine sync has failed, with the reason shown next to Retry. Lead details (governorate, name, email, segment, bill, size, partner) can be edited on the lead page. The website form's typed location is matched to the official governorate (English or Arabic); an unrecognized entry stays on the intake note instead. | `utils/crm/stageRules.js`, `services/crm/leadService.js`, `PATCH /api/v1/crm/leads/:id` |
+| 2 | A repeat enquiry on a Lost lead reopens it to New, records it in the stage history and timeline, sets its Deal Engine deal back to Open, and emails the owner (or the CRM MD when unassigned). Archived leads are not reopened. | `leadService.js#reopenLostOnRepeat` |
+| 3 | Archive / Restore and "Show archived leads" are for the **CRM MD role only** (server-enforced). A login holding CRM Admin sees a disabled "Archive (MD only)" button that says so. To give a login the MD role: Central Portal > Users > system access > CRM = MD. | lead page |
+| 4 | Performance has a "Leads by source" table: Source (first touch), campaign, **Last touch** (source and campaign), leads, qualified, won. The leads CSV export appends `LastTouchSource`, `LastTouchCampaign`, `LastTouchAt`. | `performanceReportService.js#getSourceSection`, `leadExportService.js` |
+| 5 | A connection test that fails because a token is missing while secrets cannot be stored now says that `INTEGRATION_SECRETS_KEY` is the fix. | `integrationSettingsService.js#testConnection` |
+| 7 | CSV import shows **Ready (no import yet)** instead of "Awaiting verification". It already keeps Source, Campaign and the original time (`SubmittedAt`, section 9). | Integrations page |
+
+### Item 5: setting `INTEGRATION_SECRETS_KEY` (server administrator, once)
+
+1. Generate 32 random bytes on any machine and keep the value private:
+   `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+2. Vercel > the backend project > Settings > Environment Variables > Production:
+   `INTEGRATION_SECRETS_KEY` = that value. Redeploy the backend.
+3. Never change or lose it afterwards: the secrets saved on the Integrations page are encrypted with
+   it and cannot be read with another key (they would have to be typed in again).
+
+The values each platform needs, and where to find them, are in sections 4 (WhatsApp), 5 (Meta
+Lead Ads), 6 (TikTok) and 7 (Google Ads) above; the Integrations page lists the same fields.
+
+**Why the WhatsApp test of 11 November failed.** Without `INTEGRATION_SECRETS_KEY` the access token
+cannot be saved on the Integrations page, so - unless `WHATSAPP_ACCESS_TOKEN` was set as a server
+variable - the test ran without a token and stopped at "Enter the access token and phone number ID".
+The exact recorded message is on the Integrations page (WhatsApp > Last test). If it instead shows a
+Meta error code, that code is Meta's answer: 190 = expired or invalid token (use a System User
+permanent token), 100 = wrong phone number ID, 10/200 = the token lacks the
+`whatsapp_business_messaging` permission.
+
+### Item 6: what connects each door (Reservia's side)
+
+| Door | Built | Needs from Reservia |
+|---|---|---|
+| WhatsApp | Yes (webhook, signature check, auto-assign, original time) | Meta Business login holder (action D); System User token, phone number ID, app secret; webhook callback set in Meta |
+| Meta Lead Ads | Yes (webhook, lead fetch, campaign/ad set/ad names, original `created_time`) | Page access token, app secret, page subscribed to `leadgen` |
+| Google Ads lead form | Yes (webhook with the CRM API key) | The webhook URL and key entered on the lead form asset |
+| TikTok | Through the unified intake endpoint with a CRM API key (section 2/6); the native TikTok webhook is not built | One API key per sender (action C); TikTok developer app if the native webhook is wanted |
+
+Every door gives the lead its Source, campaign and the original submission time, and auto-assigns
+an owner from the CRM **Sales** pool. With nobody holding the Sales role (action A), leads arrive
+unassigned and the CRM managers are emailed - the Integrations page shows that warning.
+
+### Test leads (section 6 of the change list)
+
+Archive only after the MD confirms, with the audited script (dry run first, section 11 step 3):
+`RSV-0811-0008`, `RSV-1011-0009`, `RSV-1211-0011`, `RSV-1111-0010`. Leave `RSV-1211-0012` until its
+owner is known. The developer does not archive production leads.

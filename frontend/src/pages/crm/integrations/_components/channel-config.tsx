@@ -9,6 +9,7 @@ import { formatCairoDateTime } from "../../_shared/business-date";
 export const STATE_BADGE: Record<CrmIntegrationState, { color: string; en: string; ar: string }> = {
   not_configured: { color: "gray", en: "Not configured", ar: "غير مُعد" },
   awaiting_verification: { color: "yellow", en: "Awaiting verification", ar: "بانتظار التحقق" },
+  ready: { color: "blue", en: "Ready (no import yet)", ar: "جاهز (لا يوجد استيراد بعد)" },
   connected: { color: "teal", en: "Connected", ar: "متصل" },
   error: { color: "red", en: "Error", ar: "خطأ" },
   disabled: { color: "dark", en: "Disabled", ar: "معطل" },

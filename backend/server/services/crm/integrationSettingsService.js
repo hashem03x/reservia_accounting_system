@@ -231,6 +231,12 @@ async function testConnection(channel, { fetchImpl = globalThis.fetch } = {}) {
   assertChannel(channel);
   const { values } = await getAll(channel);
   const result = await TESTS[channel](values, fetchImpl);
+  // CRM Changes Required, item 5: a test that failed because a secret is missing while the server
+  // cannot store secrets says so - the real fix is the server key, not re-typing the token.
+  const missingSecret = Object.entries(CHANNELS[channel].fields).some(([k, d]) => d.secret && !values[k]);
+  if (!result.ok && missingSecret && !secretBox.isConfigured()) {
+    result.message = `${result.message} Secrets cannot be saved on this page until INTEGRATION_SECRETS_KEY is set on the server (or set the credential as a server environment variable).`;
+  }
   await recordStatus(channel, { lastTestAt: new Date(), lastTestOk: result.ok, lastTestMessage: result.message.slice(0, 300), ...(result.ok ? {} : { lastErrorAt: new Date(), lastError: result.message.slice(0, 300) }) });
   return result;
 }
