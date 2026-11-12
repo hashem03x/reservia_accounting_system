@@ -52,6 +52,9 @@ const commercialProjectSchema = new Schema(
     // Prefilled from the lead at handoff - an estimate for the estimator, never a priced figure.
     estimatedValueEgp: { type: Number, min: 0, default: null },
     estimatedKwp: { type: Number, min: 0, default: null },
+    // Deal Engine C8: the customer's tariff band and voltage level (EgyptERA tariffs differ by both).
+    tariffBand: { type: String, trim: true, maxlength: 80, default: null },
+    voltageLevel: { type: String, enum: ['LV', 'MV', 'HV', null], default: null },
     leadSource: { type: String, trim: true, default: null },
     leadCampaign: { type: String, trim: true, default: null },
     // e.g. "Region mapped from governorate Alexandria (nearest Rates region) - confirm install/transport rates."

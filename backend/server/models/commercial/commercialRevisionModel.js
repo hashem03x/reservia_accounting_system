@@ -56,6 +56,14 @@ const commercialRevisionSchema = new Schema(
     isCurrent: { type: Boolean, default: true },
 
     engineeringInput: { type: Schema.Types.Mixed, default: {} },
+    // Deal Engine C11: the rule set this revision was calculated with (dealEngineSettings.RULE_VERSION)
+    // and the settings it used. Revisions calculated before 12 Nov 2026 have none - their per-kWp
+    // figure is on INSTALLED kWp and is labelled so.
+    ruleVersion: { type: String, default: null },
+    engineSettingsApplied: { type: Schema.Types.Mixed, default: null },
+    // Deal Engine C24: set when a confirmed supplier price upload changed an item this revision uses.
+    priceChangedSinceCalculation: { type: Boolean, default: false },
+    priceChangedItems: { type: [String], default: [] },
     engineeringResult: { type: Schema.Types.Mixed, default: {} },
 
     boqLines: { type: [boqLineSchema], default: [] },

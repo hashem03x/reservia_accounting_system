@@ -52,6 +52,9 @@ export default function CreateProjectModal({
   const [category, setCategory] = useState<CommercialCategory | "">("");
   const [scope, setScope] = useState<CommercialScope>("Supply & Installation");
   const [subCategory, setSubCategory] = useState("");
+  // Deal Engine C8 - the customer's tariff band and voltage level.
+  const [tariffBand, setTariffBand] = useState("");
+  const [voltageLevel, setVoltageLevel] = useState<string>("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // (Re)load the form whenever it opens - from the project when editing, blank when creating.
@@ -68,6 +71,8 @@ export default function CreateProjectModal({
       setCategory(project.category);
       setScope(project.scope);
       setSubCategory(project.subCategory || "");
+      setTariffBand(project.tariffBand || "");
+      setVoltageLevel(project.voltageLevel || "");
     } else {
       setName("");
       setCustomer(null);
@@ -99,7 +104,7 @@ export default function CreateProjectModal({
   function handleSubmit() {
     if (!validate()) return;
     handleRequest(language, setLoading, setError, async () => {
-      const data = { name: name.trim(), customer: customer!._id, country, region: region || null, category, scope, subCategory: subCategory || null };
+      const data = { name: name.trim(), customer: customer!._id, country, region: region || null, category, scope, subCategory: subCategory || null, tariffBand: tariffBand.trim() || null, voltageLevel: voltageLevel || null };
       if (editing) {
         const res = await privateRequest({ url: `commercial/projects/${project!._id}`, method: "PATCH", data, language });
         onSaved?.(res.data as CommercialProject);
@@ -180,6 +185,26 @@ export default function CreateProjectModal({
           allowDeselect={false}
           onChange={(v) => setScope((v as CommercialScope) || "Supply & Installation")}
         />
+        <div className="grid grid-cols-2 gap-3">
+          <TextInput
+            label={translate("Tariff band (optional)", "شريحة التعريفة (اختياري)")}
+            placeholder={translate("e.g. Commercial tier 3", "مثال: تجاري الشريحة 3")}
+            value={tariffBand}
+            maxLength={80}
+            onChange={(e) => setTariffBand(e.target.value)}
+          />
+          <Select
+            label={translate("Voltage level (optional)", "مستوى الجهد (اختياري)")}
+            data={[
+              { value: "LV", label: translate("Low voltage (380 V)", "جهد منخفض (380 فولت)") },
+              { value: "MV", label: translate("Medium voltage", "جهد متوسط") },
+              { value: "HV", label: translate("High voltage", "جهد عالي") },
+            ]}
+            value={voltageLevel || null}
+            onChange={(v) => setVoltageLevel(v || "")}
+            clearable
+          />
+        </div>
         {recalcWarning && (
           <Alert color="orange" variant="light" title={translate("The current revision will be reset to Draft", "سيتم إعادة النسخة الحالية إلى مسودة")}>
             {translate(

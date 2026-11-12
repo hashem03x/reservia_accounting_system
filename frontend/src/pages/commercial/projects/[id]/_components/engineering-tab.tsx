@@ -4,6 +4,7 @@ import EmptySection from "@/components/ui/sections/empty";
 import OnGridForm from "./on-grid-form";
 import OffGridForm from "./off-grid-form";
 import PumpingForm from "./pumping-form";
+import DesignChecks from "./design-checks";
 
 // Dispatches to the right dynamic engineering form for the project's category - each category's
 // REAL inputs (see services/commercial/boqService.js on the backend), never one generic form.
@@ -23,7 +24,12 @@ export default function EngineeringTab({ project, revision, onSaved }: { project
   }
 
   if (project.category === "On-Grid C&I" || project.category === "Utility Scale") {
-    return <OnGridForm project={project} revision={revision} onSaved={onSaved} />;
+    return (
+      <div className="flex flex-col gap-4">
+        <DesignChecks revision={revision} />
+        <OnGridForm project={project} revision={revision} onSaved={onSaved} />
+      </div>
+    );
   }
   if (project.category === "Off-Grid") {
     return <OffGridForm project={project} revision={revision} onSaved={onSaved} />;

@@ -220,11 +220,49 @@ function selectAcBreaker({ inverterRatedKw, acVoltage = 400, powerFactor = 0.98,
   return { designCurrentA, ratingA: selected.ratingA, type: selected.type, unitPrice: selected.price, totalCost };
 }
 
-/** On-Grid Design!A66:D66 - MC4 connectors, strings*2+4, priced per piece. */
-function sizeMc4({ totalStrings, pricePerPiece }) {
+/**
+ * MC4 connectors. Rule 'strings' = On-Grid Design!A66:D66, strings*2+4 pieces (R74 master - the
+ * default); rule 'modulePairs' = ceil(modules / 2) pairs (Rev03 workbook). Deal Engine C1: the MD
+ * chooses on the Pricing Configuration; the unit price comes from there too.
+ */
+function sizeMc4({ totalStrings, pricePerPiece, rule = 'strings', modules = 0 }) {
+  if (rule === 'modulePairs') {
+    const quantity = Math.ceil(modules / 2);
+    return { quantity, unit: 'pair', rule, unitPrice: pricePerPiece, totalCost: round(quantity * pricePerPiece, 2) };
+  }
   const quantity = totalStrings * 2 + 4; // B66
   const totalCost = round(quantity * pricePerPiece, 2); // D66
-  return { quantity, unitPrice: pricePerPiece, totalCost };
+  return { quantity, unit: 'pcs', rule: 'strings', unitPrice: pricePerPiece, totalCost };
+}
+
+/**
+ * Deal Engine C3 - inverter loading. Picks the SMALLEST Price Book inverter whose DC/AC ratio
+ * (DC kWp / inverter kW) is inside [min, max] (default 1.10 to 1.30). When no inverter in the Price
+ * Book lands inside the band, the one closest to it is used, preferring units inside the flag limits
+ * (default 1.00 to 1.35) - and the check says so. Never silently returns an out-of-limit unit when a
+ * better one exists.
+ */
+function selectInverterByLoading({ dcKwp, inverters, ratio }) {
+  if (!inverters.length) throw new Error('Grid inverter catalog is empty');
+  const scored = inverters.map(inv => {
+    const r = dcKwp / inv.ratedKw;
+    const dist = r < ratio.min ? ratio.min - r : r > ratio.max ? r - ratio.max : 0;
+    return { inv, r, dist, withinFlags: r >= ratio.flagBelow && r <= ratio.flagAbove };
+  });
+  const inRange = scored.filter(s => s.dist === 0).sort((a, b) => a.inv.ratedKw - b.inv.ratedKw);
+  if (inRange.length) return inRange[0].inv;
+  const pool = scored.some(s => s.withinFlags) ? scored.filter(s => s.withinFlags) : scored;
+  pool.sort((a, b) => a.dist - b.dist || a.inv.ratedKw - b.inv.ratedKw);
+  return pool[0].inv;
+}
+
+/** C3 Design-tab check for a DC/AC ratio: in the target band, outside it, or flagged below/above. */
+function dcAcCheck(value, ratio, forced = false) {
+  let status = 'in-range';
+  if (value < ratio.flagBelow) status = 'below';
+  else if (value > ratio.flagAbove) status = 'above';
+  else if (value < ratio.min || value > ratio.max) status = 'outside-target';
+  return { ratio: value, target: { min: ratio.min, max: ratio.max }, flagLimits: { below: ratio.flagBelow, above: ratio.flagAbove }, status, flagged: status === 'below' || status === 'above', forced };
 }
 
 /**
@@ -297,16 +335,28 @@ function runOnGridDesign(input, catalog) {
     kWp, module, inverterCandidates, structureType, modulesPerStringOverride,
     acLengthM, acPricePerMOverride, country, region, minCellTempC = 0,
     dcCableBrand = null, siteCosts: siteCostInput = null,
+    // Deal Engine settings (dealEngineSettings.js) - absent for the legacy R74 behaviour.
+    engineSettings = null, inverterModel = null,
   } = input;
 
   const pv = sizePvModules({ kWp, module });
+  // C3: with engine settings, the inverter is chosen by loading ratio (or forced by the estimator);
+  // without them (older callers, the R74 port's own tests) the workbook's nearest-kWp rule applies.
+  const forcedInverter = inverterModel ? inverterCandidates.find(i => i.model === inverterModel) : null;
+  if (inverterModel && !forcedInverter) throw new Error(`Inverter "${inverterModel}" is not in the Price Book`);
+  const chooseInverter = () =>
+    forcedInverter ||
+    (engineSettings
+      ? selectInverterByLoading({ dcKwp: pv.selectedCapacityKwp, inverters: inverterCandidates, ratio: engineSettings.dcAcRatio })
+      : selectGridInverter({ selectedCapacityKwp: pv.selectedCapacityKwp, inverters: inverterCandidates }));
   const modulesPerString = modulesPerStringOverride || suggestModulesPerString({
-    modulesRequired: pv.modulesRequired, module, inverter: selectGridInverter({ selectedCapacityKwp: pv.selectedCapacityKwp, inverters: inverterCandidates }), minCellTempC,
+    modulesRequired: pv.modulesRequired, module, inverter: chooseInverter(), minCellTempC,
   }) || pv.modulesRequired;
   const strings = sizeStrings({ modulesRequired: pv.modulesRequired, modulesPerString, module, minCellTempC });
-  const inverter = selectGridInverter({ selectedCapacityKwp: pv.selectedCapacityKwp, inverters: inverterCandidates });
+  const inverter = chooseInverter();
   const inverterQty = 1; // On-Grid Design!D14 - manual input, default 1 in the reference scenario
   const dcAcRatio = round(pv.selectedCapacityKwp / (inverter.ratedKw * inverterQty), 6); // G14
+  const dcAc = engineSettings ? dcAcCheck(dcAcRatio, engineSettings.dcAcRatio, !!forcedInverter) : null;
 
   const designKwp = kWp;
   const dcRoute = catalog.DC_CABLE_ROUTE_M_PER_KWP > 0 ? catalog.DC_CABLE_ROUTE_M_PER_KWP : 8;
@@ -315,14 +365,20 @@ function runOnGridDesign(input, catalog) {
   const acCable = sizeAcCable({ inverterRatedKw: inverter.ratedKw, acLengthM, overridePricePerM: acPricePerMOverride, catalog });
   const tray = sizeCableTray({ dcCableLengthM: dcCable.lengthM, acCableLengthM: acLengthM, rolls: catalog.CABLE_TRAY_ROLLS });
   const breaker = selectAcBreaker({ inverterRatedKw: inverter.ratedKw, inverterQty, breakers: catalog.AC_BREAKERS });
-  const mc4 = sizeMc4({ totalStrings: strings.parallelStrings, pricePerPiece: catalog.MC4_CONNECTOR_PRICE_PER_PIECE });
+  const mc4 = sizeMc4({
+    totalStrings: strings.parallelStrings,
+    modules: pv.modulesRequired,
+    rule: engineSettings?.mc4?.rule || 'strings',
+    pricePerPiece: engineSettings?.mc4?.unitPriceEgp ?? catalog.MC4_CONNECTOR_PRICE_PER_PIECE,
+  });
   const adb = selectAcDistributionBoard({ selectedCapacityKwp: pv.selectedCapacityKwp, boards: catalog.AC_DISTRIBUTION_BOARDS });
 
   const isEgypt = country === 'Egypt';
   // Standing per-kWp rates from the Rates matrix (Finance/admin-editable), defaulting to the R74
   // workbook's own values when a Rates config predates these fields.
   const earthingRate = catalog.EARTHING_RATE_EGP_PER_KWP > 0 ? catalog.EARTHING_RATE_EGP_PER_KWP : 100;
-  const accessoriesRate = catalog.ACCESSORIES_RATE_EGP_PER_KWP > 0 ? catalog.ACCESSORIES_RATE_EGP_PER_KWP : 85;
+  // C2: the Pricing Configuration value wins when the MD sets one; else the Rates matrix value.
+  const accessoriesRate = engineSettings?.accessoriesRateEgpPerKwp > 0 ? engineSettings.accessoriesRateEgpPerKwp : catalog.ACCESSORIES_RATE_EGP_PER_KWP > 0 ? catalog.ACCESSORIES_RATE_EGP_PER_KWP : 85;
   const earthing = { qty: designKwp, rate: earthingRate, total: round(designKwp * earthingRate, 2) }; // BOQ!E18/F18/G18
   const accessories = { qty: designKwp, rate: accessoriesRate, total: round(designKwp * accessoriesRate, 2) }; // BOQ!E19/F19/G19
   const installRate = isEgypt ? catalog.INSTALL_RATES_BY_REGION[region]?.[installationBand(designKwp) - 1] : null;
@@ -356,7 +412,7 @@ function runOnGridDesign(input, catalog) {
     { no: 5, component: 'AC Cable', description: acCable.cableSize, unit: 'm', qty: acCable.lengthM ?? null, unitPrice: acCable.pricePerM, total: acCable.totalCost, flag: acCable.flag },
     { no: 6, component: 'Cable Tray', description: tray.description, unit: 'roll', qty: tray.totalRolls, unitPrice: tray.totalRolls ? round(tray.totalCost / tray.totalRolls, 2) : null, total: tray.totalCost },
     { no: 7, component: 'AC Circuit Breaker', description: `${breaker.ratingA} A ${breaker.type}`, unit: 'pcs', qty: inverterQty, unitPrice: breaker.unitPrice, total: breaker.totalCost },
-    { no: 8, component: 'MC4 Connectors', description: 'MC4 PV Connector', unit: 'pcs', qty: mc4.quantity, unitPrice: mc4.unitPrice, total: mc4.totalCost },
+    { no: 8, component: 'MC4 Connectors', description: mc4.rule === 'modulePairs' ? 'MC4 PV Connector pairs - ceil(modules / 2)' : 'MC4 PV Connector', unit: mc4.unit, qty: mc4.quantity, unitPrice: mc4.unitPrice, total: mc4.totalCost },
     { no: 9, component: 'AC Distribution Board', description: adb.dimensionsCm, unit: 'pcs', qty: adb.quantity ?? null, unitPrice: adb.unitPrice, total: adb.totalCost },
     { no: 11, component: 'Earthing', description: `Earthing works - ${earthingRate} EGP per design kWp`, unit: 'kWp', qty: earthing.qty, unitPrice: earthing.rate, total: earthing.total },
     { no: 12, component: 'Accessories', description: `PV system accessories - ${accessoriesRate} EGP per design kWp`, unit: 'kWp', qty: accessories.qty, unitPrice: accessories.rate, total: accessories.total },
@@ -373,7 +429,7 @@ function runOnGridDesign(input, catalog) {
   const perKwp = designKwp ? round(total / designKwp, 10) : null; // BOQ!G24
 
   return {
-    design: { pv, modulesPerString, strings, layoutCheck, inverter, inverterQty, dcAcRatio, dcCable, structure, acCable, tray, breaker, mc4, adb, siteCosts: site },
+    design: { pv, modulesPerString, strings, layoutCheck, inverter, inverterQty, dcAcRatio, dcAc, dcCable, structure, acCable, tray, breaker, mc4, adb, siteCosts: site },
     // `finalCapacityKwp` keeps its name for API compatibility; it is now the DESIGN kWp (the basis
     // every per-kWp line and the price per kWp use). The string-layout capacity is in design.layoutCheck.
     boq: { lines, total, perKwp, finalCapacityKwp: designKwp, designKwp },
@@ -381,6 +437,8 @@ function runOnGridDesign(input, catalog) {
 }
 
 module.exports = {
+  selectInverterByLoading,
+  dcAcCheck,
   estimateCapacityFromArea,
   sizePvModules,
   suggestModulesPerString,

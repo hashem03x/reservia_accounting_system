@@ -7,6 +7,7 @@ const pricingConfigService = require('./pricingConfigService');
 const { pickLevers, LEVER_KEYS } = require('./commercialPricingService');
 const { resolveProjectRegion } = require('../../utils/commercial/regions');
 const { computeMdRequired } = require('./approvalService');
+const dealEngineSettings = require('./dealEngineSettings');
 
 // Reservia Commercial - revision lifecycle. Mirrors services/crm/quotationService.js's
 // versioning: creating a new revision never edits a previous one, it flips the previous
@@ -66,12 +67,14 @@ async function computeAndSave(project, engineeringInput, { manualOverrides = {},
   const vatPct = resolveVat({ project, config, pricingOverrides, revision: applyCurrentConfig ? null : revision });
   applied.vatPct = vatPct;
 
+  // Deal Engine settings (C1-C4, C7, C9, discount rate) - recorded on the revision with the rule version (C11).
+  const engineSettings = dealEngineSettings.engineSettings(config);
   const built = await boqService.buildBoq({
-    category: project.category, engineeringInput, country: project.country, region: project.region, manualOverrides,
+    category: project.category, engineeringInput, country: project.country, region: project.region, manualOverrides, engineSettings,
   });
   const pricing = boqService.priceBoq({ boqTotal: built.boqTotal, kWp: built.kWp, vatPct, levers, discountAuthorityPct: applied.discountAuthorityPct ?? config.discountAuthorityPct });
   const { feasibility, dieselComparison } = boqService.computeFeasibility({
-    category: project.category, engineeringInput, pricing, boqTotal: built.boqTotal, kWp: built.kWp, engineeringResult: built.engineeringResult,
+    category: project.category, engineeringInput, pricing, boqTotal: built.boqTotal, kWp: built.kWp, engineeringResult: built.engineeringResult, engineSettings, region: project.region,
   });
 
   return {
@@ -85,6 +88,9 @@ async function computeAndSave(project, engineeringInput, { manualOverrides = {},
     feasibility: feasibility || null,
     dieselComparison: dieselComparison || null,
     status: 'Calculated',
+    ruleVersion: dealEngineSettings.RULE_VERSION,
+    engineSettingsApplied: { configVersion: config.version, ...engineSettings },
+    priceChangedSinceCalculation: false,
     invalidatedAt: null,
     invalidationReason: null,
     createdBy: revision ? revision.createdBy : userId,

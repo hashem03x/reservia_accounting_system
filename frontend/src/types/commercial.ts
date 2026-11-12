@@ -64,6 +64,19 @@ export type PricingConfig = {
   updatedByName: string | null;
   updatedAt: string;
   canManage?: boolean;
+  engine?: DealEngineSettings;
+  proposal?: Record<string, unknown>;
+};
+
+// Deal Engine settings (backend services/commercial/dealEngineSettings.js ENGINE_DEFAULTS).
+export type DealEngineSettings = {
+  mc4: { rule: "strings" | "modulePairs"; unitPriceEgp: number };
+  accessoriesRateEgpPerKwp: number | null;
+  dcAcRatio: { min: number; max: number; flagBelow: number; flagAbove: number };
+  yield: { defaultKwhPerKwp: number; byRegion: Record<string, number>; basis: string };
+  discountRate: number;
+  inverterReplacementYear: number;
+  twoPhaseEscalation: { first: number; years: number; then: number };
 };
 
 export type PricingConfigApplied = {
@@ -123,6 +136,11 @@ export type CommercialRevision = {
   isCurrent: boolean;
   engineeringInput: Record<string, unknown>;
   engineeringResult: Record<string, unknown>;
+  // Deal Engine C11 / C24.
+  ruleVersion?: string | null;
+  engineSettingsApplied?: Record<string, unknown> | null;
+  priceChangedSinceCalculation?: boolean;
+  priceChangedItems?: string[];
   boqLines: BoqLine[];
   boqTotal: number | null;
   pricing: CommercialPricing;
@@ -149,6 +167,8 @@ export type CommercialProject = {
   customer: { _id: string; name: string; email?: string; phone?: string; customerNumber?: string };
   country: string;
   region: string | null;
+  tariffBand?: string | null;
+  voltageLevel?: "LV" | "MV" | "HV" | null;
   category: CommercialCategory;
   subCategory: string | null;
   currency: string;

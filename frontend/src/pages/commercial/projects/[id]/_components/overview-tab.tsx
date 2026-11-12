@@ -7,6 +7,7 @@ import { formatAmount } from "@/utils/helpers/format-amount";
 import SectionCard from "@/components/ui/section-card";
 import { outlineIcons } from "@/components/icons";
 import { STAGE_META, approverName, statusColor } from "../../../_shared/approvalStages";
+import { perKwpBasis, ruleVersionLabel } from "../../../_shared/ruleVersion";
 
 export default function OverviewTab({
   project,
@@ -116,9 +117,14 @@ export default function OverviewTab({
             <Row label={translate("Net Price (excl. VAT)", "السعر الصافي (قبل الضريبة)")} value={formatAmount(revision.pricing?.netExclVat, project.currency)} />
             <Row label={translate("Final Price (incl. VAT)", "السعر النهائي (شامل الضريبة)")} value={formatAmount(revision.pricing?.grossInclVat, project.currency)} />
             <Row
-              label={translate("Price per design kWp (excl. VAT)", "السعر لكل كيلوواط تصميمي (قبل الضريبة)")}
+              label={
+                perKwpBasis(revision) === "installed"
+                  ? translate("Price per installed kWp (excl. VAT) - calculated before 12 Nov 2026", "السعر لكل كيلوواط مركب (قبل الضريبة) - حُسب قبل 12 نوفمبر 2026")
+                  : translate("Price per design kWp (excl. VAT)", "السعر لكل كيلوواط تصميمي (قبل الضريبة)")
+              }
               value={revision.pricing?.perKwpExclVat != null ? `${formatAmount(revision.pricing.perKwpExclVat, project.currency)}${revision.pricing.designKwp ? ` / ${revision.pricing.designKwp} kWp` : ""}` : "-"}
             />
+            <Row label={translate("Rule version", "إصدار القواعد")} value={ruleVersionLabel(revision)} />
             <Row label={translate("Gross Profit", "الربح الإجمالي")} value={revision.pricing?.grossProfitPct != null ? `${(revision.pricing.grossProfitPct * 100).toFixed(1)}%` : "-"} />
             <Row label={translate("Release Status", "حالة الإصدار")} value={<Badge color={revision.releaseStatus === "APPROVED FOR ISSUE" ? "teal" : "yellow"} variant="light">{revision.releaseStatus}</Badge>} />
           </>

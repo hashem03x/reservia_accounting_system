@@ -141,8 +141,31 @@ function irrOfCashflows(cf) {
   return irrBisection(cf);
 }
 
-/** One escalation scenario of the brief 3.4 model. */
-function runCustomerScenario({ capex, designKwp, yieldKwhPerKwp, degradationPct, tariffEgpPerKwh, escalation, discountRate, maintenancePctOfCapex, years }) {
+/**
+ * Tariff multiplier for year n. `escalation` is a flat yearly rate, or (Deal Engine C9) a two-phase
+ * path { first, years, then }: `first` for the first `years` years, then `then`.
+ */
+function tariffFactor(escalation, n) {
+  if (escalation && typeof escalation === 'object') {
+    const early = Math.min(n - 1, escalation.years);
+    const late = Math.max(0, n - 1 - escalation.years);
+    return (1 + escalation.first) ** early * (1 + escalation.then) ** late;
+  }
+  return (1 + escalation) ** (n - 1);
+}
+
+function escalationLabel(escalation) {
+  if (escalation && typeof escalation === 'object') return `+${round(escalation.first * 100, 2)}% for ${escalation.years} years, then +${round(escalation.then * 100, 2)}%`;
+  return escalation === 0 ? 'Flat tariff' : `+${round(escalation * 100, 2)}% per year`;
+}
+
+/**
+ * One escalation scenario of the brief 3.4 model.
+ * Deal Engine additions (12 Nov 2026): `inverterReplacement` { year, costEgp } is deducted in its year
+ * (C7); the result carries the discounted payback (C6), the undiscounted "simple cost per kWh" under
+ * its own name and a discounted LCOE (C6).
+ */
+function runCustomerScenario({ capex, designKwp, yieldKwhPerKwp, degradationPct, tariffEgpPerKwh, escalation, discountRate, maintenancePctOfCapex, years, inverterReplacement = null }) {
   const yr1 = designKwp * yieldKwhPerKwp;
   const cf = [-capex];
   const rows = [];
@@ -151,33 +174,55 @@ function runCustomerScenario({ capex, designKwp, yieldKwhPerKwp, degradationPct,
   let yieldSum = 0;
   let savingsSum = 0;
   let npv = -capex;
+  let discCum = -capex;
+  let discountedPayback = null;
+  let discYield = 0;
+  let discCosts = capex;
   for (let n = 1; n <= years; n++) {
     const generationKwh = yr1 * (1 - degradationPct) ** (n - 1);
-    const tariff = tariffEgpPerKwh * (1 + escalation) ** (n - 1);
+    const tariff = tariffEgpPerKwh * tariffFactor(escalation, n);
     const savings = generationKwh * tariff;
     // O&M is in the EPC offer - deducted only if the estimator deliberately enters a percentage.
     const maintenance = maintenancePctOfCapex > 0 ? capex * maintenancePctOfCapex : 0;
-    const net = savings - maintenance;
+    const replacement = inverterReplacement && inverterReplacement.year === n ? inverterReplacement.costEgp : 0;
+    const net = savings - maintenance - replacement;
     const prev = cum;
     cum += net;
     if (payback === null && prev < 0 && cum >= 0) payback = n - 1 + -prev / net;
+    const df = (1 + discountRate) ** n;
+    const prevDisc = discCum;
+    discCum += net / df;
+    if (discountedPayback === null && prevDisc < 0 && discCum >= 0) discountedPayback = n - 1 + -prevDisc / (net / df);
     cf.push(net);
-    npv += net / (1 + discountRate) ** n;
+    npv += net / df;
     yieldSum += generationKwh;
     savingsSum += savings;
-    rows.push({ n, generationKwh, tariff, savings, maintenance, net, cumulative: cum });
+    discYield += generationKwh / df;
+    discCosts += (maintenance + replacement) / df;
+    rows.push({ n, generationKwh, tariff, savings, maintenance, inverterReplacement: replacement, net, cumulative: cum });
   }
+  const simpleCostPerKwh = yieldSum ? capex / yieldSum : null;
   return {
     escalation,
+    label: escalationLabel(escalation),
     paybackYears: payback,
     paybackLabel: payback === null ? `Beyond ${years} years` : paybackLabel(payback),
+    // C6: the stricter companion figure - cash flows discounted at the discount rate.
+    discountedPaybackYears: discountedPayback,
+    discountedPaybackLabel: discountedPayback === null ? `Beyond ${years} years` : paybackLabel(discountedPayback),
     irr: irrOfCashflows(cf),
     npv,
     lifetimeSavings: savingsSum,
     lifetimeGenerationKwh: yieldSum,
     year1GenerationKwh: yr1,
     year1Savings: rows[0]?.savings ?? 0,
-    levelisedCostPerKwh: yieldSum ? capex / yieldSum : null,
+    // C6: price / 25-year generation, UNDISCOUNTED - never to be called LCOE in a customer document.
+    // `levelisedCostPerKwh` keeps the same value for revisions and screens that read the old name.
+    simpleCostPerKwh,
+    levelisedCostPerKwh: simpleCostPerKwh,
+    // C6: true LCOE - costs (capex, O&M, inverter replacement) and energy discounted at the same rate.
+    lcoePerKwh: discYield ? discCosts / discYield : null,
+    inverterReplacement: inverterReplacement || null,
     years: rows,
   };
 }
@@ -215,9 +260,17 @@ function runCustomerFeasibility({ pricing, designKwp, boqCost = null, annualCons
     : CUSTOMER_FEASIBILITY_DEFAULTS.sensitivityEscalations;
 
   const capex = pricing.grossInclVat;
-  const common = { capex, designKwp, yieldKwhPerKwp: a.yieldKwhPerKwp, degradationPct: a.degradationPct, tariffEgpPerKwh: a.tariffEgpPerKwh, discountRate: a.discountRate, maintenancePctOfCapex: a.maintenancePctOfCapex, years: a.years };
+  // C7: an inverter replacement in the chosen year, at today's Price Book price (when supplied).
+  const inverterReplacement = inputs.inverterReplacement && inputs.inverterReplacement.costEgp > 0 && inputs.inverterReplacement.year >= 1 && inputs.inverterReplacement.year <= a.years ? { year: inputs.inverterReplacement.year, costEgp: inputs.inverterReplacement.costEgp } : null;
+  const common = { capex, designKwp, yieldKwhPerKwp: a.yieldKwhPerKwp, degradationPct: a.degradationPct, tariffEgpPerKwh: a.tariffEgpPerKwh, discountRate: a.discountRate, maintenancePctOfCapex: a.maintenancePctOfCapex, years: a.years, inverterReplacement };
   const headline = runCustomerScenario({ ...common, escalation: a.headlineEscalation });
   const sensitivities = sens.filter(e => e !== a.headlineEscalation).map(e => runCustomerScenario({ ...common, escalation: e }));
+  // C9: the two-phase path (10% for 5 years, then 5%) as a further scenario, when configured.
+  const tp = inputs.twoPhaseEscalation;
+  if (tp && [tp.first, tp.years, tp.then].every(v => typeof v === 'number' && Number.isFinite(v))) sensitivities.push(runCustomerScenario({ ...common, escalation: { first: tp.first, years: tp.years, then: tp.then } }));
+  // C5: performance ratio (IEC 61724-1) = specific yield / annual in-plane irradiation - only when entered.
+  const irradiation = typeof inputs.annualIrradiationKwhPerM2 === 'number' && inputs.annualIrradiationKwhPerM2 > 0 ? inputs.annualIrradiationKwhPerM2 : null;
+  const performanceRatio = irradiation ? a.yieldKwhPerKwp / irradiation : null;
 
   // Internal, cost-side check only (QA note 14: "keep it as a second, clearly labelled line, never as
   // the headline") - payback if the customer paid the raw BOQ cost.
@@ -236,7 +289,21 @@ function runCustomerFeasibility({ pricing, designKwp, boqCost = null, annualCons
       capex,
       capexBasis: 'Final price incl VAT (year 0)',
     },
-    assumptions: { ...a, sensitivityEscalations: sens, designKwp, omIncludedInEpc: a.maintenancePctOfCapex === 0 },
+    assumptions: {
+      ...a,
+      sensitivityEscalations: sens,
+      designKwp,
+      omIncludedInEpc: a.maintenancePctOfCapex === 0,
+      // Where the yield and the tariff came from (C4, C8), for the proposal's basis table.
+      yieldSource: inputs.yieldSource || null,
+      yieldBasis: inputs.yieldBasis || null,
+      tariffSource: inputs.tariffSource || null,
+      tariffNote: inputs.tariffNote || null,
+      annualBillEgp: inputs.annualBillEgp || null,
+      inverterReplacement,
+      twoPhaseEscalation: tp || null,
+    },
+    performance: { annualIrradiationKwhPerM2: irradiation, performanceRatio, status: performanceRatio === null ? 'pending' : 'computed' },
     annualConsumptionKwh: annualConsumptionKwh || null,
     year1CoverageOfConsumption: annualConsumptionKwh > 0 ? headline.year1GenerationKwh / annualConsumptionKwh : null,
     headline,
@@ -254,4 +321,6 @@ module.exports = {
   CUSTOMER_FEASIBILITY_DEFAULTS,
   runCustomerScenario,
   runCustomerFeasibility,
+  tariffFactor,
+  escalationLabel,
 };

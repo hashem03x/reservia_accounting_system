@@ -32,6 +32,11 @@ const pricingConfigSchema = new Schema(
     categoryOverrides: { type: Schema.Types.Mixed, default: {} },
     // Stage 2 must review a discount above this (brief section 4 / 9: "approves any discount above 5%").
     discountAuthorityPct: { type: Number, min: 0, max: 1, default: 0.05 },
+    // Deal Engine settings (services/commercial/dealEngineSettings.js): engine rules (MC4, accessories,
+    // DC/AC, yield table, discount rate, inverter replacement, two-phase tariff) and the proposal's
+    // text blocks. Stored sparse; defaults are merged on read.
+    engine: { type: Schema.Types.Mixed, default: {} },
+    proposal: { type: Schema.Types.Mixed, default: {} },
     note: { type: String, trim: true, maxlength: 500, default: '' },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     updatedByName: { type: String, default: null },

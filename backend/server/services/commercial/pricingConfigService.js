@@ -4,6 +4,7 @@ const ApiError = require('../../utils/apiError');
 const PricingConfig = require('../../models/commercial/pricingConfigModel');
 const { BRIEF_DEFAULT_LEVERS, LEVER_KEYS } = require('./commercialPricingService');
 const { CATEGORIES } = require('../../utils/commercial/constants');
+const { engineSettings, proposalSettings, validateEngine, validateProposal } = require('./dealEngineSettings');
 
 const { Audit } = PricingConfig;
 const KEY = 'default';
@@ -27,7 +28,7 @@ async function getActiveConfig() {
 
 function normalize(doc) {
   const vat = doc.vatPctByCountry instanceof Map ? Object.fromEntries(doc.vatPctByCountry) : { ...(doc.vatPctByCountry || {}) };
-  return { ...doc, vatPctByCountry: vat, categoryOverrides: doc.categoryOverrides || {} };
+  return { ...doc, vatPctByCountry: vat, categoryOverrides: doc.categoryOverrides || {}, engine: engineSettings(doc), proposal: proposalSettings(doc) };
 }
 
 /** Levers a NEW revision of `category` starts with. */
@@ -62,7 +63,11 @@ async function updateConfig(patch, { userId = null, userName = null } = {}) {
     vatPctByCountry: { ...current.vatPctByCountry },
     categoryOverrides: { ...current.categoryOverrides },
     discountAuthorityPct: current.discountAuthorityPct,
+    engine: current.engine,
+    proposal: current.proposal,
   };
+  if (patch.engine !== undefined) next.engine = validateEngine(patch.engine, current.engine);
+  if (patch.proposal !== undefined) next.proposal = validateProposal(patch.proposal, current.proposal);
   if (patch.levers && typeof patch.levers === 'object') {
     for (const k of LEVER_KEYS) {
       if (patch.levers[k] === undefined) continue;
@@ -106,7 +111,7 @@ async function updateConfig(patch, { userId = null, userName = null } = {}) {
     next.discountAuthorityPct = v;
   }
 
-  const before = { levers: current.levers, vatPctByCountry: current.vatPctByCountry, categoryOverrides: current.categoryOverrides, discountAuthorityPct: current.discountAuthorityPct };
+  const before = { levers: current.levers, vatPctByCountry: current.vatPctByCountry, categoryOverrides: current.categoryOverrides, discountAuthorityPct: current.discountAuthorityPct, engine: current.engine, proposal: current.proposal };
   const version = current.version + 1;
   const note = String(patch.note || '').trim().slice(0, 500);
   const updated = await PricingConfig.findOneAndUpdate(

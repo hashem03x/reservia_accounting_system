@@ -19,7 +19,7 @@ const STAGE_POPULATE = ['stage1.approver', 'stage2.approver', 'md.approver'].map
 // Fields a project edit may change (QA B1: "Name, customer, country, region and scope"), plus the
 // optional header details the New Project form also sets. Identifiers, rollups, CRM linkage and
 // outcome are never writable through this endpoint.
-const EDITABLE_FIELDS = ['name', 'customer', 'country', 'region', 'category', 'subCategory', 'scope', 'currency', 'fxRate', 'designerUser'];
+const EDITABLE_FIELDS = ['name', 'customer', 'country', 'region', 'category', 'subCategory', 'scope', 'currency', 'fxRate', 'designerUser', 'tariffBand', 'voltageLevel'];
 // A change to any of these alters the figures of the current revision (rates, VAT, engine).
 const RECALC_FIELDS = ['country', 'region', 'category'];
 
@@ -72,6 +72,12 @@ async function validateHeader(body, { existing = null } = {}) {
     else values.scope = scope;
   }
   if (has('subCategory')) values.subCategory = body.subCategory ? String(body.subCategory).trim().slice(0, 100) : null;
+  // Deal Engine C8 - informative, never changes a figure (no revision reset).
+  if (has('tariffBand')) values.tariffBand = body.tariffBand ? String(body.tariffBand).trim().slice(0, 80) : null;
+  if (has('voltageLevel')) {
+    if (body.voltageLevel && !['LV', 'MV', 'HV'].includes(body.voltageLevel)) errors.push('Voltage level must be LV, MV or HV.');
+    else values.voltageLevel = body.voltageLevel || null;
+  }
   if (has('currency')) values.currency = String(body.currency || 'EGP').trim().slice(0, 10) || 'EGP';
   if (has('fxRate')) {
     if (body.fxRate === null || body.fxRate === '') values.fxRate = null;

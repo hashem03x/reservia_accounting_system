@@ -564,3 +564,77 @@ maybeTest('C8: with no active CRM Sales user, an automated lead is never silentl
   assert.ok(mail, 'the CRM MD was notified');
   assert.match(mail.subject, /UNASSIGNED/);
 });
+
+// ===================================================================================== Deal Engine 12 Nov
+// Deal Engine Changes Required (12 Nov 2026): C1-C4, C5-C9, C11 on the A4 reference deal. The figures
+// it prints are the new baseline the change list asks for ("re-run A4 after steps 2 and 3").
+maybeTest('Deal Engine C1-C11: reference deal re-baseline - inverter by loading, Cairo yield, tariff from bills, four scenarios, inverter replacement, discounted payback, LCOE, rule version; MC4/accessories from configuration', async () => {
+  const t = await team();
+  const customer = await makeCustomer('Mostafa Ragab', '01077770000');
+  const project = await createReferenceProject(t.sales, customer);
+  const input = { ...REF_INPUT, annualBillEgp: 434000 }; // 155,000 kWh x 2.80
+  const rev = (await api('POST', `/api/v1/commercial/revisions/project/${project._id}`, { user: t.sales, body: { engineeringInput: input } })).body.data;
+  const d = rev.engineeringResult;
+  // C3: 80.275 kWp DC -> the 60 kW unit (1.34; no Price Book inverter lands inside 1.10-1.30), not the 100 kW one.
+  assert.equal(d.inverter.model, 'SUN2000-60KTL-M0');
+  assert.equal(d.dcAc.status, 'outside-target');
+  assert.equal(d.dcAc.flagged, false);
+  // C4 / C8: region yield and the tariff from the bills.
+  const a = rev.feasibility.assumptions;
+  assert.equal(a.yieldKwhPerKwp, 1734);
+  assert.equal(a.yieldSource, 'region');
+  assert.match(a.yieldBasis, /NREL ATB 2024/);
+  assert.equal(a.tariffEgpPerKwh, 2.8);
+  assert.equal(a.tariffSource, 'bill');
+  // C9: headline + 3% + flat + two-phase.
+  assert.deepEqual([rev.feasibility.headline.label, ...rev.feasibility.sensitivities.map(s => s.label)], ['+10% per year', '+3% per year', 'Flat tariff', '+10% for 5 years, then +5%']);
+  // C7: the inverter replacement in year 13 at today's Price Book price.
+  const h = rev.feasibility.headline;
+  assert.deepEqual(h.inverterReplacement, { year: 13, costEgp: d.inverter.price });
+  assert.equal(h.years[12].inverterReplacement, d.inverter.price);
+  assert.ok(h.years[12].net < h.years[12].savings - d.inverter.price + 1);
+  // C6: discounted payback is the stricter figure; simple cost per kWh and a real LCOE.
+  assert.ok(h.discountedPaybackYears > h.paybackYears, `${h.discountedPaybackYears} > ${h.paybackYears}`);
+  assert.ok(h.simpleCostPerKwh > 0 && h.lcoePerKwh > h.simpleCostPerKwh, 'discounted LCOE is above the undiscounted ratio');
+  // C5: no irradiation entered -> PR pending.
+  assert.equal(rev.feasibility.performance.status, 'pending');
+  // C11 + C1/C2 defaults (today's behaviour).
+  assert.equal(rev.ruleVersion, 'DE-2026-11-12');
+  const mc4 = rev.boqLines.find(l => l.component === 'MC4 Connectors');
+  assert.equal(mc4.unitPrice, 40);
+  assert.equal(mc4.qty, d.strings.parallelStrings * 2 + 4);
+  assert.equal(rev.boqLines.find(l => l.component === 'Accessories').unitPrice, 85);
+  console.log(`[A4 re-baseline 12 Nov] inverter ${d.inverter.model} DC/AC ${d.dcAc.ratio.toFixed(3)} | COGS ${rev.pricing.cogs.toFixed(2)} | net ${rev.pricing.netExclVat.toFixed(2)} | incl VAT ${rev.pricing.grossInclVat.toFixed(2)} | per kWp ${rev.pricing.perKwpExclVat.toFixed(2)} | GP ${(rev.pricing.grossProfitPct * 100).toFixed(1)}% | payback ${h.paybackLabel} (discounted ${h.discountedPaybackLabel}) | IRR ${(h.irr * 100).toFixed(1)}% | NPV ${h.npv.toFixed(0)} | 25yr savings ${h.lifetimeSavings.toFixed(0)} | simple cost/kWh ${h.simpleCostPerKwh.toFixed(3)} | LCOE ${h.lcoePerKwh.toFixed(3)}`);
+
+  // C3 acceptance: forcing the 100 kW unit shows the below-range flag.
+  const forced = (await api('PATCH', `/api/v1/commercial/revisions/${rev._id}`, { user: t.sales, body: { engineeringInput: { ...input, inverterModel: 'SUN2000-100KTL-M2' } } })).body.data;
+  assert.equal(forced.engineeringResult.dcAc.status, 'below');
+  assert.equal(forced.engineeringResult.dcAc.flagged, true);
+  assert.equal(forced.engineeringResult.dcAc.forced, true);
+
+  // C4 site override with its source; C8 a typed tariff that differs from the bills keeps its note; C5 PR.
+  const site = (await api('PATCH', `/api/v1/commercial/revisions/${rev._id}`, {
+    user: t.sales,
+    body: { engineeringInput: { ...input, yieldKwhPerKwp: 1760, yieldSourceNote: 'PVsyst simulation, 12 Nov', tariffEgpPerKwh: 2.55, tariffNote: 'Medium voltage tariff per the latest bill', annualIrradiationKwhPerM2: 2200 } },
+  })).body.data;
+  assert.equal(site.feasibility.assumptions.yieldSource, 'site');
+  assert.equal(site.feasibility.assumptions.yieldBasis, 'PVsyst simulation, 12 Nov');
+  assert.equal(site.feasibility.assumptions.tariffSource, 'manual-override');
+  assert.equal(site.feasibility.assumptions.tariffNote, 'Medium voltage tariff per the latest bill');
+  assert.equal(site.feasibility.performance.status, 'computed');
+  assert.ok(Math.abs(site.feasibility.performance.performanceRatio - 1760 / 2200) < 1e-9);
+
+  // C1 / C2: the MD switches MC4 to per-module pairs at 90 and accessories to 150 - new revisions follow.
+  const cfg = await api('PUT', '/api/v1/commercial/pricing-config', { user: t.md, body: { engine: { mc4: { rule: 'modulePairs', unitPriceEgp: 90 }, accessoriesRateEgpPerKwp: 150 }, note: 'MD decision C1/C2' } });
+  assert.equal(cfg.status, 200, JSON.stringify(cfg.body));
+  assert.equal(cfg.body.data.engine.mc4.rule, 'modulePairs');
+  const p2 = await createReferenceProject(t.sales, customer);
+  const rev2 = (await api('POST', `/api/v1/commercial/revisions/project/${p2._id}`, { user: t.sales, body: { engineeringInput: input } })).body.data;
+  const mc4b = rev2.boqLines.find(l => l.component === 'MC4 Connectors');
+  assert.deepEqual([mc4b.qty, mc4b.unit, mc4b.unitPrice], [85, 'pair', 90]);
+  assert.equal(rev2.boqLines.find(l => l.component === 'Accessories').unitPrice, 150);
+  assert.equal(rev2.engineSettingsApplied.mc4.rule, 'modulePairs');
+  // A bad configuration value is refused.
+  assert.equal((await api('PUT', '/api/v1/commercial/pricing-config', { user: t.md, body: { engine: { mc4: { rule: 'guess' } } } })).status, 400);
+  assert.equal((await api('PUT', '/api/v1/commercial/pricing-config', { user: t.sales, body: { engine: { discountRate: 0.3 } } })).status, 403);
+});

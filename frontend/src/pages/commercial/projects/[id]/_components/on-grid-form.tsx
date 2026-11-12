@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, NumberInput, Select } from "@mantine/core";
+import { Button, NumberInput, Select, TextInput } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
@@ -19,6 +19,7 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
   const { translate, language } = useLanguage();
   const pvModules = useMaterialOptions("PV Modules");
   const dcCables = useMaterialOptions("DC Cable");
+  const inverters = useMaterialOptions("On-Grid Inverter");
   const input = (revision?.engineeringInput || {}) as Record<string, unknown>;
   const n = (k: string) => (typeof input[k] === "number" ? (input[k] as number) : undefined);
 
@@ -31,16 +32,26 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
   const [modulesPerStringOverride, setModulesPerStringOverride] = useState<number | "">(n("modulesPerStringOverride") ?? "");
   const [siteCrew, setSiteCrew] = useState<number | "">(n("siteCrew") ?? "");
   const [siteDays, setSiteDays] = useState<number | "">(n("siteDays") ?? "");
+  // Deal Engine C3: blank = automatic (the smallest inverter giving DC/AC 1.10 to 1.30); a model forces it.
+  const [inverterModel, setInverterModel] = useState<string>((input.inverterModel as string) || "");
 
   // Feasibility (brief 3.4). Legacy R74 inputs are mapped: escalationScenario3 (10%) -> headline.
   const legacyHeadline = n("escalationScenario3");
   const [annualConsumptionKwh, setAnnualConsumptionKwh] = useState<number | "">(n("annualConsumptionKwh") ?? "");
-  const [tariffEgpPerKwh, setTariffEgpPerKwh] = useState<number | "">(n("tariffEgpPerKwh") ?? 2.8);
+  // Deal Engine C8: blank tariff = bill / kWh when the bills are entered (else the 2.80 reference value).
+  const [annualBillEgp, setAnnualBillEgp] = useState<number | "">(n("annualBillEgp") ?? "");
+  const [tariffEgpPerKwh, setTariffEgpPerKwh] = useState<number | "">(n("tariffEgpPerKwh") ?? "");
+  const [tariffNote, setTariffNote] = useState<string>((input.tariffNote as string) || "");
   const [headlineEscalation, setHeadlineEscalation] = useState<number>(toPct(n("headlineEscalation") ?? legacyHeadline ?? 0.1));
   const sens = Array.isArray(input.sensitivityEscalations) ? (input.sensitivityEscalations as number[]) : [0.03, 0];
   const [sensitivity1, setSensitivity1] = useState<number>(toPct(sens[0] ?? 0.03));
   const [sensitivity2, setSensitivity2] = useState<number>(toPct(sens[1] ?? 0));
-  const [yieldKwhPerKwp, setYieldKwhPerKwp] = useState<number | "">(n("yieldKwhPerKwp") ?? 1800);
+  // Deal Engine C4: blank = the region's configured yield; a value is a per-site override with its source.
+  const [yieldKwhPerKwp, setYieldKwhPerKwp] = useState<number | "">(n("yieldKwhPerKwp") ?? "");
+  const [yieldSourceNote, setYieldSourceNote] = useState<string>((input.yieldSourceNote as string) || "");
+  // Deal Engine C5 / C7.
+  const [annualIrradiationKwhPerM2, setAnnualIrradiationKwhPerM2] = useState<number | "">(n("annualIrradiationKwhPerM2") ?? "");
+  const [inverterReplacementYear, setInverterReplacementYear] = useState<number | "">(n("inverterReplacementYear") ?? "");
   const [degradationPct, setDegradationPct] = useState<number>(toPct(n("degradationPct") ?? 0.007));
   const [discountRate, setDiscountRate] = useState<number>(toPct(n("discountRate") ?? 0.22));
   // U8: O&M is included in the EPC offer - 0% unless the estimator deliberately enters a value.
@@ -53,6 +64,10 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
     handleRequest(language, setLoading, setError, async () => {
       if (!kWp || !pvModuleModel) throw new Error(translate("Capacity and PV module are required.", "القدرة ونوع الوحدة الشمسية مطلوبان."));
       if ((siteCrew === "") !== (siteDays === "")) throw new Error(translate("Enter both crew size and days on site, or neither.", "أدخل عدد الطاقم وعدد الأيام معاً أو اتركهما فارغين."));
+      if (yieldKwhPerKwp !== "" && !yieldSourceNote.trim()) throw new Error(translate("Say where the site yield comes from (PVsyst, PVGIS, measured...).", "اذكر مصدر الإنتاجية الخاصة بالموقع (PVsyst أو PVGIS أو قياس فعلي...)."));
+      if (tariffEgpPerKwh !== "" && annualBillEgp !== "" && annualConsumptionKwh && !tariffNote.trim()) {
+        throw new Error(translate("You typed a tariff although the bills are entered - add a note saying why.", "أدخلت تعريفة رغم إدخال الفواتير - أضف ملاحظة توضح السبب."));
+      }
       const engineeringInput = {
         kWp, pvModuleModel, structureType, acLengthM,
         acPricePerMOverride: acPricePerMOverride === "" ? undefined : acPricePerMOverride,
@@ -62,6 +77,12 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
         siteDays: siteDays === "" ? undefined : siteDays,
         annualConsumptionKwh: annualConsumptionKwh || undefined,
         tariffEgpPerKwh: tariffEgpPerKwh === "" ? undefined : tariffEgpPerKwh,
+        annualBillEgp: annualBillEgp === "" ? undefined : annualBillEgp,
+        tariffNote: tariffNote.trim() || undefined,
+        yieldSourceNote: yieldSourceNote.trim() || undefined,
+        annualIrradiationKwhPerM2: annualIrradiationKwhPerM2 === "" ? undefined : annualIrradiationKwhPerM2,
+        inverterReplacementYear: inverterReplacementYear === "" ? undefined : inverterReplacementYear,
+        inverterModel: inverterModel || undefined,
         headlineEscalation: headlineEscalation / 100,
         sensitivityEscalations: [sensitivity1 / 100, sensitivity2 / 100],
         yieldKwhPerKwp: yieldKwhPerKwp === "" ? undefined : yieldKwhPerKwp,
@@ -105,6 +126,16 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
             onChange={(v) => setDcCableBrand(v || "")}
             clearable
           />
+          <Select
+            label={translate("Inverter (optional)", "العاكس (اختياري)")}
+            description={translate("Blank = automatic: the smallest Price Book inverter giving DC/AC 1.10 to 1.30.", "فارغ = تلقائي: أصغر عاكس في قائمة الأسعار يعطي نسبة 1.10 إلى 1.30.")}
+            data={inverters.map((m) => ({ value: m.model, label: `${m.brand} ${m.model} (${m.n1} kW)` }))}
+            value={inverterModel || null}
+            onChange={(v) => setInverterModel(v || "")}
+            clearable
+            searchable
+            data-testid="inverter-override"
+          />
           <NumberInput
             label={translate("Modules per String (optional override)", "عدد الوحدات في كل سلسلة (اختياري)")}
             description={translate("String layout is an engineering check only - it never changes the BOQ module quantity.", "تخطيط السلاسل للمراجعة الهندسية فقط - لا يغير كمية الوحدات في جدول الكميات.")}
@@ -135,13 +166,50 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
           )}
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <NumberInput label={translate("Electricity Tariff (EGP/kWh)", "تعريفة الكهرباء (جنيه/ك.و.س)")} value={tariffEgpPerKwh} onChange={(v) => setTariffEgpPerKwh(v === "" ? "" : (v as number))} min={0} step={0.01} decimalScale={2} />
+          <NumberInput
+            label={translate("Annual electricity bills (EGP)", "إجمالي فواتير الكهرباء السنوية (جنيه)")}
+            description={translate("With the annual kWh, sets the tariff = bills / kWh.", "مع الاستهلاك السنوي تُحسب التعريفة = الفواتير / ك.و.س.")}
+            value={annualBillEgp}
+            onChange={(v) => setAnnualBillEgp(v === "" ? "" : (v as number))}
+            min={0}
+            data-testid="annual-bill"
+          />
+          <NumberInput
+            label={translate("Electricity Tariff (EGP/kWh, optional)", "تعريفة الكهرباء (اختياري)")}
+            description={translate("Blank = from the bills (2.80 reference value without bills).", "فارغ = من الفواتير (2.80 قيمة مرجعية بدون فواتير).")}
+            value={tariffEgpPerKwh}
+            onChange={(v) => setTariffEgpPerKwh(v === "" ? "" : (v as number))}
+            min={0}
+            step={0.01}
+            decimalScale={4}
+          />
           <PctInput label={translate("Headline tariff escalation (%/yr)", "تصاعد التعريفة الرئيسي (%/سنة)")} value={headlineEscalation} onChange={setHeadlineEscalation} />
           <NumberInput label={translate("Annual consumption (kWh, optional)", "الاستهلاك السنوي (اختياري)")} description={translate("Used for the coverage figure only.", "لنسبة التغطية فقط.")} value={annualConsumptionKwh} onChange={(v) => setAnnualConsumptionKwh((v as number) || "")} />
           <PctInput label={translate("Sensitivity 1 escalation (%/yr)", "حساسية 1 (%/سنة)")} value={sensitivity1} onChange={setSensitivity1} />
           <PctInput label={translate("Sensitivity 2 escalation (%/yr)", "حساسية 2 (%/سنة)")} value={sensitivity2} onChange={setSensitivity2} />
-          <NumberInput label={translate("Specific yield (kWh/kWp/yr)", "الإنتاجية النوعية")} value={yieldKwhPerKwp} onChange={(v) => setYieldKwhPerKwp(v === "" ? "" : (v as number))} min={0} />
+          <NumberInput
+            label={translate("Specific yield (kWh/kWp/yr, optional)", "الإنتاجية النوعية (اختياري)")}
+            description={translate("Blank = the region's configured value. A value here is a site override.", "فارغ = القيمة المضبوطة للمنطقة. أي قيمة هنا خاصة بالموقع.")}
+            value={yieldKwhPerKwp}
+            onChange={(v) => setYieldKwhPerKwp(v === "" ? "" : (v as number))}
+            min={0}
+          />
           <PctInput label={translate("Degradation (%/yr)", "التدهور السنوي (%)")} value={degradationPct} onChange={setDegradationPct} />
+          <NumberInput
+            label={translate("Annual in-plane irradiation (kWh/m2, optional)", "الإشعاع السنوي على مستوى الألواح (اختياري)")}
+            description={translate("Shows the performance ratio on the Design tab.", "يُظهر نسبة الأداء في تبويب التصميم.")}
+            value={annualIrradiationKwhPerM2}
+            onChange={(v) => setAnnualIrradiationKwhPerM2(v === "" ? "" : (v as number))}
+            min={0}
+          />
+          <NumberInput
+            label={translate("Inverter replacement year (optional)", "سنة استبدال العاكس (اختياري)")}
+            description={translate("Blank = the configured year (13). Cost = today's Price Book inverter price.", "فارغ = السنة المضبوطة (13). التكلفة = سعر العاكس الحالي.")}
+            value={inverterReplacementYear}
+            onChange={(v) => setInverterReplacementYear(v === "" ? "" : (v as number))}
+            min={1}
+            max={25}
+          />
           <PctInput label={translate("Discount rate for NPV (%)", "معدل الخصم لصافي القيمة الحالية (%)")} value={discountRate} onChange={setDiscountRate} />
           <PctInput
             label={translate("O&M deduction (% of CapEx/yr)", "خصم التشغيل والصيانة (% سنوياً)")}
@@ -149,6 +217,25 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
             value={maintenancePctOfCapex}
             onChange={setMaintenancePctOfCapex}
           />
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {yieldKwhPerKwp !== "" && (
+            <TextInput
+              label={translate("Source of the site yield (required)", "مصدر الإنتاجية الخاصة بالموقع (مطلوب)")}
+              placeholder={translate("e.g. PVsyst simulation, PVGIS, measured", "مثال: محاكاة PVsyst أو PVGIS أو قياس فعلي")}
+              value={yieldSourceNote}
+              onChange={(e) => setYieldSourceNote(e.target.value)}
+              maxLength={200}
+            />
+          )}
+          {tariffEgpPerKwh !== "" && annualBillEgp !== "" && (
+            <TextInput
+              label={translate("Why the tariff differs from the bills (required)", "سبب اختلاف التعريفة عن الفواتير (مطلوب)")}
+              value={tariffNote}
+              onChange={(e) => setTariffNote(e.target.value)}
+              maxLength={300}
+            />
+          )}
         </div>
       </SectionCard>
 

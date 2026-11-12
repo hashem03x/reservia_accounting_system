@@ -9,6 +9,7 @@ const onGridCatalogData = require('./catalogData/onGridCatalog');
 const pumpingCatalogData = require('./catalogData/pumpingCatalog');
 const pumpingExtras = require('./catalogData/pumpingExtras');
 const priceBook = require('./priceBookLookup');
+const dealEngineSettings = require('./dealEngineSettings');
 const ratesMatrix = require('./ratesMatrix');
 const pricingService = require('./commercialPricingService');
 
@@ -82,7 +83,7 @@ async function buildOnGridCatalog(country, region) {
   };
 }
 
-async function runOnGridOrUtility({ category, engineeringInput, country, region, manualOverrides }) {
+async function runOnGridOrUtility({ category, engineeringInput, country, region, manualOverrides, engineSettings = null }) {
   const catalog = await buildOnGridCatalog(country, region);
   const module_ = catalog.PV_MODULES.find(m => m.model === engineeringInput.pvModuleModel);
   if (!module_) throw new ApiError(`PV module "${engineeringInput.pvModuleModel}" not found in the Price Book`, 400);
@@ -104,6 +105,9 @@ async function runOnGridOrUtility({ category, engineeringInput, country, region,
     region,
     dcCableBrand: engineeringInput.dcCableBrand || null,
     siteCosts,
+    // Deal Engine C1-C3 (pricing configuration) and an estimator-forced inverter (C3 acceptance).
+    engineSettings,
+    inverterModel: engineeringInput.inverterModel || null,
   };
   const result = category === 'Utility Scale'
     ? utility.runUtilityScaleDesign(input, catalog, engineeringInput.manualAdders || {})
@@ -130,9 +134,30 @@ async function runOnGridOrUtility({ category, engineeringInput, country, region,
  * annualConsumptionKwh. Legacy inputs from the R74 form (escalationScenario2/3) are honoured as
  * the two escalation values so an older revision recalculates sensibly.
  */
-function computeFeasibility({ category, engineeringInput = {}, pricing, boqTotal, kWp, engineeringResult }) {
+/**
+ * Deal Engine C8: the year-1 tariff. With the bills entered (annual bill EGP and annual kWh), the
+ * default is bill / kWh; an estimator-typed tariff that differs is kept with its note (the audit trail).
+ * Without bills, a typed tariff is used, else the 2.80 reference value - flagged as a default.
+ */
+function resolveTariff(ei) {
+  const billTariff = ei.annualBillEgp > 0 && ei.annualConsumptionKwh > 0 ? Math.round((ei.annualBillEgp / ei.annualConsumptionKwh) * 10000) / 10000 : null;
+  const typed = typeof ei.tariffEgpPerKwh === 'number' && ei.tariffEgpPerKwh > 0 ? ei.tariffEgpPerKwh : null;
+  if (billTariff !== null && (typed === null || Math.abs(typed - billTariff) < 0.005)) return { tariff: billTariff, source: 'bill', note: null };
+  if (typed !== null) return { tariff: typed, source: billTariff !== null ? 'manual-override' : 'manual', note: ei.tariffNote || null, billTariff };
+  return { tariff: 2.8, source: 'default', note: 'No bills entered - reference tariff 2.80 EGP/kWh used.' };
+}
+
+function computeFeasibility({ category, engineeringInput = {}, pricing, boqTotal, kWp, engineeringResult, engineSettings = null, region = null }) {
   if (category === 'On-Grid C&I' || category === 'Utility Scale') {
     const ei = engineeringInput;
+    // C4 / C7 / C8 / C9 / discount rate from the Deal Engine settings (when supplied).
+    const yieldPick = engineSettings ? dealEngineSettings.resolveYield(engineSettings, region, ei.yieldKwhPerKwp) : null;
+    const tariffPick = engineSettings ? resolveTariff(ei) : null;
+    const inv = engineeringResult && engineeringResult.inverter;
+    const inverterReplacement =
+      engineSettings && inv && inv.price > 0
+        ? { year: ei.inverterReplacementYear > 0 ? ei.inverterReplacementYear : engineSettings.inverterReplacementYear, costEgp: Math.round(inv.price * (engineeringResult.inverterQty || 1) * 100) / 100 }
+        : null;
     const legacyEsc = [ei.escalationScenario2, ei.escalationScenario3].filter(v => typeof v === 'number');
     const headlineEscalation = typeof ei.headlineEscalation === 'number' ? ei.headlineEscalation : legacyEsc.includes(0.1) ? 0.1 : undefined;
     const sensitivities = Array.isArray(ei.sensitivityEscalations) ? ei.sensitivityEscalations : undefined;
@@ -143,13 +168,25 @@ function computeFeasibility({ category, engineeringInput = {}, pricing, boqTotal
         boqCost: boqTotal,
         annualConsumptionKwh: ei.annualConsumptionKwh > 0 ? ei.annualConsumptionKwh : null,
         inputs: {
-          tariffEgpPerKwh: ei.tariffEgpPerKwh,
+          tariffEgpPerKwh: tariffPick ? tariffPick.tariff : ei.tariffEgpPerKwh,
           headlineEscalation,
           sensitivityEscalations: sensitivities,
-          yieldKwhPerKwp: ei.yieldKwhPerKwp,
+          yieldKwhPerKwp: yieldPick ? yieldPick.kwhPerKwp : ei.yieldKwhPerKwp,
           degradationPct: ei.degradationPct,
-          discountRate: ei.discountRate,
+          discountRate: typeof ei.discountRate === 'number' ? ei.discountRate : engineSettings ? engineSettings.discountRate : undefined,
           maintenancePctOfCapex: ei.maintenancePctOfCapex,
+          ...(engineSettings
+            ? {
+              yieldSource: yieldPick.source,
+              yieldBasis: yieldPick.source === 'site' ? ei.yieldSourceNote || 'Site-specific value' : engineSettings.yield.basis,
+              tariffSource: tariffPick.source,
+              tariffNote: tariffPick.note,
+              annualBillEgp: ei.annualBillEgp > 0 ? ei.annualBillEgp : null,
+              inverterReplacement,
+              twoPhaseEscalation: engineSettings.twoPhaseEscalation,
+              annualIrradiationKwhPerM2: ei.annualIrradiationKwhPerM2 > 0 ? ei.annualIrradiationKwhPerM2 : null,
+            }
+            : {}),
         },
       }),
       dieselComparison: null,
@@ -327,8 +364,8 @@ function buildPumpingBoqLines({ pump, motor, module_, strings, dcCable, submersi
   ];
 }
 
-async function buildBoq({ category, engineeringInput, country, region, manualOverrides = {} }) {
-  if (category === 'On-Grid C&I' || category === 'Utility Scale') return runOnGridOrUtility({ category, engineeringInput, country, region, manualOverrides });
+async function buildBoq({ category, engineeringInput, country, region, manualOverrides = {}, engineSettings = null }) {
+  if (category === 'On-Grid C&I' || category === 'Utility Scale') return runOnGridOrUtility({ category, engineeringInput, country, region, manualOverrides, engineSettings });
   if (category === 'Off-Grid') return runOffGrid({ engineeringInput, manualOverrides, country, region });
   if (category === 'Agriculture Pumping') return runAgriculturePumping({ engineeringInput, manualOverrides });
   // Street Lighting / Solar Water Heating: no complete engineering source in any of the three

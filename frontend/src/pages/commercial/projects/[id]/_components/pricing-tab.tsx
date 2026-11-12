@@ -8,6 +8,7 @@ import { formatAmount } from "@/utils/helpers/format-amount";
 import SectionCard from "@/components/ui/section-card";
 import { CommercialProject, CommercialRevision, PricingLevers } from "@/types/commercial";
 import PctInput, { toPct } from "../../../_shared/PctInput";
+import { perKwpBasis } from "../../../_shared/ruleVersion";
 
 const LEVERS: { key: keyof PricingLevers; en: string; ar: string }[] = [
   { key: "overheadPct", en: "Overhead % (of COGS)", ar: "المصروفات العامة % (من التكلفة)" },
@@ -140,7 +141,7 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
         <Row label={`${translate("VAT", "الضريبة")} (${pct(p.vatPct)})`} value={formatAmount(p.vatAmt, cur)} />
         <Row label={translate("FINAL PRICE (incl. VAT)", "السعر النهائي (شامل الضريبة)")} value={formatAmount(p.grossInclVat, cur)} bold />
         <Row
-          label={`${translate("Price per kWp (excl. VAT)", "السعر لكل كيلوواط (قبل الضريبة)")}${p.designKwp ? ` - ${translate("net /", "الصافي /")} ${p.designKwp} ${translate("design kWp", "كيلوواط تصميمي")}` : ""}`}
+          label={`${translate("Price per kWp (excl. VAT)", "السعر لكل كيلوواط (قبل الضريبة)")}${p.designKwp ? ` - ${translate("net /", "الصافي /")} ${p.designKwp} ${perKwpBasis(revision) === "installed" ? translate("installed kWp (calculated before 12 Nov 2026)", "كيلوواط مركب (حُسب قبل 12 نوفمبر 2026)") : translate("design kWp", "كيلوواط تصميمي")}` : ""}`}
           value={formatAmount(p.perKwpExclVat, cur)}
         />
         {p.perKwpInclVat != null && <Row label={translate("Price per kWp (incl. VAT)", "السعر لكل كيلوواط (شامل الضريبة)")} value={formatAmount(p.perKwpInclVat, cur)} muted />}
