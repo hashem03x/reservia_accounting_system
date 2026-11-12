@@ -180,3 +180,66 @@ confirm `DB_URI` in the Vercel project's Environment Variables, then repeat the 
 above against the real URL. If it still crashes, the Runtime Logs will now at minimum show which
 `[STARTUP]` line was the last one printed before the failure, narrowing down the cause immediately
 rather than requiring another round of guessing.
+
+## Website CMS publishing (Publish -> live website)
+
+The public website (`reservia_website`, its own Vercel project) does **not** call the API on page
+views for page content. It is built from the CMS: every build fetches the published feed
+`GET <CMS_API_URL>/website/public/site` once, renders it into the prerendered HTML, and is then
+served as static files. A Publish in the dashboard starts such a build through a Vercel Deploy Hook.
+Drafts never reach that feed. They are shown only through signed preview links (`?__vp=`) and the
+Visual Editor canvas (`?__ve=`), which read one draft at runtime.
+
+```
+Dashboard --save--> MongoDB (draft) --Publish--> MongoDB (published revision)
+   --> backend POSTs WEBSITE_PUBLISH_DEPLOY_HOOK_URL --> Vercel queues a build of the website
+   --> scripts/build-site.mjs fetches /website/public/site (no-store) --> prerendered HTML
+   --> /cms-build.json stamp --> live. Dashboard > Website > Overview compares the stamp.
+```
+
+### Configuration (both must be done; nothing else is needed)
+
+**Website project (reservia_website) on Vercel**
+
+1. Settings > Environment Variables, **Production**:
+   - `CMS_API_URL` = `https://reserviabackend.vercel.app/api/v1` (build time only; never sent to browsers)
+   - `VITE_CMS_API_URL` = the same address (draft preview and the Visual Editor canvas read drafts from it)
+   - `VITE_SITE_URL` = `https://www.reservia-energy.com`
+2. Settings > Git > Production Branch = `main` (the branch the CMS code is merged into).
+3. Settings > Git > Deploy Hooks > create a hook named `CMS publish` for branch `main`. Copy its URL.
+
+**Backend project (reservia backend) on Vercel**, Production environment:
+
+- `WEBSITE_PUBLISH_DEPLOY_HOOK_URL` = the hook URL from step 3. It is a **secret**: anyone holding
+  it can start builds. It is read only by `server/services/website/deployService.js` and never
+  appears in an API response or the dashboard.
+- `WEBSITE_PUBLIC_URL` = `https://www.reservia-energy.com` (the address that serves the site, used
+  for previews and for the live-status check; the apex redirects to www).
+- Optional `WEBSITE_EDITOR_URL`: see [environment-variables.md](environment-variables.md).
+
+Redeploy the backend after changing its variables, and the website after changing its own.
+
+### Verify
+
+- `https://www.reservia-energy.com/cms-build.json` must show `"cms": true` and a `contentHash`.
+  `"cms": false` means the website was built without `CMS_API_URL`, so published changes cannot
+  appear. Fix step 1 and redeploy. A 404 means the live build predates this check.
+- Dashboard > Website > Overview, "Live website" panel:
+  - **up to date**: the live build was made from exactly what is published now.
+  - **being updated**: a rebuild was requested less than 15 minutes ago and is not live yet.
+  - **does not show the latest published changes**: no build went live after the last change.
+    Either the build failed at Vercel, the hook is missing, or menus/settings were saved without
+    "Update live website". Check the website project's Deployments.
+- A Deploy Hook answers as soon as the build is **queued**. Only the live-status panel tells you
+  whether that build went live.
+
+### Failure behaviour
+
+- If the feed cannot be fetched during a build (API down, wrong `CMS_API_URL`), the build **fails**
+  and Vercel keeps the previous deployment. A build never ships without the published content.
+- The feed response is `Cache-Control: no-store`, and the build requests it with `cache: 'no-store'`.
+  The build points at a snapshot only after a fresh fetch succeeds (it clears
+  `RESERVIA_CMS_FEED_FILE` first). So neither a CDN nor Vercel's build cache can feed an older copy
+  into a new build.
+- A Publish is saved even when the hook is missing or refused. The dashboard says so, and
+  "Update live website" (administrators) retries the rebuild.

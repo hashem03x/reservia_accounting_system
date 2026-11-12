@@ -19,6 +19,67 @@ import { ACTION_LABELS } from "./activity";
 const STATUS_LABEL = { published: { en: "Published", ar: "منشورة" }, draft: { en: "Draft", ar: "مسودة" }, scheduled: { en: "Scheduled", ar: "مجدولة" }, archived: { en: "Archived", ar: "مؤرشفة" } } as const;
 const TRACKER_LABEL: Record<string, string> = { ga4: "GA4", gtm: "Tag Manager", metaPixel: "Meta Pixel", googleAds: "Google Ads" };
 
+type LiveState = "up_to_date" | "updating" | "behind" | "no_cms" | "no_stamp" | "unreachable" | "not_configured";
+interface LiveStatus {
+  state: LiveState;
+  siteUrl: string | null;
+  deployConfigured: boolean;
+  liveBuiltAt: string | null;
+  lastRequestedAt: string | null;
+}
+
+/**
+ * Whether the live website was actually rebuilt from what is published now (GET /website/live-status
+ * compares the live build's /cms-build.json stamp with the published content). A rebuild request
+ * only QUEUES a build at the host; this is what shows that it went live - or that it did not.
+ */
+function LiveWebsiteStatus({ refreshKey }: { refreshKey: number }) {
+  const { language, translate } = useLanguage();
+  const { call } = useCmsApi();
+  const [s, setS] = useState<LiveStatus | null>(null);
+  useEffect(() => {
+    let stop = false;
+    let timer = 0;
+    const load = async () => {
+      const r = await call<LiveStatus>({ url: "website/live-status" }, { silent: true });
+      if (stop) return;
+      if (r) setS(r.data);
+      // While a rebuild is running, look again until it is live (or reported as failed).
+      if (r?.data.state === "updating") timer = window.setTimeout(load, 30_000);
+    };
+    load();
+    return () => {
+      stop = true;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+  if (!s) return null;
+  const built = s.liveBuiltAt ? ` ${translate("Live version built", "تم بناء النسخة المنشورة")} ${formatCairoDateTime(s.liveBuiltAt, language)}.` : "";
+  const view: Record<LiveState, { color: string; title: [string, string]; text: [string, string] }> = {
+    up_to_date: { color: "teal", title: ["The live website is up to date", "الموقع المنشور محدّث"], text: ["It was built from everything that is published now.", "تم بناؤه من كل المحتوى المنشور حاليًا."] },
+    updating: { color: "blue", title: ["The live website is being updated", "جارٍ تحديث الموقع المنشور"], text: ["A rebuild was requested and has not gone live yet. This usually takes a few minutes.", "تم طلب إعادة البناء ولم تظهر بعد. يستغرق ذلك عادة بضع دقائق."] },
+    behind: {
+      color: "orange",
+      title: ["The live website does not show the latest published changes", "الموقع المنشور لا يعرض آخر التغييرات المنشورة"],
+      text: s.deployConfigured
+        ? ["The last rebuild did not go live (it may have failed at the host). Use \"Update live website\" to try again, and check the website's deployments if it keeps happening.", "لم تظهر آخر إعادة بناء (ربما فشلت لدى الاستضافة). استخدم \"تحديث الموقع المنشور\" للمحاولة مرة أخرى."]
+        : ["Automatic rebuilds are not connected, so published changes appear only after the website is rebuilt.", "إعادة البناء التلقائية غير متصلة، لذا تظهر التغييرات بعد إعادة بناء الموقع فقط."],
+    },
+    no_cms: { color: "red", title: ["The live website is not reading the CMS", "الموقع المنشور لا يقرأ من نظام إدارة المحتوى"], text: ["It was built without the CMS address (CMS_API_URL in the website's hosting settings), so published changes cannot appear. Ask your system administrator to set it and rebuild.", "تم بناؤه دون عنوان نظام إدارة المحتوى، لذا لا يمكن أن تظهر التغييرات. اطلب من مسؤول النظام ضبطه وإعادة البناء."] },
+    no_stamp: { color: "gray", title: ["The live website's version is unknown", "إصدار الموقع المنشور غير معروف"], text: ["The live build is older than this check. It is known after the next rebuild.", "النسخة المنشورة أقدم من هذا الفحص، وسيُعرف إصدارها بعد إعادة البناء التالية."] },
+    unreachable: { color: "gray", title: ["The live website could not be checked", "تعذر فحص الموقع المنشور"], text: ["It did not answer. Try again in a moment.", "لم يستجب. حاول مرة أخرى بعد قليل."] },
+    not_configured: { color: "gray", title: ["The live website address is not set", "عنوان الموقع المنشور غير مضبوط"], text: ["Set it in Settings → Domain to see whether the live website is up to date.", "اضبطه في الإعدادات لمعرفة ما إذا كان الموقع محدثًا."] },
+  };
+  const v = view[s.state] || view.unreachable;
+  return (
+    <Alert color={v.color} variant="light" title={translate(v.title[0], v.title[1])} data-testid="live-status" data-state={s.state}>
+      {translate(v.text[0], v.text[1])}
+      {built}
+    </Alert>
+  );
+}
+
 export default function WebsiteOverview() {
   const { language, translate } = useLanguage();
   const navigate = useNavigate();
@@ -28,6 +89,7 @@ export default function WebsiteOverview() {
   const [data, setData] = useState<WebsiteOverviewData | null>(null);
   const [error, setError] = useState("");
   const [deploying, setDeploying] = useState(false);
+  const [liveKey, setLiveKey] = useState(0);
   useDocumentTitle(translate("Website Management", "إدارة الموقع الإلكتروني"));
 
   async function load() {
@@ -48,6 +110,7 @@ export default function WebsiteOverview() {
     await call({ url: "website/deploy", method: "POST" }, { success: "server" });
     setDeploying(false);
     load();
+    setLiveKey((k) => k + 1);
   }
 
   const pagesUrl = `/${paths.website}/${paths.websitePages}`;
@@ -77,6 +140,7 @@ export default function WebsiteOverview() {
             <KpiCard loading={!data} label={translate("Media files", "ملفات الوسائط")} value={data?.media.files ?? 0} subValue={formatBytes(data?.media.bytes)} />
           </div>
 
+          <LiveWebsiteStatus refreshKey={liveKey} />
           {data && !data.site.deployConfigured && (
             <Alert color="yellow" variant="light" title={translate("Automatic website updates are not connected", "التحديث التلقائي للموقع غير متصل")}>
               {translate(

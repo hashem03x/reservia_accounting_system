@@ -4,7 +4,7 @@ const router = express.Router();
 const authController = require('../../controller/user/authController');
 const { requireWebsiteAccess, requireWebsiteCapability } = require('../../middleware/websiteAccess');
 const { getSectionTypes } = require('../../controller/website/sectionController');
-const { getOverview, getActivity, deployLiveSite } = require('../../controller/website/overviewController');
+const { getOverview, getActivity, deployLiveSite, getLiveStatus } = require('../../controller/website/overviewController');
 const { getNavigation, updateNavigation } = require('../../controller/website/navigationController');
 const { getIntegrations, updateIntegrations } = require('../../controller/website/integrationController');
 const visual = require('../../controller/website/visualController');
@@ -21,6 +21,8 @@ router.get('/overview', gate('view'), getOverview);
 router.get('/section-types', gate('view'), getSectionTypes);
 router.get('/activity', gate('view'), getActivity);
 router.post('/deploy', gate('publish'), deployLiveSite);
+// Whether the live website was rebuilt from what is published now (its /cms-build.json stamp).
+router.get('/live-status', gate('view'), getLiveStatus);
 
 router.get('/navigation', gate('view'), getNavigation);
 router.put('/navigation', gate('navigation.manage'), updateNavigation);

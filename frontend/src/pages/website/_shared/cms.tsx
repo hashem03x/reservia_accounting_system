@@ -71,7 +71,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      <Modal opened={!!state?.open} onClose={() => close(false)} title={state?.title || ""} size="sm">
+      {/* Above every website-module overlay (the Visual Editor is z-150, its drawers z-400): a confirmation always belongs on top of whatever asked for it. */}
+      <Modal opened={!!state?.open} onClose={() => close(false)} title={state?.title || ""} size="sm" zIndex={1000}>
         <div className="flex flex-col gap-4" data-testid="confirm-dialog">
           <div className="text-sm text-gray-700">{state?.message}</div>
           <div className="flex justify-end gap-2">

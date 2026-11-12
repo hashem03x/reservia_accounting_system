@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const asyncHandler = require('express-async-handler');
 const apiResponse = require('../../utils/apiResponse');
 const ApiError = require('../../utils/apiError');
@@ -103,7 +104,18 @@ const pageOutput = (p, resolved) => ({
   sections: p.pageType === 'managed' ? p.sections : [],
 });
 
-const getPublicSite = asyncHandler(async (req, res) => {
+/**
+ * Hash of everything the website renders from the feed (all of it except the generation time), so
+ * a build can stamp WHICH published content it was made from (build-site.mjs writes it to
+ * /cms-build.json) and the dashboard can tell whether the live website is up to date.
+ */
+function feedContentHash(data) {
+  const { generatedAt, contentHash, ...content } = data;
+  return crypto.createHash('sha256').update(JSON.stringify(content)).digest('hex').slice(0, 32);
+}
+
+/** The published-content feed (data part of GET /website/public/site). */
+async function buildPublicFeed() {
   const [settings, pages, integrationsDoc] = await Promise.all([loadSettings(), loadPublishedPages(), WebsiteIntegration.findById(WebsiteIntegration.SINGLETON_ID).lean()]);
   const site = resolveSite(pages, settings);
   const seoBySlug = new Map(site.pages.map(p => [p.slug, p]));
@@ -123,10 +135,15 @@ const getPublicSite = asyncHandler(async (req, res) => {
     visual,
     pages: pages.map(p => pageOutput(p, seoBySlug.get(p.slug))),
   };
+  data.contentHash = feedContentHash(data);
+  return data;
+}
 
-  // Short shared cache: the build fetches this once; anything else reading it gets content at
-  // most a minute old, and published data is public anyway.
-  res.set('Cache-Control', 'public, max-age=60');
+const getPublicSite = asyncHandler(async (req, res) => {
+  const data = await buildPublicFeed();
+  // Never cached anywhere (browser, CDN or proxy): the build that a Publish starts must read the
+  // content that was just published, not a copy from before it.
+  res.set('Cache-Control', 'no-store, max-age=0');
   res.status(200).json(apiResponse('Website content', true, data));
 });
 
@@ -162,4 +179,4 @@ const getPublicPreview = asyncHandler(async (req, res, next) => {
   );
 });
 
-module.exports = { getPublicSite, getPublicPreview, publicSettings };
+module.exports = { getPublicSite, getPublicPreview, publicSettings, buildPublicFeed, feedContentHash };

@@ -8,6 +8,7 @@ export default function Modal({
   title = "",
   centerTitle = false,
   size = "md",
+  zIndex,
   children,
 }: {
   opened: boolean;
@@ -15,6 +16,8 @@ export default function Modal({
   title?: string;
   centerTitle?: boolean;
   size?: "xs" | "sm" | "md" | "lg" | "xl";
+  /** Stacking order; only needed when the modal opens from inside another overlay (drawer, full-screen editor). */
+  zIndex?: number;
   children: React.ReactNode;
 }) {
   const { language } = useLanguage();
@@ -29,6 +32,7 @@ export default function Modal({
       shadow="xl"
       dir={translate(language, "ltr", "rtl")}
       size={size}
+      {...(zIndex !== undefined ? { zIndex } : {})}
     >
       <div className="p-[10px]">
         {title && <h3 className={`mb-3 pb-3 border-b border-gray-100 ${centerTitle ? "text-center" : ""}`}>{title}</h3>}
