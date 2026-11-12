@@ -83,6 +83,12 @@ export default function WebsiteVisualEditor() {
   const [siteOrigin, setSiteOrigin] = useState<string>("");
   const [frameError, setFrameError] = useState("");
   const [frameReady, setFrameReady] = useState(false);
+  // Canvas handshake: the website origins allowed to talk to the editor, the origin the canvas
+  // actually answered from, and what the canvas reports about its own start-up (ve:pong).
+  const [allowedOrigins, setAllowedOrigins] = useState<string[]>([]);
+  const liveOrigin = useRef<string>("");
+  const [canvas, setCanvas] = useState<{ stage: string; detail: string; origin: string; since: number }>({ stage: "waiting", detail: "", origin: "", since: Date.now() });
+  const [urlSource, setUrlSource] = useState<string | null>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const canvasBox = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 1000, h: 800 });
@@ -133,17 +139,22 @@ export default function WebsiteVisualEditor() {
     setFrameReady(false);
     setTree([]);
     setInfo(null);
-    const r = await call<{ url: string | null; siteOrigin: string | null }>({ url: "website/visual/preview-token", method: "POST", data: { mode: "edit", path, lang } }, { silent: true });
+    const r = await call<{ url: string | null; siteOrigin: string | null; allowedOrigins?: string[]; source?: string | null }>({ url: "website/visual/preview-token", method: "POST", data: { mode: "edit", path, lang } }, { silent: true });
     if (!r) {
       setFrameError(translate("The editor could not be opened.", "تعذر فتح المحرر."));
       return;
     }
     if (!r.data.url) {
-      setFrameError(translate("Set the public website address in Website Settings to open the editor.", "اضبط عنوان الموقع العام في إعدادات الموقع لفتح المحرر."));
+      setFrameError(translate("The editor has no website address to load. Set WEBSITE_EDITOR_URL on the server (the website build that includes the editor), or the public website address in Website Settings.", "لا يوجد عنوان موقع لتحميله في المحرر. اضبط WEBSITE_EDITOR_URL على الخادم أو عنوان الموقع العام في إعدادات الموقع."));
       return;
     }
     setFrameError("");
-    setSiteOrigin(new URL(r.data.url).origin);
+    const origin = new URL(r.data.url).origin;
+    setSiteOrigin(origin);
+    setAllowedOrigins(Array.from(new Set([origin, ...(r.data.allowedOrigins || [])])));
+    setUrlSource(r.data.source || null);
+    liveOrigin.current = "";
+    setCanvas({ stage: "waiting", detail: "", origin: "", since: Date.now() });
     setFrameUrl(r.data.url);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, lang]);
@@ -153,8 +164,33 @@ export default function WebsiteVisualEditor() {
   }, [path, lang, status === "loading"]);
 
   const post = useCallback((m: Record<string, unknown>) => {
-    if (frame.current?.contentWindow && siteOrigin) frame.current.contentWindow.postMessage(m, siteOrigin);
-  }, [siteOrigin]);
+    const target = liveOrigin.current;
+    if (frame.current?.contentWindow && target) frame.current.contentWindow.postMessage(m, target);
+  }, []);
+
+  // Until the canvas is ready, ping it (an empty, data-free message) so it reports its start-up
+  // stage; a page that never answers is not running the editor.
+  useEffect(() => {
+    if (!frameUrl || frameReady) return;
+    const t = window.setInterval(() => {
+      frame.current?.contentWindow?.postMessage({ type: "ve:ping" }, "*");
+      setCanvas((c) => {
+        const waited = Date.now() - c.since;
+        if (c.stage === "waiting" && waited > 15000) return { ...c, stage: "no-editor" };
+        if ((c.stage === "booting" || c.stage === "loading-draft" || c.stage === "rendering") && waited > 30000) return { ...c, stage: "stalled" };
+        return c;
+      });
+    }, 800);
+    return () => window.clearInterval(t);
+  }, [frameUrl, frameReady]);
+
+  /** The iframe (re)loaded - its own navigation, a reload or a redirect: start the handshake again. */
+  const onFrameLoad = useCallback(() => {
+    setFrameReady(false);
+    liveOrigin.current = "";
+    setCanvas({ stage: "waiting", detail: "", origin: "", since: Date.now() });
+    frame.current?.contentWindow?.postMessage({ type: "ve:ping" }, "*");
+  }, []);
 
   // ---------- changes, history, autosave ----------
   const autosaveTimer = useRef<number>();
@@ -308,11 +344,25 @@ export default function WebsiteVisualEditor() {
   // ---------- messages from the canvas ----------
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
-      if (!siteOrigin || e.origin !== siteOrigin || e.source !== frame.current?.contentWindow) return;
+      if (!frame.current || e.source !== frame.current.contentWindow) return;
       const m = e.data as { type: string; [k: string]: unknown };
+      const trusted = allowedOrigins.includes(e.origin);
+      if (m?.type === "ve:pong") {
+        // Start-up status only (no content): reported even from an unexpected origin, never trusted.
+        const stage = !trusted ? "origin-mismatch" : String(m.stage || "booting");
+        setCanvas((c) => ({ stage: c.stage === stage ? c.stage : stage, detail: String(m.detail || ""), origin: e.origin, since: c.stage === stage ? c.since : Date.now() }));
+        if (trusted && m.stage === "ready" && !liveOrigin.current) {
+          liveOrigin.current = e.origin;
+          frame.current.contentWindow?.postMessage({ type: "ve:hello" }, e.origin);
+        }
+        return;
+      }
+      if (!trusted) return;
+      if (!liveOrigin.current) liveOrigin.current = e.origin;
       switch (m?.type) {
         case "ve:ready":
           setFrameReady(true);
+          setCanvas((c) => ({ ...c, stage: "ready", origin: e.origin }));
           setSiteTokens((m.tokens as typeof siteTokens) || { light: {}, dark: {} });
           post({ type: "ve:config", config: configRef.current });
           break;
@@ -388,7 +438,7 @@ export default function WebsiteVisualEditor() {
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [siteOrigin, post, apply, undo, redo, moveSibling, hide, remove, addElement, route, scopeAll, applyAll, language]);
+  }, [allowedOrigins, post, apply, undo, redo, moveSibling, hide, remove, addElement, route, scopeAll, applyAll, language]);
 
   // keyboard shortcuts in the dashboard
   useEffect(() => {
@@ -489,6 +539,11 @@ export default function WebsiteVisualEditor() {
           ]}
           data-testid="ve-device"
         />
+        <Tooltip label={translate("Reload the canvas", "إعادة تحميل اللوحة")}>
+          <Button size="xs" variant="default" onClick={openCanvas} data-testid="ve-reload-canvas">
+            ↻
+          </Button>
+        </Tooltip>
         <Tooltip label="Ctrl+Z">
           <Button size="xs" variant="default" onClick={undo} disabled={!history.current.past.length || !canEdit} data-testid="ve-undo">
             ↶ {translate("Undo", "تراجع")}
@@ -562,6 +617,7 @@ export default function WebsiteVisualEditor() {
               <Tabs.Panel value="layers" className="h-full">
                 <Layers
                   nodes={tree}
+                  emptyText={frameReady ? translate("This page has no editable elements.", "لا توجد عناصر قابلة للتعديل.") : ["no-editor", "origin-mismatch", "error", "stalled"].includes(canvas.stage) ? translate("The page could not be loaded in the editor - see the message on the canvas.", "تعذر تحميل الصفحة في المحرر - راجع الرسالة على اللوحة.") : translate("Loading the page…", "جاري تحميل الصفحة…")}
                   selected={info?.id || null}
                   hovered={hovered}
                   labels={labels}
@@ -620,9 +676,15 @@ export default function WebsiteVisualEditor() {
           ) : frameUrl ? (
             <div className="relative shadow-lg" style={{ width: Math.min(WIDTH[device], box.w - 24) || WIDTH[device], height: box.h - 24 }} data-scale={Math.min(1, (box.w - 24) / WIDTH[device]).toFixed(3)}>
               {!frameReady && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70">
-                  <Loader size="sm" />
-                </div>
+                <CanvasStatus
+                  stage={canvas.stage}
+                  detail={canvas.detail}
+                  actualOrigin={canvas.origin}
+                  expectedOrigin={siteOrigin}
+                  source={urlSource}
+                  url={frameUrl}
+                  onRetry={openCanvas}
+                />
               )}
               <iframe
                 key={frameUrl}
@@ -635,6 +697,7 @@ export default function WebsiteVisualEditor() {
                   return { width: WIDTH[device], height: (box.h - 24) / scale, transform: `scale(${scale})`, transformOrigin: "0 0" };
                 })()}
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                onLoad={onFrameLoad}
                 data-testid="ve-canvas"
               />
             </div>
@@ -743,6 +806,70 @@ export default function WebsiteVisualEditor() {
           setHasUnpublished(true);
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * What the canvas is doing while it starts, and - when it cannot start - why, in plain words with
+ * the facts needed to fix it. Never blocks the pointer while waiting.
+ */
+function CanvasStatus({ stage, detail, actualOrigin, expectedOrigin, source, url, onRetry }: { stage: string; detail: string; actualOrigin: string; expectedOrigin: string; source: string | null; url: string | null; onRetry: () => void }) {
+  const { translate } = useLanguage();
+  const where = source === "WEBSITE_EDITOR_URL" ? "WEBSITE_EDITOR_URL" : source === "WEBSITE_PUBLIC_URL" ? "WEBSITE_PUBLIC_URL" : translate("Website Settings › public website address", "إعدادات الموقع › عنوان الموقع العام");
+  const failed: Record<string, { title: string; body: string }> = {
+    "no-editor": {
+      title: translate("The website did not start the editor", "لم يبدأ الموقع وضع المحرر"),
+      body: translate(
+        `${expectedOrigin} loaded, but it is not running the visual editor. That address serves a website build without the editor (for example a live site built before this feature was deployed), or a different application. Deploy the website build that includes the editor and set its address as WEBSITE_EDITOR_URL on the server (currently taken from ${where}).`,
+        `تم تحميل ${expectedOrigin} لكنه لا يشغّل المحرر المرئي. هذا العنوان يقدّم نسخة من الموقع بدون المحرر أو تطبيقًا آخر. انشر نسخة الموقع التي تتضمن المحرر واضبط عنوانها في WEBSITE_EDITOR_URL على الخادم.`,
+      ),
+    },
+    "origin-mismatch": {
+      title: translate("The website answered from a different address", "استجاب الموقع من عنوان مختلف"),
+      body: translate(
+        `The canvas was opened at ${expectedOrigin} but answered from ${actualOrigin} (the address redirected). For security the editor only talks to the configured website address. Set WEBSITE_EDITOR_URL on the server to ${actualOrigin} (currently taken from ${where}).`,
+        `فُتحت اللوحة على ${expectedOrigin} لكنها استجابت من ${actualOrigin} (تمت إعادة التوجيه). اضبط WEBSITE_EDITOR_URL على الخادم إلى ${actualOrigin}.`,
+      ),
+    },
+    error: { title: translate("The website could not open the draft", "تعذر على الموقع فتح المسودة"), body: detail },
+    stalled: {
+      title: translate("The website is taking too long to load the draft", "يستغرق الموقع وقتًا طويلًا لتحميل المسودة"),
+      body: translate(`Last step reported: ${detail || "loading the draft"}. Check that the website can reach the dashboard API.`, "تحقق من قدرة الموقع على الوصول إلى واجهة لوحة التحكم."),
+    },
+  };
+  const f = failed[stage];
+  if (!f) {
+    const label: Record<string, string> = {
+      waiting: translate("Opening the website…", "جاري فتح الموقع…"),
+      booting: translate("Starting the editor on the website…", "جاري تشغيل المحرر على الموقع…"),
+      "loading-draft": translate("Loading the draft…", "جاري تحميل المسودة…"),
+      rendering: translate("Rendering the page…", "جاري عرض الصفحة…"),
+      ready: translate("Connecting…", "جاري الاتصال…"),
+    };
+    return (
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center p-3" data-testid="ve-canvas-status" data-stage={stage}>
+        <span className="flex items-center gap-2 rounded-full bg-white/95 px-3 py-1 text-xs text-gray-700 shadow">
+          <Loader size={12} /> {label[stage] || label.waiting}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/90 p-6" data-testid="ve-canvas-status" data-stage={stage}>
+      <Alert color="red" title={f.title} className="max-w-xl" data-testid="ve-canvas-problem">
+        <p className="text-sm">{f.body}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button size="xs" variant="light" onClick={onRetry}>
+            {translate("Try again", "حاول مرة أخرى")}
+          </Button>
+          {url && (
+            <Button size="xs" variant="subtle" component="a" href={url} target="_blank" rel="noopener noreferrer">
+              {translate("Open the canvas page in a new tab", "فتح صفحة اللوحة في تبويب جديد")}
+            </Button>
+          )}
+        </div>
+      </Alert>
     </div>
   );
 }

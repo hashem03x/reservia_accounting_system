@@ -32,6 +32,7 @@ export function Layers({
   onMove,
   onToggleHide,
   readOnly,
+  emptyText,
 }: {
   nodes: TreeNode[];
   selected: string | null;
@@ -43,6 +44,7 @@ export function Layers({
   onMove: (id: string, dir: -1 | 1) => void;
   onToggleHide: (id: string) => void;
   readOnly: boolean;
+  emptyText?: string;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
@@ -143,7 +145,7 @@ export function Layers({
   return (
     <div className="flex h-full flex-col gap-2" data-testid="layers">
       <TextInput size="xs" placeholder="Find an element" value={q} onChange={(e) => setQ(e.currentTarget.value)} />
-      <div className="min-h-0 flex-1 overflow-auto">{nodes.length ? render(null, 0) : <p className="p-2 text-xs text-gray-500">Loading the page…</p>}</div>
+      <div className="min-h-0 flex-1 overflow-auto">{nodes.length ? render(null, 0) : <p className="p-2 text-xs text-gray-500" data-testid="layers-empty">{emptyText || "Loading the page…"}</p>}</div>
       <p className="text-[11px] text-gray-500">Click to select · double-click to rename · drag elements on the page with ⠿</p>
     </div>
   );
