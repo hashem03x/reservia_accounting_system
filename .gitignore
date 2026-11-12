@@ -23,3 +23,6 @@ csv_files
 !.env.example
 !*.env.example
 Vendor Number starts with 2.md
+
+# Business documents (proposals, price lists, QA reports, specs) - kept local, never pushed: this repository is public.
+reports & requirments/
