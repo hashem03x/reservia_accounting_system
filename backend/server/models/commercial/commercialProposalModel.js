@@ -19,12 +19,22 @@ const commercialProposalSchema = new Schema(
     pricingSnapshot: { type: Schema.Types.Mixed, required: true },
     feasibilitySnapshot: { type: Schema.Types.Mixed, default: null },
     pdfAttachmentId: { type: Schema.Types.ObjectId, default: null },
+    // Deal Engine C15/C17: the stored customer PDF's SHA-256 and size, the frozen document data (the
+    // internal copy re-renders from it), the CRM lead copy, and a release override note (C20).
+    pdfHash: { type: String, default: null },
+    pdfSize: { type: Number, default: null },
+    documentSnapshot: { type: Schema.Types.Mixed, default: null },
+    leadAttachmentId: { type: Schema.Types.ObjectId, default: null },
+    leadAttachmentError: { type: String, default: null },
+    releaseOverride: { type: String, default: null },
     issuedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   },
   { timestamps: true }
 );
 
 commercialProposalSchema.index({ project: 1, version: -1 });
+// One P01, one P02... per project, even when two issues race (Deal Engine C15).
+commercialProposalSchema.index({ project: 1, version: 1 }, { unique: true, name: 'project_version_unique' });
 commercialProposalSchema.index({ revision: 1 });
 
 commercialProposalSchema.statics.validityDays = PROPOSAL_VALIDITY_DAYS;

@@ -13,6 +13,7 @@ import SectionCard from "@/components/ui/section-card";
 import { PricingConfig, PricingLevers } from "@/types/commercial";
 import PctInput, { toPct } from "../_shared/PctInput";
 import EngineSettingsCard from "./engine-settings-card";
+import ProposalTextCard, { ProposalSettings } from "./proposal-text-card";
 
 const LEVERS: { key: keyof PricingLevers; en: string; ar: string; hint: string }[] = [
   { key: "overheadPct", en: "Overhead", ar: "المصروفات العامة", hint: "% of COGS" },
@@ -141,6 +142,11 @@ export default function PricingConfigPage() {
       {config.engine && (
         <div className="mt-4">
           <EngineSettingsCard key={config.version} engine={config.engine} canManage={canManage} onSaved={load} />
+        </div>
+      )}
+      {config.proposal && (
+        <div className="mt-4">
+          <ProposalTextCard key={`p-${config.version}`} proposal={config.proposal as unknown as ProposalSettings} canManage={canManage} onSaved={load} />
         </div>
       )}
 

@@ -9,6 +9,10 @@ const router = express.Router();
 router.use(authController.protect, requireCommercialAccess);
 
 router.post('/revision/:revisionId', proposalController.issueProposal);
+// Deal Engine C14/C16: DRAFT preview of the next proposal (customer or internal copy).
+router.get('/revision/:revisionId/preview', proposalController.previewProposal);
+// Deal Engine C15/C16: an issued proposal's PDF (stored customer copy, or internal copy).
+router.get('/:id/pdf', proposalController.getProposalPdf);
 router.get('/project/:projectId', proposalController.listProposalsForProject);
 
 module.exports = router;

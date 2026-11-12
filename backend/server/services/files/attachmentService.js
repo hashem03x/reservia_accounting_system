@@ -234,6 +234,34 @@ async function uploadAttachments({ ownerKey, ownerId, files, userId }) {
   return listAttachments(ownerKey, ownerId);
 }
 
+/**
+ * Stores a document the SYSTEM generated (e.g. an issued proposal PDF, Deal Engine C15/C17) on a
+ * record. Same validation, storage and hashing as an upload, but not counted against the per-record
+ * upload limit (users never chose these files). Returns the attachment document.
+ */
+async function storeGeneratedFile({ ownerKey, ownerId, buffer, name, contentType, userId = null }) {
+  const owner = ownerOf(ownerKey);
+  const ownerObjectId = await loadOwner(owner, ownerId);
+  const checked = validateFile({ buffer, originalname: name, mimetype: contentType }, { allowImages: owner.allowImages });
+  const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
+  const fileId = await writeFile(buffer, { ownerType: owner.ownerType, owner: ownerObjectId, name: checked.name, contentType: checked.contentType });
+  try {
+    return await Attachment.create({ ownerType: owner.ownerType, owner: ownerObjectId, file: fileId, originalName: checked.name, contentType: checked.contentType, size: buffer.length, sha256, uploadedBy: userId || null });
+  } catch (err) {
+    await removeFile(fileId).catch(() => {});
+    throw err;
+  }
+}
+
+/** Reads a stored file fully into memory (generated documents are small). */
+async function readFileBuffer(fileId) {
+  const chunks = [];
+  await new Promise((resolve, reject) => {
+    bucket().openDownloadStream(fileId).on('data', c => chunks.push(c)).on('error', reject).on('end', resolve);
+  });
+  return Buffer.concat(chunks);
+}
+
 /** The attachment record (lean) and which owner it belongs to - for the permission check. */
 async function getAttachment(id) {
   if (!mongoose.Types.ObjectId.isValid(String(id))) throw new ApiError('Invalid attachment id.', 400);
@@ -254,4 +282,4 @@ async function deleteAttachment(attachment) {
   await removeFile(attachment.file);
 }
 
-module.exports = { listAttachments, uploadAttachments, getAttachment, openFile, deleteAttachment, validateFile, ownerOf, OWNERS, BUCKET, maxBytes, maxFiles };
+module.exports = { storeGeneratedFile, readFileBuffer, listAttachments, uploadAttachments, getAttachment, openFile, deleteAttachment, validateFile, ownerOf, OWNERS, BUCKET, maxBytes, maxFiles };

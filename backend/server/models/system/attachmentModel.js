@@ -13,7 +13,9 @@ const { Schema, model } = require('mongoose');
 // CRM-role-based permission gate (routes/crm/leadAttachmentRoute.js) instead of the ERP
 // resource:action check the other three owner types use, since a CRM user may hold no ERP
 // permissions at all.
-const OWNER_TYPES = ['PurchaseOrder', 'SalesOrder', 'JournalEntry', 'CrmLead'];
+// CommercialProject: Deal Engine project files and issued proposal PDFs (it was registered in
+// services/files/attachmentService.js but missing here, so every Deal Engine project upload failed).
+const OWNER_TYPES = ['PurchaseOrder', 'SalesOrder', 'JournalEntry', 'CrmLead', 'CommercialProject'];
 
 const attachmentSchema = new Schema(
   {

@@ -429,7 +429,7 @@ function runOnGridDesign(input, catalog) {
   const perKwp = designKwp ? round(total / designKwp, 10) : null; // BOQ!G24
 
   return {
-    design: { pv, modulesPerString, strings, layoutCheck, inverter, inverterQty, dcAcRatio, dcAc, dcCable, structure, acCable, tray, breaker, mc4, adb, siteCosts: site },
+    design: { pv, module: { brand: module.brand || null, model: module.model, pmaxW: module.pmaxW }, modulesPerString, strings, layoutCheck, inverter, inverterQty, dcAcRatio, dcAc, dcCable, structure, acCable, tray, breaker, mc4, adb, siteCosts: site },
     // `finalCapacityKwp` keeps its name for API compatibility; it is now the DESIGN kWp (the basis
     // every per-kWp line and the price per kWp use). The string-layout capacity is in design.layoutCheck.
     boq: { lines, total, perKwp, finalCapacityKwp: designKwp, designKwp },

@@ -96,6 +96,7 @@
     "multer-storage-cloudinary": "^4.0.0",
     "node-cron": "^4.2.1",
     "nodemailer": "^6.9.1",
+    "pdfkit": "^0.15.2",
     "sharp": "^0.33.5",
     "slugify": "^1.6.5",
     "swagger-ui-express": "^5.0.0",

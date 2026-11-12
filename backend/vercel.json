@@ -3,8 +3,19 @@
     {
       "src": "api/index.js",
       "use": "@vercel/node",
-      "config": { "includeFiles": "locales/**" }
+      "config": {
+        "includeFiles": [
+          "locales/**",
+          "server/assets/**",
+          "node_modules/pdfkit/js/data/**"
+        ]
+      }
     }
   ],
-  "routes": [{ "src": "/(.*)", "dest": "api/index.js" }]
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.js"
+    }
+  ]
 }

@@ -638,3 +638,73 @@ maybeTest('Deal Engine C1-C11: reference deal re-baseline - inverter by loading,
   assert.equal((await api('PUT', '/api/v1/commercial/pricing-config', { user: t.md, body: { engine: { mc4: { rule: 'guess' } } } })).status, 400);
   assert.equal((await api('PUT', '/api/v1/commercial/pricing-config', { user: t.sales, body: { engine: { discountRate: 0.3 } } })).status, 403);
 });
+
+// Deal Engine C12-C17: the proposal document. Writes the PDFs to $PROPOSAL_PDF_DIR when set, for a
+// visual check against attachment A1.
+maybeTest('Deal Engine C12-C17: DRAFT preview before approvals, internal copy for pricing roles only, issue stores the PDF with its hash, P01 then P02 (both retrievable), the CRM lead gets the PDF and moves to Proposal sent', async () => {
+  const t = await team();
+  const crypto = require('crypto');
+  const fs = require('fs');
+  const Attachment = require('../../models/system/attachmentModel');
+  const raw = async (url, user) => {
+    const r = await fetch(`${baseUrl}${url}`, { headers: { 'x-test-user': String(user._id) } });
+    return { status: r.status, type: r.headers.get('content-type'), buf: Buffer.from(await r.arrayBuffer()) };
+  };
+  const out = process.env.PROPOSAL_PDF_DIR;
+  // A CRM lead at Site survey, handed to the Deal Engine (as Proposal sent would) - its project is the reference deal.
+  const { lead } = await leadService.intakeLead({ name: 'Mostafa Ragab', phone: '01088889999', segment: 'factory', governorate: 'Cairo', channel: 'phone', source: 'Referral', valueEgp: 1700000 }, { userId: t.md._id });
+  for (const to of ['contacted', 'qualified', 'site_survey']) await leadService.changeStage(lead._id, { to, followUpAt: '2026-12-01' }, { userId: t.md._id, role: 'md' });
+  const customer = await makeCustomer('Mostafa Ragab', '01088889990');
+  const project = await createReferenceProject(t.sales, customer);
+  await CommercialProject.updateOne({ _id: project._id }, { $set: { crmLead: lead._id, crmLeadRef: lead.refCode } });
+  const rev = (await api('POST', `/api/v1/commercial/revisions/project/${project._id}`, { user: t.sales, body: { engineeringInput: { ...REF_INPUT, annualBillEgp: 434000 } } })).body.data;
+
+  // C14: preview before approvals, watermarked; the internal copy is refused to Technical.
+  const draft = await raw(`/api/v1/commercial/proposals/revision/${rev._id}/preview`, t.tech);
+  assert.equal(draft.status, 200);
+  assert.equal(draft.type, 'application/pdf');
+  assert.ok(draft.buf.subarray(0, 5).toString() === '%PDF-' && draft.buf.length > 20000, `a real PDF (${draft.buf.length} bytes)`);
+  assert.equal((await raw(`/api/v1/commercial/proposals/revision/${rev._id}/preview?copy=internal`, t.tech)).status, 403);
+  const draftInternal = await raw(`/api/v1/commercial/proposals/revision/${rev._id}/preview?copy=internal`, t.sales);
+  assert.equal(draftInternal.status, 200);
+  assert.ok(draftInternal.buf.length > draft.buf.length, 'the internal copy carries the priced BOQ, the stack and the approval log');
+  if (out) {
+    fs.writeFileSync(`${out}/proposal-draft-customer.pdf`, draft.buf);
+    fs.writeFileSync(`${out}/proposal-draft-internal.pdf`, draftInternal.buf);
+  }
+  // Issue only after approvals.
+  assert.equal((await api('POST', `/api/v1/commercial/proposals/revision/${rev._id}`, { user: t.sales })).status, 400);
+  const decide = (user, stage) => api('PATCH', `/api/v1/commercial/approvals/${rev._id}/${stage}`, { user, body: { status: 'Approved', note: 'ok' } });
+  assert.equal((await decide(t.sales, 'stage1')).status, 200);
+  assert.equal((await decide(t.director, 'stage2')).status, 200);
+  assert.equal((await decide(t.md, 'md')).status, 200);
+
+  // C15: P01 with its stored PDF and hash; the issuer and time are recorded.
+  const p1 = await api('POST', `/api/v1/commercial/proposals/revision/${rev._id}`, { user: t.sales });
+  assert.equal(p1.status, 201, JSON.stringify(p1.body));
+  assert.equal(p1.body.data.proposalNumber, `${project.dealNumber}-P01`);
+  assert.match(p1.body.data.pdfHash, /^[a-f0-9]{64}$/);
+  assert.ok(p1.body.data.issuedBy && p1.body.data.issuedAt);
+  const pdf1 = await raw(`/api/v1/commercial/proposals/${p1.body.data._id}/pdf`, t.sales);
+  assert.equal(pdf1.status, 200);
+  assert.equal(crypto.createHash('sha256').update(pdf1.buf).digest('hex'), p1.body.data.pdfHash, 'the served PDF is the stored one');
+  // C17: the CRM lead has the PDF and moved to Proposal sent; its timeline says so.
+  const leadAfter = await Lead.findById(lead._id).lean();
+  assert.equal(leadAfter.stage, 'proposal_sent');
+  assert.ok(await Attachment.findOne({ ownerType: 'CrmLead', owner: lead._id, sha256: p1.body.data.pdfHash }), 'the issued PDF is on the lead');
+  assert.ok(await Activity.findOne({ lead: lead._id, body: new RegExp(`Proposal ${project.dealNumber}-P01 issued`) }));
+
+  // C15: a re-issue is a new number; the old PDF stays retrievable.
+  const p2 = await api('POST', `/api/v1/commercial/proposals/revision/${rev._id}`, { user: t.sales });
+  assert.equal(p2.body.data.proposalNumber, `${project.dealNumber}-P02`);
+  assert.notEqual(p2.body.data.pdfHash, p1.body.data.pdfHash);
+  assert.equal((await raw(`/api/v1/commercial/proposals/${p1.body.data._id}/pdf`, t.sales)).status, 200, 'P01 is still there');
+  // C16: the internal copy of an issued proposal re-renders from its frozen data.
+  const int1 = await raw(`/api/v1/commercial/proposals/${p1.body.data._id}/pdf?copy=internal`, t.director);
+  assert.equal(int1.status, 200);
+  assert.equal((await raw(`/api/v1/commercial/proposals/${p1.body.data._id}/pdf?copy=internal`, t.tech)).status, 403);
+  if (out) {
+    fs.writeFileSync(`${out}/proposal-P01-customer.pdf`, pdf1.buf);
+    fs.writeFileSync(`${out}/proposal-P01-internal.pdf`, int1.buf);
+  }
+});
