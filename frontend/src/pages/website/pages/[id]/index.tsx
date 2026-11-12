@@ -25,6 +25,8 @@ import {
   WebsiteSeo,
 } from "@/types/website";
 import { formatCairoDateTime } from "@/pages/crm/_shared/business-date";
+import SectionBuilder from "../../_shared/section-builder";
+import { useBeforeUnload, useConfirm, errorMessage } from "../../_shared/cms";
 import { LOCALE_LABELS, localeSuffix, SEO_SOURCE_LABELS, SEO_WARNING_LABELS } from "../../_shared/seo-labels";
 
 // Website Management - one page's editor. Tabs: SEO (per language: title, description, search
@@ -38,9 +40,13 @@ import { LOCALE_LABELS, localeSuffix, SEO_SOURCE_LABELS, SEO_WARNING_LABELS } fr
 // rules lives in the dashboard. An empty field is never filled in automatically: the generated
 // default is only shown next to it.
 
-type Draft = Pick<WebsitePage, "path" | "parentSlug" | "pageType" | "isHomePage" | "locales"> & { seo: WebsiteSeo };
+type Draft = Pick<WebsitePage, "slug" | "path" | "parentSlug" | "pageType" | "isHomePage" | "locales" | "titleEn" | "titleAr" | "layout"> & { seo: WebsiteSeo };
 
 const toDraft = (p: WebsitePage): Draft => ({
+  slug: p.slug,
+  titleEn: p.titleEn || "",
+  titleAr: p.titleAr || "",
+  layout: p.layout || "default",
   path: p.path,
   parentSlug: p.parentSlug,
   pageType: p.pageType,
@@ -66,7 +72,9 @@ export default function WebsitePageEditor() {
   const [revisions, setRevisions] = useState<WebsiteRevision[]>([]);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [tab, setTab] = useState<string | null>("seo");
+  const [tab, setTab] = useState<string | null>(null);
+  const [contentVersion, setContentVersion] = useState(0);
+  const confirm = useConfirm();
   const [locale, setLocale] = useState<WebsiteLocale>("ar");
 
   useDocumentTitle(`${page?.slug ?? translate("Page", "صفحة")} | Reservia Website`);
@@ -82,6 +90,7 @@ export default function WebsitePageEditor() {
       setDraft(toDraft(res.data));
       setAllSlugs((list.data as WebsitePage[]).map((p) => p.slug).filter((s) => s !== res.data.slug));
       setRevisions(revs.data);
+      setTab((t) => t || (res.data.pageType === "managed" ? "content" : "seo"));
       if (res.data.locales?.length && !res.data.locales.includes(locale)) setLocale(res.data.locales[0]);
     });
   }
@@ -109,9 +118,77 @@ export default function WebsitePageEditor() {
     }, 400);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, page?._id]);
+  }, [draft, page?._id, contentVersion]);
 
   const dirty = useMemo(() => !!page && !!draft && JSON.stringify(toDraft(page)) !== JSON.stringify(draft), [page, draft]);
+  useBeforeUnload(dirty);
+
+  /** A section changed: the page now has unpublished changes and its publish checks may differ. */
+  function onContentChanged() {
+    setPage((p) => (p ? { ...p, hasPendingChanges: true } : p));
+    setContentVersion((v) => v + 1);
+  }
+
+  async function openPreview() {
+    if (!page) return;
+    // Open the tab synchronously (popup blockers), then point it at the signed link.
+    const win = window.open("", "_blank");
+    try {
+      const res = await privateRequest({ url: `website/pages/${page._id}/preview-token`, method: "POST", data: { lang: locale }, language });
+      if (res.data?.previewUrl) {
+        if (win) win.location.href = res.data.previewUrl;
+        else window.location.assign(res.data.previewUrl);
+      } else {
+        win?.close();
+        notifyError({ language, message: translate("Previews need the public website address - set it in Website Settings.", "تحتاج المعاينة إلى عنوان الموقع العام - اضبطه في إعدادات الموقع.") });
+      }
+    } catch (err) {
+      win?.close();
+      notifyError({ language, message: errorMessage(err, translate("Could not create the preview", "تعذر إنشاء المعاينة")) });
+    }
+  }
+
+  async function lifecycle(action: "archive" | "restore" | "cancel-schedule" | "delete", body?: unknown) {
+    if (!page) return;
+    const prompts = {
+      archive: { title: translate("Archive this page?", "أرشفة هذه الصفحة؟"), message: translate("It is removed from the website, its menus and the sitemap. Its content and history are kept and it can be restored.", "ستُزال من الموقع وقوائمه وخريطة الموقع. يُحتفظ بالمحتوى والسجل ويمكن استعادتها."), confirmLabel: translate("Archive", "أرشفة"), danger: true },
+      restore: { title: translate("Restore this page?", "استعادة هذه الصفحة؟"), message: translate("It comes back as a draft. Publish it to put it on the website again.", "ستعود كمسودة. انشرها لتظهر على الموقع مجددًا."), confirmLabel: translate("Restore", "استعادة") },
+      "cancel-schedule": { title: translate("Cancel the scheduled publish?", "إلغاء النشر المجدول؟"), message: translate("Nothing will go live at the scheduled time.", "لن يُنشر شيء في الموعد المحدد."), confirmLabel: translate("Cancel schedule", "إلغاء الجدولة"), danger: true },
+      delete: { title: translate("Delete this page?", "حذف هذه الصفحة؟"), message: translate("The page is removed from the dashboard and, if it is live, from the website. Published history is kept for auditing.", "ستُحذف الصفحة من لوحة التحكم ومن الموقع إن كانت منشورة. يُحتفظ بسجل النشر للتدقيق."), confirmLabel: translate("Delete page", "حذف الصفحة"), danger: true },
+    } as const;
+    if (!(await confirm(prompts[action]))) return;
+    setPublishing(true);
+    try {
+      if (action === "delete") {
+        await privateRequest({ url: `website/pages/${page._id}`, method: "DELETE", language });
+        notifySuccess({ language, message: translate("Page deleted.", "تم حذف الصفحة.") });
+        navigate(`/${paths.website}/${paths.websitePages}`);
+        return;
+      }
+      const url = action === "cancel-schedule" ? `website/pages/${page._id}/schedule` : `website/pages/${page._id}/${action}`;
+      const res = await privateRequest({ url, method: action === "cancel-schedule" ? "DELETE" : "POST", data: body ?? {}, language });
+      notifySuccess({ language, message: res?.message || translate("Done.", "تم.") });
+      load();
+    } catch (err) {
+      notifyError({ language, message: errorMessage(err, translate("The action failed", "فشل الإجراء")) });
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  async function schedulePublish(publishAt: string) {
+    if (!page) return;
+    setPublishing(true);
+    try {
+      const res = await privateRequest({ url: `website/pages/${page._id}/schedule`, method: "POST", data: { publishAt: new Date(publishAt).toISOString() }, language });
+      notifySuccess({ language, message: res?.message || translate("Scheduled.", "تمت الجدولة.") });
+      load();
+    } catch (err) {
+      notifyError({ language, message: errorMessage(err, translate("Could not schedule", "تعذرت الجدولة")) });
+    } finally {
+      setPublishing(false);
+    }
+  }
 
   async function save() {
     if (!page || !draft) return;
@@ -153,7 +230,7 @@ export default function WebsitePageEditor() {
 
   async function revert(revisionId: string) {
     if (!page) return;
-    if (!window.confirm(translate("Restore this version and publish it again?", "استعادة هذه النسخة ونشرها مرة أخرى؟"))) return;
+    if (!(await confirm({ title: translate("Restore this version?", "استعادة هذه النسخة؟"), message: translate("The page's draft is replaced with this version and it is published again as a new version. The current version stays in the history.", "تُستبدل مسودة الصفحة بهذه النسخة وتُنشر من جديد كنسخة جديدة. تبقى النسخة الحالية في السجل."), confirmLabel: translate("Restore and publish", "استعادة ونشر") }))) return;
     try {
       await privateRequest({ url: `website/pages/${page._id}/revisions/${revisionId}/revert`, method: "POST", language });
       notifySuccess({ language, message: translate("Version restored and republished.", "تمت استعادة النسخة وإعادة نشرها.") });
@@ -170,8 +247,8 @@ export default function WebsitePageEditor() {
   return (
     <AdminLayoutBox
       header={{
-        title: page ? page.slug : translate("Page", "صفحة"),
-        subTitle: page ? `${page.path}` : undefined,
+        title: page ? page.titleEn || page.titleAr || page.slug : translate("Page", "صفحة"),
+        subTitle: page ? `${page.slug} · ${page.path}` : undefined,
         backLink: `/${paths.website}/${paths.websitePages}`,
         sideElements: page && draft && (
           <div className="flex flex-wrap items-center gap-2">
@@ -185,8 +262,12 @@ export default function WebsitePageEditor() {
                 {translate("Saved, not yet published", "محفوظة ولم تُنشر بعد")}
               </Badge>
             )}
+            {page.displayStatus && <StatusBadge status={page.displayStatus} />}
+            <Button variant="default" onClick={openPreview} data-testid="preview-page">
+              {translate("Preview", "معاينة")}
+            </Button>
             {canEdit && (
-              <Button variant="light" color="teal" onClick={save} loading={saving} disabled={!dirty}>
+              <Button variant="light" color="teal" onClick={save} loading={saving} disabled={!dirty} data-testid="save-page">
                 {translate("Save draft", "حفظ المسودة")}
               </Button>
             )}
@@ -197,7 +278,7 @@ export default function WebsitePageEditor() {
                 multiline
                 w={320}
               >
-                <Button color="teal" onClick={() => publish("publish")} loading={publishing} disabled={dirty || problems.length > 0}>
+                <Button color="teal" onClick={() => publish("publish")} loading={publishing} disabled={dirty || problems.length > 0 || page.status === "archived"} data-testid="publish-page">
                   {page.status === "published" ? translate("Publish changes", "نشر التغييرات") : translate("Publish", "نشر")}
                 </Button>
               </Tooltip>
@@ -231,10 +312,21 @@ export default function WebsitePageEditor() {
 
             <Tabs value={tab} onChange={setTab} keepMounted={false}>
               <Tabs.List>
-                <Tabs.Tab value="seo">{translate("SEO", "تحسين البحث")}</Tabs.Tab>
-                <Tabs.Tab value="page">{translate("Page", "الصفحة")}</Tabs.Tab>
-                <Tabs.Tab value="publishing">{translate("Publishing", "النشر")}</Tabs.Tab>
+                {draft.pageType === "managed" && (
+                  <Tabs.Tab value="content" data-testid="tab-content">
+                    {translate("Content", "المحتوى")}
+                  </Tabs.Tab>
+                )}
+                <Tabs.Tab value="seo" data-testid="tab-seo">{translate("SEO", "تحسين البحث")}</Tabs.Tab>
+                <Tabs.Tab value="page" data-testid="tab-page">{translate("Page", "الصفحة")}</Tabs.Tab>
+                <Tabs.Tab value="publishing" data-testid="tab-publishing">{translate("Publishing", "النشر")}</Tabs.Tab>
               </Tabs.List>
+
+              {draft.pageType === "managed" && (
+                <Tabs.Panel value="content" pt="md">
+                  <SectionBuilder pageId={page._id} onDraftChanged={onContentChanged} onPreview={openPreview} />
+                </Tabs.Panel>
+              )}
 
               <Tabs.Panel value="seo" pt="md">
                 <SeoTab draft={draft} locale={locale} setLocale={setLocale} setSeo={setSeo} resolved={resolved} previewError={previewError} readOnly={!canEdit} />
@@ -242,10 +334,27 @@ export default function WebsitePageEditor() {
 
               <Tabs.Panel value="page" pt="md">
                 <PageTab draft={draft} setDraft={setDraft} slugs={allSlugs} readOnly={!canEdit} />
+                {page.pageType === "managed" && draft.pageType === "legacy" && (
+                  <Alert mt="md" color="orange" variant="light">
+                    {translate("Switching to a website page means the website shows its own built-in body for this address instead of these sections.", "التحويل إلى صفحة موقع يعني أن الموقع سيعرض محتواه المدمج لهذا العنوان بدلًا من هذه الأقسام.")}
+                  </Alert>
+                )}
               </Tabs.Panel>
 
               <Tabs.Panel value="publishing" pt="md">
-                <PublishingTab page={page} revisions={revisions} canPublish={canPublish} publishing={publishing} onUnpublish={() => publish("unpublish")} onRevert={revert} />
+                <PublishingTab
+                  page={page}
+                  revisions={revisions}
+                  canPublish={canPublish}
+                  canEdit={canEdit}
+                  publishing={publishing}
+                  onUnpublish={() => publish("unpublish")}
+                  onRevert={revert}
+                  onSchedule={schedulePublish}
+                  onLifecycle={lifecycle}
+                  problems={problems}
+                  dirty={dirty}
+                />
               </Tabs.Panel>
             </Tabs>
           </div>
@@ -566,8 +675,35 @@ function PageTab({ draft, setDraft, slugs, readOnly }: { draft: Draft; setDraft:
   const set = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d));
   return (
     <div className="grid max-w-3xl gap-4">
+      <Panel title={translate("Page name", "اسم الصفحة")}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TextInput label={translate("Title (English)", "العنوان (الإنجليزية)")} value={draft.titleEn} maxLength={120} onChange={(e) => set({ titleEn: e.currentTarget.value })} dir="ltr" disabled={readOnly} data-testid="page-title-en" />
+          <TextInput label={translate("Title (Arabic)", "العنوان (العربية)")} value={draft.titleAr} maxLength={120} onChange={(e) => set({ titleAr: e.currentTarget.value })} dir="rtl" disabled={readOnly} data-testid="page-title-ar" />
+        </div>
+        <p className="mt-2 text-xs text-gray-500">{translate("Used in the dashboard, menus and as the default heading. The search-engine title is set in the SEO tab.", "يُستخدم في لوحة التحكم والقوائم كعنوان افتراضي. عنوان محركات البحث يُضبط في تبويب تحسين البحث.")}</p>
+      </Panel>
       <Panel title={translate("Address and structure", "العنوان والهيكل")}>
         <div className="grid gap-3 sm:grid-cols-2">
+          <TextInput
+            label={translate("Slug (internal name)", "المعرّف (اسم داخلي)")}
+            description={translate("Menus that link to this page follow a renamed slug automatically", "القوائم المرتبطة بالصفحة تتبع تغيير المعرّف تلقائيًا")}
+            value={draft.slug}
+            onChange={(e) => set({ slug: e.currentTarget.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })}
+            dir="ltr"
+            disabled={readOnly || draft.isHomePage}
+          />
+          <Select
+            label={translate("Layout", "التخطيط")}
+            value={draft.layout}
+            onChange={(v) => set({ layout: (v || "default") as Draft["layout"] })}
+            allowDeselect={false}
+            disabled={readOnly}
+            data={[
+              { value: "default", label: translate("Standard (header and footer)", "قياسي (رأس وتذييل)") },
+              { value: "landing", label: translate("Landing page (no main menu)", "صفحة هبوط (بدون القائمة الرئيسية)") },
+              { value: "full-width", label: translate("Full width sections", "أقسام بعرض كامل") },
+            ]}
+          />
           <TextInput
             label={translate("Path", "المسار")}
             description={translate("Without the language; changing it changes the page's URL", "بدون اللغة؛ تغييره يغيّر رابط الصفحة")}
@@ -616,23 +752,51 @@ function PageTab({ draft, setDraft, slugs, readOnly }: { draft: Draft; setDraft:
   );
 }
 
+function StatusBadge({ status }: { status: NonNullable<WebsitePage["displayStatus"]> }) {
+  const { translate } = useLanguage();
+  const map = {
+    draft: { color: "yellow", en: "Draft", ar: "مسودة" },
+    published: { color: "teal", en: "Published", ar: "منشورة" },
+    scheduled: { color: "blue", en: "Scheduled", ar: "مجدولة" },
+    archived: { color: "gray", en: "Archived", ar: "مؤرشفة" },
+  } as const;
+  const m = map[status];
+  return (
+    <Badge color={m.color} variant="light" data-testid="page-status">
+      {translate(m.en, m.ar)}
+    </Badge>
+  );
+}
+
 function PublishingTab({
   page,
   revisions,
   canPublish,
+  canEdit,
   publishing,
   onUnpublish,
   onRevert,
+  onSchedule,
+  onLifecycle,
+  problems,
+  dirty,
 }: {
   page: WebsitePage;
   revisions: WebsiteRevision[];
   canPublish: boolean;
+  canEdit: boolean;
   publishing: boolean;
   onUnpublish: () => void;
   onRevert: (id: string) => void;
+  onSchedule: (at: string) => void;
+  onLifecycle: (action: "archive" | "restore" | "cancel-schedule" | "delete") => void;
+  problems: string[];
+  dirty: boolean;
 }) {
   const { language, translate } = useLanguage();
   const fmt = (d: string) => formatCairoDateTime(d, language);
+  const [when, setWhen] = useState("");
+  const minLocal = new Date(Date.now() + 2 * 60 * 1000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <Panel
@@ -649,11 +813,38 @@ function PublishingTab({
         <p className="text-sm">
           {page.status === "published"
             ? translate(`Published ${page.publishedAt ? fmt(page.publishedAt) : ""}`, `منشورة ${page.publishedAt ? fmt(page.publishedAt) : ""}`)
-            : page.status === "unpublished"
+            : page.status === "archived"
+              ? translate("Archived - not on the website.", "مؤرشفة - ليست على الموقع.")
+              : page.status === "unpublished"
               ? translate("Unpublished - not on the website.", "غير منشورة - ليست على الموقع.")
               : translate("Draft - never published.", "مسودة - لم تُنشر من قبل.")}
         </p>
       </Panel>
+      {canPublish && page.status !== "archived" && (
+        <Panel title={translate("Schedule", "الجدولة")}>
+          {page.scheduledPublishAt ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm">
+                {translate("The draft as it was when scheduled goes live on ", "تُنشر المسودة كما كانت وقت الجدولة في ")}
+                <strong>{fmt(page.scheduledPublishAt)}</strong>.
+              </p>
+              <Button size="xs" variant="light" color="red" onClick={() => onLifecycle("cancel-schedule")} loading={publishing}>
+                {translate("Cancel schedule", "إلغاء الجدولة")}
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-end gap-2">
+              <TextInput type="datetime-local" label={translate("Publish at", "النشر في")} value={when} min={minLocal} onChange={(e) => setWhen(e.currentTarget.value)} data-testid="schedule-at" />
+              <Tooltip disabled={!dirty && problems.length === 0} label={dirty ? translate("Save first.", "احفظ أولًا.") : problems.join("; ")} multiline w={300}>
+                <Button variant="light" onClick={() => onSchedule(when)} disabled={!when || dirty || problems.length > 0} loading={publishing} data-testid="schedule-publish">
+                  {translate("Schedule publish", "جدولة النشر")}
+                </Button>
+              </Tooltip>
+            </div>
+          )}
+          <p className="mt-2 text-xs text-gray-500">{translate("Scheduling freezes the current saved draft - later edits are not included unless you schedule again.", "الجدولة تثبّت المسودة المحفوظة الحالية - التعديلات اللاحقة لا تُضمَّن إلا إذا أعدت الجدولة.")}</p>
+        </Panel>
+      )}
       <Panel title={translate("Published versions", "النسخ المنشورة")}>
         {revisions.length === 0 ? (
           <p className="text-sm text-gray-500">{translate("No published versions yet.", "لا توجد نسخ منشورة بعد.")}</p>
@@ -684,6 +875,27 @@ function PublishingTab({
           </Table>
         )}
       </Panel>
+      {(canPublish || canEdit) && !page.isHomePage && (
+        <Panel title={translate("Archive or delete", "الأرشفة أو الحذف")}>
+          <div className="flex flex-wrap gap-2">
+            {canPublish &&
+              (page.status === "archived" ? (
+                <Button size="xs" variant="light" onClick={() => onLifecycle("restore")} loading={publishing} data-testid="restore-page">
+                  {translate("Restore from archive", "استعادة من الأرشيف")}
+                </Button>
+              ) : (
+                <Button size="xs" variant="light" color="orange" onClick={() => onLifecycle("archive")} loading={publishing} data-testid="archive-page">
+                  {translate("Archive", "أرشفة")}
+                </Button>
+              ))}
+            {canEdit && (
+              <Button size="xs" variant="light" color="red" onClick={() => onLifecycle("delete")} loading={publishing} data-testid="delete-page">
+                {translate("Delete page", "حذف الصفحة")}
+              </Button>
+            )}
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }

@@ -14,6 +14,11 @@ const websiteSectionSchema = new Schema(
     sortOrder: { type: Number, required: true, default: 0 },
     isVisible: { type: Boolean, default: true },
     content: { type: Schema.Types.Mixed, required: true, default: {} },
+    // Layout settings shared by every type (devices, background, spacing, alignment, container,
+    // anchor) - normalized by utils/website/sectionValidation.js#validateSettings.
+    settings: { type: Schema.Types.Mixed, default: () => ({}) },
+    // Internal label shown in the builder only (never rendered on the website).
+    adminLabel: { type: String, trim: true, maxlength: 80, default: '' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },

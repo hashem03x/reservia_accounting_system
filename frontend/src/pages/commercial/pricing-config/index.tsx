@@ -132,7 +132,7 @@ export default function PricingConfigPage() {
           <ul className="list-disc space-y-1 ps-5 text-sm text-gray-600">
             <li>{translate("A new revision starts from these levers and records the configuration version it used.", "تبدأ النسخة الجديدة بهذه القيم وتسجل إصدار الإعدادات المستخدم.")}</li>
             <li>{translate("Existing revisions are never changed by a configuration edit - the Pricing tab can re-apply the current defaults explicitly.", "لا تتغير النسخ الحالية بتعديل الإعدادات - يمكن إعادة تطبيق القيم الافتراضية من تبويب التسعير.")}</li>
-            <li>{translate("Profit is taken on COGS; sales bonus and engineering incentive on the markup pool; category addition on the base price (Developer Brief 3.3).", "الربح على التكلفة؛ المكافأة والحافز على مجمع الهوامش؛ إضافة الفئة على السعر الأساسي.")}</li>
+            <li>{translate("Profit is taken on COGS; sales bonus and engineering incentive on the markup pool; category addition on the base price.", "الربح على التكلفة؛ المكافأة والحافز على مجمع الهوامش؛ إضافة الفئة على السعر الأساسي.")}</li>
           </ul>
         </SectionCard>
       </div>

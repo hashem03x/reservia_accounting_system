@@ -419,7 +419,7 @@ function EndpointsSection({ endpoints }: { endpoints: Record<string, string> }) 
         </Table.Tbody>
       </Table>
       <p className="mt-2 text-xs text-gray-400">
-        {translate("Full setup steps per platform: docs/crm-integrations.md in the repository.", "خطوات الإعداد الكاملة لكل منصة: docs/crm-integrations.md في المستودع.")}
+        {translate("Each platform is connected by your system administrator on the server; the status above updates automatically once it is set.", "يتم ربط كل منصة بواسطة مسؤول النظام على الخادم؛ وتتحدث الحالة أعلاه تلقائيًا بعد ضبطها.")}
       </p>
     </Section>
   );

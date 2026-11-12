@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
 import handleRequest from "@/utils/helpers/handle-request";
-import { SectionType, WebsiteSection } from "@/types/website";
+import { SectionSettings, SectionType, WebsiteSection } from "@/types/website";
 
 /**
  * The data layer of the Visual Editor's left panel - a single page's sections
@@ -34,13 +34,13 @@ export default function useWebsiteSections(pageId: string | null) {
     reload();
   }, [reload]);
 
-  async function createSection(type: SectionType, content: Record<string, unknown> = {}): Promise<WebsiteSection> {
-    const res = await privateRequest({ url: `website/pages/${pageId}/sections`, method: "POST", data: { type, content }, language });
+  async function createSection(type: SectionType, content: Record<string, unknown> = {}, position?: number): Promise<WebsiteSection> {
+    const res = await privateRequest({ url: `website/pages/${pageId}/sections`, method: "POST", data: { type, content, ...(Number.isInteger(position) ? { position } : {}) }, language });
     await reload();
     return res.data as WebsiteSection;
   }
 
-  async function updateSection(id: string, patch: { content?: Record<string, unknown>; isVisible?: boolean }): Promise<WebsiteSection> {
+  async function updateSection(id: string, patch: { content?: Record<string, unknown>; isVisible?: boolean; settings?: Partial<SectionSettings>; adminLabel?: string }): Promise<WebsiteSection> {
     const res = await privateRequest({ url: `website/pages/${pageId}/sections/${id}`, method: "PATCH", data: patch, language });
     await reload();
     return res.data as WebsiteSection;

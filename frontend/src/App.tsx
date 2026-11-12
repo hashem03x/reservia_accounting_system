@@ -135,6 +135,11 @@ import WebsitePages from "@/pages/website/pages";
 import WebsitePageEditor from "@/pages/website/pages/[id]";
 import WebsiteSettingsPage from "@/pages/website/settings";
 import WebsiteRoleGuard from "@/pages/routes/website-role-guard";
+import WebsiteMediaLibrary from "@/pages/website/media";
+import WebsiteNavigationPage from "@/pages/website/navigation";
+import WebsiteIntegrationsPage from "@/pages/website/integrations";
+import WebsiteCustomCodePage from "@/pages/website/custom-code";
+import WebsiteActivityPage from "@/pages/website/activity";
 
 export default function App() {
   useColorScheme();
@@ -405,9 +410,15 @@ export default function App() {
                   <Route path={paths.website} element={<WebsiteOverview />} />
                   <Route path={paths.website + "/" + paths.websitePages} element={<WebsitePages />} />
                   <Route path={paths.website + "/" + paths.websitePages + "/:id"} element={<WebsitePageEditor />} />
+                  <Route path={paths.website + "/" + paths.websiteMedia} element={<WebsiteMediaLibrary />} />
+                  <Route path={paths.website + "/" + paths.websiteNavigation} element={<WebsiteNavigationPage />} />
+                  <Route path={paths.website + "/" + paths.websiteActivity} element={<WebsiteActivityPage />} />
                   {/* Site settings: website admins only (backend: settings.manage). */}
                   <Route element={<WebsiteRoleGuard allowedRoles={["admin"]} />}>
                     <Route path={paths.website + "/" + paths.websiteSettings} element={<WebsiteSettingsPage />} />
+                    {/* Tracking and executable code: administrators only (backend: integrations.manage / code.manage). */}
+                    <Route path={paths.website + "/" + paths.websiteIntegrations} element={<WebsiteIntegrationsPage />} />
+                    <Route path={paths.website + "/" + paths.websiteCustomCode} element={<WebsiteCustomCodePage />} />
                   </Route>
                 </Route>
                 <Route path={paths.website + "/*"} element={<NotFound />} />

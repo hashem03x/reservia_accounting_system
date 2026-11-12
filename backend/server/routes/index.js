@@ -186,6 +186,8 @@ const mountRoutes = app => {
   app.use('/api/v1/website/pages', require('./website/pageRoute'));
   app.use('/api/v1/website/media', require('./website/mediaRoute'));
   app.use('/api/v1/website/settings', require('./website/settingsRoute'));
+  // Overview, activity log, live-site rebuild, navigation, integrations, custom code (per-route auth).
+  app.use('/api/v1/website', require('./website/siteRoute'));
   // Public, read-only, published-content-only feed for the website build (no auth - see the
   // route's own header comment).
   app.use('/api/v1/website/public', require('./website/publicSiteRoute'));

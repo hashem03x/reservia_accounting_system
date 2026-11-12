@@ -15,7 +15,8 @@ async function loadSettings() {
   return doc || new WebsiteSettings().toObject();
 }
 
-const sectionForOutput = s => ({ type: s.type, sortOrder: s.sortOrder, content: s.content || {} });
+// `settings` = presentation (devices/background/spacing/alignment/anchor) - see sectionTypes.js.
+const sectionForOutput = s => ({ type: s.type, sortOrder: s.sortOrder, content: s.content || {}, settings: s.settings || {} });
 const visibleSorted = sections =>
   (Array.isArray(sections) ? sections : [])
     .filter(s => s && s.isVisible !== false)
@@ -43,6 +44,10 @@ async function loadPublishedPages() {
       isHomePage: p.isHomePage,
       parentSlug: p.parentSlug,
       sortOrder: p.sortOrder,
+      status: p.status,
+      titleEn: snap.titleEn !== undefined ? snap.titleEn : p.titleEn || '',
+      titleAr: snap.titleAr !== undefined ? snap.titleAr : p.titleAr || '',
+      layout: snap.layout || p.layout || 'default',
       locales: Array.isArray(snap.locales) && snap.locales.length ? snap.locales : p.locales,
       seo: snap.seo || {},
       sections: visibleSorted(snap.sections).map(sectionForOutput),

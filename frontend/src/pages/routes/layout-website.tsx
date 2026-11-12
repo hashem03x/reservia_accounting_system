@@ -7,6 +7,7 @@ import paths from "@/utils/constants/paths";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import { Button } from "@mantine/core";
 import logo from "@/assets/logo_no_bg.png";
+import { ConfirmProvider } from "@/pages/website/_shared/cms";
 
 // Website Management - a lean, dedicated layout, mirroring pages/routes/layout-crm.tsx exactly
 // (not the ERP's AdminLayout/nav-config.ts - those are wired to the ERP resource:action
@@ -17,8 +18,13 @@ import logo from "@/assets/logo_no_bg.png";
 // user's role can't open (the backend enforces the same capability on every request).
 const NAV_ITEMS: { to: string; label: { en: string; ar: string }; Icon: (typeof outlineIcons)[keyof typeof outlineIcons]; capability?: WebsiteCapability }[] = [
   { to: `/${paths.website}`, label: { en: "Overview", ar: "نظرة عامة" }, Icon: outlineIcons.Squares },
-  { to: `/${paths.website}/${paths.websitePages}`, label: { en: "Pages & SEO", ar: "الصفحات وتحسين البحث" }, Icon: outlineIcons.Document },
-  { to: `/${paths.website}/${paths.websiteSettings}`, label: { en: "Settings", ar: "الإعدادات" }, Icon: outlineIcons.Globe, capability: "settings.manage" },
+  { to: `/${paths.website}/${paths.websitePages}`, label: { en: "Pages", ar: "الصفحات" }, Icon: outlineIcons.Document },
+  { to: `/${paths.website}/${paths.websiteMedia}`, label: { en: "Media", ar: "الوسائط" }, Icon: outlineIcons.Photo },
+  { to: `/${paths.website}/${paths.websiteNavigation}`, label: { en: "Navigation", ar: "التنقل" }, Icon: outlineIcons.Compass },
+  { to: `/${paths.website}/${paths.websiteSettings}`, label: { en: "Settings", ar: "الإعدادات" }, Icon: outlineIcons.Admin, capability: "settings.manage" },
+  { to: `/${paths.website}/${paths.websiteIntegrations}`, label: { en: "Integrations", ar: "التكاملات" }, Icon: outlineIcons.Analytics, capability: "integrations.manage" },
+  { to: `/${paths.website}/${paths.websiteCustomCode}`, label: { en: "Custom Code", ar: "الكود المخصص" }, Icon: outlineIcons.ShieldCheck, capability: "code.manage" },
+  { to: `/${paths.website}/${paths.websiteActivity}`, label: { en: "Activity", ar: "النشاط" }, Icon: outlineIcons.Clock },
 ];
 
 export default function WebsiteLayout() {
@@ -40,7 +46,7 @@ export default function WebsiteLayout() {
             <img src={logo} alt="" aria-hidden className="h-9 w-9 rounded bg-white object-contain p-0.5" />
             <span>{translate("Reservia Website", "موقع رزيرفيا")}</span>
           </Link>
-          <nav className="flex items-center gap-1">
+          <nav className="flex flex-wrap items-center gap-1" data-testid="website-nav">
             {NAV_ITEMS.filter((item) => !item.capability || hasWebsiteCapability(role, item.capability)).map((item) => {
               const active = location.pathname === item.to || (item.to !== `/${paths.website}` && location.pathname.startsWith(item.to));
               return (
@@ -61,7 +67,9 @@ export default function WebsiteLayout() {
         <span className="text-sm opacity-90">{user?.name}</span>
       </header>
       <main className="min-w-0 flex-1 bg-gray-50 p-4 sm:p-6">
-        <Outlet />
+        <ConfirmProvider>
+          <Outlet />
+        </ConfirmProvider>
       </main>
     </div>
   );

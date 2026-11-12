@@ -20,6 +20,12 @@ const websitePageSchema = new Schema(
     path: { type: String, required: [true, 'Page path is required'], trim: true },
     isHomePage: { type: Boolean, default: false },
     pageType: { type: String, enum: ['managed', 'legacy'], default: 'managed' },
+    // The page's own name (dashboard lists, navigation defaults) - separate from the SEO title.
+    titleEn: { type: String, trim: true, maxlength: 120, default: '' },
+    titleAr: { type: String, trim: true, maxlength: 120, default: '' },
+    // Page chrome on the public site: 'default' (header + footer), 'landing' (campaign page - no main
+    // navigation, sticky CTA), 'full-width' (sections run edge to edge).
+    layout: { type: String, enum: ['default', 'landing', 'full-width'], default: 'default' },
     parentSlug: { type: String, default: null, trim: true },
     sortOrder: { type: Number, default: 0 },
     // Which language versions of this page exist (SEO brief 2.2). Arabic is the site's default
@@ -57,7 +63,13 @@ const websitePageSchema = new Schema(
       breadcrumbLabelAr: { type: String, trim: true, maxlength: 60, default: '' },
       showBreadcrumbs: { type: Boolean, default: true },
     },
-    status: { type: String, enum: ['never_published', 'published', 'unpublished'], default: 'never_published' },
+    status: { type: String, enum: ['never_published', 'published', 'unpublished', 'archived'], default: 'never_published' },
+    archivedFromStatus: { type: String, default: null },
+    // Scheduled publishing (services/website/publishingService.js): the draft is frozen into
+    // `scheduledRevision` when scheduled; it becomes `publishedRevision` at `scheduledPublishAt`.
+    scheduledPublishAt: { type: Date, default: null },
+    scheduledRevision: { type: Schema.Types.ObjectId, ref: 'WebsiteRevision', default: null },
+    scheduledBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     publishedAt: { type: Date, default: null },
     publishedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     publishedRevision: { type: Schema.Types.ObjectId, ref: 'WebsiteRevision', default: null },
@@ -70,5 +82,6 @@ const websitePageSchema = new Schema(
 
 websitePageSchema.index({ slug: 1 }, { unique: true });
 websitePageSchema.index({ status: 1, isActive: 1 });
+websitePageSchema.index({ scheduledPublishAt: 1 }, { sparse: true });
 
 module.exports = model('WebsitePage', websitePageSchema);

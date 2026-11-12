@@ -14,10 +14,14 @@ const { Schema, model } = require('mongoose');
 const websiteCustomCodeSchema = new Schema(
   {
     name: { type: String, required: [true, 'A name is required to identify this snippet'], trim: true, maxlength: 120 },
+    // html: a raw snippet (meta/script/noscript tags); css: a stylesheet body (wrapped in <style>);
+    // js: a script body (wrapped in <script>). Validated in utils/website/customCode.js.
+    kind: { type: String, enum: ['html', 'css', 'js'], default: 'html' },
     placement: { type: String, required: true, enum: ['head', 'body_start', 'body_end'] },
+    description: { type: String, trim: true, maxlength: 300, default: '' },
     scope: { type: String, required: true, enum: ['global', 'page'], default: 'global' },
     page: { type: Schema.Types.ObjectId, ref: 'WebsitePage', default: null },
-    code: { type: String, required: [true, 'Snippet code is required'] },
+    code: { type: String, required: [true, 'Snippet code is required'], maxlength: 100000 },
     isEnabled: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
