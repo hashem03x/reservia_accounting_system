@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 const { getPublicSite, getPublicPreview } = require('../../controller/website/publicSiteController');
 const { isAllowedWebsiteOrigin } = require('../../utils/crm/publicLeadOrigins');
+const { getVisualPreview } = require('../../controller/website/visualController');
 
 // Website Management - the PUBLIC, read-only endpoints (no authController.protect):
 //   GET /site            - the published-content feed the website BUILD reads server-to-server;
@@ -38,5 +39,8 @@ const previewCors = cors({
 router.get('/site', limiter(30), getPublicSite);
 router.options('/preview/:token', previewCors);
 router.get('/preview/:token', previewCors, limiter(60), getPublicPreview);
+// The Visual Editor iframe / draft design preview reads the DRAFT design with a signed token.
+router.options('/visual-preview/:token', previewCors);
+router.get('/visual-preview/:token', previewCors, limiter(120), getVisualPreview);
 
 module.exports = router;

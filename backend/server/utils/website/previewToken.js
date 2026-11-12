@@ -43,4 +43,31 @@ function verifyPreviewToken(token, { now = Date.now() } = {}) {
   }
 }
 
-module.exports = { createPreviewToken, verifyPreviewToken, TTL_SECONDS };
+/**
+ * Visual-editor tokens: the same signature scheme, for the DRAFT visual configuration rather than
+ * one page. `mode` 'edit' (the dashboard's editor iframe) or 'preview' (a shareable draft
+ * preview tab); `origin` is the dashboard origin the editor bridge may talk to (postMessage).
+ */
+function createVisualToken({ userId, mode = 'preview', origin = null, ttlSeconds = TTL_SECONDS, now = Date.now() } = {}) {
+  const exp = Math.floor(now / 1000) + ttlSeconds;
+  const payload = b64(JSON.stringify({ k: 'visual', m: mode === 'edit' ? 'edit' : 'preview', o: origin || null, u: userId ? String(userId) : null, exp }));
+  return { token: `${payload}.${sign(payload)}`, expiresAt: new Date(exp * 1000) };
+}
+
+function verifyVisualToken(token, { now = Date.now() } = {}) {
+  if (typeof token !== 'string' || token.length > 900) return null;
+  const [payload, sig] = token.split('.');
+  if (!payload || !sig) return null;
+  const expected = Buffer.from(sign(payload));
+  const given = Buffer.from(sig);
+  if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (data.k !== 'visual' || !(data.exp > Math.floor(now / 1000))) return null;
+    return { mode: data.m, origin: data.o || null, userId: data.u || null, exp: data.exp };
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { createPreviewToken, verifyPreviewToken, createVisualToken, verifyVisualToken, TTL_SECONDS };

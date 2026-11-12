@@ -10,14 +10,15 @@ export type WebsiteCapability =
   | "integrations.manage"
   | "settings.manage"
   | "navigation.manage"
-  | "code.manage";
+  | "code.manage"
+  | "design.manage";
 
 // Mirrors backend/server/middleware/websiteAccess.js's CAPABILITIES_BY_ROLE exactly - kept here
 // too so the frontend can show/hide UI without waiting on a round trip for every check (the
 // backend re-checks the same role from the user's own stored systemMemberships on every request,
 // never from anything the client sends - this is a UI convenience only, not the real authority).
 export const WEBSITE_CAPABILITIES_BY_ROLE: Record<WebsiteRole, WebsiteCapability[]> = {
-  admin: ["view", "edit", "publish", "media.manage", "seo.manage", "integrations.manage", "settings.manage", "navigation.manage", "code.manage"],
+  admin: ["view", "edit", "publish", "media.manage", "seo.manage", "integrations.manage", "settings.manage", "navigation.manage", "code.manage", "design.manage"],
   editor: ["view", "edit", "media.manage", "seo.manage"],
   viewer: ["view"],
 };
