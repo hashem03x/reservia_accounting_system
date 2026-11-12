@@ -69,7 +69,10 @@ const app = express();
 // domain) used to fail the preflight here before the route's own policy ever ran, and a credentialed
 // policy has no business on an anonymous, cookie-less endpoint anyway.
 const PUBLIC_CORS_PREFIX = '/api/v1/crm/public/';
-const skipForPublicRoutes = middleware => (req, res, next) => (req.path.startsWith(PUBLIC_CORS_PREFIX) ? next() : middleware(req, res, next));
+// The website's draft-preview read (/api/v1/website/public/preview/*) is likewise anonymous and
+// cookie-less, with its own GET-only website-origin policy (routes/website/publicSiteRoute.js).
+const PREVIEW_CORS_PREFIX = '/api/v1/website/public/preview/';
+const skipForPublicRoutes = middleware => (req, res, next) => (req.path.startsWith(PUBLIC_CORS_PREFIX) || req.path.startsWith(PREVIEW_CORS_PREFIX) ? next() : middleware(req, res, next));
 // ...and the public route's own policy answers its preflights right here, before
 // ensureDbConnected - a preflight never needs the database.
 app.use(PUBLIC_CORS_PREFIX, require('./middleware/publicLeadCors'));

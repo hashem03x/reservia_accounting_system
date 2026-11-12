@@ -27,6 +27,14 @@ const websiteIntegrationSchema = new Schema(
     gtm: { type: providerSchema, default: () => ({}) },
     metaPixel: { type: providerSchema, default: () => ({}) },
     googleAds: { type: providerSchema, default: () => ({}) },
+    // Site-ownership verification meta tags (content values only - the tag itself is generated).
+    verification: {
+      google: { type: String, trim: true, default: '' },
+      bing: { type: String, trim: true, default: '' },
+      meta: { type: String, trim: true, default: '' },
+      yandex: { type: String, trim: true, default: '' },
+      pinterest: { type: String, trim: true, default: '' },
+    },
     metaCapi: {
       enabled: { type: Boolean, default: false },
       accessTokenCipher: { type: String, select: false, default: null },

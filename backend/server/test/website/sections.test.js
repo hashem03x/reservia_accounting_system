@@ -53,9 +53,14 @@ test('createSection: rejects an unknown section type - the registry is a control
   assert.equal(err.statusCode, 400);
 });
 
-test('createSection: rejects content missing a required field for its type', async () => {
-  // 'hero' requires headingEn - see utils/website/sectionTypes.js
-  const { err } = await run(sectionController.createSection, { params: { pageId: page._id }, user, body: { type: 'hero', content: { subheadingEn: 'no heading' } } });
+test('required fields: a NEW section may start empty, but saving an edit without them is rejected', async () => {
+  // 'hero' requires headingEn - see utils/website/sectionTypes.js. Adding a section to fill in next
+  // is allowed (the page builder adds it, then the editor fills it in); an incomplete section can
+  // never be saved over a complete one, and publishing refuses incomplete sections
+  // (test/website/cmsApi.test.js).
+  const created = await run(sectionController.createSection, { params: { pageId: page._id }, user, body: { type: 'hero', content: { subheadingEn: 'no heading yet' } } });
+  assert.equal(created.err, undefined);
+  const { err } = await run(sectionController.updateSection, { params: { pageId: page._id, id: created.res.body.data._id }, user, body: { content: { subheadingEn: 'still no heading' } } });
   assert.ok(err);
   assert.equal(err.statusCode, 400);
   assert.match(err.message, /headingEn/);

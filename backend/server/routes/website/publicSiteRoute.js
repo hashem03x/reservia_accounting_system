@@ -1,27 +1,42 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { getPublicSite } = require('../../controller/website/publicSiteController');
+const cors = require('cors');
+const { getPublicSite, getPublicPreview } = require('../../controller/website/publicSiteController');
+const { isAllowedWebsiteOrigin } = require('../../utils/crm/publicLeadOrigins');
 
-// Website Management - the PUBLIC, read-only content feed (GET /api/v1/website/public/site).
-// Deliberately NOT behind authController.protect/requireWebsiteAccess: the website's build
-// (Reservia_Website scripts/build-site.mjs) fetches it server-to-server with no user. It only ever
-// serves already-published content (see publicSiteController.js), and only GET. Not opened to
-// browser cross-origin reads beyond app.js's global CORS policy - nothing in a visitor's browser
-// needs it; the website ships the content inside its own build.
+// Website Management - the PUBLIC, read-only endpoints (no authController.protect):
+//   GET /site            - the published-content feed the website BUILD reads server-to-server;
+//   GET /preview/:token  - one page's draft for a signed, short-lived preview link (the website's
+//                          /<lang>/__preview page reads it from the browser - its own GET-only,
+//                          no-credentials CORS policy for the website's origins; app.js skips the
+//                          global credentialed policy for this prefix).
 const router = express.Router();
 
-// A build reads this once; a small per-source limit on top of app.js's global limiter keeps the
-// one unauthenticated read endpoint from being used to hammer the database.
-router.use(
+const limiter = max =>
   rateLimit({
     windowMs: 60 * 1000,
-    max: 30,
+    max,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: 'Too many requests. Please try again later.' },
-  }),
-);
+  });
 
-router.get('/site', getPublicSite);
+const extraPreviewOrigins = () =>
+  [process.env.WEBSITE_PUBLIC_URL, ...(process.env.WEBSITE_PREVIEW_ORIGINS || '').split(',')]
+    .map(o => String(o || '').trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
+const previewCors = cors({
+  origin(origin, callback) {
+    if (!origin || isAllowedWebsiteOrigin(origin) || extraPreviewOrigins().includes(origin)) return callback(null, true);
+    return callback(null, false);
+  },
+  credentials: false,
+  methods: ['GET', 'OPTIONS'],
+});
+
+router.get('/site', limiter(30), getPublicSite);
+router.options('/preview/:token', previewCors);
+router.get('/preview/:token', previewCors, limiter(60), getPublicPreview);
 
 module.exports = router;

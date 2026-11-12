@@ -17,6 +17,50 @@ const websiteSettingsSchema = new Schema(
       url: { type: String, default: null },
       publicId: { type: String, default: null },
     },
+    favicon: {
+      url: { type: String, default: null },
+      publicId: { type: String, default: null },
+    },
+    logoDark: {
+      url: { type: String, default: null },
+      publicId: { type: String, default: null },
+    },
+    // Company descriptions (footer blurb, About defaults).
+    descriptionEn: { type: String, trim: true, maxlength: 600, default: '' },
+    descriptionAr: { type: String, trim: true, maxlength: 600, default: '' },
+    // Opening hours: one row per day, e.g. { day: 'sun', open: '09:00', close: '17:00', closed: false }.
+    businessHours: { type: [Schema.Types.Mixed], default: [] },
+    businessHoursNoteEn: { type: String, trim: true, maxlength: 200, default: '' },
+    businessHoursNoteAr: { type: String, trim: true, maxlength: 200, default: '' },
+    header: {
+      showCta: { type: Boolean, default: true },
+      ctaLabelEn: { type: String, trim: true, maxlength: 40, default: '' },
+      ctaLabelAr: { type: String, trim: true, maxlength: 40, default: '' },
+      ctaHref: { type: String, trim: true, maxlength: 300, default: '' },
+      showPhone: { type: Boolean, default: true },
+      sticky: { type: Boolean, default: true },
+    },
+    footer: {
+      showNewsletter: { type: Boolean, default: false },
+      showSocial: { type: Boolean, default: true },
+      showContact: { type: Boolean, default: true },
+    },
+    cookieConsent: {
+      enabled: { type: Boolean, default: false },
+      messageEn: { type: String, trim: true, maxlength: 400, default: '' },
+      messageAr: { type: String, trim: true, maxlength: 400, default: '' },
+      acceptLabelEn: { type: String, trim: true, maxlength: 30, default: '' },
+      acceptLabelAr: { type: String, trim: true, maxlength: 30, default: '' },
+      policyUrl: { type: String, trim: true, maxlength: 300, default: '' },
+      // Analytics/pixels wait for consent when true.
+      blockTrackingUntilConsent: { type: Boolean, default: true },
+    },
+    // robots.txt: extra Disallow paths (one per line) on top of the generated rules; a global
+    // "discourage search engines" switch for staging domains.
+    robots: {
+      discourageIndexing: { type: Boolean, default: false },
+      disallowPaths: { type: [String], default: [] },
+    },
     defaultOgImage: {
       url: { type: String, default: null },
       publicId: { type: String, default: null },
@@ -37,6 +81,7 @@ const websiteSettingsSchema = new Schema(
       linkedin: { type: String, trim: true, default: '' },
       youtube: { type: String, trim: true, default: '' },
       tiktok: { type: String, trim: true, default: '' },
+      x: { type: String, trim: true, default: '' },
     },
     footerCopyrightEn: { type: String, trim: true, default: '' },
     footerCopyrightAr: { type: String, trim: true, default: '' },

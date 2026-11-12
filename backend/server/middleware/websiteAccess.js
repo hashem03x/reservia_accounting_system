@@ -13,7 +13,9 @@ const ApiError = require('../utils/apiError');
 // the request body/query/headers.
 
 const CAPABILITIES_BY_ROLE = {
-  admin: ['view', 'edit', 'publish', 'media.manage', 'seo.manage', 'integrations.manage', 'settings.manage'],
+  // navigation.manage / code.manage: the site structure and anything that EXECUTES on the public site
+  // (custom code, custom HTML sections, tracking scripts) are administrator-only.
+  admin: ['view', 'edit', 'publish', 'media.manage', 'seo.manage', 'integrations.manage', 'settings.manage', 'navigation.manage', 'code.manage'],
   editor: ['view', 'edit', 'media.manage', 'seo.manage'],
   viewer: ['view'],
 };

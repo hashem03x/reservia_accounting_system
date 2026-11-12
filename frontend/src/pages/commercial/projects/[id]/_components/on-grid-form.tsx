@@ -114,7 +114,7 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
         </div>
       </SectionCard>
 
-      <SectionCard title={translate("Site Costs (Developer Brief 3.2) - optional", "تكاليف الموقع - اختياري")}>
+      <SectionCard title={translate("Site Costs - optional", "تكاليف الموقع - اختياري")}>
         <p className="mb-3 text-sm text-gray-500">
           {translate(
             "Travel, hotel and per diem apply outside Greater Cairo; the personnel allowance applies everywhere (300 EGP per person-day). Leave both blank to price without site personnel costs.",
@@ -127,7 +127,7 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
         </div>
       </SectionCard>
 
-      <SectionCard title={translate("Customer Feasibility Inputs (Developer Brief 3.4)", "مدخلات جدوى العميل")}>
+      <SectionCard title={translate("Customer Feasibility Inputs", "مدخلات جدوى العميل")}>
         <p className="mb-3 text-sm text-gray-500">
           {translate(
             "CapEx is always the final price incl. VAT from the Pricing tab. The headline case uses the escalation below; the two sensitivity scenarios are shown alongside.",

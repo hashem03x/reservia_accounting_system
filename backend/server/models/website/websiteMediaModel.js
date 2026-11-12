@@ -6,6 +6,14 @@ const { Schema, model } = require('mongoose');
 // separate, manual maintenance action, out of scope here.
 const websiteMediaSchema = new Schema(
   {
+    // 'image' | 'video'. The binary lives in Cloudinary (or, in local development only, on disk) -
+    // this document holds metadata and the delivery URL, never file bytes.
+    kind: { type: String, enum: ['image', 'video'], default: 'image' },
+    resourceType: { type: String, enum: ['image', 'video', 'local'], default: 'image' },
+    displayName: { type: String, trim: true, maxlength: 120, default: '' },
+    originalName: { type: String, trim: true, maxlength: 200, default: '' },
+    mimeType: { type: String, default: null },
+    duration: { type: Number, default: null },
     url: { type: String, required: true },
     publicId: { type: String, required: true },
     format: { type: String, default: null },
@@ -22,5 +30,6 @@ const websiteMediaSchema = new Schema(
 );
 
 websiteMediaSchema.index({ isActive: 1, folder: 1, createdAt: -1 });
+websiteMediaSchema.index({ isActive: 1, kind: 1, createdAt: -1 });
 
 module.exports = model('WebsiteMedia', websiteMediaSchema);

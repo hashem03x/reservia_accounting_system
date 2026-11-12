@@ -14,8 +14,9 @@ const SCALAR_KEYS = [
   'siteNameEn', 'siteNameAr', 'taglineEn', 'taglineAr', 'footerCopyrightEn', 'footerCopyrightAr', 'publishOrgContacts',
   'publicSiteUrl', 'defaultLocale', 'enabledLocales', 'titleTemplateEn', 'titleTemplateAr',
   'defaultDescriptionEn', 'defaultDescriptionAr', 'twitterHandle',
+  'descriptionEn', 'descriptionAr', 'businessHours', 'businessHoursNoteEn', 'businessHoursNoteAr',
 ];
-const OBJECT_KEYS = ['logo', 'defaultOgImage', 'contact', 'socialLinks', 'organization'];
+const OBJECT_KEYS = ['logo', 'logoDark', 'favicon', 'defaultOgImage', 'contact', 'socialLinks', 'organization', 'header', 'footer', 'cookieConsent', 'robots'];
 
 const getSettings = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Website settings retrieved', true, await loadSettings()));

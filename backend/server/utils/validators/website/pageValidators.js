@@ -1,5 +1,6 @@
 const { check } = require('express-validator');
 const validatorMiddleware = require('../../../middleware/validatorMiddleware');
+const { isSafeMediaUrl } = require('../../website/sectionValidation');
 
 const slugRule = (field, { required }) => {
   const chain = required ? check(field).notEmpty().withMessage('Slug is required') : check(field).optional();
@@ -59,7 +60,7 @@ const seoRule = check('seo').optional().custom(value => {
   if (value.ogImage !== undefined && value.ogImage !== null) {
     const img = value.ogImage;
     if (typeof img !== 'object' || Array.isArray(img)) throw new Error('seo.ogImage is invalid');
-    if (img.url != null && !/^https:\/\//i.test(String(img.url))) throw new Error('seo.ogImage.url must be an https URL');
+    if (img.url != null && !isSafeMediaUrl(String(img.url))) throw new Error('seo.ogImage.url must be an https URL');
   }
   return true;
 });
@@ -93,6 +94,9 @@ const localesRule = check('locales')
 
 const createPageValidators = [
   slugRule('slug', { required: true }),
+  check('titleEn').optional().isString().trim().isLength({ max: 120 }).withMessage('Page title (English) must be at most 120 characters'),
+  check('titleAr').optional().isString().trim().isLength({ max: 120 }).withMessage('Page title (Arabic) must be at most 120 characters'),
+  check('layout').optional().isIn(['default', 'landing', 'full-width']).withMessage('Layout must be default, landing or full-width'),
   pathRule('path', { required: true }),
   check('isHomePage').optional().isBoolean(),
   check('pageType').optional().isIn(['managed', 'legacy']),
@@ -104,7 +108,11 @@ const createPageValidators = [
 ];
 
 const updatePageValidators = [
+  slugRule('slug', { required: false }),
   pathRule('path', { required: false }),
+  check('titleEn').optional().isString().trim().isLength({ max: 120 }).withMessage('Page title (English) must be at most 120 characters'),
+  check('titleAr').optional().isString().trim().isLength({ max: 120 }).withMessage('Page title (Arabic) must be at most 120 characters'),
+  check('layout').optional().isIn(['default', 'landing', 'full-width']).withMessage('Layout must be default, landing or full-width'),
   check('isHomePage').optional().isBoolean(),
   check('pageType').optional().isIn(['managed', 'legacy']),
   check('parentSlug').optional({ nullable: true }).isString().trim(),

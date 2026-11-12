@@ -125,7 +125,7 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
         </SectionCard>
       </div>
 
-      <SectionCard title={translate("Price Build (Developer Brief 3.3)", "تركيبة السعر")}>
+      <SectionCard title={translate("Price Build", "تركيبة السعر")}>
         <Row label={translate("Direct COGS (materials + site costs)", "التكلفة المباشرة (المواد + الموقع)")} value={formatAmount(p.cogs, cur)} />
         <Row label={`${translate("Overhead", "المصروفات العامة")} (${pct(p.overheadPct)})`} value={formatAmount(p.overheadAmt, cur)} />
         <Row label={`${translate("Contingency", "الاحتياطي")} (${pct(p.contingencyPct)})`} value={formatAmount(p.contingencyAmt, cur)} />

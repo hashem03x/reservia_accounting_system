@@ -11,6 +11,9 @@ export type CreatePageInput = {
   path: string;
   isHomePage?: boolean;
   pageType?: string;
+  titleEn?: string;
+  titleAr?: string;
+  layout?: string;
   parentSlug?: string | null;
   sortOrder?: number;
   locales?: WebsitePage["locales"];
@@ -23,7 +26,7 @@ export type UpdatePageInput = Partial<Omit<CreatePageInput, "slug">>;
  * useAccountParentGroups.ts's shape exactly. Mutations throw the backend's error for the caller
  * to show via handleRequest, and reload the list on success.
  */
-export default function useWebsitePages() {
+export default function useWebsitePages(filters: { status?: string; q?: string } = {}) {
   const { language } = useLanguage();
   const privateRequest = usePrivateRequest();
 
@@ -35,12 +38,15 @@ export default function useWebsitePages() {
   const reload = useCallback(
     () =>
       handleRequest(language, setLoading, setError, async () => {
-        const res = await privateRequest({ url: "website/pages", params: { limit: 100 }, language });
+        const params: Record<string, string | number> = { limit: 200 };
+        if (filters.status) params.status = filters.status;
+        if (filters.q) params.q = filters.q;
+        const res = await privateRequest({ url: "website/pages", params, language });
         setPages(Array.isArray(res?.data) ? res.data : []);
         setPagination(res?.paginationResult ?? { currentPage: 1, numberOfPages: 1, limit: 100 });
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [language],
+    [language, filters.status, filters.q],
   );
 
   useEffect(() => {
@@ -86,5 +92,10 @@ export default function useWebsitePages() {
     return res.data;
   }
 
-  return { pages, pagination, loading, error, reload, createPage, updatePage, duplicatePage, deletePage, publishPage, unpublishPage, requestPreviewDeploy };
+  async function reorderPages(order: string[]): Promise<void> {
+    await privateRequest({ url: "website/pages/reorder", method: "PATCH", data: { order }, language });
+    await reload();
+  }
+
+  return { reorderPages, pages, pagination, loading, error, reload, createPage, updatePage, duplicatePage, deletePage, publishPage, unpublishPage, requestPreviewDeploy };
 }
