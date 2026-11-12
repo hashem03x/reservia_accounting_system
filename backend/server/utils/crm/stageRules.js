@@ -39,6 +39,13 @@ const RULES = {
   BACK_MORE_THAN_ONE: { message: 'A lead can only move back one stage at a time.', overridable: true },
   FOLLOW_UP_REQUIRED: { message: 'Set a follow-up date.', overridable: false },
   TECHNICAL_RESTRICTED: { message: 'Technical can move leads to Site survey or Proposal sent only.', overridable: false },
+  // CRM Changes Required (12 Nov 2026), item 1: the Deal Engine handoff needs the governorate (it
+  // decides the Rates region), so it is asked for at Qualified at the latest - never discovered as a
+  // failed sync at Proposal sent. Data integrity: not overridable.
+  GOVERNORATE_REQUIRED: { message: 'Set the governorate before moving the lead to Qualified or beyond (the Deal Engine needs it for the Rates region).', overridable: false },
+  // Same item: "Block Won ... when the Commercial sync has failed. Keep the Retry button." A Won lead
+  // must never be left without its Deal Engine deal. Message built per lead (the sync's own error).
+  DEAL_SYNC_FAILED: { message: null, overridable: false },
 };
 
 const STAGE_LABELS = {
@@ -67,6 +74,10 @@ function violation(code, message) {
  * @param {string|null} ctx.lostReason
  * @param {string|Date|null} ctx.followUpAt - the follow-up date that WOULD apply after this move
  * @param {boolean} ctx.mdApproved - an MD approval already on the lead, or the actor being the MD
+ * @param {string|null} [ctx.governorate] - the governorate that WOULD apply after this move. Checked
+ *   only when the key is present (the lead service always passes it; older pure callers did not).
+ * @param {string|null} [ctx.dealBlocker] - why the lead's Deal Engine deal is missing or out of
+ *   sync (null when it is fine). Only consulted for a move to Won.
  * @returns {{code: string, message: string, overridable: boolean}[]} empty means allowed
  */
 function evaluateStageTransition(ctx) {
@@ -100,6 +111,15 @@ function evaluateStageTransition(ctx) {
     } else if (toIndex < fromIndex - 1) {
       violations.push(violation('BACK_MORE_THAN_ONE'));
     }
+  }
+
+  if ('governorate' in ctx && (ctx.to === 'won' || (toIndex !== -1 && toIndex >= FOLLOW_UP_REQUIRED_FROM_INDEX)) && !String(ctx.governorate || '').trim()) {
+    violations.push(violation('GOVERNORATE_REQUIRED'));
+  }
+  if (ctx.to === 'won' && ctx.dealBlocker) {
+    violations.push(
+      violation('DEAL_SYNC_FAILED', `The Deal Engine deal for this lead is not in sync: ${ctx.dealBlocker} Fix it, press Retry on the Deal Engine card, then mark the lead Won.`)
+    );
   }
 
   if (toIndex !== -1 && toIndex >= FOLLOW_UP_REQUIRED_FROM_INDEX && !ctx.followUpAt) {

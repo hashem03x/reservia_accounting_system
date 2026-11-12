@@ -77,9 +77,24 @@ exports.changeStageValidator = [
   // Change Request 2, item 1: MD-only override reason. Its presence from a non-MD is rejected by
   // the service (403) - the server-side role decides, never this field.
   check('overrideReason').optional({ nullable: true }).isString().withMessage('Override reason must be text.').trim().isLength({ max: 500 }),
+  // CRM Changes Required, item 1: the governorate can be given with the move (asked for at Qualified).
+  check('governorate').optional({ nullable: true, checkFalsy: true }).isIn(GOVERNORATE_NAMES_EN).withMessage('Choose a governorate from the list.'),
   // mdApproved is deliberately NOT accepted here - services/crm/leadService.js#changeStage never
   // trusts a client-supplied approval flag (a request body is not proof the MD approved
   // anything); only the acting role genuinely being 'md' can satisfy the >EGP 1M rule.
+  validatorMiddleware,
+];
+
+// PATCH /leads/:id - correct a lead's contact and qualification details (CRM Changes Required, item 1).
+exports.updateLeadDetailsValidator = [
+  check('id').isMongoId().withMessage('Invalid lead id'),
+  check('name').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
+  check('email').optional({ nullable: true, checkFalsy: true }).isEmail().withMessage('Enter a valid email address.').isLength({ max: 200 }),
+  check('governorate').optional({ nullable: true, checkFalsy: true }).isIn(GOVERNORATE_NAMES_EN).withMessage('Choose a governorate from the list.'),
+  check('segment').optional({ nullable: true }).isIn(FORM_SEGMENTS).withMessage('Invalid segment'),
+  check('monthlyBillEgp').optional({ nullable: true }).isFloat({ min: 0 }),
+  check('systemSizeKwp').optional({ nullable: true }).isFloat({ min: 0 }),
+  check('partnerName').optional({ nullable: true }).isString().trim().isLength({ max: 150 }),
   validatorMiddleware,
 ];
 

@@ -43,7 +43,7 @@ beforeEach(async () => {
 const maybeTest = RUN ? test : test.skip;
 
 maybeTest('intakeLead: a brand-new phone number creates exactly one lead, "new" stage, a system activity and a stage-history row', async () => {
-  const { lead, created } = await leadService.intakeLead({ phone: '01012345678', channel: 'phone', name: 'Ahmed Samir' });
+  const { lead, created } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01012345678', channel: 'phone', name: 'Ahmed Samir' });
   assert.equal(created, true);
   assert.equal(lead.phoneE164, '+201012345678');
   assert.equal(lead.stage, 'new');
@@ -60,8 +60,8 @@ maybeTest('intakeLead: a brand-new phone number creates exactly one lead, "new" 
 });
 
 maybeTest('intakeLead: a repeat enquiry on the SAME phone number (different formatting) merges into the existing lead, never creates a second one', async () => {
-  const first = await leadService.intakeLead({ phone: '01012345678', channel: 'phone' });
-  const second = await leadService.intakeLead({ phone: '00201012345678', channel: 'whatsapp' });
+  const first = await leadService.intakeLead({ governorate: 'Cairo', phone: '01012345678', channel: 'phone' });
+  const second = await leadService.intakeLead({ governorate: 'Cairo', phone: '00201012345678', channel: 'whatsapp' });
 
   assert.equal(second.created, false);
   assert.equal(String(second.lead._id), String(first.lead._id));
@@ -75,8 +75,8 @@ maybeTest('intakeLead: a repeat enquiry on the SAME phone number (different form
 maybeTest('intakeLead: two concurrent requests for the same brand-new number never create two leads (the unique-index race is handled, not just the pre-check)', async () => {
   const phone = '01098765432';
   const [a, b] = await Promise.all([
-    leadService.intakeLead({ phone, channel: 'phone' }),
-    leadService.intakeLead({ phone, channel: 'whatsapp' }),
+    leadService.intakeLead({ governorate: 'Cairo', phone, channel: 'phone' }),
+    leadService.intakeLead({ governorate: 'Cairo', phone, channel: 'whatsapp' }),
   ]);
   assert.equal(await Lead.countDocuments({ phoneE164: '+201098765432' }), 1);
   assert.equal(String(a.lead._id), String(b.lead._id));
@@ -85,7 +85,7 @@ maybeTest('intakeLead: two concurrent requests for the same brand-new number nev
 });
 
 maybeTest('recordActivity: an inbound WhatsApp message never counts as the first human reply; an outbound one does', async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01111111111', channel: 'whatsapp' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01111111111', channel: 'whatsapp' });
   await leadService.recordActivity(lead._id, { type: 'whatsapp_in', body: 'Hi, how much for a 5kWp system?' });
   let fresh = await Lead.findById(lead._id).lean();
   assert.equal(fresh.firstReplyAt, null);
@@ -96,7 +96,7 @@ maybeTest('recordActivity: an inbound WhatsApp message never counts as the first
 });
 
 maybeTest('recordActivity: the same WhatsApp message id delivered twice (Meta retry) is only ever recorded once', async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01122233344', channel: 'whatsapp' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01122233344', channel: 'whatsapp' });
   await leadService.recordActivity(lead._id, { type: 'whatsapp_in', body: 'Hello', whatsappMessageId: 'wamid.ABC123' });
   await leadService.recordActivity(lead._id, { type: 'whatsapp_in', body: 'Hello', whatsappMessageId: 'wamid.ABC123' });
   const count = await Activity.countDocuments({ whatsappMessageId: 'wamid.ABC123' });
@@ -104,7 +104,7 @@ maybeTest('recordActivity: the same WhatsApp message id delivered twice (Meta re
 });
 
 maybeTest('changeStage: a lead can only move back one stage at a time', async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01233445566', channel: 'phone' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01233445566', channel: 'phone' });
   await leadService.changeStage(lead._id, { to: 'contacted', followUpAt: null }, { role: 'sales' });
   await leadService.changeStage(lead._id, { to: 'qualified', followUpAt: new Date() }, { role: 'sales' });
   await leadService.changeStage(lead._id, { to: 'site_survey', followUpAt: new Date() }, { role: 'sales' });
@@ -116,7 +116,7 @@ maybeTest('changeStage: a lead can only move back one stage at a time', async ()
 });
 
 maybeTest('changeStage: Won above EGP 1M requires MD approval - rejected for a sales rep, accepted for the MD role', async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01244455566', channel: 'phone' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', name: 'Big Deal Co', phone: '01244455566', channel: 'phone' });
   await leadService.changeStage(lead._id, { to: 'contacted', followUpAt: null }, { role: 'sales' });
   await leadService.changeStage(lead._id, { to: 'qualified', followUpAt: new Date() }, { role: 'sales' });
   await leadService.changeStage(lead._id, { to: 'site_survey', followUpAt: new Date() }, { role: 'sales' });
@@ -142,7 +142,7 @@ maybeTest('SECURITY: a sales rep cannot self-approve a >EGP 1M deal by sending m
   // could self-approve a >1M deal just by including `mdApproved: true` in their own PATCH, with
   // no actual MD ever involved. A request body is never proof of approval - only the ACTING
   // ROLE (loaded server-side from the database, never the client) can satisfy this rule.
-  const { lead } = await leadService.intakeLead({ phone: '01244455567', channel: 'phone' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01244455567', channel: 'phone' });
   await leadService.changeStage(lead._id, { to: 'contacted', followUpAt: null }, { role: 'sales' });
   await leadService.changeStage(lead._id, { to: 'qualified', followUpAt: new Date() }, { role: 'sales' });
   await leadService.changeStage(lead._id, { to: 'site_survey', followUpAt: new Date() }, { role: 'sales' });
@@ -160,7 +160,7 @@ maybeTest('SECURITY: a sales rep cannot self-approve a >EGP 1M deal by sending m
 });
 
 maybeTest('changeStage: a lost lead can only be reopened by Admin or the MD', async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01255566677', channel: 'phone' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01255566677', channel: 'phone' });
   await leadService.changeStage(lead._id, { to: 'lost', lostReason: 'Price' }, { role: 'sales' });
 
   await assert.rejects(

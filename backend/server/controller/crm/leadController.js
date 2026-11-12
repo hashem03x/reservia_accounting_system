@@ -96,6 +96,13 @@ exports.changeStage = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Lead stage updated successfully', true, lead));
 });
 
+// PATCH /leads/:id - CRM Changes Required, item 1 (set the governorate so a failed Deal Engine
+// sync can be retried). Technical cannot edit customer details.
+exports.updateLeadDetails = asyncHandler(async (req, res) => {
+  const lead = await leadService.updateLeadDetails(req.params.id, req.body, { userId: req.user._id });
+  res.status(200).json(apiResponse('Lead updated successfully', true, lead));
+});
+
 exports.reassignLead = asyncHandler(async (req, res) => {
   const lead = await leadService.reassignLead(req.params.id, req.body.owner || null, { userId: req.user._id });
   res.status(200).json(apiResponse('Lead reassigned successfully', true, lead));

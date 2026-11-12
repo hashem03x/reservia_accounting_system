@@ -95,6 +95,13 @@ export const MD_APPROVAL_THRESHOLD_EGP = 1_000_000;
  * quick-stage-change flow (menu or drag-and-drop) asks for the same information instead of a
  * second, driftable copy of this logic.
  */
+// CRM Changes Required (12 Nov 2026), item 1 - mirrors backend utils/crm/stageRules.js
+// GOVERNORATE_REQUIRED: from Qualified on (and Won) the lead must have a governorate.
+export const GOVERNORATE_REQUIRED_STAGES = ["qualified", "site_survey", "proposal_sent", "negotiation", "won"];
+export function needsGovernorateFor(to: string, governorate: string | null | undefined) {
+  return GOVERNORATE_REQUIRED_STAGES.includes(to) && !String(governorate || "").trim();
+}
+
 export function stageExtraFieldRequirements(to: string) {
   return {
     needsLostReason: to === "lost",

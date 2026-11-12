@@ -199,7 +199,7 @@ maybeTest('Test 1 - website attribution: ?utm_source=google&utm_medium=cpc&utm_c
 
 maybeTest('Test 2 - stage progression: New -> Contacted -> Site survey is BLOCKED; New -> Contacted -> Qualified -> Site survey works', async () => {
   const sales = await makeUser('Rep', crm('sales'));
-  const { lead } = await leadService.intakeLead({ phone: '01011110001', channel: 'phone', source: 'Referral' }, { userId: sales._id });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011110001', channel: 'phone', source: 'Referral' }, { userId: sales._id });
   await leadService.changeStage(lead._id, { to: 'contacted' }, { userId: sales._id, role: 'sales' });
   await assert.rejects(
     leadService.changeStage(lead._id, { to: 'site_survey', followUpAt: '2026-11-12' }, { userId: sales._id, role: 'sales' }),
@@ -216,7 +216,7 @@ maybeTest('Test 2 - stage progression: New -> Contacted -> Site survey is BLOCKE
 
 maybeTest('Test 2 - MD override: needs a reason; records previous stage, new stage, who, why, when, and appears in the timeline', async () => {
   const md = await makeUser('Managing Director', crm('md'));
-  const { lead } = await leadService.intakeLead({ phone: '01011110002', channel: 'phone', source: 'Referral' }, { userId: md._id });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011110002', channel: 'phone', source: 'Referral' }, { userId: md._id });
   await leadService.changeStage(lead._id, { to: 'contacted' }, { userId: md._id, role: 'md' });
 
   // Without a reason the MD is told the move CAN be overridden.
@@ -251,7 +251,7 @@ maybeTest('Test 2 - MD override: needs a reason; records previous stage, new sta
 
 maybeTest('Test 2 / Test 10 - override is MD-only and data-integrity rules can never be overridden', async () => {
   const admin = await makeUser('Admin Officer', crm('admin'));
-  const { lead } = await leadService.intakeLead({ phone: '01011110003', channel: 'phone', source: 'Referral' }, { userId: admin._id });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011110003', channel: 'phone', source: 'Referral' }, { userId: admin._id });
   await leadService.changeStage(lead._id, { to: 'contacted' }, { role: 'admin' });
   for (const role of ['admin', 'sales', 'technical']) {
     // eslint-disable-next-line no-await-in-loop
@@ -271,7 +271,7 @@ maybeTest('Test 2 / Test 10 - override is MD-only and data-integrity rules can n
 // ===================================================================================== Test 3
 
 maybeTest('Test 3 - follow-up 12 November 2026 is stored, returned and exported as 2026-11-12 (no 02:00 AM), and legacy Date values read back correctly', async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01011110004', channel: 'phone', source: 'Referral' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011110004', channel: 'phone', source: 'Referral' });
   await leadService.changeStage(lead._id, { to: 'contacted' }, { role: 'sales' });
   const moved = await leadService.changeStage(lead._id, { to: 'qualified', followUpAt: '2026-11-12' }, { role: 'sales' });
   assert.equal(moved.followUpAt, '2026-11-12', 'API response');
@@ -295,7 +295,7 @@ maybeTest('Test 3 - follow-up 12 November 2026 is stored, returned and exported 
 });
 
 maybeTest('Test 3 - an impossible follow-up date is rejected, not silently shifted', async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01011110005', channel: 'phone', source: 'Referral' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011110005', channel: 'phone', source: 'Referral' });
   await leadService.changeStage(lead._id, { to: 'contacted' }, { role: 'sales' });
   await assert.rejects(leadService.changeStage(lead._id, { to: 'qualified', followUpAt: '2026-02-30' }, { role: 'sales' }), /calendar date|Cast/);
 });
@@ -304,7 +304,7 @@ maybeTest('Test 3 - an impossible follow-up date is rejected, not silently shift
 
 maybeTest('Test 4 - logging one call on a new lead sets the first reply; hours to first reply, average and % within 8h all populate', async () => {
   const sales = await makeUser('Caller', crm('sales'));
-  const { lead } = await leadService.intakeLead({ phone: '01011110006', channel: 'phone', source: 'Referral' }, { userId: sales._id });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011110006', channel: 'phone', source: 'Referral' }, { userId: sales._id });
   const now = new Date();
   const ym = { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 };
   const before = await reportService.getSpeedBlock({ ...ym, ownerId: null });
@@ -328,7 +328,7 @@ maybeTest('Test 4 - logging one call on a new lead sets the first reply; hours t
 });
 
 maybeTest('Test 4 - the first move out of New counts as the first reply (the reported "moved to Contacted at once, yet n=0" case)', async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01011110007', channel: 'phone', source: 'Referral' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011110007', channel: 'phone', source: 'Referral' });
   await leadService.changeStage(lead._id, { to: 'contacted' }, { role: 'sales' });
   const fresh = await Lead.findById(lead._id).lean();
   assert.ok(fresh.firstReplyAt);
@@ -338,7 +338,7 @@ maybeTest('Test 4 - the first move out of New counts as the first reply (the rep
 maybeTest('Test 4 - WhatsApp and email replies count; the EARLIEST event wins and a later or duplicate reply never overwrites it; notes/assignment never count', async () => {
   const owner = await makeUser('Owner', crm('sales'));
   const other = await makeUser('Other', crm('sales'));
-  const { lead } = await leadService.intakeLead({ phone: '01011110008', channel: 'phone', source: 'Referral' }, { userId: owner._id });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011110008', channel: 'phone', source: 'Referral' }, { userId: owner._id });
 
   await leadService.recordActivity(lead._id, { type: 'note', body: 'internal note' });
   await leadService.reassignLead(lead._id, other._id, {});
@@ -357,14 +357,14 @@ maybeTest('Test 4 - WhatsApp and email replies count; the EARLIEST event wins an
   assert.equal(final.firstReplyVia, 'whatsapp_out');
 
   // Email on a fresh lead.
-  const { lead: l2 } = await leadService.intakeLead({ phone: '01011110009', channel: 'email', source: 'Referral' });
+  const { lead: l2 } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011110009', channel: 'email', source: 'Referral' });
   await leadService.recordActivity(l2._id, { type: 'email', body: 'Replied by email' });
   assert.equal((await Lead.findById(l2._id).lean()).firstReplyVia, 'email');
 });
 
 maybeTest('Test 4 - the historical backfill sets first replies only from real history and never moves one later', async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01011110010', channel: 'phone', source: 'Referral' });
-  const { lead: untouched } = await leadService.intakeLead({ phone: '01011110011', channel: 'phone', source: 'Referral' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011110010', channel: 'phone', source: 'Referral' });
+  const { lead: untouched } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011110011', channel: 'phone', source: 'Referral' });
   const callAt = new Date(Date.now() - 3600000);
   await mongoose.connection.collection('crmactivities').insertOne({ lead: lead._id, type: 'call', body: 'old call', createdAt: callAt, updatedAt: callAt });
   const { migrateCrmChangeRequest2 } = require('../../scripts/migrateCrmChangeRequest2');
@@ -381,7 +381,7 @@ maybeTest('Test 4 - the historical backfill sets first replies only from real hi
 
 maybeTest('Test 5 - pipeline valuation: full and weighted values reported separately, with stage probabilities; won/lost/archived excluded', async () => {
   const seed = async (phone, stage, valueEgp, extra = {}) => {
-    const { lead } = await leadService.intakeLead({ phone, channel: 'phone', source: 'Referral', valueEgp });
+    const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone, channel: 'phone', source: 'Referral', valueEgp });
     await Lead.updateOne({ _id: lead._id }, { $set: { stage, ...extra } });
   };
   await seed('01020000001', 'proposal_sent', 900000);
@@ -426,7 +426,7 @@ maybeTest('Test 6 - targets and planned spend from Change Request 1 section 5 lo
   // Two farm enquiries in November (Cairo), one of them qualified -> farm planned spend 7,000.
   const novDate = new Date('2026-11-05T09:00:00Z');
   const mk = async phone => {
-    const { lead } = await leadService.intakeLead({ phone, channel: 'phone', source: 'Referral', segment: 'farm', submittedAt: novDate });
+    const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone, channel: 'phone', source: 'Referral', segment: 'farm', submittedAt: novDate });
     return lead;
   };
   const a = await mk('01030000001');
@@ -617,7 +617,7 @@ maybeTest('Test 9 - a transient failure is retryable, and the retry completes wi
 
 maybeTest('Test 9 - partial failure: lead written but the note step failed -> the retry finishes ONLY the missing step', async () => {
   const claim = await leadIntake.claimEvent('tiktok', 'tt-1');
-  const { lead } = await leadService.intakeLead({ phone: '01070000001', channel: 'ad_lead_form', source: 'TikTok' }, { autoAssign: true });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01070000001', channel: 'ad_lead_form', source: 'TikTok' }, { autoAssign: true });
   await IntakeEvent.updateOne({ _id: claim.event._id }, { $set: { lead: lead._id, leadCreated: true, status: 'failed', lastError: 'simulated crash' } });
 
   const r = await leadIntake.processIntake({ channel: 'tiktok', externalId: 'tt-1', lead: { phone: '01070000001', channel: 'ad_lead_form', source: 'TikTok' }, note: 'Form answers' });
@@ -728,7 +728,7 @@ maybeTest('Test 10 - permissions over HTTP: MD / admin / sales / technical each 
   assert.ok(keys.body.data.every(k => k.secretHash === undefined), 'hashes are never serialized');
 
   // Stage override over HTTP.
-  const { lead } = await leadService.intakeLead({ phone: '01077770000', channel: 'phone', source: 'Referral' }, { userId: sales._id });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01077770000', channel: 'phone', source: 'Referral' }, { userId: sales._id });
   await leadService.changeStage(lead._id, { to: 'contacted' }, { role: 'sales' });
   const body = { to: 'site_survey', followUpAt: '2026-11-12', overrideReason: 'skip' };
   assert.equal((await api('PATCH', `/api/v1/crm/leads/${lead._id}/stage`, { user: sales, body })).status, 403);
@@ -810,9 +810,9 @@ maybeTest('Phase 0 - restoreSystemAccess: read-only diagnosis names the removing
 maybeTest('Item 13 - test-lead cleanup archives only confirmed TEST leads (never deletes) and refuses a real-looking customer', async () => {
   const { auditCrmTestLeads } = require('../../scripts/auditCrmTestLeads');
   const md = await makeUser('MD', crm('md'));
-  const { lead: testLead } = await leadService.intakeLead({ phone: '01090000001', channel: 'phone', source: 'Referral', name: 'TEST - delete Farm Wadi' });
+  const { lead: testLead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01090000001', channel: 'phone', source: 'Referral', name: 'TEST - delete Farm Wadi' });
   await Lead.updateOne({ _id: testLead._id }, { $set: { refCode: 'RSV-0811-0008', stage: 'proposal_sent' } });
-  const { lead: real } = await leadService.intakeLead({ phone: '01090000002', channel: 'phone', source: 'Referral', name: 'Real Customer' });
+  const { lead: real } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01090000002', channel: 'phone', source: 'Referral', name: 'Real Customer' });
 
   const quiet = console.log;
   console.log = () => {};

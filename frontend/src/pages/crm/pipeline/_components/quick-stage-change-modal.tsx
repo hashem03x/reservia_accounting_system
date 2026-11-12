@@ -5,7 +5,8 @@ import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { CRM_LOST_REASONS, CrmLead, CrmStage } from "@/types/crm";
 import { crmStageLabel } from "../../_shared/stage";
-import { MD_APPROVAL_THRESHOLD_EGP, stageExtraFieldRequirements } from "../../_shared/lead-display";
+import { MD_APPROVAL_THRESHOLD_EGP, needsGovernorateFor, stageExtraFieldRequirements } from "../../_shared/lead-display";
+import GovernorateSelect from "../../_shared/governorate-select";
 import { Alert, Button, NumberInput, Select, Textarea, TextInput } from "@mantine/core";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
@@ -41,9 +42,11 @@ export default function QuickStageChangeModal({
   const [followUpAt, setFollowUpAt] = useState("");
   const [overrideMode, setOverrideMode] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+  const [governorate, setGovernorate] = useState("");
 
   const opened = !!lead && !!to;
   const { needsLostReason, needsValue, needsFollowUp } = stageExtraFieldRequirements(to || "");
+  const needsGovernorate = needsGovernorateFor(to || "", lead?.governorate);
 
   useEffect(() => {
     if (opened) {
@@ -51,6 +54,7 @@ export default function QuickStageChangeModal({
       setValueEgp(lead?.valueEgp ?? "");
       setFollowUpAt("");
       setOverrideReason("");
+      setGovernorate("");
       setOverrideMode(requiresOverride && isMd);
       setError("");
     }
@@ -71,6 +75,7 @@ export default function QuickStageChangeModal({
             valueEgp: needsValue && valueEgp !== "" ? Number(valueEgp) : undefined,
             followUpAt: needsFollowUp ? followUpAt : undefined,
             overrideReason: overrideMode ? overrideReason.trim() : undefined,
+            governorate: needsGovernorate ? governorate : undefined,
           },
         });
       } catch (err) {
@@ -84,7 +89,11 @@ export default function QuickStageChangeModal({
   }
 
   const disabled =
-    (needsLostReason && !lostReason) || (needsValue && !valueEgp) || (needsFollowUp && !followUpAt) || (overrideMode && overrideReason.trim().length < 5);
+    (needsLostReason && !lostReason) ||
+    (needsValue && !valueEgp) ||
+    (needsFollowUp && !followUpAt) ||
+    (needsGovernorate && !governorate) ||
+    (overrideMode && overrideReason.trim().length < 5);
 
   return (
     <Modal opened={opened} onClose={onClose} title={to ? translate(`Move to ${crmStageLabel(translate)(to)}`, `نقل إلى ${crmStageLabel(translate)(to)}`) : ""} size="sm">
@@ -102,6 +111,14 @@ export default function QuickStageChangeModal({
           </Alert>
         )}
 
+        {needsGovernorate && (
+          <GovernorateSelect
+            value={governorate}
+            onChange={setGovernorate}
+            required
+            description={translate("This lead has no governorate yet. It is needed from Qualified on (the Deal Engine region).", "لا توجد محافظة لهذا العميل بعد، وهي مطلوبة من مرحلة مؤهل (منطقة محرك الصفقات).")}
+          />
+        )}
         {needsLostReason && (
           <Select
             value={lostReason || null}

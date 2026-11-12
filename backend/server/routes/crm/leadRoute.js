@@ -8,6 +8,7 @@ const {
   archiveLeadValidator,
   changeStageValidator,
   reassignLeadValidator,
+  updateLeadDetailsValidator,
   recordActivityValidator,
 } = require('../../utils/validators/crm/leadValidators');
 const leadAttachmentRoute = require('./leadAttachmentRoute');
@@ -34,6 +35,7 @@ router.get('/export', leadController.exportLeads);
 router.route('/').get(leadController.getLeads).post(createLeadValidator, leadController.createLead);
 
 router.get('/:id', leadIdValidator, leadController.getLeadById);
+router.patch('/:id', requireCrmRole('md', 'admin', 'sales'), updateLeadDetailsValidator, leadController.updateLeadDetails);
 router.patch('/:id/stage', changeStageValidator, leadController.changeStage);
 // Reassigning ownership is the brief's "admin officer" action - sales/technical cannot move a
 // lead off their own desk (or anyone else's) onto another rep.

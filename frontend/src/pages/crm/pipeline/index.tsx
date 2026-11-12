@@ -16,7 +16,7 @@ import EmptySection from "@/components/ui/sections/empty";
 import LeadModal from "@/components/global/lead-modal";
 import { Button } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
-import { isTerminalStage, overrideOnlyStages, stageExtraFieldRequirements } from "../_shared/lead-display";
+import { isTerminalStage, overrideOnlyStages, stageExtraFieldRequirements, needsGovernorateFor } from "../_shared/lead-display";
 import PipelineHeader, { PipelineFilters } from "./_components/pipeline-header";
 import StageColumn from "./_components/stage-column";
 import PipelineListView from "./_components/pipeline-list-view";
@@ -136,7 +136,7 @@ export default function CrmPipeline() {
       return;
     }
     const { needsLostReason, needsValue, needsFollowUp } = stageExtraFieldRequirements(to);
-    if (needsLostReason || needsValue || needsFollowUp) {
+    if (needsLostReason || needsValue || needsFollowUp || needsGovernorateFor(to, lead.governorate)) {
       setPendingChange({ lead, to });
       return;
     }

@@ -1,5 +1,7 @@
 import LeadCommercialCard from "./_components/lead-commercial-card";
 import LeadAttributionCard from "./_components/lead-attribution-card";
+import LeadEditDetails from "./_components/lead-edit-details";
+import GovernorateSelect from "../../_shared/governorate-select";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDisclosure } from "@mantine/hooks";
@@ -21,7 +23,7 @@ import { outlineIcons } from "@/components/icons";
 import TruncatedText from "@/components/ui/truncated-text";
 import { useSystemAccess } from "@/context/SystemAccessContext";
 import { crmStageLabel, stageBadgeColor } from "../../_shared/stage";
-import { allowedNextStages, channelLabel, overrideOnlyStages, segmentLabel, stageExtraFieldRequirements } from "../../_shared/lead-display";
+import { allowedNextStages, channelLabel, needsGovernorateFor, overrideOnlyStages, segmentLabel, stageExtraFieldRequirements } from "../../_shared/lead-display";
 import { formatCairoDateTime, formatFollowUpDate, isFollowUpOverdue } from "../../_shared/business-date";
 import LeadAttachments from "./_components/lead-attachments";
 
@@ -113,14 +115,33 @@ export default function CrmLeadDetail() {
             <Badge color={stageBadgeColor(lead.stage)} size="lg" variant="light">
               {stageLabel(lead.stage)}
             </Badge>
-            {role === "md" && <ArchiveAction lead={lead} onChanged={load} onArchivedAway={() => navigate(`/${paths.crm}/${paths.leads}`)} />}
+            {role === "md" ? (
+              <ArchiveAction lead={lead} onChanged={load} onArchivedAway={() => navigate(`/${paths.crm}/${paths.leads}`)} />
+            ) : (
+              role === "admin" && (
+                // CRM Changes Required, item 3: the button was simply absent for a non-MD login, which
+                // read as "missing". Say who can archive and which role this login holds.
+                <Tooltip
+                  multiline
+                  w={260}
+                  label={translate(
+                    "Archive and restore are for the CRM MD role only. This login holds the CRM Admin role - the MD role is granted in Central Portal > Users > system access.",
+                    "الأرشفة والاستعادة لدور المدير العام في النظام فقط. هذا الحساب يحمل دور المسؤول - يُمنح دور المدير العام من بوابة النظام > المستخدمون > صلاحيات الأنظمة.",
+                  )}
+                >
+                  <Button variant="light" color="gray" size="sm" disabled data-testid="archive-md-only">
+                    {translate("Archive (MD only)", "أرشفة (للمدير العام فقط)")}
+                  </Button>
+                </Tooltip>
+              )
+            )}
           </div>
         ),
       }}
     >
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <section className="flex flex-col gap-4 lg:col-span-1">
-          <InfoCard lead={lead} overdue={overdue} firstReply={data.firstReply} />
+          <InfoCard lead={lead} overdue={overdue} firstReply={data.firstReply} canEdit={role === "md" || role === "admin" || role === "sales"} onEdited={load} />
           <LeadCommercialCard lead={lead} onChanged={load} />
           <LeadAttributionCard lead={lead} />
           <StageChangeCard lead={lead} onChanged={load} />
@@ -202,7 +223,7 @@ function ArchiveAction({ lead, onChanged, onArchivedAway }: { lead: CrmLead; onC
   );
 }
 
-function InfoCard({ lead, overdue, firstReply }: { lead: CrmLead; overdue: boolean; firstReply?: CrmLeadFirstReply }) {
+function InfoCard({ lead, overdue, firstReply, canEdit, onEdited }: { lead: CrmLead; overdue: boolean; firstReply?: CrmLeadFirstReply; canEdit: boolean; onEdited: () => void }) {
   const { language, translate, translations } = useLanguage();
   const row = (label: string, value: React.ReactNode) => (
     <div className="flex items-center justify-between gap-2 border-b border-gray-50 py-1.5 text-sm last:border-0">
@@ -219,7 +240,10 @@ function InfoCard({ lead, overdue, firstReply }: { lead: CrmLead; overdue: boole
 
   return (
     <div className="rounded-lg border border-gray-100 p-4">
-      <h4 className="mb-2">{translate("Lead Details", "تفاصيل العميل المحتمل")}</h4>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4>{translate("Lead Details", "تفاصيل العميل المحتمل")}</h4>
+        {canEdit && <LeadEditDetails lead={lead} onSaved={onEdited} />}
+      </div>
       {row(translate("Phone", "الهاتف"), <span dir="ltr">{lead.phoneE164}</span>)}
       {lead.email && row(translate("Email", "البريد الإلكتروني"), <TruncatedText text={lead.email} maxWidthClassName="max-w-[180px]" />)}
       {row(translate("Channel", "القناة"), channelLabel(translate)(lead.channel))}
@@ -294,11 +318,13 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
   const [followUpAt, setFollowUpAt] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [overrideForced, setOverrideForced] = useState(false);
+  const [governorate, setGovernorate] = useState("");
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
   const normalStages = allowedNextStages(lead.stage, role) as CrmStage[];
   const overrideStages = overrideOnlyStages(lead.stage, role) as CrmStage[];
   const { needsLostReason, needsValue, needsFollowUp } = stageExtraFieldRequirements(to);
+  const needsGovernorate = needsGovernorateFor(to, lead.governorate);
   // Change Request 2, item 1: an MD-only override, needed when the chosen stage skips the order
   // (or when the server says so for a move this screen didn't anticipate).
   const needsOverride = role === "md" && !!to && (overrideStages.includes(to as CrmStage) || overrideForced);
@@ -323,6 +349,7 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
             valueEgp: needsValue && valueEgp !== "" ? Number(valueEgp) : undefined,
             followUpAt: followUpAt || undefined,
             overrideReason: needsOverride ? overrideReason.trim() : undefined,
+            governorate: needsGovernorate ? governorate : undefined,
           },
         });
       } catch (err) {
@@ -334,6 +361,7 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
       setFollowUpAt("");
       setOverrideReason("");
       setOverrideForced(false);
+      setGovernorate("");
       onChanged();
     });
   }
@@ -368,6 +396,14 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
             "هذا يتخطى الترتيب المعتاد، وسيُسجَّل في سجل المراحل وسجل النشاط باسمك والوقت والسبب.",
           )}
         </Alert>
+      )}
+      {needsGovernorate && (
+        <GovernorateSelect
+          value={governorate}
+          onChange={setGovernorate}
+          required
+          description={translate("This lead has no governorate yet. It is needed from Qualified on (the Deal Engine region).", "لا توجد محافظة لهذا العميل بعد، وهي مطلوبة من مرحلة مؤهل (منطقة محرك الصفقات).")}
+        />
       )}
       {needsLostReason && (
         <Select
@@ -405,7 +441,7 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
       <Button
         onClick={submit}
         loading={loading}
-        disabled={!to || (needsLostReason && !lostReason) || (needsValue && !valueEgp) || (needsFollowUp && !followUpAt) || (needsOverride && overrideReason.trim().length < 5)}
+        disabled={!to || (needsLostReason && !lostReason) || (needsValue && !valueEgp) || (needsFollowUp && !followUpAt) || (needsGovernorate && !governorate) || (needsOverride && overrideReason.trim().length < 5)}
         color={needsOverride ? "orange" : "teal"}
       >
         {needsOverride ? translate("Override and apply", "تجاوز وتطبيق") : translate("Apply", "تطبيق")}

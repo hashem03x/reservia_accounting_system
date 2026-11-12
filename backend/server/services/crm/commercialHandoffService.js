@@ -318,4 +318,4 @@ async function onStageChanged(leadId, from, to, { userId = null } = {}) {
   return last;
 }
 
-module.exports = { syncLeadEvent, retrySync, onStageChanged, ensureProjectForLead, erpBudgetFromRevision, eventForStage, SEGMENT_TO_SECTOR };
+module.exports = { syncLeadEvent, retrySync, onStageChanged, ensureProjectForLead, projectHeaderFromLead, erpBudgetFromRevision, eventForStage, SEGMENT_TO_SECTOR };

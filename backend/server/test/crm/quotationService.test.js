@@ -34,7 +34,7 @@ beforeEach(async () => {
 });
 
 maybeTest("createQuotation: a persisted single-line farm-package quote at 5% discount reconciles the brief's own EGP 1,072,071 acceptance figure", async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01066677788', channel: 'phone', segment: 'farm' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01066677788', channel: 'phone', segment: 'farm' });
   const quotation = await quotationService.createQuotation(lead._id, {
     items: [{ description: 'Farm package', unitPriceEgp: 989908.59, quantity: 1, discountPercent: 5 }],
   });
@@ -44,7 +44,7 @@ maybeTest("createQuotation: a persisted single-line farm-package quote at 5% dis
 });
 
 maybeTest('createQuotation: multi-line totals are the sum of each line, not a recomputation against the combined subtotal', async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01077788899', channel: 'phone' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01077788899', channel: 'phone' });
   const quotation = await quotationService.createQuotation(lead._id, {
     items: [
       { description: 'Panels', unitPriceEgp: 50000, quantity: 2, discountPercent: 0 },
@@ -61,7 +61,7 @@ maybeTest('createQuotation: multi-line totals are the sum of each line, not a re
 });
 
 maybeTest('sendQuotation: sending a quote moves a lead at Site survey to Proposal sent', async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01088899900', channel: 'phone' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01088899900', channel: 'phone' });
   await leadService.changeStage(lead._id, { to: 'contacted' }, { role: 'sales' });
   await leadService.changeStage(lead._id, { to: 'qualified', followUpAt: new Date() }, { role: 'sales' });
   await leadService.changeStage(lead._id, { to: 'site_survey', followUpAt: '2026-12-01' }, { role: 'sales' });
@@ -75,7 +75,7 @@ maybeTest('sendQuotation: sending a quote moves a lead at Site survey to Proposa
 
 maybeTest('Change Request 2: sending a quote never makes a lead skip stages - a Qualified lead stays Qualified and the timeline says why', async () => {
   const Activity = require('../../models/crm/activityModel');
-  const { lead } = await leadService.intakeLead({ phone: '01088899901', channel: 'phone' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01088899901', channel: 'phone' });
   await leadService.changeStage(lead._id, { to: 'contacted' }, { role: 'sales' });
   await leadService.changeStage(lead._id, { to: 'qualified', followUpAt: '2026-12-01' }, { role: 'sales' });
 
@@ -90,7 +90,7 @@ maybeTest('Change Request 2: sending a quote never makes a lead skip stages - a 
 });
 
 maybeTest('acceptQuotation: accepting a quote sets the lead\'s valueEgp to the quoted total', async () => {
-  const { lead } = await leadService.intakeLead({ phone: '01099900011', channel: 'phone' });
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01099900011', channel: 'phone' });
   const quotation = await quotationService.createQuotation(lead._id, { items: [{ description: 'Kit', unitPriceEgp: 200000, quantity: 1 }] });
   await quotationService.acceptQuotation(quotation._id);
 

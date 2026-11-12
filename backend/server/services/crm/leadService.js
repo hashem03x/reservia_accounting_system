@@ -12,7 +12,8 @@ const { addWorkingHours } = require('../../utils/crm/workingHours');
 const { generateRefCode } = require('../../utils/crm/refCode');
 const { evaluateStageTransition, canOverride, STAGES, STAGE_LABELS } = require('../../utils/crm/stageRules');
 const { trackEvent } = require('./amplitudeService');
-const { pickAutoAssignee, notifyAssignment, notifyReassignment, notifyUnassigned, assignmentStrategy, AUTO_ASSIGN_CHANNELS } = require('./leadAssignmentService');
+const { pickAutoAssignee, notifyAssignment, notifyReassignment, notifyUnassigned, notifyReopened, assignmentStrategy, AUTO_ASSIGN_CHANNELS } = require('./leadAssignmentService');
+const { GOVERNORATE_NAMES_EN } = require('../../utils/crm/constants');
 const { offerFirstReply, replyViaForActivityType, SLA_WORKING_HOURS } = require('./firstReplyService');
 const { touchFromIntakeInput, isAttributable, sameTouch, HISTORY_LIMIT } = require('../../utils/crm/attribution');
 
@@ -264,6 +265,9 @@ async function mergeRepeatEnquiry(lead, input, { userId, skipRepeatNote }) {
     await Lead.updateOne({ _id: lead._id }, { $set: fill });
     Object.assign(lead, fill);
   }
+  // CRM Changes Required (12 Nov 2026), item 2: a repeat enquiry on a Lost lead reopens it to New
+  // and notifies its owner (or the MD when unassigned) - for every channel, WhatsApp included.
+  if (lead.stage === 'lost' && !lead.archived) await reopenLostOnRepeat(lead, input, { userId });
   if (skipRepeatNote) return;
   const submittedNote = input.submittedAt ? ` Submitted ${cairoTimeLabel(input.submittedAt)} (Cairo time).` : '';
   await Activity.create({
@@ -272,6 +276,61 @@ async function mergeRepeatEnquiry(lead, input, { userId, skipRepeatNote }) {
     body: `Repeat enquiry ${describeOrigin(input)}.${submittedNote}`,
     author: userId,
   });
+}
+
+/**
+ * Reopens a Lost lead to New because the customer came back (CRM Changes Required, item 2). The
+ * move is recorded like any stage change (stage history, timeline) and the Deal Engine deal, if
+ * any, goes back to Open. The lost reason stays in the timeline; the lead's own field is cleared
+ * because the lead is no longer lost. Conditional update: two concurrent repeat enquiries reopen
+ * it once.
+ */
+async function reopenLostOnRepeat(lead, input, { userId = null } = {}) {
+  const now = new Date();
+  const previousReason = lead.lostReason || null;
+  const res = await Lead.updateOne({ _id: lead._id, stage: 'lost' }, { $set: { stage: 'new', stageChangedAt: now, lostReason: null } });
+  if (res.modifiedCount !== 1) return;
+  Object.assign(lead, { stage: 'new', stageChangedAt: now, lostReason: null });
+  await StageHistory.create({ lead: lead._id, from: 'lost', to: 'new', changedBy: userId || null, lostReason: null });
+  const origin = describeOrigin(input);
+  const notified = await notifyReopened(lead, { origin });
+  const who = notified.length ? ` Notified: ${notified.map(n => n.name).filter(Boolean).join(', ')}.` : ' Nobody could be notified (no owner and no active MD).';
+  await Activity.create({
+    lead: lead._id,
+    type: 'system',
+    body: `Reopened automatically from Lost to New: repeat enquiry ${origin}.${previousReason ? ` Previous lost reason: ${previousReason}.` : ''}${who}`,
+    author: userId || null,
+  });
+  // eslint-disable-next-line global-require
+  const { onStageChanged } = require('./commercialHandoffService');
+  await onStageChanged(lead._id, 'lost', 'new', { userId });
+}
+
+// Fields a CRM user may correct on an existing lead (CRM Changes Required, item 1: the governorate
+// must be settable after intake so a failed Deal Engine sync can be fixed and retried).
+const EDITABLE_FIELDS = ['name', 'email', 'governorate', 'segment', 'monthlyBillEgp', 'systemSizeKwp', 'partnerName'];
+const FIELD_LABELS = { name: 'Name', email: 'Email', governorate: 'Governorate', segment: 'Segment', monthlyBillEgp: 'Monthly bill (EGP)', systemSizeKwp: 'System size (kWp)', partnerName: 'Partner' };
+
+/** Updates a lead's contact / qualification details and records every change on the timeline. */
+async function updateLeadDetails(leadId, input, { userId = null } = {}) {
+  const lead = await Lead.findById(leadId);
+  if (!lead) throw new ApiError('Lead not found.', 404);
+  if (input.governorate && !GOVERNORATE_NAMES_EN.includes(input.governorate)) throw new ApiError('Choose a governorate from the list.', 400);
+  const changes = [];
+  for (const key of EDITABLE_FIELDS) {
+    if (input[key] === undefined) continue;
+    let next = input[key];
+    if (typeof next === 'string') next = next.trim() || null;
+    if (key === 'email' && next) next = next.toLowerCase();
+    const prev = lead[key] ?? null;
+    if (String(prev ?? '') === String(next ?? '')) continue;
+    lead[key] = next;
+    changes.push(`${FIELD_LABELS[key]}: ${prev ?? '(empty)'} -> ${next ?? '(empty)'}`);
+  }
+  if (!changes.length) return shapeLead(lead);
+  await lead.save();
+  await Activity.create({ lead: lead._id, type: 'system', body: `Lead details updated. ${changes.join('; ')}.`, author: userId });
+  return shapeLead(lead);
 }
 
 /**
@@ -313,6 +372,24 @@ async function recordActivity(leadId, input, { userId = null } = {}) {
 }
 
 /**
+ * Why a move to Won would leave the lead without a working Deal Engine deal, or null. Either the
+ * last sync failed (the RSV-1011-0009 case: Proposal sent failed on a missing governorate, then the
+ * lead was marked Won), or there is no deal yet and the lead lacks what one needs.
+ */
+function dealBlockerFor(lead, governorate) {
+  if (lead.commercial?.syncStatus === 'failed') return `the last sync failed (${lead.commercial.lastError || 'no detail recorded'}).`;
+  if (lead.commercial?.project || !String(governorate || '').trim()) return null; // a missing governorate has its own rule
+  // eslint-disable-next-line global-require
+  const { projectHeaderFromLead } = require('./commercialHandoffService');
+  try {
+    projectHeaderFromLead({ ...lead.toObject(), governorate });
+    return null;
+  } catch (err) {
+    return err.message;
+  }
+}
+
+/**
  * Applies a pipeline-stage change, after running it through
  * utils/crm/stageRules.js#evaluateStageTransition - the ONE place every stage-transition rule in
  * the brief (strict one-stage-at-a-time progression, Won-only-from-Proposal/Negotiation, MD
@@ -348,7 +425,11 @@ async function changeStage(leadId, input, { userId = null, role } = {}) {
     // this same, now-trustworthy path). `input.mdApproved` is deliberately never read here.
     mdApproved: lead.mdApproved || role === 'md',
     followUpAt: input.followUpAt ?? lead.followUpAt,
+    // CRM Changes Required, item 1: governorate from Qualified on, and no Won without its deal.
+    governorate: input.governorate ?? lead.governorate ?? null,
+    dealBlocker: input.to === 'won' ? dealBlockerFor(lead, input.governorate ?? lead.governorate ?? null) : null,
   };
+  if (input.governorate && !GOVERNORATE_NAMES_EN.includes(input.governorate)) throw new ApiError('Choose a governorate from the list.', 400);
   const violations = evaluateStageTransition(ctx);
   let overridden = [];
   if (violations.length) {
@@ -381,6 +462,7 @@ async function changeStage(leadId, input, { userId = null, role } = {}) {
       }
       if (input.valueEgp !== undefined) lead.valueEgp = input.valueEgp;
       if (input.followUpAt !== undefined) lead.followUpAt = input.followUpAt;
+      if (input.governorate) lead.governorate = input.governorate;
       await lead.save({ session });
 
       await StageHistory.create(
@@ -477,4 +559,4 @@ async function setLeadArchived(leadId, archived, { userId = null, reason = null 
   return shapeLead(lead);
 }
 
-module.exports = { intakeLead, recordActivity, changeStage, reassignLead, setLeadArchived, STAGES };
+module.exports = { intakeLead, recordActivity, changeStage, reassignLead, setLeadArchived, updateLeadDetails, STAGES };

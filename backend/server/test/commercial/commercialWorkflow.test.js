@@ -398,28 +398,94 @@ maybeTest('B5: Proposal sent creates ONE Commercial deal prefilled from the lead
   assert.ok(log.body.data.length >= 4);
 });
 
-maybeTest('B5: a lead the Commercial side cannot accept (no governorate) still moves to Proposal sent; the failure is recorded and a retry succeeds once fixed', async () => {
+maybeTest('CRM CR 12 Nov item 1: no governorate -> refused at Qualified; a legacy lead whose sync failed cannot be marked Won; set the governorate, Retry, then Won works', async () => {
   const t = await team();
   const { lead } = await leadService.intakeLead({ name: 'Villa Owner', phone: '01022223333', segment: 'villa', channel: 'phone', source: 'Referral', valueEgp: 400000 }, { userId: t.md._id });
-  const atProposal = await walkToProposal(lead, t.md);
-  assert.equal(atProposal.stage, 'proposal_sent', 'the CRM stage change is never blocked by Commercial');
-  assert.equal(atProposal.commercial.syncStatus, 'failed');
-  assert.match(atProposal.commercial.lastError, /governorate/);
-  assert.equal(await CommercialProject.countDocuments({}), 0);
-  assert.ok(await Activity.findOne({ lead: lead._id, body: /Commercial sync \(proposal\) failed/ }));
+  await leadService.changeStage(lead._id, { to: 'contacted' }, { userId: t.md._id, role: 'md' });
+  // Asked for at Qualified at the latest (not overridable, even by the MD).
+  const refused = await api('PATCH', `/api/v1/crm/leads/${lead._id}/stage`, { user: t.md, body: { to: 'qualified', followUpAt: '2026-12-01' } });
+  assert.equal(refused.status, 400);
+  assert.match(refused.body.message, /Set the governorate/);
+  const refusedOverride = await api('PATCH', `/api/v1/crm/leads/${lead._id}/stage`, { user: t.md, body: { to: 'qualified', followUpAt: '2026-12-01', overrideReason: 'try' } });
+  assert.equal(refusedOverride.status, 400);
+  // The governorate can be given with the move itself.
+  const ok = await api('PATCH', `/api/v1/crm/leads/${lead._id}/stage`, { user: t.md, body: { to: 'qualified', followUpAt: '2026-12-01', governorate: 'Giza' } });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.equal(ok.body.data.governorate, 'Giza');
 
-  const stillFailing = await api('POST', `/api/v1/crm/leads/${lead._id}/commercial-sync`, { user: t.md });
-  assert.equal(stillFailing.status, 422);
+  // The RSV-1011-0009 case: a lead that reached Proposal sent BEFORE this rule, with no governorate.
+  const { lead: legacy } = await leadService.intakeLead({ name: 'Legacy Villa', phone: '01022224444', segment: 'villa', channel: 'phone', source: 'Referral', valueEgp: 400000 }, { userId: t.md._id });
+  await Lead.updateOne({ _id: legacy._id }, { $set: { stage: 'proposal_sent', followUpAt: '2026-12-01' } });
+  await handoff.syncLeadEvent(legacy._id, 'proposal');
+  let l = await Lead.findById(legacy._id).lean();
+  assert.equal(l.commercial.syncStatus, 'failed');
+  assert.match(l.commercial.lastError, /governorate/);
+  assert.equal(await CommercialProject.countDocuments({ crmLead: legacy._id }), 0);
+  assert.ok(await Activity.findOne({ lead: legacy._id, body: /Commercial sync \(proposal\) failed/ }));
 
-  await Lead.updateOne({ _id: lead._id }, { $set: { governorate: 'Alexandria' } });
-  const fixed = await api('POST', `/api/v1/crm/leads/${lead._id}/commercial-sync`, { user: t.md });
+  // Won is blocked (with the reason) while the sync is failed - even with the governorate given now.
+  const wonBlocked = await api('PATCH', `/api/v1/crm/leads/${legacy._id}/stage`, { user: t.md, body: { to: 'won', valueEgp: 400000, governorate: 'Alexandria' } });
+  assert.equal(wonBlocked.status, 400);
+  assert.match(wonBlocked.body.message, /Deal Engine deal for this lead is not in sync.*Retry/);
+  l = await Lead.findById(legacy._id).lean();
+  assert.equal(l.stage, 'proposal_sent', 'the lead did not become Won');
+
+  // Retry still fails until the governorate is set; the new details edit sets it (and logs it).
+  assert.equal((await api('POST', `/api/v1/crm/leads/${legacy._id}/commercial-sync`, { user: t.md })).status, 422);
+  const edited = await api('PATCH', `/api/v1/crm/leads/${legacy._id}`, { user: t.md, body: { governorate: 'Alexandria' } });
+  assert.equal(edited.status, 200, JSON.stringify(edited.body));
+  assert.ok(await Activity.findOne({ lead: legacy._id, body: /Governorate: \(empty\) -> Alexandria/ }));
+  const badGov = await api('PATCH', `/api/v1/crm/leads/${legacy._id}`, { user: t.md, body: { governorate: 'Atlantis' } });
+  assert.equal(badGov.status, 400);
+  const fixed = await api('POST', `/api/v1/crm/leads/${legacy._id}/commercial-sync`, { user: t.md });
   assert.equal(fixed.status, 200);
-  const deal = await CommercialProject.findOne({ crmLead: lead._id }).lean();
+  const deal = await CommercialProject.findOne({ crmLead: legacy._id }).lean();
   assert.equal(deal.category, 'On-Grid C&I');
   assert.equal(deal.subCategory, 'Villa / building');
   assert.equal(deal.region, 'Damanhour - Kafr El Sheikh - Mansoura');
   assert.match(deal.regionNote, /nearest/);
-  assert.equal((await Lead.findById(lead._id).lean()).commercial.syncStatus, 'synced');
+  assert.equal((await Lead.findById(legacy._id).lean()).commercial.syncStatus, 'synced');
+
+  // Now Won goes through and the deal follows.
+  const won = await api('PATCH', `/api/v1/crm/leads/${legacy._id}/stage`, { user: t.md, body: { to: 'won', valueEgp: 400000 } });
+  assert.equal(won.status, 200, JSON.stringify(won.body));
+  assert.equal((await CommercialProject.findOne({ crmLead: legacy._id }).lean()).outcome, 'Won');
+});
+
+maybeTest('CRM CR 12 Nov item 2: a repeat enquiry on a Lost lead reopens it to New, notifies the owner (or the MD when unassigned), and the deal goes back to Open', async () => {
+  const t = await team();
+  // Owned lead with a deal, lost.
+  const { lead } = await leadService.intakeLead({ name: 'Back Again', phone: '01055556666', segment: 'factory', governorate: 'Giza', channel: 'phone', source: 'Referral', owner: t.sales._id }, { userId: t.md._id });
+  await Lead.updateOne({ _id: lead._id }, { $set: { owner: t.sales._id } });
+  await walkToProposal(lead, t.md);
+  await leadService.changeStage(lead._id, { to: 'lost', lostReason: 'Price' }, { userId: t.md._id, role: 'md' });
+  assert.equal((await CommercialProject.findOne({ crmLead: lead._id }).lean()).outcome, 'Lost');
+  sentEmails.length = 0;
+
+  const again = await leadService.intakeLead({ phone: '+201055556666', channel: 'whatsapp' }, { skipRepeatNote: true });
+  assert.equal(again.created, false);
+  const l = await Lead.findById(lead._id).lean();
+  assert.equal(l.stage, 'new');
+  assert.equal(l.lostReason, null);
+  assert.ok(await Activity.findOne({ lead: lead._id, body: /Reopened automatically from Lost to New: repeat enquiry .*Previous lost reason: Price.*Notified: Sara Sales/ }));
+  const StageHistory = mongoose.model('CrmStageHistory');
+  assert.ok(await StageHistory.findOne({ lead: lead._id, from: 'lost', to: 'new' }));
+  assert.ok(sentEmails.some(e => e.to === t.sales.email && /reopened/i.test(e.subject)), 'the owner is emailed');
+  assert.equal((await CommercialProject.findOne({ crmLead: lead._id }).lean()).outcome, 'Open');
+
+  // Unassigned lost lead -> the MD is notified.
+  const { lead: orphan } = await leadService.intakeLead({ name: 'Nobody', phone: '01066667777', channel: 'phone', source: 'Referral' }, { userId: t.md._id });
+  await Lead.updateOne({ _id: orphan._id }, { $set: { owner: null, stage: 'lost', lostReason: 'Price' } });
+  sentEmails.length = 0;
+  await leadService.intakeLead({ phone: '01066667777', channel: 'phone', source: 'Referral' });
+  assert.equal((await Lead.findById(orphan._id).lean()).stage, 'new');
+  assert.ok(sentEmails.some(e => e.to === t.md.email), 'the MD is emailed for an unassigned lead');
+
+  // An archived lost lead (a removed test lead) is not reopened.
+  const { lead: archived } = await leadService.intakeLead({ name: 'Archived', phone: '01077778888', channel: 'phone', source: 'Referral' }, { userId: t.md._id });
+  await Lead.updateOne({ _id: archived._id }, { $set: { stage: 'lost', lostReason: 'Price', archived: true } });
+  await leadService.intakeLead({ phone: '01077778888', channel: 'phone', source: 'Referral' });
+  assert.equal((await Lead.findById(archived._id).lean()).stage, 'lost');
 });
 
 maybeTest('B5: concurrent Proposal triggers for one lead still create exactly one project (unique crmLead index)', async () => {

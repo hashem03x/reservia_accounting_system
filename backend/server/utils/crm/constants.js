@@ -96,6 +96,45 @@ const GOVERNORATES = [
 ];
 const GOVERNORATE_NAMES_EN = GOVERNORATES.map(g => g.en);
 
+// CRM Changes Required (12 Nov 2026), item 1: the website form's location is free text. It is
+// matched to the official governorate (English or Arabic, any case/spacing, with or without a
+// "Governorate" / "محافظة" word) so the Deal Engine can map it to a Rates region. Anything else
+// returns null - the lead then has no governorate and is asked for one at Qualified.
+const stripGovernorateWord = s =>
+  String(s || '')
+    .normalize('NFKC')
+    .replace(/[\u064B-\u0652]/g, '') // Arabic diacritics
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/\b(governorate|gov\.?)\b/gi, '')
+    .replace(/محافظه|محافظة/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .toLowerCase();
+const GOVERNORATE_KEYS = new Map();
+for (const g of GOVERNORATES) {
+  GOVERNORATE_KEYS.set(stripGovernorateWord(g.en), g.en);
+  GOVERNORATE_KEYS.set(stripGovernorateWord(g.ar), g.en);
+}
+// Common English transliterations seen on forms (the official spelling above stays canonical).
+const GOVERNORATE_SPELLINGS = {
+  Sharqia: ['Sharkia', 'Sharkiya', 'Sharqiya', 'Al Sharqia'], Dakahlia: ['Dakahliya', 'Daqahlia', 'Dakhalia'], Qalyubia: ['Qaliubiya', 'Kalyoubia', 'Qalyoubia', 'Kaliobeya'],
+  Beheira: ['Behira', 'Buhayrah', 'Behaira'], Menoufia: ['Menofia', 'Monufia', 'Minufiya'], Gharbia: ['Gharbiya', 'Garbia'], Ismailia: ['Ismailiya', 'Esmailia'],
+  Assiut: ['Asyut', 'Assiout', 'Asiut'], Sohag: ['Suhag', 'Souhag'], Fayoum: ['Fayum', 'Faiyum', 'Fayyum'], 'Beni Suef': ['Bani Suef', 'Beni Sueif', 'Bani Swaif'],
+  Damietta: ['Damiatta', 'Dumyat'], Matrouh: ['Matruh', 'Marsa Matrouh', 'Mersa Matruh'], Luxor: ['Louxor', 'Loxor'], Aswan: ['Asswan'],
+  'Red Sea': ['Al Bahr Al Ahmar'], 'New Valley': ['Wadi El Gedid', 'El Wadi El Gedid'], 'Kafr El Sheikh': ['Kafr Elsheikh', 'Kafr Al Sheikh'], Cairo: ['Al Qahira', 'El Qahera'], Giza: ['Gizeh', 'El Giza'],
+};
+for (const [canonical, spellings] of Object.entries(GOVERNORATE_SPELLINGS)) {
+  if (!GOVERNORATE_NAMES_EN.includes(canonical)) continue;
+  for (const sp of spellings) GOVERNORATE_KEYS.set(stripGovernorateWord(sp), canonical);
+}
+function normalizeGovernorate(text) {
+  const key = stripGovernorateWord(text);
+  if (!key) return null;
+  return GOVERNORATE_KEYS.get(key) || GOVERNORATE_KEYS.get(key.replace(/^al |^el |^ال/, '')) || null;
+}
+
 // Probability-of-close weight per OPEN stage (acceptance report finding 6: "Open pipeline total
 // shows 1,500 EGP, ignores stage weights. Fix: weighted value"). Won/lost are deliberately absent
 // - Won is already-realized revenue, not a forecast, and Lost contributes nothing; "weighted
@@ -147,6 +186,7 @@ module.exports = {
   SOURCES,
   GOVERNORATES,
   GOVERNORATE_NAMES_EN,
+  normalizeGovernorate,
   LOST_REASONS,
   ACTIVITY_TYPES,
   PAYMENT_PURPOSES,

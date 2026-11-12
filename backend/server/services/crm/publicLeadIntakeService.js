@@ -2,6 +2,7 @@
 
 const ApiError = require('../../utils/apiError');
 const { normalizeSource } = require('../../utils/crm/sourceNormalization');
+const { normalizeGovernorate } = require('../../utils/crm/constants');
 const { touchesFromWebsite } = require('../../utils/crm/attribution');
 const WaRefCode = require('../../models/crm/waRefCodeModel');
 const Lead = require('../../models/crm/leadModel');
@@ -47,6 +48,10 @@ function buildIntakeNote(payload) {
   const lines = [];
   if (payload.message) lines.push(`Message: ${String(payload.message).slice(0, MAX_NOTE_LENGTH)}`);
   if (payload.submittedFrom && typeof payload.submittedFrom === 'string') lines.push(`Submitted from: ${payload.submittedFrom.slice(0, 200)}`);
+  // The location the visitor typed, when it is not a recognized governorate (it is not stored as one).
+  if (typeof payload.governorate === 'string' && payload.governorate.trim() && !normalizeGovernorate(payload.governorate)) {
+    lines.push(`Location typed on the form (not a recognized governorate - set the governorate on the lead): ${payload.governorate.trim().slice(0, 100)}`);
+  }
   if (payload.siteInput !== undefined && payload.siteInput !== null) {
     lines.push(`Figure entered on the form (bill/consumption/pump size - unit depends on the segment): ${payload.siteInput}`);
   }
@@ -88,7 +93,8 @@ function mapWebsitePayload(body) {
     phone: body.phone,
     segment,
     channel,
-    governorate: body.governorate || undefined,
+    // Free text on the website form -> the official governorate, or none (then asked at Qualified).
+    governorate: normalizeGovernorate(body.governorate) || undefined,
     // Centralized source-mapping rules (Change Request 1, Feature 1) - see
     // utils/crm/sourceNormalization.js's own header for the full table (Google Ads needs BOTH
     // source=google and medium=cpc - or a Google click id - Meta Ads needs a paid medium, TikTok,

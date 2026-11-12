@@ -187,4 +187,39 @@ function notifyReassignment(owner, lead) {
   sendEmail(owner.email, subject, html).catch(() => {});
 }
 
-module.exports = { pickAutoAssignee, notifyAssignment, notifyReassignment, notifyUnassigned, crmManagers, eligibleSalesEngineers, AUTO_ASSIGN_CHANNELS, assignmentStrategy };
+/** Active users holding the CRM 'md' role (the Managing Director). */
+async function crmMds() {
+  return User.find({ isActive: true, isDeleted: { $ne: true }, systemMemberships: { $elemMatch: { system: 'CRM', role: 'md', isActive: true } } })
+    .select('_id name email')
+    .lean();
+}
+
+/**
+ * CRM Changes Required (12 Nov 2026), item 2: a repeat enquiry reopened a Lost lead to New. The
+ * owner hears about it; an unassigned lead goes to the MD instead. Best-effort email, never blocks
+ * the intake. Returns who was notified (names only, for the timeline).
+ */
+async function notifyReopened(lead, { origin = '' } = {}) {
+  let recipients = [];
+  try {
+    const owner = lead.owner ? await User.findById(lead.owner._id || lead.owner).select('_id name email isActive').lean() : null;
+    recipients = owner && owner.isActive !== false ? [owner] : await crmMds();
+  } catch {
+    return [];
+  }
+  const leadUrl = `${frontendBaseUrl()}/crm/leads/${lead._id}`;
+  const subject = `Lost lead reopened by a repeat enquiry - ${lead.refCode}`;
+  for (const r of recipients) {
+    if (!r.email) continue;
+    const html = `
+      <p>Hi ${escapeHtml(r.name || '')},</p>
+      <p>The lead <strong>${lead.refCode}</strong> (${escapeHtml(lead.name || '(not provided)')}, ${lead.phoneE164}) was <strong>Lost</strong> and has contacted us again${origin ? ` ${escapeHtml(origin)}` : ''}.</p>
+      <p>It is back in <strong>New</strong>${lead.owner ? ' and still assigned to you' : ' and has no owner yet - please assign it'}.</p>
+      <p><a href="${leadUrl}">Open the lead in the CRM</a></p>
+    `;
+    sendEmail(r.email, subject, html).catch(() => {});
+  }
+  return recipients;
+}
+
+module.exports = { pickAutoAssignee, notifyAssignment, notifyReassignment, notifyUnassigned, notifyReopened, crmMds, crmManagers, eligibleSalesEngineers, AUTO_ASSIGN_CHANNELS, assignmentStrategy };
