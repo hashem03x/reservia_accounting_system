@@ -23,7 +23,7 @@ const limiter = max =>
   });
 
 const extraPreviewOrigins = () =>
-  [process.env.WEBSITE_PUBLIC_URL, ...(process.env.WEBSITE_PREVIEW_ORIGINS || '').split(',')]
+  [process.env.WEBSITE_PUBLIC_URL, process.env.WEBSITE_EDITOR_URL, ...(process.env.WEBSITE_PREVIEW_ORIGINS || '').split(',')]
     .map(o => String(o || '').trim().replace(/\/+$/, ''))
     .filter(Boolean);
 

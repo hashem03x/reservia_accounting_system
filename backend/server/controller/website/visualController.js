@@ -178,6 +178,30 @@ function dashboardOrigin(req) {
   return allowed.includes(origin) ? origin : null;
 }
 
+const trimUrl = u => String(u || '').trim().replace(/\/+$/, '');
+function editorSiteBase(settings) {
+  return trimUrl(process.env.WEBSITE_EDITOR_URL || process.env.WEBSITE_PUBLIC_URL || settings.publicSiteUrl);
+}
+/** The website origins the editor canvas may run on (the dashboard's message check). */
+function siteOrigins(settings) {
+  const out = new Set();
+  for (const raw of [process.env.WEBSITE_EDITOR_URL, process.env.WEBSITE_PUBLIC_URL, settings && settings.publicSiteUrl]) {
+    let u;
+    try {
+      u = new URL(trimUrl(raw));
+    } catch {
+      continue;
+    }
+    out.add(u.origin);
+    const host = u.hostname;
+    if (host.includes('.') && !/^\d+(\.\d+){3}$/.test(host)) {
+      const twin = host.startsWith('www.') ? host.slice(4) : `www.${host}`;
+      out.add(`${u.protocol}//${twin}${u.port ? `:${u.port}` : ''}`);
+    }
+  }
+  return [...out];
+}
+
 /** POST /website/visual/preview-token { mode: 'edit'|'preview', path, lang } */
 const createToken = asyncHandler(async (req, res, next) => {
   const mode = req.body?.mode === 'edit' ? 'edit' : 'preview';
@@ -187,9 +211,21 @@ const createToken = asyncHandler(async (req, res, next) => {
   const path = typeof req.body?.path === 'string' && /^\/[a-z0-9\-/]*$/.test(req.body.path) ? req.body.path : '/';
   const { token, expiresAt } = createVisualToken({ userId: req.user._id, mode, origin });
   const settings = await loadSettings();
-  const site = (process.env.WEBSITE_PUBLIC_URL || settings.publicSiteUrl || '').replace(/\/+$/, '');
+  // The canvas must be a website build that CONTAINS the editor runtime (this branch's build): a
+  // dedicated WEBSITE_EDITOR_URL (e.g. the website's preview deployment) wins over the public address.
+  const site = editorSiteBase(settings);
   const url = site ? `${site}/${lang}${path === '/' ? '' : path}?${mode === 'edit' ? '__ve' : '__vp'}=${encodeURIComponent(token)}` : null;
-  res.status(200).json(apiResponse(url ? 'Preview link created' : 'Set the public website address (Website Settings) to open the editor.', true, { token, expiresAt, url, siteOrigin: site || null }));
+  res.status(200).json(
+    apiResponse(url ? 'Preview link created' : 'Set the website address for the editor (WEBSITE_EDITOR_URL on the server, or Website Settings > public website address).', true, {
+      token,
+      expiresAt,
+      url,
+      siteOrigin: site || null,
+      // Origins the canvas may legitimately answer from (the address itself and its www/apex twin).
+      allowedOrigins: siteOrigins(settings),
+      source: process.env.WEBSITE_EDITOR_URL ? 'WEBSITE_EDITOR_URL' : process.env.WEBSITE_PUBLIC_URL ? 'WEBSITE_PUBLIC_URL' : settings.publicSiteUrl ? 'Website Settings' : null,
+    })
+  );
 });
 
 /** GET /website/public/visual-preview/:token - the DRAFT configuration, for a valid signed token only. */
@@ -209,4 +245,4 @@ async function publishedVisual() {
   return doc.config || EMPTY();
 }
 
-module.exports = { getDraft, saveDraft, listRevisions, getRevision, restoreRevision, publishDraft, rollback, createToken, getVisualPreview, publishedVisual };
+module.exports = { siteOrigins, getDraft, saveDraft, listRevisions, getRevision, restoreRevision, publishDraft, rollback, createToken, getVisualPreview, publishedVisual };
