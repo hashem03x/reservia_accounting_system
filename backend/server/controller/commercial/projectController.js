@@ -101,7 +101,7 @@ exports.listProjects = asyncHandler(async (req, res) => {
 
 exports.getProject = asyncHandler(async (req, res, next) => {
   const project = await CommercialProject.findById(req.params.id).populate({ path: 'currentRevision', populate: STAGE_POPULATE });
-  if (!project) return next(new ApiError('Commercial project not found.', 404));
+  if (!project) return next(new ApiError('Deal Engine project not found.', 404));
   const data = project.toObject();
   if (data.currentRevision) data.currentRevision.waitingOn = waitingOn(project.currentRevision);
   res.status(200).json(apiResponse('Project retrieved successfully', true, data));
@@ -133,7 +133,7 @@ exports.createProject = asyncHandler(async (req, res, next) => {
  */
 exports.updateProject = asyncHandler(async (req, res, next) => {
   const project = await CommercialProject.findById(req.params.id);
-  if (!project) return next(new ApiError('Commercial project not found.', 404));
+  if (!project) return next(new ApiError('Deal Engine project not found.', 404));
   if (project.archived) return next(new ApiError('This project is archived and cannot be edited.', 400));
 
   const body = {};
@@ -175,7 +175,7 @@ exports.updateProject = asyncHandler(async (req, res, next) => {
 
 exports.duplicateProject = asyncHandler(async (req, res, next) => {
   const source = await CommercialProject.findById(req.params.id).populate('currentRevision');
-  if (!source) return next(new ApiError('Commercial project not found.', 404));
+  if (!source) return next(new ApiError('Deal Engine project not found.', 404));
   const projectCode = await getNextProjectCode(source.category);
   const project = new CommercialProject({
     projectCode, name: `${source.name} (copy)`, customer: source.customer, country: source.country, region: source.region,
@@ -193,7 +193,7 @@ exports.duplicateProject = asyncHandler(async (req, res, next) => {
 
 exports.archiveProject = asyncHandler(async (req, res, next) => {
   const project = await CommercialProject.findByIdAndUpdate(req.params.id, { archived: true, archivedAt: new Date(), archivedBy: req.user._id }, { new: true });
-  if (!project) return next(new ApiError('Commercial project not found.', 404));
+  if (!project) return next(new ApiError('Deal Engine project not found.', 404));
   res.status(200).json(apiResponse('Project archived successfully', true, project));
 });
 

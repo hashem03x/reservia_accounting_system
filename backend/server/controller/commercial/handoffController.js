@@ -25,7 +25,7 @@ exports.getProjectSyncEvents = asyncHandler(async (req, res, next) => {
  */
 exports.linkErpProject = asyncHandler(async (req, res, next) => {
   const project = await CommercialProject.findById(req.params.id);
-  if (!project) return next(new ApiError('Commercial project not found.', 404));
+  if (!project) return next(new ApiError('Deal Engine project not found.', 404));
   const erpId = req.body.erpProject;
   let erp = null;
   if (erpId) {
@@ -33,7 +33,7 @@ exports.linkErpProject = asyncHandler(async (req, res, next) => {
     erp = await Project.findById(erpId).select('_id projectNumber name').lean();
     if (!erp) return next(new ApiError('ERP project not found - create it in the ERP first, then link it here.', 404));
     const taken = await CommercialProject.findOne({ erpProject: erp._id, _id: { $ne: project._id } }).select('projectCode').lean();
-    if (taken) return next(new ApiError(`That ERP project is already linked to Commercial project ${taken.projectCode}.`, 409));
+    if (taken) return next(new ApiError(`That ERP project is already linked to Deal Engine project ${taken.projectCode}.`, 409));
   }
   project.erpProject = erp ? erp._id : null;
   project.erpProjectNumber = erp ? erp.projectNumber || null : null;

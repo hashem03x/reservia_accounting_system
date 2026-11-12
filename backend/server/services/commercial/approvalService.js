@@ -65,11 +65,11 @@ async function setStageStatus(revisionId, stage, status, { userId, userRole, not
   if (!STAGE_ROLES[stage]) throw new ApiError(`Unknown approval stage "${stage}"`, 400);
   if (!['Approved', 'Rejected'].includes(status)) throw new ApiError('Status must be Approved or Rejected.', 400);
   if (!STAGE_ROLES[stage].includes(userRole)) {
-    throw new ApiError(`${STAGE_LABEL[stage]} can only be signed by the ${STAGE_ROLES[stage].join(' / ')} role. Your Commercial role is "${userRole}".`, 403);
+    throw new ApiError(`${STAGE_LABEL[stage]} can only be signed by the ${STAGE_ROLES[stage].join(' / ')} role. Your Deal Engine role is "${userRole}".`, 403);
   }
 
   const revision = await CommercialRevision.findById(revisionId);
-  if (!revision) throw new ApiError('Commercial revision not found.', 404);
+  if (!revision) throw new ApiError('Deal Engine revision not found.', 404);
   if (!revision.isCurrent) throw new ApiError('This revision has been superseded and is read-only.', 400);
   if (revision.status === 'Draft') {
     throw new ApiError(`This revision is in Draft (${revision.invalidationReason || 'its inputs changed'}). Recalculate it on the Engineering Input tab before signing.`, 400);

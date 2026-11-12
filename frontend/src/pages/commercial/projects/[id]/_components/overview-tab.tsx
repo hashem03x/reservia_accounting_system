@@ -58,7 +58,7 @@ export default function OverviewTab({
 
       <SectionCard title={translate("Deal & Identifiers", "الصفقة والأرقام المرجعية")}>
         <Row label={translate("Lead # (CRM)", "رقم العميل المحتمل")} value={project.crmLeadRef ? (hasCrm && project.crmLead ? <a className="text-primary-600 underline" href={`/crm/leads/${project.crmLead}`}>{project.crmLeadRef}</a> : project.crmLeadRef) : translate("Not from CRM", "ليس من CRM")} />
-        <Row label={translate("Commercial deal #", "رقم الصفقة")} value={project.dealNumber} />
+        <Row label={translate("Deal #", "رقم الصفقة")} value={project.dealNumber} />
         <Row label={translate("Proposal # (next)", "رقم العرض (التالي)")} value={project.proposalNumber} />
         <Row label={translate("ERP project # (proposed)", "رقم مشروع ERP (مقترح)")} value={project.proposedErpProjectNumber} />
         <Row label={translate("ERP project # (actual)", "رقم مشروع ERP (فعلي)")} value={project.erpProjectNumber || translate("Assigned when the ERP project is created", "يُحدد عند إنشاء مشروع ERP")} />

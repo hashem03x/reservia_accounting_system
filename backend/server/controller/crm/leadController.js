@@ -154,9 +154,9 @@ exports.retryCommercialSync = asyncHandler(async (req, res) => {
   const result = await retrySync(req.params.id, { userId: req.user._id });
   const lead = await Lead.findById(req.params.id);
   if (!result.ok) {
-    return res.status(422).json(apiResponse(`Commercial sync failed: ${result.error}`, false, { lead, error: result.error }));
+    return res.status(422).json(apiResponse(`Deal Engine sync failed: ${result.error}`, false, { lead, error: result.error }));
   }
-  res.status(200).json(apiResponse(result.skipped ? 'Nothing to send to Commercial for this lead.' : 'Synchronized with Commercial.', true, { lead, identifiers: result.identifiers || null }));
+  res.status(200).json(apiResponse(result.skipped ? 'Nothing to send to the Deal Engine for this lead.' : 'Synchronized with the Deal Engine.', true, { lead, identifiers: result.identifiers || null }));
 });
 
 /** GET /crm/leads/:id/commercial-sync - the append-only sync history for this lead. */
@@ -164,5 +164,5 @@ exports.getCommercialSyncLog = asyncHandler(async (req, res) => {
   // eslint-disable-next-line global-require
   const CommercialSyncEvent = require('../../models/commercial/commercialSyncEventModel');
   const events = await CommercialSyncEvent.find({ lead: req.params.id }).sort({ createdAt: -1 }).limit(50).populate({ path: 'actor', select: 'name' }).lean();
-  res.status(200).json(apiResponse('Commercial sync history', true, events));
+  res.status(200).json(apiResponse('Deal Engine sync history', true, events));
 });

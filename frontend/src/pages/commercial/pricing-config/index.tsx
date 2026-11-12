@@ -30,7 +30,7 @@ type AuditRow = { _id: string; version: number; before: { levers: PricingLevers;
 // Finance (ERP admin), the Commercial Director or the MD - enforced by the backend.
 export default function PricingConfigPage() {
   const { translate, language } = useLanguage();
-  useDocumentTitle(`${translate("Pricing Configuration", "إعدادات التسعير")} | Reservia Commercial`);
+  useDocumentTitle(`${translate("Pricing Configuration", "إعدادات التسعير")} | Reservia Deal Engine`);
 
   const { privateRequest, loading, setLoading, error, setError, data: config, setData: setConfig } = useDataHandler<PricingConfig | null>({ initialData: null, initialLoading: true });
   const [levers, setLevers] = useState<Record<keyof PricingLevers, number> | null>(null);

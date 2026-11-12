@@ -69,14 +69,14 @@ async function findLinkedProject(lead) {
 function projectHeaderFromLead(lead) {
   const sector = SEGMENT_TO_SECTOR[lead.segment] || SEGMENT_TO_SECTOR.unknown;
   if (!lead.name || !String(lead.name).trim()) {
-    throw new ApiError('The lead has no customer name - add the name on the lead, then retry the Commercial sync.', 400);
+    throw new ApiError('The lead has no customer name - add the name on the lead, then retry the Deal Engine sync.', 400);
   }
   const mapped = regionForGovernorate(lead.governorate);
   if (!mapped) {
     throw new ApiError(
       lead.governorate
         ? `Governorate "${lead.governorate}" has no Rates matrix region mapping - set a standard governorate on the lead, then retry.`
-        : 'The lead has no governorate - set it on the lead (it decides the installation/transport Rates region), then retry the Commercial sync.',
+        : 'The lead has no governorate - set it on the lead (it decides the installation/transport Rates region), then retry the Deal Engine sync.',
       400
     );
   }
@@ -245,7 +245,7 @@ async function syncLeadEvent(leadId, event, { userId = null, trigger = 'stage_ch
       await markLead(lead, project, {
         event, ok: true, userId,
         note: created
-          ? `Sent to Commercial: deal ${project.dealNumber}, project ${project.projectCode}, proposal # ${project.proposalNumber}, proposed ERP project # ${project.proposedErpProjectNumber}.`
+          ? `Sent to the Deal Engine: deal ${project.dealNumber}, project ${project.projectCode}, proposal # ${project.proposalNumber}, proposed ERP project # ${project.proposedErpProjectNumber}.`
           : null,
       });
       await recordEvent({ lead, project, event, status: 'synced', replay: !created, trigger, userId });
@@ -258,19 +258,19 @@ async function syncLeadEvent(leadId, event, { userId = null, trigger = 'stage_ch
     project = await findLinkedProject(lead);
     if (!project && event === 'won') project = (await ensureProjectForLead(lead, { userId })).project;
     if (!project) {
-      await recordEvent({ lead, project: null, event, status: 'skipped', trigger, userId, error: 'No Commercial deal for this lead (it never reached Proposal sent).' });
+      await recordEvent({ lead, project: null, event, status: 'skipped', trigger, userId, error: 'No Deal Engine deal for this lead (it never reached Proposal sent).' });
       return { ok: true, skipped: true };
     }
     const already = (event === 'won' && project.outcome === 'Won') || (event === 'lost' && project.outcome === 'Lost' && project.lostReason === (lead.lostReason || null)) || (event === 'reopen' && project.outcome === 'Open');
     project = await applyOutcome(project, event, lead);
     const label = event === 'won' ? 'Won' : event === 'lost' ? `Lost${lead.lostReason ? ` (${lead.lostReason})` : ''}` : 'Open (reopened)';
-    await markLead(lead, project, { event, ok: true, userId, note: already ? null : `Commercial deal ${project.dealNumber} outcome set to ${label}.` });
+    await markLead(lead, project, { event, ok: true, userId, note: already ? null : `Deal Engine deal ${project.dealNumber} outcome set to ${label}.` });
     await recordEvent({ lead, project, event, status: 'synced', replay: already, trigger, userId });
     return { ok: true, project, identifiers: identifiersOf(project) };
   } catch (err) {
     const message = safeError(err);
-    console.error(`[CRM->Commercial] ${event} sync failed for lead ${lead.refCode}: ${err.message}`);
-    await markLead(lead, project, { event, ok: false, error: message, userId, note: `Commercial sync (${event}) failed: ${message} Retry from this lead once fixed.` }).catch(() => {});
+    console.error(`[CRM->Deal Engine] ${event} sync failed for lead ${lead.refCode}: ${err.message}`);
+    await markLead(lead, project, { event, ok: false, error: message, userId, note: `Deal Engine sync (${event}) failed: ${message} Retry from this lead once fixed.` }).catch(() => {});
     await recordEvent({ lead, project, event, status: 'failed', error: message, trigger, userId });
     return { ok: false, error: message };
   }
@@ -289,7 +289,7 @@ async function retrySync(leadId, { userId = null } = {}) {
   const lead = await Lead.findById(leadId).select('stage');
   if (!lead) throw new ApiError('Lead not found.', 404);
   const event = eventForStage(lead.stage);
-  if (!event) throw new ApiError('This lead has not reached Proposal sent yet - there is nothing to send to Commercial.', 400);
+  if (!event) throw new ApiError('This lead has not reached Proposal sent yet - there is nothing to send to the Deal Engine.', 400);
   return syncLeadEvent(leadId, event, { userId, trigger: 'retry' });
 }
 
@@ -311,7 +311,7 @@ async function onStageChanged(leadId, from, to, { userId = null } = {}) {
       // eslint-disable-next-line no-await-in-loop
       last = await syncLeadEvent(leadId, event, { userId, trigger: 'stage_change' });
     } catch (err) {
-      console.error(`[CRM->Commercial] unexpected error for lead ${leadId}: ${err.message}`);
+      console.error(`[CRM->Deal Engine] unexpected error for lead ${leadId}: ${err.message}`);
       last = { ok: false, error: safeError(err) };
     }
   }

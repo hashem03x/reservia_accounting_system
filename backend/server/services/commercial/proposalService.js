@@ -15,7 +15,7 @@ const { ensureDealIdentifiers, proposalNumberFor } = require('./dealNumberServic
 
 async function issueProposal(revisionId, { userId } = {}) {
   const revision = await CommercialRevision.findById(revisionId);
-  if (!revision) throw new ApiError('Commercial revision not found.', 404);
+  if (!revision) throw new ApiError('Deal Engine revision not found.', 404);
   if (!revision.isCurrent) throw new ApiError('Only the current revision can be issued as a proposal.', 400);
   if (revision.status === 'Draft') {
     throw new ApiError('This revision is in Draft - recalculate it and re-approve it before issuing a proposal.', 400);
@@ -25,7 +25,7 @@ async function issueProposal(revisionId, { userId } = {}) {
   }
 
   const project = await CommercialProject.findById(revision.project);
-  if (!project) throw new ApiError('Commercial project not found.', 404);
+  if (!project) throw new ApiError('Deal Engine project not found.', 404);
   if (await ensureDealIdentifiers(project)) await project.save();
 
   const version = (await CommercialProposal.countDocuments({ project: revision.project })) + 1;

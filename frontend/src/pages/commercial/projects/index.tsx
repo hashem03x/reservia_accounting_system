@@ -25,7 +25,7 @@ export default function CommercialProjects() {
   const navigate = useNavigate();
   const catLabel = categoryLabel(translate);
 
-  useDocumentTitle(`${translate("Projects", "المشاريع")} | Reservia Commercial`);
+  useDocumentTitle(`${translate("Projects", "المشاريع")} | Reservia Deal Engine`);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [activePage, setActivePage] = useState(parseInt(searchParams.get("page") || "1"));
@@ -62,7 +62,7 @@ export default function CommercialProjects() {
   return (
     <AdminLayoutBox
       header={{
-        title: translate("Commercial Projects", "المشاريع التجارية"),
+        title: translate("Deal Engine Projects", "مشاريع محرك الصفقات"),
         sideElements: (
           <Button onClick={openModal} color="teal" leftSection={<solidIcons.Plus />}>
             {translate("New Project", "مشروع جديد")}

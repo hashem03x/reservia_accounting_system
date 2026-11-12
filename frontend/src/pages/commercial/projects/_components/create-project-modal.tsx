@@ -114,7 +114,7 @@ export default function CreateProjectModal({
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title={editing ? translate("Edit Project", "تعديل المشروع") : translate("New Commercial Project", "مشروع تجاري جديد")} size="lg">
+    <Modal opened={opened} onClose={onClose} title={editing ? translate("Edit Project", "تعديل المشروع") : translate("New Deal Engine Project", "مشروع تجاري جديد")} size="lg">
       <div className="flex flex-col gap-3">
         {editing && (
           <p className="text-xs text-gray-500">

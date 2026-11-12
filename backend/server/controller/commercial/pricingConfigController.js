@@ -11,7 +11,7 @@ const { hasActiveCommercialMembership } = require('../../middleware/commercialAc
 
 exports.requireReadAccess = (req, res, next) => {
   if (hasActiveCommercialMembership(req.user) || pricingConfigService.canManagePricingConfig(req.user)) return next();
-  return next(new ApiError('You do not have access to the Commercial pricing configuration.', 403));
+  return next(new ApiError('You do not have access to the Deal Engine pricing configuration.', 403));
 };
 
 exports.requireManageAccess = (req, res, next) => {

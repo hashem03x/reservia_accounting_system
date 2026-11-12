@@ -49,7 +49,7 @@ export default function CommercialProjectDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  useDocumentTitle(`${project?.projectCode || translate("Project", "مشروع")} | Reservia Commercial`);
+  useDocumentTitle(`${project?.projectCode || translate("Project", "مشروع")} | Reservia Deal Engine`);
 
   if (error) {
     return <ErrorSection errorTitle={translate("Error loading the project", "خطأ في تحميل المشروع")} errorMessage={error} button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: reload }} />;

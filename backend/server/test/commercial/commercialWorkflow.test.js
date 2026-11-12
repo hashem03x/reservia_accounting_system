@@ -421,7 +421,7 @@ maybeTest('CRM CR 12 Nov item 1: no governorate -> refused at Qualified; a legac
   assert.equal(l.commercial.syncStatus, 'failed');
   assert.match(l.commercial.lastError, /governorate/);
   assert.equal(await CommercialProject.countDocuments({ crmLead: legacy._id }), 0);
-  assert.ok(await Activity.findOne({ lead: legacy._id, body: /Commercial sync \(proposal\) failed/ }));
+  assert.ok(await Activity.findOne({ lead: legacy._id, body: /Deal Engine sync \(proposal\) failed/ }));
 
   // Won is blocked (with the reason) while the sync is failed - even with the governorate given now.
   const wonBlocked = await api('PATCH', `/api/v1/crm/leads/${legacy._id}/stage`, { user: t.md, body: { to: 'won', valueEgp: 400000, governorate: 'Alexandria' } });

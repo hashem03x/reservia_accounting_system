@@ -93,7 +93,7 @@ async function computeAndSave(project, engineeringInput, { manualOverrides = {},
 
 async function createRevision(projectId, engineeringInput, opts = {}) {
   const project = await CommercialProject.findById(projectId);
-  if (!project) throw new ApiError('Commercial project not found.', 404);
+  if (!project) throw new ApiError('Deal Engine project not found.', 404);
 
   const computed = await computeAndSave(project, engineeringInput, { ...opts, revision: null });
   const previousCount = await CommercialRevision.countDocuments({ project: project._id });
@@ -146,7 +146,7 @@ async function resetSignedStages(revision, reason, { userId = null } = {}) {
 /** Only the CURRENT revision may be recomputed. */
 async function recomputeCurrentRevision(revisionId, engineeringInput, opts = {}) {
   const revision = await CommercialRevision.findById(revisionId);
-  if (!revision) throw new ApiError('Commercial revision not found.', 404);
+  if (!revision) throw new ApiError('Deal Engine revision not found.', 404);
   if (!revision.isCurrent) throw new ApiError('This revision has been superseded and is read-only. Create a new revision instead.', 400);
 
   const project = await CommercialProject.findById(revision.project);

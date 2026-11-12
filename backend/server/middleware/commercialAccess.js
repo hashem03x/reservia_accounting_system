@@ -22,7 +22,7 @@ const hasActiveCommercialMembership = user => !!commercialMembership(user)?.isAc
 exports.requireCommercialAccess = (req, res, next) => {
   const membership = commercialMembership(req.user);
   if (!membership?.isActive) {
-    return next(new ApiError('You do not have access to the Commercial system. Contact your administrator.', 403));
+    return next(new ApiError('You do not have access to the Deal Engine. Contact your administrator.', 403));
   }
   req.commercialRole = membership.role;
   return next();
@@ -31,10 +31,10 @@ exports.requireCommercialAccess = (req, res, next) => {
 /** Requires active Commercial membership AND one of the given Commercial roles. Always run after requireCommercialAccess. */
 exports.requireCommercialRole = (...roles) => (req, res, next) => {
   if (!req.commercialRole) {
-    return next(new ApiError('You do not have access to the Commercial system. Contact your administrator.', 403));
+    return next(new ApiError('You do not have access to the Deal Engine. Contact your administrator.', 403));
   }
   if (!roles.includes(req.commercialRole)) {
-    return next(new ApiError('You are not allowed to perform this action in Commercial.', 403));
+    return next(new ApiError('You are not allowed to perform this action in the Deal Engine.', 403));
   }
   return next();
 };

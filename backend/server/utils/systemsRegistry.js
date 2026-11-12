@@ -55,8 +55,10 @@ exports.SYSTEMS = {
   // Deliberately NOT the ERP's role enum, same reasoning as CRM above.
   COMMERCIAL: {
     id: 'COMMERCIAL',
-    name: 'Commercial',
-    description: 'Commercial activities, sales operations, proposals, and business development workflows.',
+    // Shown to users as "Deal Engine" (client request, 12 Nov 2026). The id stays COMMERCIAL so every
+    // existing membership, route and integration keeps working.
+    name: 'Deal Engine',
+    description: 'Solar deal design, BOQ pricing, customer feasibility, approvals, proposals and approved suppliers.',
     implemented: true,
     roles: ['md', 'commercial_director', 'sales', 'technical', 'member'],
   },

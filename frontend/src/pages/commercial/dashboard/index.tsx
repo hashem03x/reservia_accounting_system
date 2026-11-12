@@ -29,7 +29,7 @@ export default function CommercialDashboardPage() {
   const colorScheme = useComputedColorScheme("light");
   const isDark = colorScheme === "dark";
 
-  useDocumentTitle(`${translate("Dashboard", "لوحة التحكم")} | Reservia Commercial`);
+  useDocumentTitle(`${translate("Dashboard", "لوحة التحكم")} | Reservia Deal Engine`);
 
   const { privateRequest, loading, setLoading, error, setError, data, setData } = useDataHandler<CommercialDashboard | null>({ initialData: null, initialLoading: true });
 

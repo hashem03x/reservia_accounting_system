@@ -28,7 +28,7 @@ function formatProjectCode(prefix, seq) {
 
 async function getNextProjectCode(category, session) {
   const prefix = CATEGORY_PREFIXES[category];
-  if (!prefix) throw new ApiError(`Unknown Commercial project category: "${category}"`, 400);
+  if (!prefix) throw new ApiError(`Unknown Deal Engine project category: "${category}"`, 400);
   const sequenceName = sequenceNameFor(prefix);
 
   let updated = await Counter.findOneAndUpdate(
@@ -51,7 +51,7 @@ async function getNextProjectCode(category, session) {
   }
 
   if (!updated) {
-    throw new ApiError(`Commercial project code range for "${category}" is exhausted. Ask an administrator to configure a new range.`, 400);
+    throw new ApiError(`Deal Engine project code range for "${category}" is exhausted. Ask an administrator to configure a new range.`, 400);
   }
 
   return formatProjectCode(prefix, updated.seq);

@@ -47,10 +47,11 @@ const systems: {
   {
     id: "COMMERCIAL",
     icon: "ShoppingBag",
-    name: { en: "Commercial", ar: "التجاري" },
+    // Shown as "Deal Engine" (client request, 12 Nov 2026); the id stays COMMERCIAL.
+    name: { en: "Deal Engine", ar: "محرك الصفقات" },
     description: {
-      en: "Commercial activities, sales operations, proposals, and business development workflows.",
-      ar: "الأنشطة التجارية، عمليات المبيعات، العروض، وتطوير الأعمال.",
+      en: "Solar deal design, BOQ pricing, customer feasibility, approvals, proposals and approved suppliers.",
+      ar: "تصميم صفقات الطاقة الشمسية، تسعير جدول الكميات، دراسة الجدوى للعميل، الاعتمادات، العروض والموردون المعتمدون.",
     },
     entryRoute: `/${paths.commercial}`,
   },

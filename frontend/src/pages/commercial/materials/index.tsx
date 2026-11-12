@@ -27,7 +27,7 @@ const CATEGORIES = [
 // past revision's already-resolved price is never retroactively changed.
 export default function CommercialMaterials() {
   const { language, translate } = useLanguage();
-  useDocumentTitle(`${translate("Materials", "قائمة الأسعار")} | Reservia Commercial`);
+  useDocumentTitle(`${translate("Materials", "قائمة الأسعار")} | Reservia Deal Engine`);
 
   const [activePage, setActivePage] = useState(1);
   const [category, setCategory] = useState("");

@@ -33,7 +33,7 @@ export default function CommercialLayout() {
           <Link to={`/${paths.portal}`} className="flex items-center gap-2 font-semibold tracking-tight">
             <solidIcons.ArrowLeft style={{ transform: `rotateY(${translate("0", "180deg")})` }} />
             <img src={logo} alt="" aria-hidden className="h-9 w-9 rounded bg-white object-contain p-0.5" />
-            <span>{translate("Reservia Commercial", "رزيرفيا - التجاري")}</span>
+            <span>{translate("Reservia Deal Engine", "رزيرفيا - محرك الصفقات")}</span>
           </Link>
           <nav className="flex items-center gap-1">
             {NAV_ITEMS.map((item) => {
