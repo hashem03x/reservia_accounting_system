@@ -43,3 +43,14 @@ test('website form: a recognized location is stored as the governorate; an unrec
   assert.match(buildIntakeNote({ governorate: 'Maadi' }), /Location typed on the form \(not a recognized governorate.*\): Maadi/);
   assert.doesNotMatch(buildIntakeNote({ governorate: 'Giza' }), /Location typed/);
 });
+
+test('Deal Engine C26: the A3 city table maps a lead location to its Rates region (Giza -> Cairo - 10th of Ramadan); unknown places fall back to the governorate table', () => {
+  const { engineSettings, regionForPlace } = require('../../services/commercial/dealEngineSettings');
+  const { projectHeaderFromLead } = require('../../services/crm/commercialHandoffService');
+  const e = engineSettings({});
+  assert.equal(Object.keys(e.cityRegions).length, 31);
+  assert.equal(regionForPlace(e, 'Giza'), 'Cairo - 10th of Ramadan');
+  assert.equal(projectHeaderFromLead({ name: 'X', segment: 'villa', governorate: 'Giza' }, { cityRegions: e.cityRegions }).region, 'Cairo - 10th of Ramadan');
+  assert.equal(projectHeaderFromLead({ name: 'X', segment: 'villa', governorate: 'Alexandria' }, { cityRegions: e.cityRegions }).region, 'Damanhour - Kafr El Sheikh - Mansoura');
+  assert.equal(projectHeaderFromLead({ name: 'X', segment: 'villa', governorate: 'New Valley' }, { cityRegions: e.cityRegions }).region, 'Kharga - Dakhla - Farafra Oases', 'not in A3 -> governorate table');
+});

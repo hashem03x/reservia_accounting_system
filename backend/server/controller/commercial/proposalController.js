@@ -25,8 +25,18 @@ function sendPdf(res, pdf, filename) {
 const crmRoleOf = user => (Array.isArray(user?.systemMemberships) ? user.systemMemberships.find(m => m.system === 'CRM' && m.isActive)?.role : null) || null;
 
 exports.issueProposal = asyncHandler(async (req, res) => {
-  const proposal = await proposalService.issueProposal(req.params.revisionId, { userId: req.user._id, crmRole: crmRoleOf(req.user) });
+  const proposal = await proposalService.issueProposal(req.params.revisionId, {
+    userId: req.user._id,
+    userName: req.user.name || null,
+    crmRole: crmRoleOf(req.user),
+    commercialRole: req.commercialRole,
+    releaseOverrideNote: req.body?.releaseOverrideNote || null,
+  });
   res.status(201).json(apiResponse('Proposal issued successfully', true, proposal));
+});
+
+exports.releaseCheck = asyncHandler(async (req, res) => {
+  res.status(200).json(apiResponse('Release check', true, await proposalService.releaseCheck(req.params.revisionId)));
 });
 
 exports.previewProposal = asyncHandler(async (req, res) => {

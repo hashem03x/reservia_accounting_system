@@ -83,7 +83,8 @@ export default function CommercialMaterials() {
                   <Table.Th>{translate("Model", "الموديل")}</Table.Th>
                   <Table.Th>{translate("Spec", "المواصفات")}</Table.Th>
                   <Table.Th>{translate("Unit", "الوحدة")}</Table.Th>
-                  <Table.Th className="text-right">{translate("Unit Price", "سعر الوحدة")}</Table.Th>
+                  <Table.Th className="text-right">{translate("Reference price", "السعر المرجعي")}</Table.Th>
+                  <Table.Th>{translate("Supplier prices", "أسعار الموردين")}</Table.Th>
                   <Table.Th>{translate("Status", "الحالة")}</Table.Th>
                   <Table.Th>{translate("Source", "المصدر")}</Table.Th>
                   <Table.Th />
@@ -98,6 +99,20 @@ export default function CommercialMaterials() {
                     <Table.Td className="max-w-[200px] truncate text-xs text-gray-500">{m.spec}</Table.Td>
                     <Table.Td>{m.unit}</Table.Td>
                     <Table.Td className="text-right font-medium">{formatAmount(m.unitPrice, m.currency)}</Table.Td>
+                    <Table.Td className="text-xs">
+                      {/* Deal Engine C19: every supplier price carries its supplier code; none = Reference only. */}
+                      {m.supplierPrices?.length ? (
+                        m.supplierPrices.map((sp) => (
+                          <div key={sp.supplierCode} className={sp.validUntil && new Date(sp.validUntil) < new Date() ? "text-red-600" : ""}>
+                            {sp.supplierCode}: {formatAmount(sp.unitPrice, "EGP")}
+                            {sp.foreignPrice != null ? ` (${sp.foreignPrice} ${sp.currency})` : ""}
+                            {sp.validUntil ? ` - ${translate("valid to", "صالح حتى")} ${sp.validUntil.slice(0, 10)}` : ""}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-gray-400">{translate("Reference only", "مرجعي فقط")}</span>
+                      )}
+                    </Table.Td>
                     <Table.Td>
                       <Badge size="sm" color={m.status === "Available" ? "teal" : m.status === "PLACEHOLDER" ? "orange" : "gray"} variant="light">
                         {m.status}

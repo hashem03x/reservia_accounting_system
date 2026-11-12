@@ -125,6 +125,9 @@ export default function OverviewTab({
               value={revision.pricing?.perKwpExclVat != null ? `${formatAmount(revision.pricing.perKwpExclVat, project.currency)}${revision.pricing.designKwp ? ` / ${revision.pricing.designKwp} kWp` : ""}` : "-"}
             />
             <Row label={translate("Rule version", "إصدار القواعد")} value={ruleVersionLabel(revision)} />
+            {revision.priceChangedSinceCalculation && (
+              <Row label={translate("Prices", "الأسعار")} value={<Badge color="orange" variant="light" data-testid="overview-price-changed">{translate("Price changed since calculation - recalculate", "تغيّر السعر منذ الحساب - أعد الحساب")}</Badge>} />
+            )}
             <Row label={translate("Gross Profit", "الربح الإجمالي")} value={revision.pricing?.grossProfitPct != null ? `${(revision.pricing.grossProfitPct * 100).toFixed(1)}%` : "-"} />
             <Row label={translate("Release Status", "حالة الإصدار")} value={<Badge color={revision.releaseStatus === "APPROVED FOR ISSUE" ? "teal" : "yellow"} variant="light">{revision.releaseStatus}</Badge>} />
           </>

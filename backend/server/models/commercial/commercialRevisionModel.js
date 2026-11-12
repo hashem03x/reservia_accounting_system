@@ -31,6 +31,17 @@ const boqLineSchema = new Schema(
     autoQty: { type: Number, default: null },
     autoUnitPrice: { type: Number, default: null },
     flag: { type: String, default: null }, // e.g. "REFERENCE TABLE SELECTION - VERIFY ENGINEERING"
+    // Deal Engine C19/C23: where a Price Book line's price came from (supplierPricing.linePriceFields).
+    priceSource: { type: String, enum: ['supplier', 'reference', null], default: null },
+    supplierCode: { type: String, default: null },
+    supplierStatus: { type: String, default: null },
+    priceFlags: { type: [String], default: undefined },
+    foreignPrice: { type: Number, default: null },
+    priceCurrency: { type: String, default: null },
+    fxRate: { type: Number, default: null },
+    priceCheckedAt: { type: Date, default: null },
+    priceValidUntil: { type: Date, default: null },
+    priceStaleReason: { type: String, default: null },
     notes: { type: String, default: '' },
   },
   { _id: false }

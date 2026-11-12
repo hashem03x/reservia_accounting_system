@@ -66,12 +66,15 @@ async function findLinkedProject(lead) {
 }
 
 /** Builds the new project's header from the lead. Throws an actionable ApiError when the lead lacks what Commercial needs. */
-function projectHeaderFromLead(lead) {
+function projectHeaderFromLead(lead, { cityRegions = null } = {}) {
   const sector = SEGMENT_TO_SECTOR[lead.segment] || SEGMENT_TO_SECTOR.unknown;
   if (!lead.name || !String(lead.name).trim()) {
     throw new ApiError('The lead has no customer name - add the name on the lead, then retry the Deal Engine sync.', 400);
   }
-  const mapped = regionForGovernorate(lead.governorate);
+  // Deal Engine C26: the configured city/governorate table (attachment A3) first, then the built-in
+  // governorate table (nearest region for governorates without a rates row of their own).
+  const fromTable = cityRegions && lead.governorate ? Object.entries(cityRegions).find(([c]) => c.toLowerCase() === String(lead.governorate).trim().toLowerCase()) : null;
+  const mapped = fromTable ? { region: fromTable[1] } : regionForGovernorate(lead.governorate);
   if (!mapped) {
     throw new ApiError(
       lead.governorate
@@ -135,7 +138,11 @@ async function ensureProjectForLead(lead, { userId = null } = {}) {
     return { project: existing, created: false };
   }
 
-  const header = projectHeaderFromLead(lead);
+  // eslint-disable-next-line global-require
+  const pricingConfigService = require('../commercial/pricingConfigService');
+  // eslint-disable-next-line global-require
+  const { engineSettings } = require('../commercial/dealEngineSettings');
+  const header = projectHeaderFromLead(lead, { cityRegions: engineSettings(await pricingConfigService.getActiveConfig()).cityRegions });
   const { customer } = await findOrCreateCustomer({ name: lead.name, phone: lead.phoneE164, email: lead.email }, { createdBy: userId });
 
   const project = new CommercialProject({

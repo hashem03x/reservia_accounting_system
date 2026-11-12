@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
-import { Alert, Badge, Button, Table, Tooltip } from "@mantine/core";
+import { Alert, Badge, Button, Table, Textarea, Tooltip } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import { useSystemAccess } from "@/context/SystemAccessContext";
 import useDataHandler from "@/hooks/useDataHandler";
@@ -29,6 +29,8 @@ type Proposal = {
 // Roles that may open the internal copy (priced BOQ, pricing stack, approval log) - the backend
 // enforces the same list (controller/commercial/proposalController.js).
 const INTERNAL_ROLES = ["md", "commercial_director", "sales"];
+// Deal Engine C20: who may release past the supplier-price rule (backend proposalService RELEASE_OVERRIDE_ROLES).
+const OVERRIDE_ROLES = ["commercial_director", "md"];
 
 // Deal Engine C12-C17. Preview the next proposal (DRAFT watermark) at any time; issue it once every
 // required approval is in - the PDF is rendered on the letterhead, stored with its SHA-256 and
@@ -42,6 +44,9 @@ export default function ProposalTab({ project, revision }: { project: Commercial
   const { loading, setLoading, error, setError, data: proposals, setData: setProposals } = useDataHandler<Proposal[]>({ initialData: [], initialLoading: true });
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const [blockers, setBlockers] = useState<string[]>([]);
+  const [overrideNote, setOverrideNote] = useState("");
+  const canOverride = OVERRIDE_ROLES.includes(role);
 
   function reload() {
     handleRequest(language, setLoading, setError, async () => {
@@ -50,10 +55,20 @@ export default function ProposalTab({ project, revision }: { project: Commercial
     });
   }
 
+  async function loadReleaseCheck() {
+    try {
+      const res = await privateRequest({ url: `commercial/proposals/revision/${revision._id}/release-check`, language });
+      setBlockers((res.data as { blockers: string[] }).blockers || []);
+    } catch {
+      setBlockers([]);
+    }
+  }
+
   useEffect(() => {
     reload();
+    loadReleaseCheck();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [revision._id]);
+  }, [revision._id, revision.updatedAt]);
 
   /** Opens a PDF in a new tab (opened synchronously so a popup blocker allows it), else downloads it. */
   async function openPdf(key: string, url: string) {
@@ -83,7 +98,7 @@ export default function ProposalTab({ project, revision }: { project: Commercial
     setBusy("issue");
     setNotice(null);
     try {
-      const res = await privateRequest({ url: `commercial/proposals/revision/${revision._id}`, method: "POST", language });
+      const res = await privateRequest({ url: `commercial/proposals/revision/${revision._id}`, method: "POST", data: blockers.length ? { releaseOverrideNote: overrideNote } : {}, language });
       const p = res.data as Proposal;
       setNotice({
         ok: true,
@@ -91,7 +106,9 @@ export default function ProposalTab({ project, revision }: { project: Commercial
           ? translate(`Proposal ${p.proposalNumber} issued. The CRM lead could not be updated: ${p.leadAttachmentError}`, `تم إصدار العرض ${p.proposalNumber}. تعذر تحديث العميل في النظام: ${p.leadAttachmentError}`)
           : translate(`Proposal ${p.proposalNumber} issued and stored.`, `تم إصدار العرض ${p.proposalNumber} وحفظه.`),
       });
+      setOverrideNote("");
       reload();
+      loadReleaseCheck();
     } catch (e) {
       setNotice({ ok: false, text: errorMessage(e) });
     } finally {
@@ -116,7 +133,7 @@ export default function ProposalTab({ project, revision }: { project: Commercial
                 {translate("Preview (internal copy)", "معاينة (النسخة الداخلية)")}
               </Button>
             )}
-            <Button onClick={issue} disabled={!canIssue} loading={busy === "issue"} color="teal" data-testid="proposal-issue">
+            <Button onClick={issue} disabled={!canIssue || (blockers.length > 0 && (!canOverride || overrideNote.trim().length < 5))} loading={busy === "issue"} color={blockers.length ? "orange" : "teal"} data-testid="proposal-issue">
               {translate("Issue Proposal", "إصدار العرض")}
             </Button>
           </div>
@@ -132,6 +149,29 @@ export default function ProposalTab({ project, revision }: { project: Commercial
           <p className="mt-2 text-xs text-amber-600">
             {translate("Every required approval stage must be Approved (and the revision calculated) before a proposal can be issued.", "يجب الموافقة على كل مرحلة مطلوبة (وحساب النسخة) قبل إصدار العرض.")}
           </p>
+        )}
+        {blockers.length > 0 && (
+          <Alert mt="sm" color="orange" variant="light" title={translate("Release blocked by the supplier price rule", "الإصدار متوقف بسبب قاعدة أسعار الموردين")} data-testid="release-blockers">
+            <ul className="list-disc ps-5 text-xs">
+              {blockers.map((b) => (
+                <li key={b}>{b}</li>
+              ))}
+            </ul>
+            {canOverride ? (
+              <Textarea
+                mt="xs"
+                size="xs"
+                label={translate("Override note (Commercial Director) - required to issue", "ملاحظة التجاوز (المدير التجاري) - مطلوبة للإصدار")}
+                value={overrideNote}
+                onChange={(e) => setOverrideNote(e.target.value)}
+                autosize
+                minRows={2}
+                data-testid="release-override-note"
+              />
+            ) : (
+              <p className="mt-1 text-xs">{translate("Upload current supplier prices and recalculate, or ask the Commercial Director to override.", "ارفع أسعار موردين حالية وأعد الحساب، أو اطلب من المدير التجاري التجاوز.")}</p>
+            )}
+          </Alert>
         )}
         {notice && (
           <Alert mt="sm" color={notice.ok ? "teal" : "red"} variant="light" data-testid="proposal-notice">

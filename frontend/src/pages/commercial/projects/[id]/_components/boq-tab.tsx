@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, Button, NumberInput, Table, Tooltip } from "@mantine/core";
+import { Alert, Badge, Button, NumberInput, Table, Tooltip } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
@@ -35,6 +35,13 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
 
   return (
     <div className="flex flex-col gap-3">
+      {revision.priceChangedSinceCalculation && (
+        // Deal Engine C24 - a supplier price list changed an item this revision uses. Nothing recalculates
+        // on its own; the sales engineer presses Recalculate on the Engineering Input tab.
+        <Alert color="orange" variant="light" title={translate("Price changed since calculation", "تغيّر السعر منذ الحساب")} data-testid="price-changed-banner">
+          {translate("A supplier price list changed", "قائمة أسعار مورد غيّرت")}: {(revision.priceChangedItems || []).join(", ")}. {translate("Recalculate on the Engineering Input tab to use the new prices.", "أعد الحساب من تبويب المدخلات الفنية لاستخدام الأسعار الجديدة.")}
+        </Alert>
+      )}
       <DataTableContainer>
         <DataTable className="min-w-[900px]">
           <Table.Thead className={dataTableHeadClassName}>
@@ -61,6 +68,24 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                 </Table.Td>
                 <Table.Td className="max-w-[320px] text-xs text-gray-500">
                   <div className="truncate">{line.description}</div>
+                  {line.priceSource && (
+                    // Deal Engine C19/C23: price source, flags, foreign price and the EGP price used.
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px]" data-testid="boq-price-source">
+                      <span className="text-gray-500">{line.priceSource === "supplier" ? line.supplierCode : translate("Reference price", "سعر مرجعي")}</span>
+                      {line.foreignPrice != null && (
+                        <span className="text-gray-500">
+                          ({line.foreignPrice.toLocaleString("en-US")} {line.priceCurrency} x {line.fxRate})
+                        </span>
+                      )}
+                      {(line.priceFlags || []).map((f) => (
+                        <Tooltip key={f} label={f === "RECHECK PRICE" ? line.priceStaleReason || f : translate("No Approved supplier price - a Conditional supplier is used", "لا يوجد سعر من مورد معتمد - يُستخدم مورد مشروط")}>
+                          <Badge size="xs" color={f === "RECHECK PRICE" ? "red" : "yellow"} variant="light">
+                            {f}
+                          </Badge>
+                        </Tooltip>
+                      ))}
+                    </div>
+                  )}
                   {line.notes && <div className="whitespace-normal text-[11px] text-amber-700">{line.notes}</div>}
                 </Table.Td>
                 <Table.Td>{line.unit}</Table.Td>

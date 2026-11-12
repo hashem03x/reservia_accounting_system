@@ -77,6 +77,7 @@ export type DealEngineSettings = {
   discountRate: number;
   inverterReplacementYear: number;
   twoPhaseEscalation: { first: number; years: number; then: number };
+  fxRatesEgp?: { USD: number | null; EUR: number | null; CNY: number | null };
 };
 
 export type PricingConfigApplied = {
@@ -103,6 +104,17 @@ export type BoqLine = {
   autoUnitPrice: number | null;
   flag: string | null;
   notes: string;
+  // Deal Engine C19/C23 - where a Price Book line's price came from.
+  priceSource?: "supplier" | "reference" | null;
+  supplierCode?: string | null;
+  supplierStatus?: string | null;
+  priceFlags?: string[];
+  foreignPrice?: number | null;
+  priceCurrency?: string | null;
+  fxRate?: number | null;
+  priceCheckedAt?: string | null;
+  priceValidUntil?: string | null;
+  priceStaleReason?: string | null;
 };
 
 export type CommercialPricing = {
@@ -229,6 +241,8 @@ export type MaterialItem = {
   countryStock: string;
   status: "Available" | "PLACEHOLDER" | "Discontinued";
   sourceWorkbook: string;
+  // Deal Engine C19: supplier prices (the item's own unitPrice is the Reference price).
+  supplierPrices?: { supplierCode: string; unitPrice: number; currency: string; foreignPrice: number | null; validUntil: string | null; checkedAt: string; availability: string }[];
   sourceSheet: string;
   effectiveDate: string;
   key: string;

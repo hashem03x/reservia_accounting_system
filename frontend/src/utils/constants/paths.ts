@@ -78,6 +78,7 @@ const paths = {
   commercial: "commercial",
   commercialProjects: "projects",
   commercialMaterials: "materials",
+  commercialSuppliers: "suppliers",
   commercialPricingConfig: "pricing-config",
 };
 

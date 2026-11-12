@@ -4,7 +4,7 @@ const CATEGORIES = ['On-Grid C&I', 'Off-Grid', 'Agriculture Pumping', 'Utility S
 const SCOPES = ['Supply & Installation', 'Supply Only', 'Installation Only'];
 // systemsRegistry.js's COMMERCIAL.roles - repeated here as a plain array for validators that
 // can't import the registry's richer shape.
-const ROLES = ['md', 'commercial_director', 'sales', 'technical', 'member'];
+const ROLES = ['md', 'commercial_director', 'sales', 'technical', 'procurement', 'member'];
 const APPROVAL_STAGES = ['STAGE1', 'STAGE2', 'MD'];
 const APPROVAL_STATUSES = ['Pending', 'Approved', 'Rejected'];
 const BOQ_LINE_SOURCES = ['auto', 'manual', 'override'];

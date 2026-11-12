@@ -10,6 +10,7 @@ const pumpingCatalogData = require('./catalogData/pumpingCatalog');
 const pumpingExtras = require('./catalogData/pumpingExtras');
 const priceBook = require('./priceBookLookup');
 const dealEngineSettings = require('./dealEngineSettings');
+const { linePriceFields } = require('./supplierPricing');
 const ratesMatrix = require('./ratesMatrix');
 const pricingService = require('./commercialPricingService');
 
@@ -112,7 +113,22 @@ async function runOnGridOrUtility({ category, engineeringInput, country, region,
   const result = category === 'Utility Scale'
     ? utility.runUtilityScaleDesign(input, catalog, engineeringInput.manualAdders || {})
     : onGrid.runOnGridDesign(input, catalog);
-  const lines = applyManualOverrides(result.boq.lines, manualOverrides);
+  // Deal Engine C19/C23: each Price Book line records where its price came from (supplier or
+  // Reference, flags, foreign price) - matched to the catalog item the engine actually chose.
+  const d = result.design || {};
+  const pick = (list, fn) => (Array.isArray(list) ? list.find(fn) : null);
+  const sourceFor = {
+    'PV Modules': module_,
+    'Solar Inverters': d.inverter,
+    'DC Solar Cable': d.dcCable && pick(catalog.DC_CABLES, c => c.brand === d.dcCable.brand && c.sizeMm2 === d.dcCable.cableSizeMm2),
+    'AC Circuit Breaker': d.breaker && pick(catalog.AC_BREAKERS, b => b.ratingA === d.breaker.ratingA && b.type === d.breaker.type),
+    'AC Distribution Board': d.adb && pick(catalog.AC_DISTRIBUTION_BOARDS, b => b.dimensionsCm === d.adb.dimensionsCm),
+  };
+  const priced = result.boq.lines.map(l => {
+    const src = sourceFor[l.component];
+    return src && src.priceInfo ? { ...l, ...linePriceFields(src.priceInfo, src.key) } : l;
+  });
+  const lines = applyManualOverrides(priced, manualOverrides);
   const boqTotal = lines.reduce((s, l) => s + (l.total || 0), 0);
   // DESIGN kWp - the basis of the per-kWp lines and the price per kWp (QA finding section 4).
   const kWp = result.boq.designKwp ?? result.boq.finalCapacityKwp;
@@ -280,7 +296,7 @@ async function runOffGrid({ engineeringInput, manualOverrides, country, region }
     if (l.component in keyByComponent) {
       const item = keyByComponent[l.component];
       return item
-        ? { ...l, materialItemKey: item.key, description: `${item.brand} ${item.model} - ${item.spec}`.slice(0, 200) }
+        ? { ...l, ...linePriceFields(item.priceInfo, item.key), description: `${item.brand} ${item.model} - ${item.spec}`.slice(0, 200) }
         : { ...l, flag: 'MANUAL PRICE - select the item from the Price Book' };
     }
     if (l.component === 'Installation & Testing') {

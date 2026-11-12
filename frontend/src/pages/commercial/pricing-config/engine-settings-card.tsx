@@ -45,6 +45,7 @@ export default function EngineSettingsCard({ engine, canManage, onSaved }: { eng
   const [dcMax, setDcMax] = useState<Num>(engine.dcAcRatio.max);
   const [flagBelow, setFlagBelow] = useState<Num>(engine.dcAcRatio.flagBelow);
   const [flagAbove, setFlagAbove] = useState<Num>(engine.dcAcRatio.flagAbove);
+  const [fx, setFx] = useState<Record<string, Num>>({ USD: engine.fxRatesEgp?.USD ?? "", EUR: engine.fxRatesEgp?.EUR ?? "", CNY: engine.fxRatesEgp?.CNY ?? "" });
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -69,6 +70,7 @@ export default function EngineSettingsCard({ engine, canManage, onSaved }: { eng
             inverterReplacementYear: replacementYear,
             twoPhaseEscalation: { first: tpFirst / 100, years: tpYears, then: tpThen / 100 },
             dcAcRatio: { min: dcMin, max: dcMax, flagBelow, flagAbove },
+            fxRatesEgp: Object.fromEntries(Object.entries(fx).map(([c, v]) => [c, v === "" ? null : v])),
           },
         },
       });
@@ -126,6 +128,16 @@ export default function EngineSettingsCard({ engine, canManage, onSaved }: { eng
             <NumberInput label={translate("years", "سنوات")} value={tpYears} onChange={(v) => setTpYears(v === "" ? "" : Number(v))} min={1} max={24} disabled={dis} />
             <PctInput label={translate("then", "ثم")} value={tpThen} onChange={setTpThen} disabled={dis} />
           </div>
+        </div>
+
+        <div>
+          <h4 className="mb-1 text-sm font-semibold">{translate("Exchange rates for supplier price lists (EGP per unit, C23)", "أسعار الصرف لقوائم أسعار الموردين (جنيه لكل وحدة)")}</h4>
+          <div className="grid grid-cols-3 gap-2">
+            {(["USD", "EUR", "CNY"] as const).map((c) => (
+              <NumberInput key={c} size="xs" label={c} value={fx[c]} onChange={(v) => setFx((p) => ({ ...p, [c]: v === "" ? "" : Number(v) }))} min={0} decimalScale={4} placeholder={translate("not set", "غير محدد")} disabled={dis} />
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-gray-500">{translate("A foreign-currency row is blocked at import until its rate is set here.", "يُمنع استيراد صف بعملة أجنبية حتى يُحدد سعرها هنا.")}</p>
         </div>
 
         <div>

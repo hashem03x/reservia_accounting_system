@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: `/${paths.commercial}/${paths.dashboard}`, label: { en: "Dashboard", ar: "لوحة التحكم" }, Icon: outlineIcons.Squares },
   { to: `/${paths.commercial}/${paths.commercialProjects}`, label: { en: "Projects", ar: "المشاريع" }, Icon: outlineIcons.ChartBar },
   { to: `/${paths.commercial}/${paths.commercialMaterials}`, label: { en: "Materials", ar: "قائمة الأسعار" }, Icon: outlineIcons.Users },
+  { to: `/${paths.commercial}/${paths.commercialSuppliers}`, label: { en: "Suppliers", ar: "الموردون" }, Icon: outlineIcons.Users },
   { to: `/${paths.commercial}/${paths.commercialPricingConfig}`, label: { en: "Pricing Config", ar: "إعدادات التسعير" }, Icon: outlineIcons.Squares },
 ];
 

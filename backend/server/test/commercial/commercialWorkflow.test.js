@@ -67,6 +67,7 @@ before(async () => {
   app.use('/api/v1/commercial/revisions', require('../../routes/commercial/revisionRoute'));
   app.use('/api/v1/commercial/approvals', require('../../routes/commercial/approvalRoute'));
   app.use('/api/v1/commercial/proposals', require('../../routes/commercial/proposalRoute'));
+  app.use('/api/v1/commercial/suppliers', require('../../routes/commercial/supplierRoute'));
   app.use('/api/v1/commercial/pricing-config', require('../../routes/commercial/pricingConfigRoute'));
   app.use('/api/v1/commercial/handoff', require('../../routes/commercial/handoffRoute'));
   app.use(require('../../middleware/errorMiddleware'));
@@ -443,7 +444,7 @@ maybeTest('CRM CR 12 Nov item 1: no governorate -> refused at Qualified; a legac
   assert.equal(deal.category, 'On-Grid C&I');
   assert.equal(deal.subCategory, 'Villa / building');
   assert.equal(deal.region, 'Damanhour - Kafr El Sheikh - Mansoura');
-  assert.match(deal.regionNote, /nearest/);
+  assert.match(deal.regionNote, /Region mapped from governorate Alexandria/); // A3 (C26) maps Alexandria directly
   assert.equal((await Lead.findById(legacy._id).lean()).commercial.syncStatus, 'synced');
 
   // Now Won goes through and the deal follows.
@@ -707,4 +708,142 @@ maybeTest('Deal Engine C12-C17: DRAFT preview before approvals, internal copy fo
     fs.writeFileSync(`${out}/proposal-P01-customer.pdf`, pdf1.buf);
     fs.writeFileSync(`${out}/proposal-P01-internal.pdf`, int1.buf);
   }
+});
+
+// ===================================================================================== C18-C24
+// Deal Engine C18-C24 + C20: approved supplier list, supplier price list upload (preview -> confirm ->
+// rollback), supplier status in BOQ pricing, the release rule and its Commercial Director override.
+maybeTest('Deal Engine C18-C24: suppliers (MD approves), price list preview/confirm/rollback, Approved/Conditional/Suspended pricing, RECHECK PRICE, foreign prices, open-revision flag, release rule with Director override', async () => {
+  const t = await team();
+  const proc = await makeUser('Pia Procurement', [m('COMMERCIAL', 'procurement')]);
+  const XLSX = require('xlsx');
+  const MaterialItem = require('../../models/commercial/materialItemModel');
+  const xlsxFile = rows => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Price list');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  };
+  const uploadFile = async (supplierId, buf, name, fields = {}, user = proc) => {
+    const fd = new FormData();
+    fd.append('file', new Blob([buf]), name);
+    for (const [k, v] of Object.entries(fields)) fd.append(k, typeof v === 'string' ? v : JSON.stringify(v));
+    const r = await fetch(`${baseUrl}/api/v1/commercial/suppliers/${supplierId}/price-lists/preview`, { method: 'POST', headers: { 'x-test-user': String(user._id) }, body: fd });
+    return { status: r.status, body: await r.json() };
+  };
+
+  // C18: Procurement proposes, the MD approves; Sales cannot add, Procurement cannot approve.
+  assert.equal((await api('POST', '/api/v1/commercial/suppliers', { user: t.sales, body: { legalName: 'X' } })).status, 403);
+  const created = await api('POST', '/api/v1/commercial/suppliers', { user: proc, body: { legalName: 'El Marwa Trading', country: 'Egypt', city: 'Cairo', categories: ['PV Modules', 'On-Grid Inverter'], brands: ['JinkoSolar', 'Huawei'], contacts: [{ name: 'Omar', role: 'Sales', email: 'omar@example.com' }], terms: { currency: 'EGP', leadTimeDays: 14 } } });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const sup = created.body.data;
+  assert.match(sup.code, /^SUP-\d{4}$/);
+  assert.equal(sup.status, 'Candidate');
+  assert.equal((await api('PATCH', `/api/v1/commercial/suppliers/${sup._id}/status`, { user: proc, body: { status: 'Approved' } })).status, 403);
+  const approved = await api('PATCH', `/api/v1/commercial/suppliers/${sup._id}/status`, { user: t.md, body: { status: 'Approved' } });
+  assert.equal(approved.body.data.status, 'Approved');
+  assert.ok(approved.body.data.approval.reviewDate, 'annual review date set');
+  // Document expiry raises a review flag.
+  const doc = await api('POST', `/api/v1/commercial/suppliers/${sup._id}/documents`, { user: proc, body: { kind: 'Tax card', expiry: '2026-01-01' } });
+  assert.ok(doc.body.data.reviewFlags.some(f => /Tax card expired/.test(f)));
+
+  // An open revision priced from the Reference price, to be flagged after the upload (C24).
+  const project = await createReferenceProject(t.sales, await makeCustomer('Upload Co', '01060606060'));
+  const rev0 = (await api('POST', `/api/v1/commercial/revisions/project/${project._id}`, { user: t.sales, body: { engineeringInput: REF_INPUT } })).body.data;
+  assert.equal(rev0.boqLines.find(l => l.component === 'PV Modules').priceSource, 'reference');
+
+  // C21/C22/C23: preview - nothing written yet.
+  const header = ['Category', 'Brand', 'Model', 'Spec', 'Unit', 'Net Price', 'Currency', 'Availability', 'Lead time (days)', 'Minimum quantity', 'Rated value', 'Rated unit', 'Validity date'];
+  const modItem = await MaterialItem.findOne({ category: 'PV Modules', model: 'JKM475M-7RL3' }).lean();
+  const modKey = modItem.key;
+  const [modBrand, , modSpec] = modKey.split(' | ');
+  const rows = [
+    header,
+    ['PV Modules', modBrand, 'JKM475M-7RL3', modSpec, 'pcs', 4000, 'EGP', 'In stock', 0, 20, 475, 'W', '2026-12-31'],
+    ['Lithium Batteries', 'Newmox', '51.2V 314Ah', 'LiFePO4 rack', 'pcs', 2500, 'USD', 'Lead time', 45, 1, 314, 'Ah', '2026-12-31'],
+    ['On-Grid Inverter', 'Huawei', 'SUN2000-70KTL-NEW', '70 kW', 'pcs', 210000, 'EGP', 'Lead time', 21, 1, '', 'kW', '2026-12-31'],
+    ['DC Cable', 'NewCable', '6mm2 test', '6 mm2 solar DC', 'm', 60, 'EGP', 'In stock', 0, 100, 6, 'mm2', '2026-12-31'],
+    ['DC Cable', 'NewCable', '6mm2 test', '6 mm2 solar DC', 'm', 61, 'EGP', 'In stock', 0, 100, 6, 'mm2', '2026-12-31'],
+  ];
+  // "Net Price" is not the template header - map it explicitly the first time.
+  const pv = await uploadFile(sup._id, xlsxFile(rows), 'elmarwa-nov.xlsx', { mapping: { unitPrice: 'Net Price' }, validityDate: '2026-12-31' });
+  assert.equal(pv.status, 201, JSON.stringify(pv.body));
+  const prev = pv.body.data;
+  const byRow = Object.fromEntries(prev.rows.map(r => [r.rowNo, r]));
+  assert.equal(byRow[2].status, 'Update', JSON.stringify(byRow[2]));
+  assert.ok(byRow[2].changePct < 0, 'change % against the current price');
+  assert.equal(byRow[3].status, 'Error');
+  assert.match(byRow[3].errors.join(' '), /Currency without rate/);
+  assert.equal(byRow[4].status, 'Error');
+  assert.match(byRow[4].errors.join(' '), /Rated value missing/);
+  assert.equal(byRow[5].status, 'New');
+  assert.match(byRow[6].errors.join(' '), /Duplicate key/);
+  assert.equal((await MaterialItem.findOne({ key: modKey }).lean()).supplierPrices.length, 0, 'nothing written on preview');
+
+  // Confirm writes Update rows and the ticked New row; the open revision is flagged.
+  const conf = await api('POST', `/api/v1/commercial/suppliers/price-lists/${prev._id}/confirm`, { user: proc, body: { createNew: [5] } });
+  assert.equal(conf.status, 200, JSON.stringify(conf.body));
+  assert.equal(conf.body.data.changes.length, 2);
+  assert.ok(conf.body.data.flaggedRevisions >= 1);
+  const mod = await MaterialItem.findOne({ key: modKey }).lean();
+  assert.equal(mod.supplierPrices[0].supplierCode, sup.code);
+  assert.equal(mod.supplierPrices[0].sourceFile, 'elmarwa-nov.xlsx');
+  assert.ok(mod.supplierPrices[0].checkedAt && mod.supplierPrices[0].validUntil);
+  assert.equal((await MaterialItem.findOne({ key: 'NewCable | 6mm2 test | 6 mm2 solar DC' }).lean()).status, 'PLACEHOLDER');
+  assert.equal((await CommercialRevision.findById(rev0._id).lean()).priceChangedSinceCalculation, true);
+  assert.equal((await api('POST', `/api/v1/commercial/suppliers/price-lists/${prev._id}/confirm`, { user: proc })).status, 409, 'confirm once');
+
+  // C19: a new calculation prices the module from the Approved supplier (4,000 per module).
+  const rev1 = (await api('PATCH', `/api/v1/commercial/revisions/${rev0._id}`, { user: t.sales, body: { engineeringInput: REF_INPUT } })).body.data;
+  const pvLine = rev1.boqLines.find(l => l.component === 'PV Modules');
+  assert.equal(pvLine.priceSource, 'supplier');
+  assert.equal(pvLine.supplierCode, sup.code);
+  assert.ok(Math.abs(pvLine.unitPrice - 4000) < 0.01, `unit price ${pvLine.unitPrice}`);
+  assert.equal(rev1.priceChangedSinceCalculation, false, 'recalculating clears the flag');
+
+  // C21: the next upload reuses the saved mapping ("Net Price" without being told).
+  const again = await uploadFile(sup._id, xlsxFile([header, ['PV Modules', modBrand, 'JKM475M-7RL3', modSpec, 'pcs', 3900, 'EGP', 'In stock', 0, 20, 475, 'W', '2026-12-31']]), 'elmarwa-dec.xlsx');
+  assert.equal(again.body.data.mapping.unitPrice, 'Net Price');
+  assert.equal(again.body.data.rows[0].status, 'Update');
+
+  // C19/C20: Conditional -> flagged and release-blocked; Director override with a note releases it.
+  await api('PATCH', `/api/v1/commercial/suppliers/${sup._id}/status`, { user: t.md, body: { status: 'Conditional', note: 'Missing ISO certificate' } });
+  const rev2 = (await api('PATCH', `/api/v1/commercial/revisions/${rev0._id}`, { user: t.sales, body: { engineeringInput: REF_INPUT } })).body.data;
+  assert.ok(rev2.boqLines.find(l => l.component === 'PV Modules').priceFlags.includes('CONDITIONAL SUPPLIER'));
+  for (const [user, stage] of [[t.sales, 'stage1'], [t.director, 'stage2'], [t.md, 'md']]) assert.equal((await api('PATCH', `/api/v1/commercial/approvals/${rev0._id}/${stage}`, { user, body: { status: 'Approved' } })).status, 200);
+  const check = await api('GET', `/api/v1/commercial/proposals/revision/${rev0._id}/release-check`, { user: t.sales });
+  assert.ok(check.body.data.blockers.some(b => /conditional supplier/.test(b)), JSON.stringify(check.body));
+  const blocked = await api('POST', `/api/v1/commercial/proposals/revision/${rev0._id}`, { user: t.sales });
+  assert.equal(blocked.status, 400);
+  assert.match(blocked.body.message, /cannot be released yet/);
+  assert.equal((await api('POST', `/api/v1/commercial/proposals/revision/${rev0._id}`, { user: t.sales, body: { releaseOverrideNote: 'Customer accepted' } })).status, 403);
+  const released = await api('POST', `/api/v1/commercial/proposals/revision/${rev0._id}`, { user: t.director, body: { releaseOverrideNote: 'ISO certificate requested; price confirmed by phone' } });
+  assert.equal(released.status, 201, JSON.stringify(released.body));
+  assert.match(released.body.data.releaseOverride, /Dina Director \(commercial_director\) overrode: .*Note: ISO certificate requested/);
+
+  // Suspended never prices: back to the Reference price.
+  await api('PATCH', `/api/v1/commercial/suppliers/${sup._id}/status`, { user: t.director, body: { status: 'Suspended', note: 'Late deliveries' } });
+  const rev3 = (await api('PATCH', `/api/v1/commercial/revisions/${rev0._id}`, { user: t.sales, body: { engineeringInput: REF_INPUT } })).body.data;
+  assert.equal(rev3.boqLines.find(l => l.component === 'PV Modules').priceSource, 'reference');
+
+  // C23: a foreign price converts at the configured rate and the BOQ shows both; past validity -> RECHECK PRICE.
+  await api('PATCH', `/api/v1/commercial/suppliers/${sup._id}/status`, { user: t.md, body: { status: 'Approved' } });
+  await api('PUT', '/api/v1/commercial/pricing-config', { user: t.md, body: { engine: { fxRatesEgp: { USD: 50 } } } });
+  const invKey = (await MaterialItem.findOne({ category: 'On-Grid Inverter', model: 'SUN2000-60KTL-M0' }).lean()).key;
+  const [invBrand, , invSpec] = invKey.split(' | ');
+  const usd = await uploadFile(sup._id, xlsxFile([header, ['On-Grid Inverter', invBrand, 'SUN2000-60KTL-M0', invSpec, 'pcs', 3800, 'USD', 'In stock', 0, 1, 60, 'kW', '2026-01-31']]), 'usd.xlsx');
+  assert.equal(usd.body.data.rows[0].egp, 190000, JSON.stringify(usd.body.data.rows[0]));
+  await api('POST', `/api/v1/commercial/suppliers/price-lists/${usd.body.data._id}/confirm`, { user: proc });
+  const rev4 = (await api('PATCH', `/api/v1/commercial/revisions/${rev0._id}`, { user: t.sales, body: { engineeringInput: REF_INPUT } })).body.data;
+  const invLine = rev4.boqLines.find(l => l.component === 'Solar Inverters');
+  assert.deepEqual([invLine.foreignPrice, invLine.priceCurrency, invLine.fxRate, invLine.unitPrice], [3800, 'USD', 50, 190000]);
+  assert.ok(invLine.priceFlags.includes('RECHECK PRICE'), 'past its validity date');
+
+  // C21: rolling back an upload restores that upload's prices only.
+  const rb = await api('POST', `/api/v1/commercial/suppliers/price-lists/${usd.body.data._id}/rollback`, { user: proc });
+  assert.equal(rb.status, 200, JSON.stringify(rb.body));
+  assert.equal((await MaterialItem.findOne({ key: invKey }).lean()).supplierPrices.length, 0);
+  assert.equal((await MaterialItem.findOne({ key: modKey }).lean()).supplierPrices.length, 1, 'the module price from the other upload stays');
+  const notes = (await api('GET', `/api/v1/commercial/suppliers/${sup._id}`, { user: proc })).body.data.notes.map(n => n.text).join(' | ');
+  assert.match(notes, /Candidate -> Approved.*Approved -> Conditional: Missing ISO certificate.*Conditional -> Suspended: Late deliveries/);
+  assert.match(notes, /rolled back/);
 });

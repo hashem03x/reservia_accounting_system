@@ -60,7 +60,9 @@ exports.SYSTEMS = {
     name: 'Deal Engine',
     description: 'Solar deal design, BOQ pricing, customer feasibility, approvals, proposals and approved suppliers.',
     implemented: true,
-    roles: ['md', 'commercial_director', 'sales', 'technical', 'member'],
+    // 'procurement' (Deal Engine C18): maintains the approved supplier list and uploads supplier
+    // price lists; the MD approves suppliers.
+    roles: ['md', 'commercial_director', 'sales', 'technical', 'procurement', 'member'],
   },
   // Website Management (CMS for the public Reservia marketing site, Reservia_Website repo). Roles
   // are a simple content-authority ladder, not the ERP's resource:action matrix - see

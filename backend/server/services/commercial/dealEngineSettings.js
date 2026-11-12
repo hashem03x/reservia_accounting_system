@@ -39,6 +39,44 @@ const ENGINE_DEFAULTS = Object.freeze({
   inverterReplacementYear: 13,
   // C9 - fourth tariff scenario: 10% for 5 years, then 5%.
   twoPhaseEscalation: { first: 0.1, years: 5, then: 0.05 },
+  // C23 / Spec Part 2 5.2: EGP per unit of foreign currency for supplier price lists. Not given in the
+  // documents - empty until Finance enters them; a foreign price without a rate is blocked at import.
+  fxRatesEgp: { USD: null, EUR: null, CNY: null },
+  // C26 - attachment A3: 31 Egyptian cities to the 8 Rates matrix regions, used (before the built-in
+  // governorate table) to map a CRM lead's location to its Deal Engine region. Editable data.
+  cityRegions: {
+    "10th of Ramadan City": "Cairo - 10th of Ramadan",
+    "Alexandria": "Damanhour - Kafr El Sheikh - Mansoura",
+    "Assiut": "Minya - Sohag - Assiut",
+    "Aswan": "Qena - Luxor - Aswan",
+    "Banha": "Banha - Tanta - Menoufia",
+    "Beni Suef": "Fayoum - Beni Suef",
+    "Cairo": "Cairo - 10th of Ramadan",
+    "Dakhla": "Kharga - Dakhla - Farafra Oases",
+    "Damanhour": "Damanhour - Kafr El Sheikh - Mansoura",
+    "Damietta": "Damanhour - Kafr El Sheikh - Mansoura",
+    "Fayoum": "Fayoum - Beni Suef",
+    "Giza": "Cairo - 10th of Ramadan",
+    "Hurghada": "Qena - Luxor - Aswan",
+    "Ismailia": "Sharqia - Ismailia",
+    "Kafr El Sheikh": "Damanhour - Kafr El Sheikh - Mansoura",
+    "Kharga": "Kharga - Dakhla - Farafra Oases",
+    "Luxor": "Qena - Luxor - Aswan",
+    "Mansoura": "Damanhour - Kafr El Sheikh - Mansoura",
+    "Marsa Alam": "Qena - Luxor - Aswan",
+    "Matrouh": "Damanhour - Kafr El Sheikh - Mansoura",
+    "Minya": "Minya - Sohag - Assiut",
+    "New Cairo": "Cairo - 10th of Ramadan",
+    "Obour": "Cairo - 10th of Ramadan",
+    "Port Said": "Sharqia - Ismailia",
+    "Qena": "Qena - Luxor - Aswan",
+    "Sadat City": "Banha - Tanta - Menoufia",
+    "Sharm El Sheikh": "Qena - Luxor - Aswan",
+    "Sohag": "Minya - Sohag - Assiut",
+    "Suez": "Sharqia - Ismailia",
+    "Tanta": "Banha - Tanta - Menoufia",
+    "Zagazig": "Sharqia - Ismailia"
+  },
 });
 
 const PROPOSAL_DEFAULTS = Object.freeze({
@@ -88,7 +126,7 @@ function mergeDefaults(defaults, stored) {
   if (!isObj(stored)) return out;
   for (const k of Object.keys(out)) {
     if (stored[k] === undefined) continue;
-    if (isObj(out[k]) && isObj(stored[k]) && k !== 'byRegion') out[k] = mergeDefaults(out[k], stored[k]);
+    if (isObj(out[k]) && isObj(stored[k]) && k !== 'byRegion' && k !== 'cityRegions') out[k] = mergeDefaults(out[k], stored[k]);
     else out[k] = clone(stored[k]);
   }
   return out;
@@ -138,6 +176,23 @@ function validateEngine(patch, current) {
   }
   if (patch.discountRate !== undefined) next.discountRate = num('Discount rate', patch.discountRate, 0, 1);
   if (patch.inverterReplacementYear !== undefined) next.inverterReplacementYear = Math.round(num('Inverter replacement year', patch.inverterReplacementYear, 1, 25));
+  if (isObj(patch.fxRatesEgp)) {
+    for (const c of ['USD', 'EUR', 'CNY']) {
+      if (patch.fxRatesEgp[c] === undefined) continue;
+      const v = patch.fxRatesEgp[c];
+      next.fxRatesEgp[c] = v === null || v === '' ? null : num(`${c} rate`, v, 0.0001, 100000);
+    }
+  }
+  if (isObj(patch.cityRegions)) {
+    const table = {};
+    for (const [city, region] of Object.entries(patch.cityRegions)) {
+      const c = text(city, 80);
+      if (!c) continue;
+      if (!EGYPT_REGIONS.includes(region)) throw new ApiError(`"${c}": "${region}" is not a Rates matrix region.`, 400);
+      table[c] = region;
+    }
+    next.cityRegions = table;
+  }
   if (patch.twoPhaseEscalation) {
     const t = patch.twoPhaseEscalation;
     if (t.first !== undefined) next.twoPhaseEscalation.first = num('Two-phase escalation, first rate', t.first, 0, 1);
@@ -181,7 +236,16 @@ function regionYield(settings, region) {
   return settings.yield.byRegion?.[region] || settings.yield.defaultKwhPerKwp;
 }
 
+/** C26: the Rates region for a city or governorate name from the configured table (case-insensitive). */
+function regionForPlace(settings, place) {
+  if (!place) return null;
+  const p = String(place).trim().toLowerCase();
+  const hit = Object.entries(settings.cityRegions || {}).find(([c]) => c.toLowerCase() === p);
+  return hit ? hit[1] : null;
+}
+
 module.exports = {
+  regionForPlace,
   RULE_VERSION,
   RULE_VERSION_DATE,
   ENGINE_DEFAULTS,

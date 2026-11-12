@@ -168,6 +168,8 @@ const mountRoutes = app => {
   // proposal workflow is the module's own business rules, same split the implementation plan
   // documents.
   app.use('/api/v1/commercial/materials', require('./commercial/materialRoute'));
+  // Deal Engine C18-C24: approved supplier list and supplier price list uploads.
+  app.use('/api/v1/commercial/suppliers', require('./commercial/supplierRoute'));
   app.use('/api/v1/commercial/projects', require('./commercial/projectRoute'));
   app.use('/api/v1/commercial/revisions', require('./commercial/revisionRoute'));
   app.use('/api/v1/commercial/approvals', require('./commercial/approvalRoute'));

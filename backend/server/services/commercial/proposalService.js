@@ -8,6 +8,11 @@ const pricingConfigService = require('./pricingConfigService');
 const { proposalSettings } = require('./dealEngineSettings');
 const { renderProposalPdf } = require('./proposalPdf');
 const attachments = require('../files/attachmentService');
+const { releaseBlockers } = require('./supplierPricing');
+
+// C20: who may release a proposal past the supplier-price rule ("unless the Commercial Director
+// overrides with a note"); the MD, who signs above the Director, may too.
+const RELEASE_OVERRIDE_ROLES = ['commercial_director', 'md'];
 
 // Reservia Deal Engine - issuing a proposal freezes a snapshot of the revision's current
 // boqLines/pricing/feasibility, exactly mirroring services/crm/quotationService.js's
@@ -155,7 +160,7 @@ async function attachToLead(project, proposal, buffer, { userId, crmRole }) {
   return { attached: true, attachmentId: att._id };
 }
 
-async function issueProposal(revisionId, { userId, crmRole = null, releaseOverride = null } = {}) {
+async function issueProposal(revisionId, { userId, userName = null, crmRole = null, commercialRole = null, releaseOverrideNote = null } = {}) {
   const revision = await CommercialRevision.findById(revisionId);
   if (!revision) throw new ApiError('Deal Engine revision not found.', 404);
   if (!revision.isCurrent) throw new ApiError('Only the current revision can be issued as a proposal.', 400);
@@ -164,6 +169,19 @@ async function issueProposal(revisionId, { userId, crmRole = null, releaseOverri
   }
   if (revision.releaseStatus !== 'APPROVED FOR ISSUE') {
     throw new ApiError('This revision is NOT RELEASED - every required approval stage must be Approved before a proposal can be issued.', 400);
+  }
+
+  // C20 - stale Reference prices and non-Approved suppliers block the release, unless overridden.
+  const blockers = releaseBlockers(revision);
+  let releaseOverride = null;
+  if (blockers.length) {
+    const note = String(releaseOverrideNote || '').trim();
+    if (!note) {
+      throw new ApiError(`This proposal cannot be released yet: ${blockers.join(' ')} Upload current supplier prices and recalculate, or the Commercial Director can override with a note.`, 400, { releaseBlocked: true, reasons: blockers });
+    }
+    if (!RELEASE_OVERRIDE_ROLES.includes(commercialRole)) throw new ApiError('Only the Commercial Director (or the MD) can release a proposal past the supplier price rule.', 403);
+    if (note.length < 5) throw new ApiError('Give a reason for the override (at least 5 characters).', 400);
+    releaseOverride = `${userName || 'User'} (${commercialRole}) overrode: ${blockers.join(' ')} Note: ${note.slice(0, 500)}`;
   }
 
   const project = await CommercialProject.findById(revision.project).populate('customer', 'name');
@@ -238,4 +256,11 @@ async function listProposalsForProject(projectId) {
   return CommercialProposal.find({ project: projectId }).select('-documentSnapshot').populate('issuedBy', 'name').sort({ version: -1 });
 }
 
-module.exports = { issueProposal, previewProposal, getProposalPdf, listProposalsForProject, buildProposalData };
+/** C20 preview: what would block the release of this revision right now (shown on the Proposal tab). */
+async function releaseCheck(revisionId) {
+  const revision = await CommercialRevision.findById(revisionId).lean();
+  if (!revision) throw new ApiError('Deal Engine revision not found.', 404);
+  return { blockers: releaseBlockers(revision), priceChangedSinceCalculation: !!revision.priceChangedSinceCalculation, priceChangedItems: revision.priceChangedItems || [] };
+}
+
+module.exports = { releaseCheck, issueProposal, previewProposal, getProposalPdf, listProposalsForProject, buildProposalData };
