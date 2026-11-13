@@ -11,6 +11,7 @@ import AdminLayout from "@/pages/routes/layout-admin";
 import CrmLayout from "@/pages/routes/layout-crm";
 import CommercialLayout from "@/pages/routes/layout-commercial";
 import WebsiteLayout from "@/pages/routes/layout-website";
+import HrPortal from "@/pages/hr";
 import NotFound from "@/pages/routes/not-found";
 import AuthGaurd from "@/pages/routes/auth-gaurd";
 import RoleGuard from "@/pages/routes/role-guard";
@@ -400,6 +401,18 @@ export default function App() {
                   </Route>
                   <Route path={paths.commercial + "/*"} element={<NotFound />} />
                 </Route>
+              </Route>
+            </Route>
+          </Route>
+
+          {/* Reservia HR Portal (HR Portal Developer Spec, 11 Nov 2026) - gated like CRM and the Deal Engine
+              (staff-only RoleGuard, then SystemGuard on the "HR" membership); the prototype's own
+              layout lives inside pages/hr. The HR role (md/hr/manager/finance) is enforced by the API. */}
+          <Route element={<AuthGaurd requireLoggedIn={true} />}>
+            <Route element={<RoleGuard allowedRoles={[roles.admin.value, roles.moderator.value, roles.operator.value]} />}>
+              <Route element={<SystemGuard systemId="HR" />}>
+                <Route path={paths.hr} element={<HrPortal />} />
+                <Route path={paths.hr + "/:view"} element={<HrPortal />} />
               </Route>
             </Route>
           </Route>

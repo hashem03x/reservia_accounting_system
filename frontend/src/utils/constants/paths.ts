@@ -59,6 +59,8 @@ const paths = {
   platformAdmin: "platform-admin",
   // Reservia CRM
   crm: "crm",
+  // Reservia HR Portal (HR Portal Developer Spec).
+  hr: "hr",
   dashboard: "dashboard",
   pipeline: "pipeline",
   leads: "leads",

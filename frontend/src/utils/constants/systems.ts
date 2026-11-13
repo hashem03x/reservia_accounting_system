@@ -29,10 +29,10 @@ const systems: {
     icon: "Users",
     name: { en: "HR", ar: "الموارد البشرية" },
     description: {
-      en: "Employee records, attendance, leave, recruitment, and human resources workflows.",
-      ar: "سجلات الموظفين، الحضور، الإجازات، التوظيف، وإجراءات الموارد البشرية.",
+      en: "People, contracts, time, site visits, expenses, payroll and approvals.",
+      ar: "الأفراد والعقود والوقت والزيارات الميدانية والمصروفات والرواتب والموافقات.",
     },
-    entryRoute: null,
+    entryRoute: `/${paths.hr}`,
   },
   {
     id: "CRM",
