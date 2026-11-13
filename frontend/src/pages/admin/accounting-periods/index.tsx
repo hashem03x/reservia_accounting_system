@@ -12,6 +12,7 @@ import ErrorAlert from "@/components/ui/error-alert";
 import Modal from "@/components/ui/modal";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
 import { AccountingPeriod } from "@/types/accounting-period";
+import YearEndCloseSection from "./year-end-close-section";
 
 const MONTHS_SHOWN = 24;
 
@@ -97,6 +98,8 @@ export default function AccountingPeriods() {
           'أثناء إغلاق الشهر لا يمكن إنشاء أو تعديل أو ترحيل أو عكس أي قيد بتاريخ داخله - بما في ذلك القيود الآلية للأوامر والمدفوعات والمصروفات والأصول الثابتة والإهلاك وتحويلات مشروعات تحت التنفيذ. تظهر للمستخدم رسالة: "Accounting period is closed. Please contact the administrator to reopen it." وتبقى التقارير والسجلات متاحة للعرض.',
         )}
       </Alert>
+
+      <YearEndCloseSection onChanged={load} />
 
       {loading ? (
         <LoadingSection message={translate("Loading accounting periods...", "جاري تحميل الفترات المحاسبية...")} />

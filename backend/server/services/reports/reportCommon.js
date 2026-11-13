@@ -170,9 +170,10 @@ async function ledgerTotals({ start = null, end, lineMatch = {}, entryMatch = {}
 }
 
 /** Map accountId -> { debit, credit } of every ledger line up to `end` (and from `start`, if given). */
-async function balancesByAccount({ start = null, end }) {
+async function balancesByAccount({ start = null, end, excludeYearEndClose = false }) {
   const rows = await JournalEntry.aggregate([
-    { $match: ledgerMatch({ start, end }) },
+    // ERP CHG-09: the P&L statement leaves year-end closing entries out (excludeYearEndClose).
+    { $match: ledgerMatch({ start, end, extra: excludeYearEndClose ? { yearEndClose: null } : undefined }) },
     { $unwind: '$lines' },
     { $group: { _id: '$lines.account', debit: { $sum: '$lines.debit' }, credit: { $sum: '$lines.credit' } } },
   ]);

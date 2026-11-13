@@ -123,6 +123,10 @@ const journalEntrySchema = new Schema(
       default: null,
     },
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
+    // ERP CHG-09: the year a year-end closing entry (or its reversal on reopen) belongs to - null for
+    // every other entry. The Statement of Profit or Loss leaves these out so a closed year still
+    // shows its revenue and expenses (services/accounting/yearEndCloseService.js).
+    yearEndClose: { type: Number, default: null },
     // 'project' | 'ga' (General & Administrative) - see accountingConstants.js#JournalEntryClassifications.
     // 'project' always goes with a project and 'ga' never has one (RULE 2 below). null = an entry
     // that predates the field. ERP CHG-14: every non-manual entry is tagged on creation - Project

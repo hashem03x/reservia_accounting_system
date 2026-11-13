@@ -178,7 +178,8 @@ async function financialPosition(query) {
 async function profitLoss(query) {
   const period = C.resolvePeriod(query);
   const accounts = await C.loadAccounts();
-  const balances = await C.balancesByAccount({ start: period.start, end: period.end });
+  // ERP CHG-09: a closed year still shows its revenue and expenses - closing entries are left out.
+  const balances = await C.balancesByAccount({ start: period.start, end: period.end, excludeYearEndClose: true });
   const natural = (account, b) => C.naturalBalance(account, b.debit, b.credit);
 
   const revenue = groupedRows(accounts, balances, 'revenue', natural);

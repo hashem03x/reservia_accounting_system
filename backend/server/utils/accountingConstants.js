@@ -262,6 +262,9 @@ exports.AutomaticJournalAccountCodes = {
 // in Arabic; ERP CHG-12 asks for one language for every system entry, so it is written in English and
 // the dashboard shows the Arabic wording to an Arabic user (frontend utils/helpers/journal-description.ts,
 // which also recognises entries written earlier with the Arabic text below).
+// ERP CHG-09: the equity accounts a year-end close posts to (Chart of Accounts codes).
+exports.YearEndAccountCodes = { profitOfYear: '20000003', retainedEarnings: '20000002' };
+
 exports.ProjectCostRecognitionDescription = 'Charge project with costs by executed % of contract';
 exports.ProjectCostRecognitionDescriptionAr = 'تحميل المشروع بالتكاليف بنسبة المنفذ من العقد';
 
