@@ -173,6 +173,8 @@ const mountRoutes = app => {
   app.use('/api/v1/commercial/materials', require('./commercial/materialRoute'));
   // Deal Engine C18-C24: approved supplier list and supplier price list uploads.
   app.use('/api/v1/commercial/suppliers', require('./commercial/supplierRoute'));
+  // Reservia HR Portal (HR Portal Developer Spec, 11 Nov 2026).
+  app.use('/api/v1/hr', require('./hr/hrRoute'));
   app.use('/api/v1/commercial/projects', require('./commercial/projectRoute'));
   app.use('/api/v1/commercial/revisions', require('./commercial/revisionRoute'));
   app.use('/api/v1/commercial/approvals', require('./commercial/approvalRoute'));

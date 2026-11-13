@@ -42,7 +42,7 @@ const { loadEnv, assertDbUriConfigured, assertSafeDatabaseName, assertNotLeopard
 const { SYSTEMS, isValidSystemId, isValidRoleForSystem, SYSTEM_OWNER_ROLES, LEGACY_PLACEHOLDER_ROLE } = require('../utils/systemsRegistry');
 
 const DEFAULT_SYSTEMS = ['CRM', 'COMMERCIAL'];
-const REFUSED_SYSTEMS = { HR: 'HR is not implemented and its access must not be granted automatically.' };
+const REFUSED_SYSTEMS = { HR: 'HR access (pay data) must never be granted automatically - grant it from Admin -> Users with the right HR role.' };
 
 function argValue(argv, name) {
   const hit = argv.find(a => a.startsWith(`--${name}=`));

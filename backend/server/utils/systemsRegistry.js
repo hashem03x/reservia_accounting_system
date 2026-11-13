@@ -25,12 +25,18 @@ exports.SYSTEMS = {
     implemented: true,
     roles: ['admin', 'moderator', 'operator'],
   },
+  // Reservia HR Portal (HR Portal Developer Spec, 11 Nov 2026). Roles are the spec's section 2:
+  // md (everything, approves payroll), hr (HR officer), manager (line manager - team time, never
+  // pay), finance (register, journal, ERP post; no edits to people or time). See
+  // middleware/hrAccess.js. Memberships stored while HR was a placeholder ('MEMBER') carry no
+  // permission and must be re-granted with a real role.
   HR: {
     id: 'HR',
     name: 'HR',
-    description: 'Employee records, attendance, leave, recruitment, and human resources workflows.',
-    implemented: false,
-    roles: ['MEMBER'],
+    description: 'People, contracts, time, site visits, expenses, payroll and approvals.',
+    implemented: true,
+    roles: ['md', 'hr', 'manager', 'finance'],
+    requireValidRole: true,
   },
   // Reservia CRM (Developer Brief "Website, Amplitude and CRM") - lead-to-contract pipeline.
   // Roles are the brief's own four: md (Managing Director - the only role that can approve >EGP 1M
@@ -88,7 +94,7 @@ exports.DEFAULT_PLACEHOLDER_ROLE = 'MEMBER';
 // Single source of truth for (a) the "never remove the last owner" lock-out guard
 // (controller/portal/platformAdminController.js) and (b) the platform-administrator rule of
 // scripts/restoreSystemAccess.js. Only systems with a real role vocabulary have one.
-exports.SYSTEM_OWNER_ROLES = { CRM: 'md', COMMERCIAL: 'md' };
+exports.SYSTEM_OWNER_ROLES = { CRM: 'md', COMMERCIAL: 'md', HR: 'md' };
 
 // Historical placeholder role stored while a system was still `implemented: false` with roles
 // ['MEMBER'] (CRM until 29 Oct 2026, Commercial until 7 Nov 2026, Website until 8 Nov 2026). It

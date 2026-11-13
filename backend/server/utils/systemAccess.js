@@ -28,7 +28,9 @@ exports.getEffectiveSystemAccess = function getEffectiveSystemAccess(user) {
     const hasActiveMembership = !!membership?.isActive;
     result[systemId] = {
       implemented: system.implemented,
-      active: system.implemented && hasActiveMembership,
+      // HR: a membership left over from the placeholder era ('MEMBER') carries no permission level,
+      // so it never opens the HR Portal (pay data) - it must be re-granted with a real HR role.
+      active: system.implemented && hasActiveMembership && (!system.requireValidRole || system.roles.includes(membership.role)),
       hasMembership: hasActiveMembership,
       role: hasActiveMembership ? membership.role : null,
     };

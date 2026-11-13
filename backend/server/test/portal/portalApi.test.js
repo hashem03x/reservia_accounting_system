@@ -171,7 +171,7 @@ test('updateUserSystems: valid replacement succeeds and is recorded in the audit
   const req = {
     user: admin,
     params: { id: target._id.toString() },
-    body: { systemMemberships: [{ system: 'ERP', role: 'moderator', isActive: true }, { system: 'HR', role: 'MEMBER', isActive: true }] },
+    body: { systemMemberships: [{ system: 'ERP', role: 'moderator', isActive: true }, { system: 'HR', role: 'hr', isActive: true }] },
   };
   const res = mockRes();
   await platformAdminController.updateUserSystems(req, res, err => { throw err; });
