@@ -498,3 +498,61 @@ test('10. The dashboard\'s new forecast field is additive and well-formed', asyn
   assert.equal(typeof summary.forecast.closingBalance, 'number');
   assert.ok(Number.isFinite(summary.forecast.shortfallProjectsCount));
 });
+
+// ===================== ERP CHG-04 (12 Nov 2026) =====================
+
+const DAY = 24 * 60 * 60 * 1000;
+const isoDay = d => d.toISOString().slice(0, 10);
+
+test('CHG-04: a 1,000,000 contract with a 200,000 advance received forecasts 800,000 - the advance is never forecast again', async () => {
+  await Project.updateOne({ _id: project._id }, { $set: { contractValue: 1000000 } });
+  await mongoose.connection.collection('advancedpayments').insertOne({ type: 'customer', customer: customer._id, project: project._id, amount: 200000, remainingAmount: 200000, status: 'available', usageHistory: [], createdAt: new Date() });
+  const { scheduled, unscheduled } = await forecastService.getCustomerInflowObligations({ projectIds: [project._id] });
+  const fromProject = [...scheduled, ...unscheduled].filter(i => i.source === 'project');
+  assert.equal(fromProject.reduce((s2, i) => s2 + i.amount, 0), 800000);
+
+  // With payment terms, the advance covers the earliest installments first (750k + 250k -> 550k + 250k).
+  await Project.updateOne(
+    { _id: project._id },
+    { $set: { customerPaymentTerms: { mode: 'installments', installments: [{ description: 'First', basis: 'percentage', percentage: 75, tenorDays: 10 }, { description: 'Second', basis: 'percentage', percentage: 25, tenorDays: 40 }] } } }
+  );
+  const again = await forecastService.getCustomerInflowObligations({ projectIds: [project._id] });
+  const lines = again.scheduled.filter(i => i.source === 'project').sort((a, b) => a.date - b.date);
+  assert.deepEqual(lines.map(l => l.amount), [550000, 250000]);
+  assert.equal(lines[0].advanceApplied, 200000);
+  await mongoose.connection.collection('advancedpayments').deleteMany({});
+});
+
+test('CHG-04: one window for every figure; closing = opening + receipts - payments; overdue is its own line with a toggle; the timeline agrees with the cards', async () => {
+  const today = new Date();
+  const mk = async (amount, offsetDays) => {
+    const so = await SalesOrder.create({ customer: customer._id, warehouse: warehouse._id, project: project._id, orderSource: 'cashier', employee: manager._id, items: [{ product: product._id, unitPrice: amount, starterQuantity: 1 }] });
+    await SalesOrder.updateOne({ _id: so._id }, { $set: { dueDate: new Date(today.getTime() + offsetDays * DAY) } });
+  };
+  await mk(1000, -10); // overdue
+  await mk(2000, 10); // inside 30 days
+  await mk(4000, 45); // after 30 days, inside 60
+
+  const base = { from: isoDay(today), to: isoDay(new Date(today.getTime() + 30 * DAY)), project: String(project._id) };
+  const f30 = await forecastService.getConsolidatedForecast(base);
+  const t = f30.totals;
+  assert.equal(t.expectedReceipts, 2000, 'only what falls inside the window');
+  assert.equal(t.overdueReceipts, 1000);
+  assert.equal(t.receiptsAfterWindow, 4000);
+  assert.equal(t.includeOverdue, false);
+  assert.equal(t.closingBalance, Math.round((t.openingBalance + t.expectedReceipts - t.expectedPayments) * 100) / 100);
+  assert.equal(f30.timeline[f30.timeline.length - 1].closing, t.closingBalance, 'the timeline ends on the card figure');
+  assert.ok(t.formula.en.startsWith('Closing = Opening + Receipts - Payments'), t.formula.en);
+
+  const withOverdue = await forecastService.getConsolidatedForecast({ ...base, includeOverdue: 'true' });
+  assert.equal(withOverdue.totals.closingBalance, t.closingBalance + 1000);
+  assert.equal(withOverdue.timeline[withOverdue.timeline.length - 1].closing, withOverdue.totals.closingBalance);
+
+  const f60 = await forecastService.getConsolidatedForecast({ ...base, to: isoDay(new Date(today.getTime() + 60 * DAY)) });
+  assert.equal(f60.totals.expectedReceipts, 6000);
+  assert.equal(f60.totals.receiptsAfterWindow, 0);
+  for (const f of [f30, f60]) {
+    const last = f.timeline[f.timeline.length - 1];
+    assert.equal(last.closing, f.totals.closingBalance);
+  }
+});

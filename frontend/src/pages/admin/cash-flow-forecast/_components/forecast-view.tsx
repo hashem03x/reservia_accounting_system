@@ -53,6 +53,7 @@ export default function ForecastView({ url, hideProjectFilter = false }: { url: 
     if (filters.project && !hideProjectFilter) params.project = filters.project;
     if (filters.direction) params.direction = filters.direction;
     if (filters.status) params.status = filters.status;
+    if (filters.includeOverdue) params.includeOverdue = "true";
 
     handleRequest(language, setLoading, setError, async () => {
       const res = await privateRequest({ url, params, language });
@@ -62,7 +63,7 @@ export default function ForecastView({ url, hideProjectFilter = false }: { url: 
 
   useEffect(() => {
     load();
-  }, [filters.from, filters.to, filters.granularity, filters.project, filters.direction, filters.status]);
+  }, [filters.from, filters.to, filters.granularity, filters.project, filters.direction, filters.status, filters.includeOverdue]);
 
   return (
     <div className="flex flex-col gap-4">

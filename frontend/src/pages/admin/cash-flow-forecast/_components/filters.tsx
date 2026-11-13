@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Select } from "@mantine/core";
+import { Button, Select, Switch } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
@@ -13,6 +13,8 @@ export type ForecastFilterValues = {
   project: string;
   direction: string;
   status: string;
+  /** ERP CHG-04: count overdue receipts and payments in the closing balance. */
+  includeOverdue?: boolean;
 };
 
 const toDate = (value?: string) => (value ? new Date(`${value}T00:00:00`) : null);
@@ -63,6 +65,14 @@ export default function ForecastFilters({
         <Button size="xs" variant={customOpen ? "filled" : "light"} onClick={() => setCustomOpen((v) => !v)}>
           {translate("Custom range", "فترة مخصصة")}
         </Button>
+        <Switch
+          className="ms-2"
+          size="sm"
+          label={translate("Include overdue in the closing balance", "إدراج المتأخرات في الرصيد الختامي")}
+          checked={!!values.includeOverdue}
+          onChange={(e) => set("includeOverdue", e.currentTarget.checked)}
+          data-testid="forecast-include-overdue"
+        />
       </div>
 
       <div className="flex flex-wrap gap-2">

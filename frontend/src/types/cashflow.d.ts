@@ -70,6 +70,11 @@ export interface CashFlowTotals {
   closingBalance: number;
   overdueReceipts: number;
   overduePayments: number;
+  // ERP CHG-04
+  receiptsAfterWindow?: number;
+  paymentsAfterWindow?: number;
+  includeOverdue?: boolean;
+  formula?: { en: string; ar: string };
 }
 
 export interface CashFlowShortfallProject {

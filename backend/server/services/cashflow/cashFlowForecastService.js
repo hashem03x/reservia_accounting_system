@@ -4,6 +4,7 @@ const SalesOrder = require('../../models/sales/salesOrderModel');
 const Requisition = require('../../models/vendor/requisitionModel');
 const PurchaseOrder = require('../../models/vendor/purchaseOrder');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
+const AdvancedPayment = require('../../models/payments/advancedPaymentModel');
 const { getTrialBalanceAsOf } = require('../accounting/generalLedgerService');
 const { CashEquivalentParentGroupName } = require('../../utils/accountingConstants');
 
@@ -147,6 +148,15 @@ async function getCustomerInflowObligations({ projectIds = null, customerId = nu
   ]);
   const invoicedByProject = new Map(invoicedTotalsRaw.map(r => [r._id.toString(), r.total]));
 
+  // ERP CHG-04: cash a customer already paid in advance and that no invoice has used yet. It is part
+  // of the opening cash balance, so the contract is forecast net of it - never received twice.
+  // (An advance applied to an invoice already reduced that invoice's remaining amount.)
+  const advancesRaw = await AdvancedPayment.aggregate([
+    { $match: { type: 'customer', project: { $in: ids }, status: { $in: ['available', 'partially_used'] } } },
+    { $group: { _id: '$project', remaining: { $sum: '$remainingAmount' } } },
+  ]);
+  const advanceByProject = new Map(advancesRaw.map(r => [r._id.toString(), round2(r.remaining)]));
+
   const openOrders = await SalesOrder.find({
     project: { $in: ids },
     orderStatus: { $ne: 'canceled' },
@@ -194,8 +204,10 @@ async function getCustomerInflowObligations({ projectIds = null, customerId = nu
       });
       continue;
     }
-    const remainder = Math.max(0, round2(p.contractValue - invoiced));
-    // Not invoiced at all yet, with customer payment terms: forecast the contract by its terms.
+    const advance = advanceByProject.get(p._id.toString()) || 0;
+    const remainder = Math.max(0, round2(p.contractValue - invoiced - advance));
+    // Not invoiced at all yet, with customer payment terms: forecast the contract by its terms, the
+    // advance already received covering the earliest installments first.
     if (remainder > 0 && invoiced === 0 && p.customerPaymentTerms?.mode) {
       const { scheduledLines, remainder: rest } = linesFromTerms(p.customerPaymentTerms, {
         total: p.contractValue,
@@ -203,8 +215,18 @@ async function getCustomerInflowObligations({ projectIds = null, customerId = nu
         base: { direction: 'in', source: 'project', sourceId: p._id, project: { _id: p._id, projectNumber: p.projectNumber, name: p.name }, party: p.customer || null, reason: 'customer_payment_terms' },
         unscheduledReason: 'uninvoiced_contract_remainder',
       });
-      scheduled.push(...scheduledLines);
-      unscheduled.push(...rest);
+      let covered = advance;
+      const lines = [...scheduledLines.sort((a, b) => a.date - b.date), ...rest];
+      for (const line of lines) {
+        const take = Math.min(covered, line.amount);
+        if (take > 0) {
+          line.amount = round2(line.amount - take);
+          line.advanceApplied = round2(take);
+          covered = round2(covered - take);
+        }
+      }
+      scheduled.push(...lines.filter(l => l.date && l.amount > 0));
+      unscheduled.push(...lines.filter(l => !l.date && l.amount > 0));
       continue;
     }
     if (remainder > 0) {
@@ -348,9 +370,15 @@ async function getOpeningCashBalance(asOfDate) {
 // Timeline (opening -> inflow/outflow -> closing per bucket, chained)
 // =============================================================
 
-function buildTimeline({ scheduledInflows, scheduledOutflows, openingBalance, from, to, granularity }) {
+function buildTimeline({ scheduledInflows, scheduledOutflows, openingBalance, from, to, granularity, overdueNet = 0 }) {
   const buckets = buildEmptyBuckets(from, to, granularity);
   const byKey = new Map(buckets.map(b => [b.key, b]));
+  // ERP CHG-04: when overdue items are included they count in the first period, so the timeline's
+  // last closing balance is the same figure as the Projected Closing Balance card.
+  if (buckets.length && overdueNet) {
+    if (overdueNet > 0) buckets[0].inflow = round2(buckets[0].inflow + overdueNet);
+    else buckets[0].outflow = round2(buckets[0].outflow - overdueNet);
+  }
 
   for (const item of scheduledInflows) {
     if (item.date < from || item.date > to) continue;
@@ -391,13 +419,16 @@ function sumAmount(items) {
   return round2(items.reduce((sum, i) => sum + i.amount, 0));
 }
 
-function buildTotals({ scheduled, unscheduled, direction }, opposite) {
+// ERP CHG-04: every figure uses the same window. "In window" = due from the start to the end date;
+// "overdue" = due before the start (its own line, in the closing balance only when asked for).
+function buildTotals({ scheduled, unscheduled, direction, range }) {
   const scheduledOwn = scheduled.filter(i => i.direction === direction);
   const unscheduledOwn = unscheduled.filter(i => i.direction === direction);
   return {
-    scheduled: sumAmount(scheduledOwn),
+    inWindow: sumAmount(scheduledOwn.filter(i => i.date >= range.from && i.date <= range.to)),
+    overdue: sumAmount(scheduledOwn.filter(i => i.date < range.from)),
+    later: sumAmount(scheduledOwn.filter(i => i.date > range.to)),
     unscheduled: sumAmount(unscheduledOwn),
-    overdue: sumAmount(scheduledOwn.filter(i => i.status === 'overdue')),
   };
 }
 
@@ -410,6 +441,9 @@ function buildTotals({ scheduled, unscheduled, direction }, opposite) {
  */
 async function getConsolidatedForecast(params = {}) {
   const { from, to, granularity: requestedGranularity, project, customer, vendor, direction, status, poNumber, invoiceNumber } = params;
+  // Whether overdue receipts and payments count in the closing balance (the CHG-04 business
+  // decision). Until it is made they are shown on their own line and left out unless asked for.
+  const includeOverdue = params.includeOverdue === true || params.includeOverdue === 'true';
   const range = resolveDateRange(from, to);
   const granularity = resolveGranularity(range.from, range.to, requestedGranularity);
   const projectIds = project ? [project] : null;
@@ -429,6 +463,10 @@ async function getConsolidatedForecast(params = {}) {
     unscheduled = unscheduled.filter(i => i.direction === direction);
   }
 
+  const inflowTotals = buildTotals({ scheduled, unscheduled, direction: 'in', range });
+  const outflowTotals = buildTotals({ scheduled, unscheduled, direction: 'out', range });
+  const overdueNet = includeOverdue ? round2(inflowTotals.overdue - outflowTotals.overdue) : 0;
+
   const timeline = buildTimeline({
     scheduledInflows: scheduled.filter(i => i.direction === 'in'),
     scheduledOutflows: scheduled.filter(i => i.direction === 'out'),
@@ -436,11 +474,12 @@ async function getConsolidatedForecast(params = {}) {
     from: range.from,
     to: range.to,
     granularity,
+    overdueNet,
   });
 
-  const inflowTotals = buildTotals({ scheduled, unscheduled, direction: 'in' });
-  const outflowTotals = buildTotals({ scheduled, unscheduled, direction: 'out' });
-  const closingBalance = timeline.length ? timeline[timeline.length - 1].closing : opening.total;
+  // One formula for every card: closing = opening + receipts - payments (+ overdue, if included).
+  const netProjected = round2(inflowTotals.inWindow - outflowTotals.inWindow + overdueNet);
+  const closingBalance = round2(opening.total + netProjected);
 
   // Project-level net (unweighted by date) - a simplified "which projects could be short" signal,
   // not a precise timeline; precise per-project timing is available via getProjectForecast.
@@ -459,15 +498,21 @@ async function getConsolidatedForecast(params = {}) {
     opening,
     timeline,
     totals: {
-      expectedReceipts: inflowTotals.scheduled,
-      expectedPayments: outflowTotals.scheduled,
+      expectedReceipts: inflowTotals.inWindow,
+      expectedPayments: outflowTotals.inWindow,
       unscheduledReceipts: inflowTotals.unscheduled,
       unscheduledPayments: outflowTotals.unscheduled,
-      netProjected: round2(inflowTotals.scheduled - outflowTotals.scheduled),
+      netProjected,
       openingBalance: opening.total,
       closingBalance,
       overdueReceipts: inflowTotals.overdue,
       overduePayments: outflowTotals.overdue,
+      receiptsAfterWindow: inflowTotals.later,
+      paymentsAfterWindow: outflowTotals.later,
+      includeOverdue,
+      formula: includeOverdue
+        ? { en: 'Closing = Opening + Receipts - Payments + Overdue receipts - Overdue payments', ar: 'الرصيد الختامي = الافتتاحي + المقبوضات - المدفوعات + المقبوضات المتأخرة - المدفوعات المتأخرة' }
+        : { en: 'Closing = Opening + Receipts - Payments (overdue items not included)', ar: 'الرصيد الختامي = الافتتاحي + المقبوضات - المدفوعات (بدون المتأخرات)' },
     },
     shortfallProjects,
     obligations: { inflows: [...scheduled.filter(i => i.direction === 'in'), ...unscheduled.filter(i => i.direction === 'in')], outflows: [...scheduled.filter(i => i.direction === 'out'), ...unscheduled.filter(i => i.direction === 'out')] },

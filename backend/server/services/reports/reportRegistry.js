@@ -7,6 +7,7 @@ const EC = require('./expenseCategoryReports');
 const GL = require('./generalLedgerReport');
 const PC = require('./projectCostReports');
 const PP = require('./projectProfitReports');
+const WS = require('./wipStockReconciliationReport');
 const { L } = require('./reportCommon');
 
 // The accounting reports catalog (from the reports list "تقارير.csv"): category, bilingual title,
@@ -40,6 +41,8 @@ const REPORTS = [
   { key: 'project-profitability', category: 'projects', kind: 'period', title: L('Project Profitability and Gross Profit Margin', 'بيان بربحية كل مشروع ونسبة مجمل الربح'), filters: ['period', ...PROJECT_FILTERS], run: PR.projectProfitability },
   { key: 'project-cash-flows', category: 'projects', kind: 'period', title: L('Cash Flows by Project', 'بيان بالتدفقات النقدية لكل مشروع'), filters: ['period', ...PROJECT_FILTERS], run: PR.projectCashFlows },
   { key: 'project-costs', category: 'projects', kind: 'period', title: L('PUC / Project Cost Report', 'تقرير تكاليف المشروعات (مشروعات تحت التنفيذ)'), filters: ['period', ...PROJECT_FILTERS, 'pucCategory', 'pucAccount', 'vendor', 'pucSource'], run: PC.projectCosts },
+  // ERP CHG-01: materials WIP in the ledger against the project stock ledger, per project.
+  { key: 'wip-stock-reconciliation', category: 'projects', kind: 'asOf', title: L('Materials WIP - Ledger vs Project Stock', 'المواد تحت التنفيذ - الدفاتر مقابل مخزون المشروع'), filters: ['asOf'], run: WS.wipStockReconciliation },
   { key: 'puc-estimates', category: 'projects', kind: 'asOf', title: L('PUC - Estimated vs Actual Cost by Project', 'مشروعات تحت التنفيذ - التكلفة التقديرية مقابل الفعلية لكل مشروع'), filters: ['asOf', ...PROJECT_FILTERS, 'pucCategory'], run: PP.pucEstimates },
   { key: 'project-profit-analysis', category: 'projects', kind: 'period', title: L('Project Profit Analysis - Revenue less Costs', 'تحليل ربح المشروع - الإيرادات ناقص التكاليف'), filters: ['period', ...PROJECT_FILTERS], run: PP.projectProfitAnalysis },
   { key: 'projects-by-sector', category: 'projects', kind: 'list', title: L('Number of Projects by Sector', 'بيان بعدد المشروعات في كل قسم'), filters: ['customer', 'projectStatus'], run: PR.projectsBySector },

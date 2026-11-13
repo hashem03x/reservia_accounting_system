@@ -11,8 +11,16 @@ export default function SummaryCards({ forecast }: { forecast: CashFlowForecast 
     { label: translate("Expected Payments", "المدفوعات المتوقعة"), value: fmt(totals.expectedPayments), tone: "bad" },
     { label: translate("Net Projected Cash Flow", "صافي التدفق النقدي المتوقع"), value: fmt(totals.netProjected), tone: totals.netProjected >= 0 ? "good" : "bad" },
     { label: translate("Projected Closing Balance", "الرصيد الختامي المتوقع"), value: fmt(totals.closingBalance), tone: totals.closingBalance >= 0 ? "good" : "bad" },
-    { label: translate("Overdue Receivables", "مستحقات متأخرة"), value: fmt(totals.overdueReceipts), tone: totals.overdueReceipts > 0 ? "warn" : undefined },
-    { label: translate("Overdue Payables", "مدفوعات متأخرة"), value: fmt(totals.overduePayments), tone: totals.overduePayments > 0 ? "warn" : undefined },
+    {
+      label: totals.includeOverdue ? translate("Overdue Receivables (included)", "مستحقات متأخرة (مدرجة)") : translate("Overdue Receivables (not included)", "مستحقات متأخرة (غير مدرجة)"),
+      value: fmt(totals.overdueReceipts),
+      tone: totals.overdueReceipts > 0 ? "warn" : undefined,
+    },
+    {
+      label: totals.includeOverdue ? translate("Overdue Payables (included)", "مدفوعات متأخرة (مدرجة)") : translate("Overdue Payables (not included)", "مدفوعات متأخرة (غير مدرجة)"),
+      value: fmt(totals.overduePayments),
+      tone: totals.overduePayments > 0 ? "warn" : undefined,
+    },
     {
       label: translate("Unscheduled (Receipts / Payments)", "غير مجدول (مقبوضات / مدفوعات)"),
       value: `${fmt(totals.unscheduledReceipts)} / ${fmt(totals.unscheduledPayments)}`,
@@ -37,6 +45,20 @@ export default function SummaryCards({ forecast }: { forecast: CashFlowForecast 
           <span className={`font-semibold ${card.tone ? toneClass[card.tone] : ""}`}>{card.value}</span>
         </div>
       ))}
+      {totals.formula && (
+        <p className="text-xs text-gray-500 sm:col-span-2 lg:col-span-4" data-testid="forecast-formula">
+          {translate(totals.formula.en, totals.formula.ar)}
+          {": "}
+          {fmt(totals.openingBalance)} + {fmt(totals.expectedReceipts)} - {fmt(totals.expectedPayments)}
+          {totals.includeOverdue ? ` + ${fmt(totals.overdueReceipts)} - ${fmt(totals.overduePayments)}` : ""} = {fmt(totals.closingBalance)}
+          {(totals.receiptsAfterWindow || totals.paymentsAfterWindow)
+            ? translate(
+                ` (after the window, not counted: receipts ${fmt(totals.receiptsAfterWindow || 0)}, payments ${fmt(totals.paymentsAfterWindow || 0)})`,
+                ` (بعد نهاية الفترة ولا تُحتسب: مقبوضات ${fmt(totals.receiptsAfterWindow || 0)}، مدفوعات ${fmt(totals.paymentsAfterWindow || 0)})`,
+              )
+            : ""}
+        </p>
+      )}
       {shortfallProjects.length > 0 && (
         <div className="flex flex-col gap-1 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950 sm:col-span-2 lg:col-span-4">
           <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
