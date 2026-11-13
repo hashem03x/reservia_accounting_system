@@ -21,14 +21,25 @@ import ErrorSection from "@/components/ui/sections/error";
 import ErrorAlert from "@/components/ui/error-alert";
 import VendorSearch from "@/components/global/vendor-search";
 import PaymentTermsEditor, { PaymentScheduleView } from "@/components/global/payment-terms-editor";
-import { DocumentPaymentTerms, toPaymentTermsPayload, validateDocumentPaymentTerms } from "@/utils/helpers/document-payment-terms";
+import {
+  DocumentPaymentTerms,
+  toPaymentTermsPayload,
+  validateDocumentPaymentTerms,
+} from "@/utils/helpers/document-payment-terms";
 import useCategoryHelpers from "@/hooks/useCategoryHelpers";
-import RequisitionItemsEditor, { EditableRequisitionItem, editableItemsOf, itemIsComplete, itemPayload } from "../_components/items-editor";
+import RequisitionItemsEditor, {
+  EditableRequisitionItem,
+  editableItemsOf,
+  itemIsComplete,
+  itemPayload,
+} from "../_components/items-editor";
 import { requisitionStatusColors, useRequisitionStatusLabel } from "../_components/status";
+import useConfirmDialog from "@/hooks/useConfirmDialog";
 
 export default function PurchaseRequisitionDetail() {
   const { id } = useParams();
   const { language, translate, translations } = useLanguage();
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const navigate = useNavigate();
   const canUpdate = useHasPermission(resources.purchaseRequisitions, actions.update);
   const statusLabel = useRequisitionStatusLabel();
@@ -47,7 +58,11 @@ export default function PurchaseRequisitionDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState("");
 
-  const { privateRequest: fetchInvoices, data: invoices, setData: setInvoices } = useDataHandler<PurchaseOrder[]>({
+  const {
+    privateRequest: fetchInvoices,
+    data: invoices,
+    setData: setInvoices,
+  } = useDataHandler<PurchaseOrder[]>({
     initialData: [],
   });
 
@@ -72,7 +87,13 @@ export default function PurchaseRequisitionDetail() {
   }, [id]);
 
   async function handleOpen() {
-    if (!confirm(translate("Open this Purchase Order for invoicing?", "فتح أمر الشراء هذا للفوترة؟"))) return;
+    if (
+      !(await confirmDialog({
+        confirmLabel: translate("Open for invoicing", "فتح للفوترة"),
+        message: translate("Open this Purchase Order for invoicing?", "فتح أمر الشراء هذا للفوترة؟"),
+      }))
+    )
+      return;
     handleRequest(language, setActionLoading, setActionError, async () => {
       const res = await privateRequest({ url: `requisitions/${id}/open`, method: "POST", language });
       setRequisition(res.data);
@@ -80,7 +101,8 @@ export default function PurchaseRequisitionDetail() {
   }
 
   async function handleCancel() {
-    if (!confirm(translate("Cancel this Purchase Order?", "إلغاء أمر الشراء هذا؟"))) return;
+    if (!(await confirmDialog({ danger: true, message: translate("Cancel this Purchase Order?", "إلغاء أمر الشراء هذا؟") })))
+      return;
     handleRequest(language, setActionLoading, setActionError, async () => {
       const res = await privateRequest({ url: `requisitions/${id}/cancel`, method: "POST", language });
       setRequisition(res.data);
@@ -137,7 +159,10 @@ export default function PurchaseRequisitionDetail() {
             </Badge>
           }
         />
-        <InfoCard label={translate("Issue date", "تاريخ الإصدار")} value={formatDate(requisition.issueDate || requisition.createdAt, language)} />
+        <InfoCard
+          label={translate("Issue date", "تاريخ الإصدار")}
+          value={formatDate(requisition.issueDate || requisition.createdAt, language)}
+        />
         <InfoCard label={translate("Amount", "القيمة")} value={requisition.amount.toLocaleString()} />
         <InfoCard label={translate("Invoiced Amount", "المفوتر")} value={requisition.invoicedAmount.toLocaleString()} />
         <InfoCard label={translate("Remaining Amount", "المتبقي")} value={requisition.remainingAmount.toLocaleString()} />
@@ -182,7 +207,11 @@ export default function PurchaseRequisitionDetail() {
                     </span>
                   )}
                 </Table.Td>
-                <Table.Td>{item.product ? [getProductBrandName(item.product) || null, item.product.model].filter(Boolean).join(" / ") || "-" : "-"}</Table.Td>
+                <Table.Td>
+                  {item.product
+                    ? [getProductBrandName(item.product) || null, item.product.model].filter(Boolean).join(" / ") || "-"
+                    : "-"}
+                </Table.Td>
                 <Table.Td>{item.product ? item.description || "-" : "-"}</Table.Td>
                 <Table.Td>{item.quantity}</Table.Td>
                 <Table.Td>{item.unit || "-"}</Table.Td>
@@ -198,7 +227,10 @@ export default function PurchaseRequisitionDetail() {
         <h4>{translate("Vendor Payment Terms", "شروط سداد المورد")}</h4>
         <PaymentScheduleView
           schedule={requisition.paymentSchedule}
-          emptyText={translate("No payment terms on this Purchase Order (created before payment terms were added).", "لا توجد شروط سداد على أمر الشراء هذا (أُنشئ قبل إضافة شروط السداد).")}
+          emptyText={translate(
+            "No payment terms on this Purchase Order (created before payment terms were added).",
+            "لا توجد شروط سداد على أمر الشراء هذا (أُنشئ قبل إضافة شروط السداد).",
+          )}
         />
       </div>
 
@@ -206,7 +238,10 @@ export default function PurchaseRequisitionDetail() {
         <h4>{translate("Linked Purchase Invoices", "فواتير المشتريات المرتبطة")}</h4>
         {invoices.length === 0 ? (
           <p className="text-sm text-gray-400">
-            {translate("No purchase invoices have been created against this Purchase Order yet.", "لم يتم إنشاء أي فواتير مشتريات على هذا أمر الشراء بعد.")}
+            {translate(
+              "No purchase invoices have been created against this Purchase Order yet.",
+              "لم يتم إنشاء أي فواتير مشتريات على هذا أمر الشراء بعد.",
+            )}
           </p>
         ) : (
           <Table striped highlightOnHover>
@@ -233,6 +268,7 @@ export default function PurchaseRequisitionDetail() {
           </Table>
         )}
       </div>
+      {confirmDialogEl}
     </AdminLayoutBox>
   );
 }
@@ -260,7 +296,11 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
   const [paymentTerms, setPaymentTerms] = useState<DocumentPaymentTerms | null>(requisition.paymentTerms || null);
   const [notes, setNotes] = useState(requisition.notes || "");
 
-  const { privateRequest: fetchProjectsRequest, data: projects, setData: setProjects } = useDataHandler<Project[]>({
+  const {
+    privateRequest: fetchProjectsRequest,
+    data: projects,
+    setData: setProjects,
+  } = useDataHandler<Project[]>({
     initialData: [],
   });
   useEffect(() => {
@@ -352,7 +392,13 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
         emptyLabel={translate("No terms", "بدون شروط")}
       />
 
-      <Textarea label={translate("Notes", "ملاحظات")} value={notes} onChange={(e) => setNotes(e.target.value)} autosize minRows={2} />
+      <Textarea
+        label={translate("Notes", "ملاحظات")}
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        autosize
+        minRows={2}
+      />
 
       <div className="flex justify-end gap-2">
         <Button variant="light" color="gray" onClick={() => setEditing(false)}>

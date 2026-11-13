@@ -18,6 +18,7 @@ import { AdvancedPayment } from "@/types/advanced-payment";
 import { ReverseAction } from "@/components/global/reversals/payment-reverse-cell";
 import ReversalHistory from "@/components/global/reversals/reversal-history";
 import OrderJournalEntriesSection from "@/components/global/order-journal-entries-section";
+import useConfirmDialog from "@/hooks/useConfirmDialog";
 
 const statusColors: Record<string, string> = {
   available: "green",
@@ -29,6 +30,7 @@ const statusColors: Record<string, string> = {
 export default function AdvancedPaymentDetail() {
   const { id } = useParams();
   const { language, translate, translations } = useLanguage();
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const navigate = useNavigate();
   const canUpdate = useHasPermission(resources.advancedPayments, actions.update);
 
@@ -64,7 +66,13 @@ export default function AdvancedPaymentDetail() {
   }, [id]);
 
   async function handleCancel() {
-    if (!confirm(translate("Cancel this advanced payment?", "إلغاء هذه الدفعة المقدمة؟"))) return;
+    if (
+      !(await confirmDialog({
+        danger: true,
+        message: translate("Cancel this advanced payment?", "إلغاء هذه الدفعة المقدمة؟"),
+      }))
+    )
+      return;
     handleRequest(language, setActionLoading, setActionError, async () => {
       const res = await privateRequest({ url: `advanced-payments/${id}/cancel`, method: "PATCH", language });
       setPayment(res.data);
@@ -221,6 +229,7 @@ export default function AdvancedPaymentDetail() {
       <div className="mt-6">
         <ReversalHistory query={{ advancedPayment: payment._id }} refreshKey={payment.remainingAmount} />
       </div>
+      {confirmDialogEl}
     </AdminLayoutBox>
   );
 }

@@ -1,3 +1,4 @@
+import { notifications } from "@mantine/notifications";
 import { ChartOfAccount } from "@/types/chart-of-account";
 import { useEffect, useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
@@ -23,6 +24,7 @@ import { outlineIcons } from "@/components/icons";
 import { AccountType } from "@/types/chart-of-account";
 import { AccountStates } from "@/utils/constants/accounting";
 import { sortAccountsByCode } from "@/utils/helpers/account-sort";
+import useConfirmDialog from "@/hooks/useConfirmDialog";
 
 const typeColors: Record<string, string> = {
   asset: "blue",
@@ -38,6 +40,7 @@ type TrialBalanceRow = { account: { _id: string }; debit: number; credit: number
 
 export default function ChartOfAccounts() {
   const { language, translate, translations } = useLanguage();
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const canCreate = useHasPermission(resources.accounts, actions.create);
   const canUpdate = useHasPermission(resources.accounts, actions.update);
   const canDelete = useHasPermission(resources.accounts, actions.delete);
@@ -107,12 +110,21 @@ export default function ChartOfAccounts() {
   );
 
   async function handleDeactivate(account: ChartOfAccount) {
-    if (!confirm(translate(`Deactivate account "${account.name}"?`, `إلغاء تفعيل الحساب "${account.name}"؟`))) return;
+    if (
+      !(await confirmDialog({
+        danger: true,
+        message: translate(`Deactivate account "${account.name}"?`, `إلغاء تفعيل الحساب "${account.name}"؟`),
+      }))
+    )
+      return;
     try {
       await privateRequest({ url: `accounts/${account._id}`, method: "DELETE", language });
       setAccounts((prev) => prev.map((a) => (a._id === account._id ? { ...a, isActive: false } : a)));
     } catch (err) {
-      alert((err as Error)?.message || translate("Failed to deactivate account.", "فشل إلغاء تفعيل الحساب."));
+      notifications.show({
+        color: "red",
+        message: (err as Error)?.message || translate("Failed to deactivate account.", "فشل إلغاء تفعيل الحساب."),
+      });
     }
   }
 
@@ -301,6 +313,7 @@ export default function ChartOfAccounts() {
         }
       />
       <TrialBalanceModal opened={trialBalanceOpened} close={closeTrialBalance} />
+      {confirmDialogEl}
     </AdminLayoutBox>
   );
 }

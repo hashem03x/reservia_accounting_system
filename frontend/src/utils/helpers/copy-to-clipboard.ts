@@ -23,7 +23,8 @@ function copyToClipboardFallback(textToCopy: string, setCopied: React.Dispatch<R
     setCopied(successful);
   } catch (err) {
     console.error("Fallback: Oops, unable to copy", err);
-    alert("Copying failed. Please try again.");
+    // ERP CHG-13: no native alert - the caller's copied state simply stays false.
+    setCopied(false);
   }
   document.body.removeChild(textArea);
   setTimeout(() => setCopied(false), 1000);

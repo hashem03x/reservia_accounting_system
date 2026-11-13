@@ -12,6 +12,7 @@ import Modal from "@/components/ui/modal";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
 import { outlineIcons } from "@/components/icons";
 import { ExpenseCategory } from "@/types/accounting-period";
+import useConfirmDialog from "@/hooks/useConfirmDialog";
 
 /**
  * Admin -> Expense Categories: the groupings expenses are analyzed by (Expenses by Category report,
@@ -20,6 +21,7 @@ import { ExpenseCategory } from "@/types/accounting-period";
  */
 export default function ExpenseCategories() {
   const { language, translate, translations } = useLanguage();
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   useDocumentTitle(`${translations.pages.expenseCategories} | ${translations.adminPanel}`);
 
   const { privateRequest, loading, setLoading, error, setError, data, setData } = useDataHandler<ExpenseCategory[]>({
@@ -87,7 +89,12 @@ export default function ExpenseCategories() {
   }
 
   async function remove(category: ExpenseCategory) {
-    if (!confirm(translate(`Delete the category "${category.name}"?`, `حذف التصنيف "${category.nameAr || category.name}"؟`)))
+    if (
+      !(await confirmDialog({
+        danger: true,
+        message: translate(`Delete the category "${category.name}"?`, `حذف التصنيف "${category.nameAr || category.name}"؟`),
+      }))
+    )
       return;
     setActionError("");
     try {
@@ -241,6 +248,7 @@ export default function ExpenseCategories() {
           </Button>
         </form>
       </Modal>
+      {confirmDialogEl}
     </AdminLayoutBox>
   );
 }

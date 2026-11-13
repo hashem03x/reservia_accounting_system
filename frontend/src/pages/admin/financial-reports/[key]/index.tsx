@@ -22,6 +22,7 @@ import DisclosureNoteModal from "../_components/disclosure-note-modal";
 import { printReport } from "../_components/print-report";
 import { formatMoney, todayUtc } from "../_components/format";
 import { filterLine } from "../_components/filter-labels";
+import useConfirmDialog from "@/hooks/useConfirmDialog";
 
 const defaultsFor = (entry: ReportCatalogEntry): FilterValues => {
   const today = todayUtc();
@@ -36,6 +37,7 @@ const clean = (values: FilterValues) =>
 export default function AccountingReport() {
   const { key } = useParams();
   const { language, translate, translations } = useLanguage();
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const isArabic = language === "ar-EG";
   const [searchParams, setSearchParams] = useSearchParams();
   const canEditNotes = useHasPermission(resources.reports, actions.create);
@@ -113,7 +115,10 @@ export default function AccountingReport() {
   }
   useEffect(() => {
     if (!applied) return;
-    setSearchParams({ ...clean(applied), ...(page > 1 ? { page: String(page) } : {}), ...(pageSize ? { pageSize } : {}) }, { replace: true });
+    setSearchParams(
+      { ...clean(applied), ...(page > 1 ? { page: String(page) } : {}), ...(pageSize ? { pageSize } : {}) },
+      { replace: true },
+    );
     return load();
   }, [applied, page, pageSize]);
 
@@ -183,7 +188,7 @@ export default function AccountingReport() {
     }
   }, [entry?.key, report]);
   async function deleteNote(id: string) {
-    if (!confirm(translate("Delete this note?", "حذف هذا الإيضاح؟"))) return;
+    if (!(await confirmDialog({ danger: true, message: translate("Delete this note?", "حذف هذا الإيضاح؟") }))) return;
     try {
       await privateRequest({ url: `accounting-reports/notes/${id}`, method: "DELETE", language });
       load();
@@ -371,6 +376,7 @@ export default function AccountingReport() {
       )}
 
       <DisclosureNoteModal opened={noteModalOpened} close={closeNoteModal} note={editingNote} onSaved={load} />
+      {confirmDialogEl}
     </AdminLayoutBox>
   );
 }

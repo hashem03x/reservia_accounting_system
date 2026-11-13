@@ -12,6 +12,7 @@ import Modal from "@/components/ui/modal";
 import JournalEntryLink from "@/components/global/journal-entry-link";
 import { DepreciationRunResult } from "@/types/fixed-asset";
 import { DepreciationRunRecord } from "@/types/purchase-order-extras";
+import useConfirmDialog from "@/hooks/useConfirmDialog";
 
 // Manual monthly depreciation/amortization run: every active asset not yet depreciated for the
 // chosen month gets one entry (Dr Depreciation & Amortization / Cr Accumulated) - all or nothing.
@@ -25,16 +26,21 @@ export default function RunDepreciationModal({
   onCompleted: () => void;
 }) {
   const { language, translate, translations } = useLanguage();
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const privateRequest = usePrivateRequest();
 
   const [month, setMonth] = useState<Date | null>(new Date());
   const [result, setResult] = useState<DepreciationRunResult | null>(null);
   const { loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
-  function handleRun(e: React.FormEvent) {
+  async function handleRun(e: React.FormEvent) {
     e.preventDefault();
     if (!month) return;
-    if (!confirm(translate(`Run depreciation for ${toMonthOnly(month)}?`, `تشغيل الإهلاك لشهر ${toMonthOnly(month)}؟`)))
+    if (
+      !(await confirmDialog(
+        translate(`Run depreciation for ${toMonthOnly(month)}?`, `تشغيل الإهلاك لشهر ${toMonthOnly(month)}؟`),
+      ))
+    )
       return;
     handleRequest(language, setLoading, setError, async () => {
       const res = await privateRequest({
@@ -159,6 +165,7 @@ export default function RunDepreciationModal({
         </div>
       )}
       <RunHistory refreshKey={result?.run || ""} />
+      {confirmDialogEl}
     </Modal>
   );
 }
