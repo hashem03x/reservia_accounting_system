@@ -30,13 +30,14 @@ export default function CommercialLayout() {
           shell from CRM's deep-green header while staying inside the shared palette (no new
           font/color introduced). */}
       <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-white sm:px-6" style={{ backgroundColor: "#123B5D" }}>
-        <div className="flex items-center gap-4">
+        {/* Wraps on phones; the nav scrolls inside itself so the page never overflows sideways. */}
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-4 gap-y-2">
           <Link to={`/${paths.portal}`} className="flex items-center gap-2 font-semibold tracking-tight">
             <solidIcons.ArrowLeft style={{ transform: `rotateY(${translate("0", "180deg")})` }} />
             <img src={logo} alt="" aria-hidden className="h-9 w-9 rounded bg-white object-contain p-0.5" />
             <span>{translate("Reservia Deal Engine", "رزيرفيا - محرك الصفقات")}</span>
           </Link>
-          <nav className="flex items-center gap-1">
+          <nav className="flex max-w-full items-center gap-1 overflow-x-auto">
             {NAV_ITEMS.map((item) => {
               const active = location.pathname.startsWith(item.to);
               return (
