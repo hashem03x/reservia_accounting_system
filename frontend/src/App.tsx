@@ -100,6 +100,7 @@ import AP_ProjectManagers from "@/pages/admin/project-managers";
 import AP_Backup from "@/pages/admin/backup";
 import AP_AccountingPeriods from "@/pages/admin/accounting-periods";
 import AP_ExpenseCategories from "@/pages/admin/expense-categories";
+import AP_CompanySettings from "@/pages/admin/company-settings";
 import AP_Accounts from "@/pages/admin/accounts";
 import AP_AccountParentGroups from "@/pages/admin/account-parent-groups";
 import AP_JournalEntries from "@/pages/admin/journal-entries";
@@ -321,6 +322,8 @@ export default function App() {
                     {/* Closing / reopening periods and managing expense categories are administrator controls. */}
                     <Route path={paths.accountingPeriods} element={<AP_AccountingPeriods />} />
                     <Route path={paths.expenseCategories} element={<AP_ExpenseCategories />} />
+                    {/* ERP company controls: VAT default, price variance warning, negative project stock. */}
+                    <Route path={paths.companySettings} element={<AP_CompanySettings />} />
                   </Route>
                   <Route element={<ResourceGuard resource={resources.accounts} action={actions.read} />}>
                     <Route path={paths.accounts} element={<AP_Accounts />} />

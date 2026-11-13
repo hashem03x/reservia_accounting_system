@@ -11,6 +11,19 @@ const { body } = require('express-validator');
 const vatAndWithholdingTaxValidators = [
   body('vatPercentage').optional().isFloat({ min: 0 }).withMessage('VAT percentage cannot be negative'),
 
+  // ERP CHG-06: "no VAT" is an explicit choice with a reason. A request that sends VAT as 0% must say
+  // why (listed on the 0% VAT review report). A request that leaves VAT out keeps the old behaviour
+  // (no VAT) so existing integrations and imports are unchanged; the dashboard forms always send it,
+  // starting from the company default rate.
+  body('vatExemptReason').optional({ nullable: true }).isString().trim().isLength({ max: 300 }).withMessage('The reason for no VAT is limited to 300 characters'),
+  body('vatPercentage')
+    .custom((value, { req }) => {
+      if (value === undefined || value === null || value === '') return true;
+      if (Number(value) !== 0) return true;
+      return typeof req.body.vatExemptReason === 'string' && req.body.vatExemptReason.trim().length >= 3;
+    })
+    .withMessage('VAT is 0%: give the reason this invoice carries no VAT'),
+
   // Only these four rates are valid business values (not an arbitrary percentage like VAT) - see
   // accountingConstants-adjacent docs section "Withholding Tax". Compared as numbers, not strings,
   // since a JSON request body sends a real number.

@@ -50,6 +50,7 @@ const paths = {
   financialReports: "financial-reports",
   accountingPeriods: "accounting-periods",
   expenseCategories: "expense-categories",
+  companySettings: "company-settings",
   incomeStatement: "income-statement",
   balanceSheet: "balance-sheet",
   cashFlowForecast: "cash-flow-forecast",

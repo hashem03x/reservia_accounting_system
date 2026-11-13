@@ -380,7 +380,7 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
         />
       </div>
 
-      <RequisitionItemsEditor items={items} setItems={setItems} />
+      <RequisitionItemsEditor items={items} setItems={setItems} excludeId={requisition._id} />
 
       <h5>{translate("Vendor Payment Terms", "شروط سداد المورد")}</h5>
       <PaymentTermsEditor

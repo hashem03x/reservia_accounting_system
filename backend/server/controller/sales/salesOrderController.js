@@ -19,7 +19,7 @@ exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
   // `vatAmount`/`withholdingTaxAmount`/`grandTotal`/`totalAmount` are deliberately never
   // destructured here - only the percentages are ever accepted from a client (docs section "Do not
   // allow clients to manipulate the final total").
-  const { customer, warehouse, items, isPrepaid, shippingCost, isCodOrder, paidAmount, paymentMethod, paymentAccount, project, vatPercentage, withholdingTaxPercentage } = req.body;
+  const { customer, warehouse, items, isPrepaid, shippingCost, isCodOrder, paidAmount, paymentMethod, paymentAccount, project, vatPercentage, withholdingTaxPercentage, vatExemptReason } = req.body;
 
   try {
     const salesOrder = await createSalesOrder({
@@ -35,6 +35,7 @@ exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
       paymentAccount,
       project,
       vatPercentage,
+      vatExemptReason: Number(vatPercentage) === 0 && vatExemptReason ? String(vatExemptReason).trim() : null,
       withholdingTaxPercentage,
       createdBy: req.user._id,
       employee: req.user._id,

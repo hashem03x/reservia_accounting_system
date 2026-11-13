@@ -15,9 +15,23 @@ const {
 } = require('../../controller/vendor/requisitionController');
 const { createRequisitionValidators, updateRequisitionValidators } = require('../../utils/validators/requisitionValidators');
 
+const asyncHandler = require('express-async-handler');
+const apiResponse = require('../../utils/apiResponse');
+const { checkPriceVariance } = require('../../services/vendor/priceVarianceService');
+
 const router = Router();
 
 router.use(authController.protect);
+
+// ERP CHG-07: how a unit price compares with the product's last and average PO price (a warning only).
+// Declared before /:id so "price-check" is never read as a PO id.
+router.get(
+  '/price-check',
+  checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.read }),
+  asyncHandler(async (req, res) => {
+    res.status(200).json(apiResponse('Price check', true, await checkPriceVariance({ productId: req.query.product, unitPrice: req.query.unitPrice, excludeId: req.query.exclude })));
+  })
+);
 
 router
   .route('/')

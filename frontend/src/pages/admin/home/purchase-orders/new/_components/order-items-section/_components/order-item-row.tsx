@@ -51,6 +51,9 @@ export default function OrderItemRow({
   // No arbitrary cap (Change Request: "Remove the 1,000 quantity limitation in Purchase Orders") -
   // only bounded by what the selected Purchase Order line still has left to invoice, if any.
   const maxQuantity = poLine ? Math.max(0, poLine.remaining - otherRowsQuantity) : undefined;
+  // ERP CHG-07: a quantity above the cap is no longer silently reverted - it stays as typed and the
+  // row says why it cannot be saved (the form validation and the server refuse it as well).
+  const overCap = maxQuantity !== undefined && Number(starterQuantity) > maxQuantity;
 
   const updateItem = (updates: Partial<typeof currentItem>) => {
     setItems((prevItems) => {
@@ -218,7 +221,9 @@ export default function OrderItemRow({
               onChange={(value) => handleValueChange("starterQuantity", value)}
               min={0.0001}
               max={maxQuantity}
-              clampBehavior="strict"
+              clampBehavior="none"
+              error={overCap ? translate(`Maximum ${maxQuantity} (remaining on PO)`, `الحد الأقصى ${maxQuantity} (المتبقي في أمر الشراء)`) : undefined}
+              data-testid="invoice-line-quantity"
               allowNegative={false}
               decimalScale={4}
               className="font-bold text-gray-800"

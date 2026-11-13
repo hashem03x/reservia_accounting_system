@@ -7,6 +7,7 @@ import ProductSearchModal from "@/components/global/variant-search-modal";
 import { getPurchaseUnitPrice } from "@/utils/helpers/purchase-unit-price";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import { RequisitionItem, RequisitionItemInput } from "@/types/requisition";
+import PriceVarianceHint from "./price-variance-hint";
 
 // A line in the editor: what is sent to the API plus what is shown (the product's name/model) and
 // whether it is a legacy description-only line.
@@ -50,9 +51,12 @@ export const itemPayload = (item: EditableRequisitionItem) => ({
 export default function RequisitionItemsEditor({
   items,
   setItems,
+  excludeId,
 }: {
   items: EditableRequisitionItem[];
   setItems: React.Dispatch<React.SetStateAction<EditableRequisitionItem[]>>;
+  /** The PO being edited - left out of its own price history. */
+  excludeId?: string;
 }) {
   const { language, translate } = useLanguage();
   const productRequest = usePrivateRequest();
@@ -153,6 +157,7 @@ export default function RequisitionItemsEditor({
             min={0}
             decimalScale={2}
             required
+            data-testid="po-line-unit-price"
           />
           <div className="flex items-end gap-2 sm:col-span-2">
             <TextInput label={translate("Line Total", "إجمالي البند")} value={lineTotal(item).toFixed(2)} readOnly className="flex-1" />
@@ -162,6 +167,7 @@ export default function RequisitionItemsEditor({
               </button>
             )}
           </div>
+          <PriceVarianceHint product={item.product || null} unitPrice={item.unitPrice} excludeId={excludeId} />
         </div>
       ))}
 

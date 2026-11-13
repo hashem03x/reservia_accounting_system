@@ -71,6 +71,9 @@ const purchaseOrderSchema = new Schema(
     // only client input, amounts are always server-computed in pre('save') below.
     vatPercentage: { type: Number, default: 0, min: [0, 'VAT percentage cannot be negative'] },
     vatAmount: { type: Number, default: 0, min: 0 },
+    // ERP CHG-06: why this invoice carries no VAT. Required by the create request when VAT is an
+    // explicit 0% (utils/validators/taxValidators.js); listed on the 0% VAT review report.
+    vatExemptReason: { type: String, trim: true, maxlength: 300, default: null },
     withholdingTaxPercentage: { type: Number, enum: { values: [0, 1, 3, 5], message: '{VALUE} is not a valid withholding tax percentage' }, default: 0 },
     withholdingTaxAmount: { type: Number, default: 0, min: 0 },
     // = totalAmount + vatAmount - withholdingTaxAmount - the canonical ORDER TOTAL AMOUNT

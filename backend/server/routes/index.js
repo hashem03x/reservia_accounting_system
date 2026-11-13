@@ -101,6 +101,9 @@ const mountRoutes = app => {
   // calls "Purchase Invoices" (see models/vendor/requisitionModel.js's header comment).
   app.use('/api/v1/requisitions', require('./vendor/requisitionRoute'));
 
+  // ERP company-level controls (VAT default, price variance warning, negative project stock).
+  app.use('/api/v1/company-settings', require('./config/companySettingsRoute'));
+
   // Projected Cash Flow Forecasting (read-only Phase 1 - services/cashflow/cashFlowForecastService.js)
   app.use('/api/v1/cash-flow-forecast', require('./cashflow/cashFlowForecastRoute'));
 

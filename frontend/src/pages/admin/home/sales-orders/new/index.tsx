@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import useInvoiceVat from "@/hooks/useInvoiceVat";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "@/context/LanguageContext";
 import { useWarehouses } from "@/context/WarehousesContext";
@@ -45,7 +46,8 @@ export default function NewSalesOrder() {
   const [warehouseId, setWarehouseId] = useState<string>(defatulWarehouseId);
   const [items, setItems] = useState<OrderItemInput[]>([emptyOrderItem]);
   const [project, setProject] = useState("");
-  const [vatPercentage, setVatPercentage] = useState<string | number>(0);
+  // ERP CHG-06: VAT starts from the company rate; 0% needs a reason.
+  const { vatPercentage, setVatPercentage, vatExemptReason, setVatExemptReason, reasonMissing, vatPayload } = useInvoiceVat();
   const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
   // Optional PDFs, uploaded right after the order is created.
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
@@ -92,6 +94,11 @@ export default function NewSalesOrder() {
         return;
       }
 
+      if (reasonMissing) {
+        setError(translate("VAT is 0%: give the reason this invoice carries no VAT.", "الضريبة 0%: اذكر سبب عدم وجود ضريبة على هذه الفاتورة."));
+        return;
+      }
+
       if (!project) {
         setError(translate("A project is required to create a Sales Invoice.", "يجب اختيار مشروع لإنشاء فاتورة مبيعات."));
         return;
@@ -112,8 +119,8 @@ export default function NewSalesOrder() {
             itemDiscount: item.itemDiscount,
             starterQuantity: item.starterQuantity,
           })),
-          // Always explicit numbers - an empty VAT input means "no VAT" (0), never undefined.
-          vatPercentage: Number(vatPercentage) || 0,
+          // Always explicit numbers; 0% goes with its reason (ERP CHG-06).
+          ...vatPayload(),
           withholdingTaxPercentage: Number(withholdingTaxPercentage) || 0,
         },
       });
@@ -211,6 +218,8 @@ export default function NewSalesOrder() {
         amount={subtotal}
         vatPercentage={vatPercentage}
         setVatPercentage={setVatPercentage}
+        vatExemptReason={vatExemptReason}
+        setVatExemptReason={setVatExemptReason}
         withholdingTaxPercentage={withholdingTaxPercentage}
         setWithholdingTaxPercentage={setWithholdingTaxPercentage}
       />

@@ -109,7 +109,7 @@ after(async () => {
 
 beforeEach(async () => {
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  vendor = await Vendor.create({ name: 'Large Qty Vendor', contact: { phone: `010${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(-10) } });
+  vendor = await Vendor.create({ name: 'Large Qty Vendor', contact: { phone: `010${String(Date.now()).slice(-8)}` } });
   warehouse = await Warehouse.create({ name: `WH-${unique}`, location: `Cairo-${unique}` });
   project = await Project.create({ projectNumber: `PRJ-${unique}`, name: 'Test Project', startDate: new Date('2026-01-01'), deliveryDate: new Date('2026-12-31') });
   product = await Product.create({ type: 'product', title: { en: `Rebar ${unique}`, ar: `حديد ${unique}` }, description: { en: 'd', ar: 'د' }, price: 10, cost: 5, category: new mongoose.Types.ObjectId(), subcategory: new mongoose.Types.ObjectId() });

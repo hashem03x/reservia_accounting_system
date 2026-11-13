@@ -80,6 +80,9 @@ const salesOrderSchema = mongoose.Schema(
     // the client, recomputed on every save the same way totalAmount itself already is.
     vatPercentage: { type: Number, default: 0, min: [0, 'VAT percentage cannot be negative'] },
     vatAmount: { type: Number, default: 0, min: 0 },
+    // ERP CHG-06: why this invoice carries no VAT. Required by the create request when VAT is an
+    // explicit 0% (utils/validators/taxValidators.js); listed on the 0% VAT review report.
+    vatExemptReason: { type: String, trim: true, maxlength: 300, default: null },
     // Withholding Tax - only these four percentages are valid business values (docs section
     // "Withholding Tax") - not an arbitrary rate like VAT. withholdingTaxAmount is server-computed,
     // same rule as vatAmount.

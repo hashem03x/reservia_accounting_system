@@ -279,6 +279,13 @@ export function useAdminNavigation(): NavSection[] {
         items: [
           { key: "backup", to: admin(paths.backup), label: nav.backupRestore, Icon: navIcons.Backup, adminOnly: true },
           { key: "users", to: admin(paths.users), label: nav.users, Icon: navIcons.Users, adminOnly: true },
+          {
+            key: "companySettings",
+            to: admin(paths.companySettings),
+            label: translate("Company settings", "إعدادات الشركة"),
+            Icon: navIcons.AccountingPeriods,
+            adminOnly: true,
+          },
         ],
       },
     ];

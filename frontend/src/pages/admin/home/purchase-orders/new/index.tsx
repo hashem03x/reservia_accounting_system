@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import useInvoiceVat from "@/hooks/useInvoiceVat";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "@/context/LanguageContext";
 import { useWarehouses } from "@/context/WarehousesContext";
@@ -72,7 +73,8 @@ export default function NewPurchaseOrder() {
       .then((res) => setPoLines({ lines: res.data || [], hasUnmatchableLines }))
       .catch((err) => notifyError({ language, message: (err as { message?: string })?.message || translate("Could not load the Purchase Order lines.", "تعذر تحميل بنود أمر الشراء.") }));
   }, [requisition]);
-  const [vatPercentage, setVatPercentage] = useState<string | number>(0);
+  // ERP CHG-06: VAT starts from the company rate; 0% needs a reason.
+  const { vatPercentage, setVatPercentage, vatExemptReason, setVatExemptReason, reasonMissing, vatPayload } = useInvoiceVat();
   const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
   // Optional PDFs, uploaded right after the order is created.
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
@@ -117,6 +119,11 @@ export default function NewPurchaseOrder() {
         return;
       }
 
+      if (reasonMissing) {
+        setError(translate("VAT is 0%: give the reason this invoice carries no VAT.", "الضريبة 0%: اذكر سبب عدم وجود ضريبة على هذه الفاتورة."));
+        return;
+      }
+
       if (!project) {
         setError(translate("A project is required to create a Purchase Invoice.", "يجب اختيار مشروع لإنشاء فاتورة مشتريات."));
         return;
@@ -131,7 +138,7 @@ export default function NewPurchaseOrder() {
           vendorId: vendor?._id,
           requisition: requisition._id,
           project: project || undefined,
-          vatPercentage: Number(vatPercentage) || 0,
+          ...vatPayload(),
           withholdingTaxPercentage: Number(withholdingTaxPercentage) || 0,
           items: filteredItems.map((item) => ({
             productId: item.productData?._id,
@@ -246,6 +253,8 @@ export default function NewPurchaseOrder() {
         amount={subtotal}
         vatPercentage={vatPercentage}
         setVatPercentage={setVatPercentage}
+        vatExemptReason={vatExemptReason}
+        setVatExemptReason={setVatExemptReason}
         withholdingTaxPercentage={withholdingTaxPercentage}
         setWithholdingTaxPercentage={setWithholdingTaxPercentage}
       />
