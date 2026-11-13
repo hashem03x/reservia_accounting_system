@@ -9,6 +9,7 @@ import { accountsForVendor, describeAccount, paymentAccountsPayload, setPrimary,
 import { entryClassification, entryClassificationLabel } from "./accounting-labels.ts";
 import { getProductFinalPrice, priceText } from "./product-helpers.ts";
 import { journalDescription } from "./journal-description.ts";
+import { documentNumber } from "./document-number.ts";
 
 const en = (e: string) => e;
 const day = (iso: string) => new Date(`${iso}T00:00:00.000Z`).getTime();
@@ -100,4 +101,14 @@ test("journal entries: system descriptions follow the user language (ERP CHG-12)
   // Text a user typed is never touched.
   assert.equal(journalDescription("Office rent for November", "ar"), "Office rent for November");
   assert.equal(journalDescription(null, "ar"), "");
+});
+
+test("documents: SI / PI / PO prefixes, never a database id (ERP CHG-11)", () => {
+  assert.equal(documentNumber("salesInvoice", "000000000005"), "SI-000000000005");
+  assert.equal(documentNumber("purchaseInvoice", "000000000005"), "PI-000000000005");
+  assert.equal(documentNumber("purchaseOrder", "000000000005"), "PO-000000000005");
+  assert.equal(documentNumber("purchaseOrder", "PO-000000000005"), "PO-000000000005", "never doubled");
+  assert.equal(documentNumber("salesInvoice", null), "-");
+  assert.equal(journalDescription("Inventory receipt - PI 000000000007", "ar"), "استلام مخزون - فاتورة شراء 000000000007");
+  assert.equal(journalDescription("Cost of materials sold - SI 000000000004", "ar"), "تكلفة المواد المباعة - فاتورة بيع 000000000004");
 });

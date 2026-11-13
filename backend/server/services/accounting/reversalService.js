@@ -396,7 +396,7 @@ async function returnSalesOrder({ salesOrderId, items, warehouseId, refund, reas
         sourceType: 'PAYMENT',
         sourceId: refundPayment._id,
         date: input.date,
-        description: `Customer refund - SO ${order.code || order._id} (${input.reason})`.slice(0, 1000),
+        description: `Customer refund - SI ${order.code || order._id} (${input.reason})`.slice(0, 1000),
         project: projectId,
         lines: [
           { account: arId, debit: excess, credit: 0, project: projectId, partyNumber: customerNumber, partyType: 'customer' },
@@ -561,7 +561,7 @@ async function returnPurchaseOrder({ purchaseOrderId, items, warehouseId, refund
         sourceType: 'PO_RETURN',
         sourceId: deterministicSourceId(`${recordId}:${kind}`),
         date: input.date,
-        description: `Purchase return - PO ${order.code || order._id} (${input.reason})`.slice(0, 1000),
+        description: `Purchase return - PI ${order.code || order._id} (${input.reason})`.slice(0, 1000),
         project: projectId,
         reversalOfEntry: reverses._id,
         lines: lines.filter(l => l.debit > 0 || l.credit > 0),
@@ -614,7 +614,7 @@ async function returnPurchaseOrder({ purchaseOrderId, items, warehouseId, refund
         sourceType: 'PAYMENT',
         sourceId: refundPayment._id,
         date: input.date,
-        description: `Vendor refund - PO ${order.code || order._id} (${input.reason})`.slice(0, 1000),
+        description: `Vendor refund - PI ${order.code || order._id} (${input.reason})`.slice(0, 1000),
         project: projectId,
         lines: [
           { account: account._id, debit: excess, credit: 0, project: projectId },

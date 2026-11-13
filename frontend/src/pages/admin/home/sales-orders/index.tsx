@@ -1,3 +1,4 @@
+import { documentNumber } from "@/utils/helpers/document-number";
 import { useEffect, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { useDisclosure } from "@mantine/hooks";
@@ -366,7 +367,8 @@ export default function SalesOrders() {
                         <Table.Td
                           className={`flex items-center gap-1.5 font-semibold text-gray-800 ${isCanceledOrder(salesOrder.orderStatus) ? "line-through" : ""}`}
                         >
-                          {salesOrder._id}
+                          {/* ERP CHG-11: the document number, never the database id. */}
+                          {documentNumber("salesInvoice", (salesOrder as { code?: string }).code)}
 
                           {isThereAnyReturningRequest && (
                             <Tooltip

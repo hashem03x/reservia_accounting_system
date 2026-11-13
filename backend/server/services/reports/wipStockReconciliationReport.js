@@ -96,7 +96,7 @@ async function wipStockReconciliation(query) {
   const bad = rows.filter(r => !r.ok);
   const money = (k, en, ar) => col(k, en, ar, 'money');
   return {
-    asOf,
+    asOf: asOf.asOf,
     summary: [
       summaryItem('projects', 'Projects checked', 'المشروعات', rows.length, 'number'),
       summaryItem('flagged', 'Projects needing review', 'مشروعات تحتاج مراجعة', bad.length, 'number'),

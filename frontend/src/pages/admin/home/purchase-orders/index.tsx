@@ -27,6 +27,7 @@ import ScannerModal from "./_components/scanner-modal";
 import { getOrderTotal } from "@/utils/helpers/order-totals";
 import ImportWizardModal from "@/components/global/csv-import/import-wizard-modal";
 import DownloadSampleButton from "@/components/global/csv-import/download-sample-button";
+import { documentNumber } from "@/utils/helpers/document-number";
 
 const PURCHASE_ORDERS_PER_PAGE = import.meta.env.VITE_PURCHASE_ORDERS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
 
@@ -168,7 +169,8 @@ export default function PurchaseOrders() {
                         opening the Purchase Invoice; its number opens its full details. */}
                       <Table.Td className="font-semibold">
                         <Link to={purchaseOrder._id} className="text-blue-600 hover:underline">
-                          {purchaseOrder._id}
+                          {/* ERP CHG-11: the document number, never the database id. */}
+                          {documentNumber("purchaseInvoice", (purchaseOrder as { code?: string }).code)}
                         </Link>
                       </Table.Td>
                       <Table.Td>{getWarehouseNameById(purchaseOrder.warehouseId)}</Table.Td>

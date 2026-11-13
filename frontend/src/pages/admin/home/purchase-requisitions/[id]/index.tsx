@@ -1,3 +1,4 @@
+import { documentNumber } from "@/utils/helpers/document-number";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useLanguage } from "@/context/LanguageContext";
@@ -128,7 +129,7 @@ export default function PurchaseRequisitionDetail() {
     <AdminLayoutBox
       header={{
         title: translate("Purchase Order", "أمر شراء"),
-        subTitle: requisition.code,
+        subTitle: documentNumber("purchaseOrder", requisition.code),
         backLink: `/${paths.admin}/${paths.home}/${paths.purchaseRequisitions}`,
         sideElements: (
           <div className="flex gap-2">
@@ -259,7 +260,7 @@ export default function PurchaseRequisitionDetail() {
                   className="cursor-pointer"
                   onClick={() => navigate(`/${paths.admin}/${paths.home}/${paths.purchaseOrders}/${invoice._id}`)}
                 >
-                  <Table.Td>{invoice.code || "-"}</Table.Td>
+                  <Table.Td>{documentNumber("purchaseInvoice", invoice.code)}</Table.Td>
                   <Table.Td>{invoice.totalAmount.toLocaleString()}</Table.Td>
                   <Table.Td>{formatDate(invoice.createdAt, language)}</Table.Td>
                 </Table.Tr>

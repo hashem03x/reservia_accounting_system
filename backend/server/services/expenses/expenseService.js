@@ -74,7 +74,8 @@ async function addExpensePayment(expenseId, { amount, paymentAccount, warehouseI
         paymentAccount: account._id,
         paymentCategory: 'expense',
         vendorId: vendorId || undefined,
-        notes: notes || `${isSalary ? 'Salary' : 'Expense'} payment - ${expense.reference || expense._id}`,
+        // ERP CHG-11: never a database id in a note - the reference, or the vendor and the date.
+        notes: notes || `${isSalary ? 'Salary' : 'Expense'} payment - ${expense.reference || [isSalary ? 'Salaries' : expense.vendor?.name, expense.date ? new Date(expense.date).toISOString().slice(0, 10) : null].filter(Boolean).join(' ') || 'no reference'}`,
         createdBy: userId,
       },
     ],

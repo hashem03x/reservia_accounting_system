@@ -13,6 +13,7 @@ import OrderStatus from "@/components/global/order-status";
 import { isDeliveredOrder, isPendingOrder } from "@/utils/constants/order-statuses";
 import { useDisclosure } from "@mantine/hooks";
 import DeliveryModal from "./_components/delivery-modal";
+import { documentNumber } from "@/utils/helpers/document-number";
 
 export default function HeaderSection() {
   const { translate, language, translations } = useLanguage();
@@ -30,7 +31,7 @@ export default function HeaderSection() {
     <header className="flex flex-wrap items-start justify-between gap-2">
       <div className="flex flex-col gap-2">
         <h1>{translate("Overview", "نظرة عامة")}</h1>
-        <InfoItem label={translate("Order ID", "رقم الطلب")} value={order._id} />
+        <InfoItem label={translate("Invoice number", "رقم الفاتورة")} value={documentNumber("salesInvoice", (order as { code?: string }).code)} />
         <InfoItem label={translate("Payment Status", "حالة الدفع")} value={orderPaymentStatusElement} />
         <OrderAmounts order={order} />
         {order.project && (

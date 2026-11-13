@@ -40,6 +40,9 @@ const PHRASES: Phrase[] = [
 
 // Words that follow a phrase (" - PO 000000000007", " - reversal (80% -> 60%)").
 const TOKENS: { en: RegExp; ar: string; arRe: RegExp; enText: string }[] = [
+  // ERP CHG-11: purchase and sales invoices are PI / SI; PO is a purchase order.
+  { en: /\bPI\b/g, ar: "فاتورة شراء", arRe: /فاتورة شراء/g, enText: "PI" },
+  { en: /\bSI\b/g, ar: "فاتورة بيع", arRe: /فاتورة بيع/g, enText: "SI" },
   { en: /\bSales Order\b/g, ar: "أمر بيع", arRe: /أمر بيع/g, enText: "Sales Order" },
   { en: /\bPO\b/g, ar: "أمر شراء", arRe: /أمر شراء/g, enText: "PO" },
   { en: /\bSO\b/g, ar: "أمر بيع", arRe: /أمر بيع/g, enText: "SO" },

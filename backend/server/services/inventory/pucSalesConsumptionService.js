@@ -86,7 +86,7 @@ async function consumePucForSale(salesOrder, { userId = null, session } = {}) {
     sourceType: 'SO',
     sourceId: salesOrder._id,
     date: salesOrder.createdAt || new Date(),
-    description: `Cost of materials sold - Sales Order ${salesOrder.code || salesOrder._id}`,
+    description: `Cost of materials sold - SI ${salesOrder.code || salesOrder._id}`,
     project: projectId,
     lines: [
       { account: costAccountId, debit: totalAmount, credit: 0, project: projectId },
@@ -161,7 +161,7 @@ async function releasePucConsumptionForReturn(salesOrder, productId, quantity, {
     sourceType: 'SO',
     sourceId: deterministicSourceId(`SALES_PUC_RETURN:${salesOrder._id}:${productId}:${records.filter(r => r.sourceType === 'sale-return').length}`),
     date: new Date(),
-    description: `Return - materials released back to PUC - ${product?.title?.en || product?.title?.ar || productId} (Sales Order ${salesOrder.code || salesOrder._id})`,
+    description: `Return - materials released back to PUC - ${product?.title?.en || product?.title?.ar || productId} (SI ${salesOrder.code || salesOrder._id})`,
     project: projectId,
     lines: [
       { account: pucAccountId, debit: amount, credit: 0, project: projectId },

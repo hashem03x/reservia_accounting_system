@@ -25,6 +25,7 @@ import PaginationHandler from "@/components/ui/pagination-handler";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
 import TruncatedText from "@/components/ui/truncated-text";
 import { requisitionStatusColors, useRequisitionStatusLabel } from "./_components/status";
+import { documentNumber } from "@/utils/helpers/document-number";
 
 const ITEMS_PER_PAGE = import.meta.env.VITE_ITEMS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
 
@@ -156,7 +157,7 @@ export default function PurchaseRequisitions() {
                         opening the Purchase Order; the PO number (and View) opens its full details. */}
                       <Table.Td className="whitespace-nowrap font-medium">
                         <Link to={requisition._id} className="text-blue-600 hover:underline">
-                          {requisition.code}
+                          {documentNumber("purchaseOrder", requisition.code)}
                         </Link>
                       </Table.Td>
                       <Table.Td>
