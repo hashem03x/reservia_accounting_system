@@ -83,8 +83,8 @@ exports.JournalEntrySources = ['manual', 'project_creation', 'fixed_asset_purcha
 // What a journal entry is FOR (client requirement "Create Journal Entry - Project or G&A"): a
 // specific project ('project') or General & Administrative ('ga', no project). Chosen explicitly
 // on every new manual entry - never inferred from a missing project. Entries that predate the
-// field have none (null): one with a project reads as 'project' (see journalEntryClassificationFilter
-// in journalEntryController.js), one without stays "unclassified", never silently G&A.
+// field have none (null): one with a project reads as 'project', one without as 'ga' (ERP CHG-14 -
+// see the classification filter in journalEntryController.js). System entries are tagged on creation.
 exports.JournalEntryClassifications = ['project', 'ga'];
 
 // Every distinct automatic accounting action the engine can post - see
@@ -258,9 +258,12 @@ exports.AutomaticJournalAccountCodes = {
   capitalContributionEquityAccount: '20000001', // Capital (equity)
 };
 
-// Main description of the Sales Order project cost entry (JV0011), verbatim from
-// "AUTOMATIC ENTERIES.xlsx".
-exports.ProjectCostRecognitionDescription = 'تحميل المشروع بالتكاليف بنسبة المنفذ من العقد';
+// Main description of the Sales Order project cost entry (JV0011). "AUTOMATIC ENTERIES.xlsx" gives it
+// in Arabic; ERP CHG-12 asks for one language for every system entry, so it is written in English and
+// the dashboard shows the Arabic wording to an Arabic user (frontend utils/helpers/journal-description.ts,
+// which also recognises entries written earlier with the Arabic text below).
+exports.ProjectCostRecognitionDescription = 'Charge project with costs by executed % of contract';
+exports.ProjectCostRecognitionDescriptionAr = 'تحميل المشروع بالتكاليف بنسبة المنفذ من العقد';
 
 // The originating business module of a journal entry - a NEW, dedicated "Module" column/field
 // (docs section "Module field") distinct from `sourceType` (SO/PO/PAYMENT/ADVANCED_PAYMENT/PROJECT

@@ -28,6 +28,7 @@ import { ClickableRow } from "@/components/ui/clickable-row";
 import { solidIcons, outlineIcons } from "@/components/icons";
 import { displayModuleLabel, entryClassification, entryClassificationLabel } from "@/utils/helpers/accounting-labels";
 import CreateJournalEntryModal from "./_components/create-journal-entry-modal";
+import { journalDescription } from "@/utils/helpers/journal-description";
 
 const ITEMS_PER_PAGE = import.meta.env.VITE_ITEMS_PER_PAGE || DEFAULT_ITEMS_PER_PAGE;
 
@@ -83,7 +84,7 @@ export default function JournalEntries() {
   const moduleOptions = ["Manual", "Sales Order", "Purchase Order", "Payment", "Advanced Payment", "Project", "Expense", "Fixed Asset", "Equity", "Inventory"].map(
     (m) => ({ value: m, label: displayModuleLabel(m, translate) }),
   );
-  const classificationOptions = (["project", "ga", "unclassified"] as const).map((key) => ({ value: key, label: entryClassificationLabel(key, translate) }));
+  const classificationOptions = (["project", "ga"] as const).map((key) => ({ value: key, label: entryClassificationLabel(key, translate) }));
   const statusOptions = [
     { value: "draft", label: translate("Draft", "مسودة") },
     { value: "posted", label: translate("Posted", "مرحّل") },
@@ -438,7 +439,7 @@ export default function JournalEntries() {
                         >
                           {difference.toLocaleString()}
                         </Table.Td>
-                        <Table.Td>{entry.description || "-"}</Table.Td>
+                        <Table.Td>{journalDescription(entry.description, language) || "-"}</Table.Td>
                         <Table.Td className="whitespace-nowrap">
                           <Badge color={statusColors[entry.status] || "gray"} size="sm">
                             {entry.status}

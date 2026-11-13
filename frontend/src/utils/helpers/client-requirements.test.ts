@@ -8,6 +8,7 @@ import { computeDocumentPaymentSchedule, resizeInstallments, toPaymentTermsPaylo
 import { accountsForVendor, describeAccount, paymentAccountsPayload, setPrimary, validatePaymentAccounts } from "./vendor-payment-accounts.ts";
 import { entryClassification, entryClassificationLabel } from "./accounting-labels.ts";
 import { getProductFinalPrice, priceText } from "./product-helpers.ts";
+import { journalDescription } from "./journal-description.ts";
 
 const en = (e: string) => e;
 const day = (iso: string) => new Date(`${iso}T00:00:00.000Z`).getTime();
@@ -72,11 +73,11 @@ test("vendor payment accounts: several of each type, one primary, duplicates ref
   assert.deepEqual(accountsForVendor({ paymentAccounts: accounts, paymentInfo: { mode: "bank" } }), accounts, "the list wins once it exists");
 });
 
-test("journal entries: Project / G&A label - a legacy entry without a project is Unclassified, never G&A", () => {
+test("journal entries: Project / G&A label - a legacy entry without a project reads as G&A (ERP CHG-14)", () => {
   assert.equal(entryClassification({ classification: "ga" }), "ga");
   assert.equal(entryClassification({ classification: "project", project: { _id: "p" } }), "project");
   assert.equal(entryClassification({ classification: null, project: { _id: "p" } }), "project");
-  assert.equal(entryClassification({ classification: null, project: null }), "unclassified");
+  assert.equal(entryClassification({ classification: null, project: null }), "ga");
   assert.equal(entryClassificationLabel("ga", en), "G&A");
 });
 
@@ -85,4 +86,18 @@ test("products: a missing price is shown as '-', never as 0", () => {
   assert.equal(priceText(0), "0.00");
   assert.equal(getProductFinalPrice(null, undefined), null);
   assert.equal(getProductFinalPrice(80, 100), 80);
+});
+
+test("journal entries: system descriptions follow the user language (ERP CHG-12)", () => {
+  // A legacy entry written in Arabic (e.g. 100230) reads in English for an English user, and back.
+  const legacy = "تحميل المشروع بالتكاليف بنسبة المنفذ من العقد";
+  assert.equal(journalDescription(legacy, "en"), "Charge project with costs by executed % of contract");
+  assert.equal(journalDescription(legacy, "ar"), legacy);
+  assert.equal(journalDescription(legacy + " - عكس (80% -> 60%)", "en"), "Charge project with costs by executed % of contract - reversal (80% -> 60%)");
+  assert.equal(journalDescription("Charge project with costs by executed % of contract", "ar"), legacy);
+  assert.equal(journalDescription("Cost of materials sold - Sales Order 000000000004", "ar"), "تكلفة المواد المباعة - أمر بيع 000000000004");
+  assert.equal(journalDescription("Inventory receipt - PO 000000000007", "ar"), "استلام مخزون - أمر شراء 000000000007");
+  // Text a user typed is never touched.
+  assert.equal(journalDescription("Office rent for November", "ar"), "Office rent for November");
+  assert.equal(journalDescription(null, "ar"), "");
 });

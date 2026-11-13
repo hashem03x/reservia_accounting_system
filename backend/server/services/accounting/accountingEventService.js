@@ -194,9 +194,9 @@ async function postAutomaticJournalEntry({ accountingAction, sourceType, sourceI
         sourceId,
         accountingAction,
         project: project || null,
-        // An automatic entry is a Project entry when it has a project; one without is left
-        // unclassified (never assumed to be G&A).
-        classification: project ? 'project' : null,
+        // ERP CHG-14: an automatic entry is a Project entry when it has a project and G&A otherwise
+        // (expense, equity, fixed asset and other company-level entries), never unclassified.
+        classification: project ? 'project' : 'ga',
         // Only ever set by postProjectRevenueRecognitionJE below,
         // which are the one case where `sourceId` itself can't point back at the triggering Sales
         // Order (docs section "Sales Order Source Link") - every other automatic entry leaves this
@@ -1042,7 +1042,7 @@ async function postProjectCostRecognitionJE(project, session, triggeredBySalesOr
     sourceId: await recognitionSourceId(`${project._id}:PROJECT_COST_RECOGNITION:COST-TO-PUC:${decrease ? `DOWN:${previousPct}:` : ''}${currentPct}`, 'PROJECT_COST_RECOGNITION', project._id, session),
     ...(decrease ? { reference: DERECOGNITION_REFERENCE } : {}),
     date,
-    description: decrease ? `${description} - عكس (${previousPct}% -> ${currentPct}%)` : description,
+    description: decrease ? `${description} - reversal (${previousPct}% -> ${currentPct}%)` : description,
     project: project._id,
     lines: [...debits, ...credits],
     party: { number: customerNumber, type: 'customer' },

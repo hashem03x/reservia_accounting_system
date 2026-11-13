@@ -21,6 +21,7 @@ import { displayModuleLabel, entryClassification, entryClassificationLabel } fro
 import ReverseJournalEntryModal from "../_components/reverse-journal-entry-modal";
 import AttachmentsPanel from "@/components/global/attachments/attachments-panel";
 import { BASE_CURRENCY_CODE, formatRate, inverseRate } from "@/utils/helpers/currency-math";
+import { journalDescription } from "@/utils/helpers/journal-description";
 
 const statusColors: Record<string, string> = { draft: "yellow", posted: "green", reversed: "gray" };
 
@@ -125,7 +126,7 @@ export default function JournalEntryDetail() {
     <AdminLayoutBox
       header={{
         title: translate(`Journal Entry #${entry.entryNumber}`, `قيد يومية رقم ${entry.entryNumber}`),
-        subTitle: entry.description,
+        subTitle: journalDescription(entry.description, language),
         backLink: `/${paths.admin}/${paths.journalEntries}`,
         sideElements: (
           <div className="flex items-center gap-2">
@@ -329,6 +330,7 @@ function LineGroupHeader({ label, color }: { label: string; color: string }) {
 }
 
 function JournalLineRow({ line }: { line: JournalLine }) {
+  const { language } = useLanguage();
   // Balance = Debit - Credit for this line (credit lines are therefore negative) - NOT the same
   // thing as a Chart of Accounts running balance, which sums this across every posted line for the
   // account - see docs/entities/accounting.md.
@@ -349,7 +351,7 @@ function JournalLineRow({ line }: { line: JournalLine }) {
             : "-"}
       </Table.Td>
       <Table.Td>{line.projectNumber || line.project?.projectNumber || "-"}</Table.Td>
-      <Table.Td>{line.description || "-"}</Table.Td>
+      <Table.Td>{journalDescription(line.description, language) || "-"}</Table.Td>
       <Table.Td className="text-right tabular-nums">{debit ? debit.toLocaleString() : "-"}</Table.Td>
       <Table.Td className="text-right tabular-nums">{credit ? credit.toLocaleString() : "-"}</Table.Td>
       <Table.Td className={`text-right tabular-nums ${lineBalance < 0 ? "text-red-600" : ""}`}>

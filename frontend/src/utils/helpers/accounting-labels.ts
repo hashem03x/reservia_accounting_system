@@ -12,16 +12,15 @@ export function displayModuleLabel(module: string | null | undefined, translate:
   return module;
 }
 
-// Project / G&A classification of a journal entry, as shown to the user. An entry that predates
-// the field reads as Project when it has a project; one without a project is "Unclassified" -
-// never presented as G&A just because its project is missing (the backend filter
-// journalEntryController.js#createJournalEntryFilterObject applies the same rule).
+// Project / G&A classification of a journal entry, as shown to the user (ERP CHG-14). An entry that
+// predates the field reads as Project when it has a project and G&A when it has none, so Project and
+// G&A always add up to the total (the backend filter journalEntryController.js applies the same rule).
 export type EntryClassificationKey = "project" | "ga" | "unclassified";
 
 export function entryClassification(entry: { classification?: string | null; project?: unknown }): EntryClassificationKey {
   if (entry.classification === "ga") return "ga";
   if (entry.classification === "project" || entry.project) return "project";
-  return "unclassified";
+  return "ga";
 }
 
 export function entryClassificationLabel(key: EntryClassificationKey, translate: (en: string, ar: string) => string): string {

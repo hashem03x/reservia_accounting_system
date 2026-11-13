@@ -170,7 +170,7 @@ test('an unwhitelisted sort field falls back to the default (entryNumber ascendi
   assert.deepEqual(res.body.data.map(e => e.entryNumber), [100, 101, 102]);
 });
 
-test('filters by Project / G&A classification - a legacy entry with a project reads as Project, one without is unclassified (never G&A)', async () => {
+test('filters by Project / G&A classification - a legacy entry with a project reads as Project, one without as G&A (ERP CHG-14)', async () => {
   await JournalEntry.collection.insertOne({
     entryNumber: 103,
     date: new Date('2026-03-05'),
@@ -187,8 +187,10 @@ test('filters by Project / G&A classification - a legacy entry with a project re
   });
   const numbers = async query => (await list(query)).body.data.map(e => e.entryNumber).sort((a, b) => a - b);
   assert.deepEqual(await numbers({ classification: 'project' }), [100, 101]);
-  assert.deepEqual(await numbers({ classification: 'ga' }), [103]);
-  assert.deepEqual(await numbers({ classification: 'unclassified' }), [102]);
+  assert.deepEqual(await numbers({ classification: 'ga' }), [102, 103]);
+  const all = await numbers({});
+  assert.deepEqual([...(await numbers({ classification: 'project' })), ...(await numbers({ classification: 'ga' }))].sort((a, b) => a - b), all, 'Project + G&A = every entry');
+  assert.deepEqual(await numbers({ classification: 'unclassified' }), [], 'no unclassified rows remain');
   assert.deepEqual(await numbers({ classification: 'bogus' }), [], 'an unknown value returns no rows, never every row');
   // Combined with another filter.
   assert.deepEqual(await numbers({ classification: 'project', status: 'draft' }), [101]);

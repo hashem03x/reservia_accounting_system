@@ -19,6 +19,7 @@ import TruncatedText from "@/components/ui/truncated-text";
 import EmptySection from "@/components/ui/sections/empty";
 import ErrorSection from "@/components/ui/sections/error";
 import LoadingSection from "@/components/ui/sections/loading";
+import { journalDescription } from "@/utils/helpers/journal-description";
 
 const statusColors: Record<string, string> = { draft: "gray", posted: "green", reversed: "red" };
 
@@ -106,7 +107,7 @@ export default function RecentJournalEntriesSection() {
                   <Table.Td className="whitespace-nowrap">{formatDate(entry.date, language)}</Table.Td>
                   <Table.Td className="whitespace-nowrap font-medium">{entry.entryNumber}</Table.Td>
                   <Table.Td>
-                    <TruncatedText text={projectOrDescription(entry)} maxWidthClassName="max-w-[200px]" />
+                    <TruncatedText text={projectOrDescription(entry, language)} maxWidthClassName="max-w-[200px]" />
                   </Table.Td>
                   <Table.Td className="whitespace-nowrap text-right tabular-nums">
                     {formatCurrency(entry.totalDebit, language)}
@@ -129,7 +130,7 @@ export default function RecentJournalEntriesSection() {
   );
 }
 
-function projectOrDescription(entry: JournalEntry) {
+function projectOrDescription(entry: JournalEntry, language: string) {
   if (entry.project) return `${entry.project.projectNumber}${entry.project.name ? ` - ${entry.project.name}` : ""}`;
-  return entry.description || "-";
+  return journalDescription(entry.description, language) || "-";
 }

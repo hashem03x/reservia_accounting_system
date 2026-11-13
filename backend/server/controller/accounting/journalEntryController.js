@@ -194,12 +194,12 @@ const createJournalEntryFilterObject = asyncHandler(async (req, res, next) => {
     delete req.query.isReversal;
   }
 
-  // Project / G&A. An entry that predates the field reads as Project when it has a project; one
-  // without a project is "unclassified" - never counted as G&A.
+  // Project / G&A (ERP CHG-14). An entry that predates the field reads as Project when it has a
+  // project and as G&A when it has none, so the two filters always add up to the unfiltered total.
+  // "unclassified" is kept for old bookmarked URLs and now matches nothing.
   if (classification) {
     if (classification === 'project') and.push({ $or: [{ classification: 'project' }, { classification: null, project: { $ne: null } }] });
-    else if (classification === 'ga') and.push({ classification: 'ga' });
-    else if (classification === 'unclassified') and.push({ classification: null, project: null });
+    else if (classification === 'ga') and.push({ $or: [{ classification: 'ga' }, { classification: null, project: null }] });
     else and.push({ _id: null }); // unknown value: no rows, never every row
     delete req.query.classification;
   }

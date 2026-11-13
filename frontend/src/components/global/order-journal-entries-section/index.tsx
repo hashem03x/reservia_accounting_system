@@ -12,6 +12,7 @@ import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import paths from "@/utils/constants/paths";
 import { displayModuleLabel } from "@/utils/helpers/accounting-labels";
+import { journalDescription } from "@/utils/helpers/journal-description";
 
 const statusColors: Record<string, string> = { draft: "yellow", posted: "green", reversed: "gray" };
 
@@ -103,8 +104,8 @@ export default function OrderJournalEntriesSection({
             >
               <Table.Td className="whitespace-nowrap font-medium text-gray-800">#{entry.entryNumber}</Table.Td>
               <Table.Td className="whitespace-nowrap">{entry.date ? formatDate(entry.date, language) : "-"}</Table.Td>
-              <Table.Td className="max-w-[320px] truncate" title={entry.description || ""}>
-                {entry.description || "-"}
+              <Table.Td className="max-w-[320px] truncate" title={journalDescription(entry.description, language)}>
+                {journalDescription(entry.description, language) || "-"}
               </Table.Td>
               <Table.Td className="whitespace-nowrap">{displayModuleLabel(entry.module, translate)}</Table.Td>
               <Table.Td className="whitespace-nowrap">{entry.project?.projectNumber || "-"}</Table.Td>

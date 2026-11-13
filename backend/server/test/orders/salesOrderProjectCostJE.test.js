@@ -163,7 +163,7 @@ test('exact example: Raw Materials 250,000 + Labour 150,000 at 20% -> JV0011 Dr 
   ]);
   assert.equal(cost.totalDebit, 80000);
   assert.equal(cost.totalCredit, 80000);
-  assert.equal(cost.description, 'تحميل المشروع بالتكاليف بنسبة المنفذ من العقد');
+  assert.equal(cost.description, 'Charge project with costs by executed % of contract', 'ERP CHG-12: system entries are written in English');
   assert.equal(cost.description, ProjectCostRecognitionDescription);
   cost.lines.forEach(line => assert.equal(line.description, cost.description));
   assert.equal(cost.source, 'automatic');

@@ -31,6 +31,7 @@ import { DocumentPaymentTerms, toPaymentTermsPayload, validateDocumentPaymentTer
 import SectorSelect from "@/components/global/sector-select";
 import ProjectManagerSelect from "@/components/global/project-manager-select";
 import { AdvancedPayment } from "@/types/advanced-payment";
+import { journalDescription } from "@/utils/helpers/journal-description";
 
 const advanceStatusColors: Record<string, string> = {
   available: "green",
@@ -444,7 +445,7 @@ export default function ProjectDetail() {
                   <Table.Td>{entry.entryNumber}</Table.Td>
                   <Table.Td>{formatDate(entry.date, language)}</Table.Td>
                   <Table.Td>{entry.source}</Table.Td>
-                  <Table.Td>{entry.description}</Table.Td>
+                  <Table.Td>{journalDescription(entry.description, language)}</Table.Td>
                   <Table.Td>{entry.totalDebit.toLocaleString()}</Table.Td>
                   <Table.Td>{entry.totalCredit.toLocaleString()}</Table.Td>
                   <Table.Td>

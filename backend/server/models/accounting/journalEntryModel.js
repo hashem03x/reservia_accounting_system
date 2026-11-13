@@ -125,7 +125,9 @@ const journalEntrySchema = new Schema(
     project: { type: Schema.Types.ObjectId, ref: 'Project', default: null },
     // 'project' | 'ga' (General & Administrative) - see accountingConstants.js#JournalEntryClassifications.
     // 'project' always goes with a project and 'ga' never has one (RULE 2 below). null = an entry
-    // that predates the field, or an automatic entry with no project (never assumed to be G&A).
+    // that predates the field. ERP CHG-14: every non-manual entry is tagged on creation - Project
+    // when it has a project, G&A otherwise - and a legacy null without a project reads as G&A, so the
+    // Project and G&A filters always add up to the unfiltered total.
     classification: {
       type: String,
       enum: { values: [...JournalEntryClassifications, null], message: '{VALUE} is not a valid journal entry classification' },
@@ -290,6 +292,10 @@ journalEntrySchema.pre('save', async function (next) {
     // without one must have been explicitly classified G&A (never inferred from the missing
     // project); and the classification can never contradict the project.
     if (this.isNew && !this.classification && this.project) this.classification = 'project';
+    // ERP CHG-14: system entries (automatic, fixed asset, project creation, reversals) without a
+    // project are G&A. A new MANUAL entry still needs the explicit choice (the check below).
+    if (this.isNew && !this.classification && !this.project && this.source !== 'manual') this.classification = 'ga';
+    if (this.isNew && !this.classification && !this.project && this.reversalOfEntry) this.classification = 'ga';
     if (this.classification === 'project' && !this.project) throw new Error('A Project journal entry requires a project.');
     if (this.classification === 'ga' && this.project) throw new Error('A G&A journal entry cannot have a project.');
     if (this.isNew && !this.reversalOfEntry && this.source === 'manual' && !this.project && this.classification !== 'ga') {
