@@ -288,7 +288,7 @@ test('the reverseJournalEntryValidators reject a missing or invalid reversalDate
   const { reverseJournalEntryValidators } = require('../../utils/validators/journalEntryValidators');
 
   async function runValidators(body) {
-    const req = { body, params: {}, query: {} };
+    const req = { body: { description: 'Test entry', ...body }, params: {}, query: {} }; // CHG-10: header description required
     // Only actual express-validator ValidationChain entries expose `.run` - the final array
     // element (validatorMiddleware, a plain (req,res,next) function) does not, so this naturally
     // skips it rather than needing a brittle arity/type check.
@@ -313,7 +313,7 @@ test('createJournalEntryValidators: RULE 1 and RULE 2 fast pre-checks', async ()
   const { createJournalEntryValidators } = require('../../utils/validators/journalEntryValidators');
 
   async function runValidators(body) {
-    const req = { body, params: {}, query: {} };
+    const req = { body: { description: 'Test entry', ...body }, params: {}, query: {} }; // CHG-10: header description required
     for (const middleware of createJournalEntryValidators) {
       if (typeof middleware.run === 'function') await middleware.run(req);
     }
@@ -351,7 +351,7 @@ test('createJournalEntryValidators: a "General" (no-project) entry is accepted o
   const { createJournalEntryValidators } = require('../../utils/validators/journalEntryValidators');
 
   async function runValidatorsAs(user, body) {
-    const req = { body, params: {}, query: {}, user };
+    const req = { body: { description: 'Test entry', ...body }, params: {}, query: {}, user }; // CHG-10
     for (const middleware of createJournalEntryValidators) {
       if (typeof middleware.run === 'function') await middleware.run(req);
     }
@@ -397,7 +397,7 @@ test('createJournalEntryValidators: Project or G&A must be chosen explicitly and
     { account: revenue._id.toString(), description: 'Line', debit: 0, credit: 100 },
   ];
   async function errorsFor(body) {
-    const req = { body, params: {}, query: {}, user: admin };
+    const req = { body: { description: 'Test entry', ...body }, params: {}, query: {}, user: admin }; // CHG-10
     for (const middleware of createJournalEntryValidators) {
       if (typeof middleware.run === 'function') await middleware.run(req);
     }
@@ -716,4 +716,24 @@ test('RULE 3: a reversal entry cannot itself be reversed (no Original -> Reversa
 
   const reversalsOfTheReversal = await JournalEntry.find({ reversalOfEntry: reversal._id });
   assert.equal(reversalsOfTheReversal.length, 0, 'no reversal-of-reversal must ever be creatable');
+});
+
+// ERP CHG-10: a manual entry with neither a header description nor a reference is refused; either one suffices.
+test('createJournalEntryValidators (CHG-10): description or reference is required on a new manual entry', async () => {
+  const { validationResult } = require('express-validator');
+  const { createJournalEntryValidators } = require('../../utils/validators/journalEntryValidators');
+  const run = async body => {
+    const req = { body, params: {}, query: {} };
+    for (const middleware of createJournalEntryValidators) if (typeof middleware.run === 'function') await middleware.run(req);
+    return validationResult(req).array().map(e => e.msg);
+  };
+  const lines = [
+    { account: cash._id.toString(), description: 'Test line', debit: 100, credit: 0 },
+    { account: revenue._id.toString(), description: 'Test line', debit: 0, credit: 100 },
+  ];
+  const base = { project: project._id.toString(), classification: 'PROJECT', lines };
+  assert.ok((await run({ ...base })).some(m => /Enter a description \(or a reference\)/.test(m)));
+  assert.ok((await run({ ...base, description: '   ' })).some(m => /Enter a description/.test(m)));
+  assert.ok(!(await run({ ...base, description: 'Owner capital contribution' })).some(m => /Enter a description/.test(m)));
+  assert.ok(!(await run({ ...base, reference: 'BANK-7731' })).some(m => /Enter a description/.test(m)));
 });

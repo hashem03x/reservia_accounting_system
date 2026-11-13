@@ -178,6 +178,8 @@ export default function CreateJournalEntryModal({
   const difference = Math.round((totalDebit - totalCredit) * 100) / 100;
   const isBalanced = difference === 0;
   const missingDescription = lines.some((l) => !l.description?.trim());
+  // ERP CHG-10: the entry itself needs a description or a reference (enforced by the server too).
+  const missingHeader = !description.trim() && !reference.trim();
   const missingSubAccount = lines.some((l) => l.account && requiredPartyType(l.account) && l.partyNumber == null);
   // UX-only - the backend independently enforces every one of these rules on the request itself.
   const canSubmit =
@@ -186,6 +188,7 @@ export default function CreateJournalEntryModal({
     !rateLoading &&
     (entryKind === "ga" || (entryKind === "project" && !!entryProject)) &&
     !missingDescription &&
+    !missingHeader &&
     !missingSubAccount;
   const entryProjectNumber =
     entryKind === "ga"
@@ -286,6 +289,9 @@ export default function CreateJournalEntryModal({
           label={translate("Description", "الوصف")}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          withAsterisk={!reference.trim()}
+          error={missingHeader ? translate("Enter a description (or a reference).", "أدخل وصفاً (أو مرجعاً).") : undefined}
+          data-testid="je-description"
         />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

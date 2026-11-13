@@ -91,7 +91,8 @@ const createProjectValidators = [
   // it is always server-generated via projectNumberService.js#getNextProjectNumber, so there is
   // nothing left to validate here. Any `projectNumber` sent in the request body is simply ignored
   // by the controller.
-  check('name').optional().isString().trim().isLength({ max: 150 }),
+  // ERP CHG-10: a project needs a name (COM-0000001 was saved with none and shows "-").
+  check('name').exists({ checkFalsy: true }).withMessage('Enter the project name.').bail().isString().trim().notEmpty().withMessage('Enter the project name.').isLength({ max: 150 }),
   check('description').optional().isString().trim().isLength({ max: 1000 }),
 
   check('contractValue').notEmpty().withMessage('Contract value is required').isFloat({ min: 0.01 }).withMessage('Contract value must be greater than 0'),
@@ -139,7 +140,8 @@ const createProjectValidators = [
 
 const updateProjectValidators = [
   // projectNumber is immutable through this endpoint on purpose - see projectController.js.
-  check('name').optional().isString().trim().isLength({ max: 150 }),
+  // ERP CHG-10: an edit cannot blank the name.
+  check('name').optional().isString().trim().notEmpty().withMessage('The project name cannot be empty.').isLength({ max: 150 }),
   check('description').optional().isString().trim().isLength({ max: 1000 }),
   check('contractValue').optional().isFloat({ min: 0.01 }).withMessage('Contract value must be greater than 0'),
   // Keeping the project's current manager is always allowed (even one deactivated since); any other

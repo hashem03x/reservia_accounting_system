@@ -52,6 +52,11 @@ export default function CreateProjectModal({
     e.preventDefault();
 
     handleRequest(language, setLoading, setError, async () => {
+      // ERP CHG-10: the project name is required (enforced by the server too).
+      if (!name.trim()) {
+        setError(translate("Project name is required.", "اسم المشروع مطلوب."));
+        return;
+      }
       if (!customer) {
         setError(translate("Customer is required.", "العميل مطلوب."));
         return;
@@ -119,7 +124,8 @@ export default function CreateProjectModal({
 
         <TextInput
           label={translate("Project Name", "اسم المشروع")}
-          placeholder={translate("Enter project name (optional)", "أدخل اسم المشروع (اختياري)")}
+          placeholder={translate("Enter project name", "أدخل اسم المشروع")}
+          required
           value={name}
           onChange={(e) => setName(e.target.value)}
         />

@@ -137,6 +137,12 @@ const createJournalEntryValidators = [
   ...currencyValidators,
   check('description').optional().isString().trim().isLength({ max: 500 }),
   check('reference').optional().isString().trim().isLength({ max: 100 }),
+  // ERP CHG-10: a manual entry needs a header description or a reference (entry 100215 posted
+  // 1,500,000 with neither). Applies to new entries; existing ones are not re-validated.
+  check('description').custom((value, { req }) => {
+    if (String(value || '').trim() || String(req.body.reference || '').trim()) return true;
+    throw new Error('Enter a description (or a reference) for the journal entry.');
+  }),
   projectRequired,
   classificationRule,
   check('lines').isArray({ min: 1 }).withMessage('A journal entry needs at least one line'),
