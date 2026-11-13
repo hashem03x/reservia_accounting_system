@@ -11,6 +11,7 @@ const PO = require('../../models/vendor/purchaseOrder');
 const Product = require('../../models/inventory/productModel');
 const factory = require('../handlersFactory');
 const ApiError = require('../../utils/apiError'); // DEV_URL
+const { stepTimer } = require('../../utils/stepTimer');
 const { postPurchaseOrderJournalEntries } = require('../../services/accounting/accountingEventService');
 const { allocatePurchaseOrderToProject, allocationState } = require('../../services/inventory/poProjectAllocationService');
 const { purchaseOrderPayments } = require('../../services/purchases/purchaseOrderPaymentService');
@@ -71,7 +72,11 @@ const applyPurchaseToProducts = async (purchaseOrder, warehouseId, session) => {
 exports.applyPurchaseToProducts = applyPurchaseToProducts;
 
 exports.createPO = asyncHandler(async (req, res, next) => {
+  // ERP CHG-05: one timing log line per save, step by step.
+  const timer = stepTimer('purchase_invoice');
   const session = await mongoose.startSession();
+  timer.mark('session');
+  let code = null;
 
   try {
     session.startTransaction();
@@ -107,14 +112,18 @@ exports.createPO = asyncHandler(async (req, res, next) => {
     });
 
     await purchaseOrder.save({ session });
+    code = purchaseOrder.code || null;
+    timer.mark('validateAndSave');
 
     // Recompute moving-average cost and increment stock for every product this PO touches.
     await applyPurchaseToProducts(purchaseOrder, warehouseId, session);
+    timer.mark('stock');
 
     // Automatic accounting engine - one business event (this PO) can produce more than one
     // JournalEntry (inventory receipt + WIP transfer, or service-to-WIP) - see
     // services/accounting/accountingEventService.js.
     await postPurchaseOrderJournalEntries(purchaseOrder, session);
+    timer.mark('journals');
 
     // The received stock lines go on to the order's project (quantity side of PO_INVENTORY_TO_WIP),
     // in this same transaction - a failure leaves neither stock nor allocation behind.
@@ -123,8 +132,11 @@ exports.createPO = asyncHandler(async (req, res, next) => {
     // fail to be CREATED over a stock-availability mismatch its own receipt just created (see
     // poProjectAllocationService.js's header comment on this flag).
     await allocatePurchaseOrderToProject(purchaseOrder._id, { userId: req.user._id, session, requireAvailableStock: false });
+    timer.mark('projectAllocation');
 
     await session.commitTransaction();
+    timer.mark('commit');
+    timer.done({ code });
 
     res.status(201).json({
       status: 'success',
@@ -133,8 +145,10 @@ exports.createPO = asyncHandler(async (req, res, next) => {
     });
   } catch (error) {
     await session.abortTransaction();
+    timer.done({ ok: false, code });
     console.error('Transaction rolled back due to an error:', error);
-    next(new ApiError(error.message || 'Failed to create Purchase Invoice'));
+    // Keep the status of a refusal (400/404); anything unexpected stays a 500.
+    next(new ApiError(error.message || 'Failed to create Purchase Invoice', error.statusCode || (error.name === 'ValidationError' ? 400 : 500)));
   } finally {
     session.endSession();
   }

@@ -8,6 +8,7 @@ const { recalculateExecutedPercentage } = require('../project/projectAccountingS
 const { postSalesOrderAdvanceAppliedJE } = require('../accounting/accountingEventService');
 const { consumePucForSale } = require('../inventory/pucSalesConsumptionService');
 const { assertProjectStock } = require('../inventory/projectStockService');
+const { stepTimer } = require('../../utils/stepTimer');
 
 // Every new Sales Order requires a project (salesOrderModel.js's pre('save') hook), and a
 // project's materials are purchased straight into its PUC, never left sitting as ordinary
@@ -61,6 +62,8 @@ async function createSalesOrder(
   const resolvedOrderSource = 'cashier';
   const resolvedWarehouse = warehouse;
 
+  // ERP CHG-05: one timing log line per save, step by step.
+  const timer = stepTimer('sales_invoice');
   const ownsSession = !providedSession;
   const session = providedSession || (await mongoose.startSession());
   let salesOrder;
@@ -69,6 +72,7 @@ async function createSalesOrder(
     // ERP CHG-03: a line above the project's stock is refused here, on the server, before anything
     // is written (the form shows the available quantity, but the rule never depends on it).
     if (project) await assertProjectStock({ projectId: project, items });
+    timer.mark('stockCheck');
 
     const validItems = [];
     for (const item of items) {
@@ -77,6 +81,7 @@ async function createSalesOrder(
       validItems.push({ ...item, costWhenSold: updatedProduct.cost });
     }
 
+    timer.mark('products');
     salesOrder = new SalesOrder({
       warehouse: resolvedWarehouse,
       customer,
@@ -132,6 +137,7 @@ async function createSalesOrder(
     }
 
     await salesOrder.save({ session });
+    timer.mark('validateAndSave');
 
     // Automatic accounting engine (SO_CUSTOMER_ADVANCE_APPLIED / JV012 part A) - this was
     // previously never called from this flow despite the function existing, meaning a Sales Order
@@ -150,6 +156,7 @@ async function createSalesOrder(
     if (salesOrder.project) {
       await consumePucForSale(salesOrder, { userId: createdBy, session });
     }
+    timer.mark('costOfSalesJournal');
 
     // Project is mandatory for every new Sales Order (see salesOrderModel.js's pre('save') hook),
     // so this always runs - recomputes Executed % for the project this order's amount now counts
@@ -157,16 +164,21 @@ async function createSalesOrder(
     if (salesOrder.project) {
       await recalculateExecutedPercentage(salesOrder.project._id || salesOrder.project, session, salesOrder._id);
     }
+    timer.mark('revenueAndExecutedPct');
   };
 
+  let ok = false;
   try {
     if (ownsSession) {
       await session.withTransaction(run);
     } else {
       await run();
     }
+    ok = true;
   } finally {
     if (ownsSession) session.endSession();
+    timer.mark('commit');
+    timer.done({ ok, code: salesOrder?.code || null });
   }
 
   return salesOrder;

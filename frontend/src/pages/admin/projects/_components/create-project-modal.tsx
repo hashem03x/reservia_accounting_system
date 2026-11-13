@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
@@ -48,10 +48,22 @@ export default function CreateProjectModal({
       ? translate("Delivery date cannot be before the start date.", "لا يمكن أن يكون تاريخ التسليم قبل تاريخ البدء.")
       : undefined;
 
+  // ERP CHG-05: a second click while the first save is still running is ignored - the ref is set
+  // synchronously, before React re-renders the button as loading.
+  const inFlight = useRef(false);
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      await submitProject();
+    } finally {
+      inFlight.current = false;
+    }
+  }
 
-    handleRequest(language, setLoading, setError, async () => {
+  function submitProject() {
+    return handleRequest(language, setLoading, setError, async () => {
       // ERP CHG-10: the project name is required (enforced by the server too).
       if (!name.trim()) {
         setError(translate("Project name is required.", "اسم المشروع مطلوب."));

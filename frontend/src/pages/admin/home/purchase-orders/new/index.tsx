@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import useInvoiceVat from "@/hooks/useInvoiceVat";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "@/context/LanguageContext";
@@ -102,9 +102,22 @@ export default function NewPurchaseOrder() {
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
+  // ERP CHG-05: a second click while the first save is still running is ignored - the ref is set
+  // synchronously, before React re-renders the button as loading.
+  const inFlight = useRef(false);
   async function handleSaveOrder(e: React.FormEvent) {
     e.preventDefault();
-    handleRequest(language, setLoading, setError, async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      await saveOrder();
+    } finally {
+      inFlight.current = false;
+    }
+  }
+
+  function saveOrder() {
+    return handleRequest(language, setLoading, setError, async () => {
       const filteredItems = items.filter((item) => item.productData);
 
       if (!requisition) {
