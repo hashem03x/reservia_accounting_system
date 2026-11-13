@@ -88,7 +88,48 @@ requires this.
 * **Supplier uploads.** Each upload has its own rollback on the supplier record (C21/C22). Use that
   rather than restoring the database.
 
-## 8. Decisions still open (the code is ready for either answer)
+## 8. HR Portal (added 14 November 2026)
+
+The HR Portal follows the HR Portal Developer Spec and its prototype. It runs inside this portal:
+same login, same database. Commits `3680270` (backend) and `ff59163` (screens).
+
+**New collections**, created on first use: `hremployees`, `hrattendances`, `hrvisits`,
+`hrexpenses`, `hrforms`, `hrtargets`, `hradjustments`, `hrpayrollruns`, `hrpayslipfiles`,
+`hremaillogs`, `hrtrainings`, `hrassets`, `hrperformances`, `hrcandidates`, `hrsettings`,
+`hraudits`.
+
+1. **Set `HR_PAY_ENCRYPTION_KEY`** on the backend before anyone enters pay. It is 32 random
+   bytes, base64. Production refuses to store pay without it.
+   * Keep a safe offline copy of the key. Without it, stored pay cannot be read.
+2. **Optional variables:**
+   * `HR_MAIL_FROM`, with SPF and DKIM for the sender domain, for payslip email.
+     SMTP must already be configured.
+   * `HR_ERP_API_TOKEN`, once the ERP API is chosen (Phase 2).
+3. **Grant HR roles** in Portal -> Admin -> Users -> System access -> HR:
+   * `md`: approves payroll, reopens months, sees all pay;
+   * `hr`: the HR officer;
+   * `manager`: line managers. Also link each manager's employee record to their login: People ->
+     employee -> Portal login. A line manager sees only direct reports and never
+   pay;
+   * `finance`: the accountant.
+
+   Old placeholder HR memberships (`MEMBER`) open nothing until they are re-granted.
+4. **Settings, before the first live run** (HR -> Settings). Confirm each value with the
+   accountant or lawyer; every change is dated by its effective month:
+   * insurable wage floor and ceiling for 2026 and 2027;
+   * tax brackets and exemption;
+   * whether the incentive counts as wage for insurance and overtime;
+   * whether site allowances and reimbursements are taxed;
+   * public holidays, including the moving Islamic ones;
+   * signatory names.
+5. **Acceptance** (spec section 11):
+   * run December 2026 payroll in parallel with the spreadsheet; net and totals must match to
+     the EGP for every employee;
+   * then remove the example team (Settings -> Data) if it was loaded.
+
+**Rollback:** the HR collections are new, so the old code ignores them. Pay stays encrypted.
+
+## 9. Decisions still open (the code is ready for either answer)
 
 | Item | Decision | Today's behaviour |
 | --- | --- | --- |

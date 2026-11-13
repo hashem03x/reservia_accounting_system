@@ -12,6 +12,7 @@ router.get('/state', c.state);
 router.post('/settings', c.saveSettings);
 router.get('/settings/history', c.settingsHistory);
 router.get('/audit', c.audit);
+router.get('/logins', c.logins);
 
 router.post('/employees', c.createEmployee);
 router.route('/employees/:id').patch(c.updateEmployee).delete(c.deleteEmployee);

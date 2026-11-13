@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import usePrivateRequest from "@/hooks/usePrivateRequest";
 import { canEdit, Employee, fmt, grossOf, mLabel, r1, sum, useHr, diffDays } from "./hr-context";
 import { ArmedButton, Chk, Drawer, Empty, Inp, Kpi, Modal, MonthBar, Panel, Pill, Sel, SL, SL_ICON, Top, Txt, useFormVals, useModal } from "./ui";
 
@@ -253,6 +254,7 @@ export function EmployeeDrawer({ id }: { id?: string }) {
   const save = async () => {
     const body: Record<string, unknown> = {};
     ["code", "name", "role", "dept", "status", "type", "hire", "end", "city", "mgr", "phone", "email", "emg", "emgp", "file", "nat", "sin", "edu", "cno", "offerDate", "cstart", "cend", "probEnd", "paym", "insured"].forEach((k) => (body[k] = f.v[k] ?? ""));
+    if (edit) body.user = f.v.user || null;
     body.insured = !!f.v.insured;
     if (pay) ["basic", "transport", "incentive", "commission", "other", "insBase"].forEach((k) => (body[k] = +f.v[k] || 0));
     await (id ? call("PATCH", `employees/${id}`, body) : call("POST", "employees", body));
@@ -283,6 +285,7 @@ export function EmployeeDrawer({ id }: { id?: string }) {
         <Inp label="Emergency contact" k="emg" f={f} disabled={ro} />
         <Inp label="Emergency phone" k="emgp" f={f} disabled={ro} />
         <Inp label="Personnel file location" k="file" f={f} full placeholder="e.g. HR cabinet 1, folder EMP-01, and drive path" disabled={ro} />
+        {edit && <PortalLogin f={f} />}
       </div>
       <div className="sect">
         <h4>Contract</h4>
@@ -461,6 +464,27 @@ export function EmployeeDrawer({ id }: { id?: string }) {
         )}
       </div>
     </Drawer>
+  );
+}
+
+/** Links a person to their portal login, so a line manager sees and approves for their direct reports. */
+function PortalLogin({ f }: { f: ReturnType<typeof useFormVals> }) {
+  const privateRequest = usePrivateRequest();
+  const [logins, setLogins] = useState<{ _id: string; name: string; email: string; role: string }[]>([]);
+  useEffect(() => {
+    privateRequest({ url: "hr/logins" })
+      .then((r) => setLogins(r.data || []))
+      .catch(() => setLogins([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <Sel
+      label="Portal login (line managers: links their team)"
+      k="user"
+      f={f}
+      full
+      opts={[["", "Not linked"], ...logins.map((u) => [u._id, `${u.name} (${u.email}, HR ${u.role})`] as [string, string])]}
+    />
   );
 }
 

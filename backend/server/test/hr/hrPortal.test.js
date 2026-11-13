@@ -144,6 +144,9 @@ maybeTest('a line manager sees only the team and never pay; Finance cannot edit 
   await api('POST', '/example', { user: hr });
   const karim = await M.HrEmployee.findOne({ code: 'EMP-02' });
   await api('PATCH', `/employees/${karim._id}`, { user: hr, body: { user: String(mgrUser._id) } });
+  const logins = await api('GET', '/logins', { user: hr });
+  assert.ok(logins.body.data.some(u => u._id === String(mgrUser._id) && u.role === 'manager'), 'HR lists the HR logins');
+  assert.equal((await api('GET', '/logins', { user: mgrUser })).status, 403);
   const s = (await api('GET', `/state?month=${thisMonth()}`, { user: mgrUser })).body.data;
   assert.deepEqual(s.employees.map(e => e.code).sort(), ['EMP-02', 'EMP-03', 'EMP-04', 'EMP-06']);
   s.employees.forEach(e => ['basic', 'transport', 'incentive', 'commission', 'other', 'insBase'].forEach(k => assert.equal(e[k], undefined, `${e.code} ${k} hidden`)));

@@ -44,6 +44,13 @@ exports.settingsHistory = asyncHandler(async (req, res) => {
   ok(res, 'Settings history', await M.HrSettings.find({}, { values: 0 }).sort({ createdAt: -1 }).limit(100).lean());
 });
 
+/** Portal logins with an active HR membership (to link a line manager to their employee record). MD and HR only. */
+exports.logins = asyncHandler(async (req, res) => {
+  C.assertRole(ctx(req), ['md', 'hr'], 'list HR logins');
+  const users = await require('mongoose').model('User').find({ systemMemberships: { $elemMatch: { system: 'HR', isActive: true } } }, { name: 1, email: 1, systemMemberships: 1 }).lean();
+  ok(res, 'HR logins', users.map(u => ({ _id: String(u._id), name: u.name, email: u.email, role: (u.systemMemberships.find(m => m.system === 'HR') || {}).role })));
+});
+
 exports.createEmployee = asyncHandler(async (req, res) => ok(res, 'Employee added', await svc.createEmployee(req.body || {}, ctx(req)), 201));
 exports.updateEmployee = asyncHandler(async (req, res) => ok(res, 'Employee saved', await svc.updateEmployee(req.params.id, req.body || {}, ctx(req))));
 exports.deleteEmployee = asyncHandler(async (req, res) => ok(res, 'Employee deleted', await svc.deleteEmployee(req.params.id, ctx(req))));
