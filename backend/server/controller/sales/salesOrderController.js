@@ -48,7 +48,9 @@ exports.createCashierSalesOrder = asyncHandler(async (req, res, next) => {
     });
   } catch (error) {
     console.error('Sales invoice creation rolled back due to an error:', error);
-    next(new ApiError(error.message || 'Failed to create Sales Invoice'));
+    // Keep the status of a refusal (e.g. 400 "Only 40 available for this project"); anything
+    // unexpected stays a 500.
+    next(new ApiError(error.message || 'Failed to create Sales Invoice', error.statusCode || (error.name === 'ValidationError' ? 400 : 500)));
   }
 });
 

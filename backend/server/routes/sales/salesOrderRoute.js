@@ -23,6 +23,17 @@ router.use(authController.protect);
 
 router.use('/returns', require('./salesOrderReturnRoute'));
 
+// ERP CHG-03: "available in project stock" for the sales form lines - before /:id so it is never read as an id.
+router.get(
+  '/project-stock',
+  checkUserPermissions({ resource: Resources.salesOrders, action: Actions.read }),
+  require('express-async-handler')(async (req, res) => {
+    const { projectStockForForm } = require('../../services/inventory/projectStockService'); // eslint-disable-line global-require
+    const products = String(req.query.products || '').split(',').filter(Boolean).slice(0, 200);
+    res.status(200).json(require('../../utils/apiResponse')('Project stock', true, await projectStockForForm(req.query.project, products)));
+  })
+);
+
 // Create sales order
 router.post('/', checkUserPermissions({ resource: Resources.salesOrders, action: Actions.create }), createCashierSalesOrderValidator, createCashierSalesOrder);
 

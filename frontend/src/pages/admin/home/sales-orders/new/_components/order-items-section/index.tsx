@@ -11,11 +11,13 @@ export default function OrderItemsSection({
   setItems,
   addNewItem,
   warehouseId,
+  projectId,
 }: {
   items: OrderItemInput[];
   setItems: React.Dispatch<React.SetStateAction<OrderItemInput[]>>;
   addNewItem: () => void;
   warehouseId: string;
+  projectId?: string;
 }) {
   const { translate } = useLanguage();
 
@@ -65,6 +67,7 @@ export default function OrderItemsSection({
                 setItems={setItems}
                 addNewItem={addNewItem}
                 warehouseId={warehouseId}
+                projectId={projectId}
               />
             ))}
           </Table.Tbody>

@@ -60,10 +60,13 @@ async function consumePucForSale(salesOrder, { userId = null, session } = {}) {
     const balance = emptyBalance();
     for (const m of movements) addMovement(balance, m, false);
     const finished = finishBalance(balance);
-    const available = finished.closingQuantity;
-    if (!(available > 0) || finished.averageUnitCost == null) continue; // eslint-disable-line no-continue
+    // ERP CHG-03: the whole quantity is costed, never only the part in stock. A line above the stock
+    // is refused beforehand (projectStockService.js#assertProjectStock) unless an override applies
+    // (setting off, or the product may go negative) - then the rest is costed at the last known
+    // average unit cost and the project balance shows the shortfall.
+    if (finished.averageUnitCost == null) continue; // eslint-disable-line no-continue
 
-    const qty = round2(Math.min(Number(item.starterQuantity) || 0, available));
+    const qty = round2(Number(item.starterQuantity) || 0);
     if (!(qty > 0)) continue; // eslint-disable-line no-continue
     const amount = round2(qty * finished.averageUnitCost);
     if (!(amount > 0)) continue; // eslint-disable-line no-continue

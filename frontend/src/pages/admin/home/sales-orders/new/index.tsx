@@ -226,7 +226,7 @@ export default function NewSalesOrder() {
 
       <hr />
 
-      <OrderItemsSection items={items} setItems={setItems} addNewItem={addNewItem} warehouseId={warehouseId} />
+      <OrderItemsSection items={items} setItems={setItems} addNewItem={addNewItem} warehouseId={warehouseId} projectId={project || undefined} />
 
       <hr />
 

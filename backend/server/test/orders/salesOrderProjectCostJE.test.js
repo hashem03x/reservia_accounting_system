@@ -408,3 +408,16 @@ test('the JV0011 posting refuses to run without a project', async () => {
   );
   assert.equal(await JournalEntry.countDocuments({}), 0);
 });
+
+test('ERP CHG-03 + CHG-06 through the real createSalesOrder: above the project stock is a 400 and nothing is written; a 0% VAT reason is stored', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  // The project holds 40 of the product (received into its PUC).
+  await mongoose.connection.collection('puctransfers').insertOne({ product: product._id, quantity: 40, unitCost: 1500, amount: 60000, sourceType: 'purchase-order', project: project._id, date: new Date(), journalEntry: null });
+  await assert.rejects(() => sell(50), err => err.statusCode === 400 && /Only 40 available for this project/.test(err.message));
+  assert.equal(await SalesOrder.countDocuments({}), 0, 'nothing saved');
+  assert.equal(await JournalEntry.countDocuments({}), 0, 'no entry posted');
+
+  const order = await sell(40, { vatPercentage: 0, vatExemptReason: 'Export customer' });
+  assert.equal(order.vatExemptReason, 'Export customer');
+  assert.equal((await SalesOrder.findById(order._id).lean()).vatExemptReason, 'Export customer');
+});

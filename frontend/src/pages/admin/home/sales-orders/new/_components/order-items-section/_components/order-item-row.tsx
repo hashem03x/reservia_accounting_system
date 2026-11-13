@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
@@ -18,12 +18,15 @@ export default function OrderItemRow({
   setItems,
   addNewItem,
   warehouseId,
+  projectId,
 }: {
   index: number;
   items: OrderItemInput[];
   setItems: React.Dispatch<React.SetStateAction<OrderItemInput[]>>;
   addNewItem: () => void;
   warehouseId: string;
+  /** ERP CHG-03: the invoice's project - its stock is what a line may take. */
+  projectId?: string;
 }) {
   const { translate, language, translations } = useLanguage();
   const privateRequest = usePrivateRequest();
@@ -178,7 +181,24 @@ export default function OrderItemRow({
     }
     return sum;
   }, 0);
-  const exceedsAvailable = !isService && totalRequestedForProduct > quantityAvailable;
+  // ERP CHG-03: "available in project stock" (GET /sale-orders/project-stock - the Project Inventory
+  // figures). When the project tracks this product, that is the limit the server applies.
+  const [projectStock, setProjectStock] = useState<{ tracked: boolean; available: number | null; enforced: boolean } | null>(null);
+  useEffect(() => {
+    setProjectStock(null);
+    if (!projectId || !productData?._id || isService) return;
+    let cancelled = false;
+    privateRequest({ url: "sale-orders/project-stock", params: { project: projectId, products: productData._id }, language })
+      .then((res) => !cancelled && setProjectStock(res.data?.[0] || null))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, productData?._id]);
+  const projectAvailable = projectStock?.tracked ? Number(projectStock.available) || 0 : null;
+  const exceedsProjectStock = projectAvailable !== null && totalRequestedForProduct > projectAvailable;
+  const exceedsAvailable = projectAvailable !== null ? exceedsProjectStock : !isService && totalRequestedForProduct > quantityAvailable;
 
   return (
     <Table.Tr className="text-gray-600">
@@ -236,7 +256,9 @@ export default function OrderItemRow({
                   <Tooltip
                     withArrow
                     label={
-                      quantityAvailable === 0
+                      projectAvailable !== null
+                        ? translate(`Only ${projectAvailable} available for this project`, `المتاح لهذا المشروع ${projectAvailable} فقط`)
+                        : quantityAvailable === 0
                         ? translate("Out of stock", "إنتهى من المخزن")
                         : translate(
                             `Requested ${totalRequestedForProduct}, only ${quantityAvailable} available`,
@@ -251,6 +273,13 @@ export default function OrderItemRow({
                 ) : null
               }
             />
+            {projectAvailable !== null && (
+              <p className={`text-[11px] ${exceedsProjectStock && projectStock?.enforced ? "text-red-600" : "text-gray-500"}`} data-testid="project-stock-available">
+                {exceedsProjectStock && projectStock?.enforced
+                  ? translate(`Only ${projectAvailable} available for this project`, `المتاح لهذا المشروع ${projectAvailable} فقط`)
+                  : translate(`${projectAvailable} available in project stock`, `المتاح في مخزون المشروع ${projectAvailable}`)}
+              </p>
+            )}
           </Table.Td>
           <Table.Td>
             <NumberInput

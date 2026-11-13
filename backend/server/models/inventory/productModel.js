@@ -28,6 +28,9 @@ const productSchema = mongoose.Schema(
     price: { type: Number, min: [0, 'Product price cannot be negative'], max: 250000 }, // Also doubles as the service's selling price when type === 'service'. Optional - see cost above.
     priceAfterDiscount: { type: Number, default: null },
     totalSold: { type: Number, default: 0 },
+    // ERP CHG-03: lets this product be sold beyond a project's stock even when the company setting
+    // "Prevent negative project stock" is on (services/inventory/projectStockService.js).
+    allowNegativeProjectStock: { type: Boolean, default: false },
     isAvailable: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
     category: {

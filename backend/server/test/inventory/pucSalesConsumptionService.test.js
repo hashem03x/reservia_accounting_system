@@ -137,17 +137,19 @@ test('consumes the sold quantity from the project PUC at its weighted average co
   assert.equal(await pucAccountBalance(wipRawMaterials._id, project._id), 300); // 500 purchased - 200 consumed
 });
 
-test('never consumes more than the project actually holds in PUC for that product - caps, never throws, never fabricates', async () => {
+test('ERP CHG-03: when a sale above the stock is allowed (override), the FULL quantity is costed at the average cost - never a partial cost', async () => {
+  // A normal sales invoice above the stock is refused before this runs (projectStockService.js#
+  // assertProjectStock); this is the override path (setting off, or a product allowed to go negative).
   const product = await makeProduct();
   await purchaseIntoPuc(product, { quantity: 5, unitPrice: 50 }); // only 5 available
-  const so = await makeSalesOrder([{ product, quantity: 100 }]); // tries to sell 100
+  const so = await makeSalesOrder([{ product, quantity: 100 }]); // sells 100
 
   const entry = await consumePucForSale(so, { userId: manager._id });
   const transfer = await PucTransfer.findOne({ salesOrder: so._id, sourceType: 'sale' }).lean();
-  assert.equal(transfer.quantity, 5); // capped at what PUC actually holds
-  assert.equal(transfer.amount, 250);
-  assert.equal(entry.lines.find(l => l.debit > 0).debit, 250);
-  assert.equal(await pucAccountBalance(wipRawMaterials._id, project._id), 0);
+  assert.equal(transfer.quantity, 100);
+  assert.equal(transfer.amount, 5000);
+  assert.equal(entry.lines.find(l => l.debit > 0).debit, 5000);
+  assert.equal(await pucAccountBalance(wipRawMaterials._id, project._id), -4750, 'the shortfall is visible, not hidden');
 });
 
 test('a product never purchased into this project\'s PUC is skipped entirely - no fabricated cost, no entry', async () => {

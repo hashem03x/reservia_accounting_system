@@ -7,6 +7,7 @@ const { consumeCustomerAdvancedPayment } = require('../payments/advancedPaymentS
 const { recalculateExecutedPercentage } = require('../project/projectAccountingService');
 const { postSalesOrderAdvanceAppliedJE } = require('../accounting/accountingEventService');
 const { consumePucForSale } = require('../inventory/pucSalesConsumptionService');
+const { assertProjectStock } = require('../inventory/projectStockService');
 
 // Every new Sales Order requires a project (salesOrderModel.js's pre('save') hook), and a
 // project's materials are purchased straight into its PUC, never left sitting as ordinary
@@ -47,6 +48,7 @@ async function createSalesOrder(
     paymentAccount,
     project,
     vatPercentage,
+    vatExemptReason,
     withholdingTaxPercentage,
     createdBy,
     employee,
@@ -64,6 +66,10 @@ async function createSalesOrder(
   let salesOrder;
 
   const run = async () => {
+    // ERP CHG-03: a line above the project's stock is refused here, on the server, before anything
+    // is written (the form shows the available quantity, but the rule never depends on it).
+    if (project) await assertProjectStock({ projectId: project, items });
+
     const validItems = [];
     for (const item of items) {
       const updatedProduct = await updateStockAndSold(item, resolvedWarehouse, session);
@@ -86,6 +92,8 @@ async function createSalesOrder(
       ...(paymentAccount !== undefined ? { paymentAccount } : {}),
       ...(project !== undefined ? { project } : {}),
       ...(vatPercentage !== undefined ? { vatPercentage } : {}),
+      // ERP CHG-06: why a 0% invoice carries no VAT (required by the create request validator).
+      ...(vatExemptReason ? { vatExemptReason } : {}),
       ...(withholdingTaxPercentage !== undefined ? { withholdingTaxPercentage } : {}),
       ...extraFields,
     });
