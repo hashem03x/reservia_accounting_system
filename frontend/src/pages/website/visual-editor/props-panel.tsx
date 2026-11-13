@@ -430,7 +430,7 @@ export function NodeControls({ nodeId, config, onChange, readOnly, canCode, lang
           autosize
           minRows={6}
           dir="ltr"
-          styles={{ input: { fontFamily: "ui-monospace, monospace", fontSize: 12 } }}
+          styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)", fontSize: 12 } }}
           disabled={readOnly || !canCode}
         />
       )}

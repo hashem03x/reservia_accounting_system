@@ -102,7 +102,7 @@ export default function BalanceSheetReport() {
   const [downloading, setDownloading] = useState(false);
 
   const renderRow = (label: string, value: number, isTotal?: boolean, indent?: boolean) => (
-    <Table.Tr style={{ backgroundColor: isTotal ? "#f8f9fa" : "transparent" }}>
+    <Table.Tr style={{ backgroundColor: isTotal ? "var(--rsv-subtle)" : "transparent" }}>
       <Table.Td style={{ paddingLeft: indent ? "2rem" : "1rem", fontWeight: isTotal ? "bold" : "normal" }}>
         {translate(label, label)}
       </Table.Td>

@@ -121,7 +121,7 @@ export default function CurrencyDetailsModal({
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+    <div className="flex flex-col gap-1 rounded-lg border border-gray-200 p-3 dark:border-line">
       <span className="text-xs text-gray-500">{label}</span>
       <span className="font-semibold tabular-nums">{value}</span>
     </div>

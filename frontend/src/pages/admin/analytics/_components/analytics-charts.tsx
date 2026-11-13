@@ -17,13 +17,13 @@ const PALETTE = {
 
 export function ChartPanel({ title, subtitle, loading, empty, emptyText, children }: { title: string; subtitle?: string; loading: boolean; empty: boolean; emptyText: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-      <header className="border-b border-gray-100 px-4 py-2.5 dark:border-gray-700">
-        <h3 className="text-sm font-semibold text-white dark:text-gray-100">{title}</h3>
-        {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+    <section className="flex flex-col overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm dark:border-line dark:bg-surface">
+      <header className="border-b border-gray-100 px-4 py-2.5 dark:border-line">
+        <h3 className="text-sm font-semibold text-white dark:text-ink">{title}</h3>
+        {subtitle && <p className="text-xs text-gray-500 dark:text-ink-muted">{subtitle}</p>}
       </header>
       <div className="relative h-64 p-3 sm:h-72">
-        {loading ? <Skeleton height="100%" radius="md" /> : empty ? <div className="flex h-full items-center justify-center text-center text-sm text-gray-500 dark:text-gray-400">{emptyText}</div> : children}
+        {loading ? <Skeleton height="100%" radius="md" /> : empty ? <div className="flex h-full items-center justify-center text-center text-sm text-gray-500 dark:text-ink-muted">{emptyText}</div> : children}
       </div>
     </section>
   );

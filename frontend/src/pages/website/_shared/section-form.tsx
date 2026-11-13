@@ -184,7 +184,7 @@ function FieldEditor({ field: f, value, set, readOnly }: { field: SectionField; 
             maxRows={24}
             disabled={readOnly}
             dir="ltr"
-            styles={{ input: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12 } }}
+            styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)", fontSize: 12 } }}
             maxLength={f.maxLength}
             data-field={f.key}
           />

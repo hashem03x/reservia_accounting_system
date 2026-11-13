@@ -141,7 +141,7 @@ export function Panel({ title, children, side, description }: { title: string; c
     <section className="rounded-lg border border-gray-100 bg-white p-4">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-[#0B3D91]">{title}</h3>
+          <h3 className="text-sm font-semibold text-ink">{title}</h3>
           {description && <p className="mt-0.5 text-xs text-gray-500">{description}</p>}
         </div>
         {side}

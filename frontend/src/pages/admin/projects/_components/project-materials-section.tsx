@@ -171,7 +171,7 @@ export default function ProjectMaterialsSection({ projectId, reloadKey }: { proj
                       </Table.Tr>
                       {open === id && (
                         <Table.Tr>
-                          <Table.Td colSpan={11} className="bg-gray-50 dark:bg-gray-800">
+                          <Table.Td colSpan={11} className="bg-gray-50 dark:bg-surface">
                             <div className="flex flex-col gap-1 text-xs">
                               {m.sources.map((s, i) => (
                                 <div key={i} className="flex flex-wrap gap-x-4">
@@ -206,7 +206,7 @@ export default function ProjectMaterialsSection({ projectId, reloadKey }: { proj
 
 function Card({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+    <div className="flex flex-col gap-1 rounded-lg border border-gray-200 p-3 dark:border-line">
       <span className="text-xs text-gray-500">{label}</span>
       <span className="font-semibold tabular-nums">{value}</span>
       {hint && <span className="text-xs text-gray-400">{hint}</span>}

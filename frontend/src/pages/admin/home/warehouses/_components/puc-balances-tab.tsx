@@ -157,7 +157,7 @@ export default function PucBalancesTab() {
                   <Table.Tbody>
                     {data.projects.map((summary) => (
                       <Fragment key={summary.project._id}>
-                        <Table.Tr className="bg-gray-50 font-semibold dark:bg-gray-800">
+                        <Table.Tr className="bg-gray-50 font-semibold dark:bg-surface">
                           <Table.Td colSpan={8}>
                             {summary.project.projectNumber || translate("(project missing)", "(مشروع غير موجود)")}
                             {summary.project.name ? ` - ${summary.project.name}` : ""}
@@ -200,7 +200,7 @@ export default function PucBalancesTab() {
                       </Fragment>
                     ))}
                   </Table.Tbody>
-                  <Table.Tfoot className="border-t-2 bg-gray-50 font-bold dark:bg-gray-800">
+                  <Table.Tfoot className="border-t-2 bg-gray-50 font-bold dark:bg-surface">
                     <Table.Tr>
                       <Table.Td colSpan={8}>{translate("Total", "الإجمالي")}</Table.Td>
                       <Table.Td className="text-end tabular-nums">{qty(data.totals.consumedQuantity)}</Table.Td>

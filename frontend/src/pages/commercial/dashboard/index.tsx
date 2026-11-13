@@ -17,6 +17,7 @@ import { CommercialDashboard } from "@/types/commercial";
 import paths from "@/utils/constants/paths";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
+import tokens from "@/theme/tokens.json";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
@@ -56,12 +57,12 @@ export default function CommercialDashboardPage() {
   }
 
   const gridColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
-  const tickColor = isDark ? "#8D9BA6" : "#66727F";
+  const tickColor = isDark ? tokens.surface.dark.textMuted : tokens.surface.light.textMuted;
   const byCategory = data?.projectsByCategory || [];
 
   const chartData = {
     labels: byCategory.map((c) => c.category),
-    datasets: [{ label: translate("Projects", "المشاريع"), data: byCategory.map((c) => c.count), backgroundColor: "#123B5D" }],
+    datasets: [{ label: translate("Projects", "المشاريع"), data: byCategory.map((c) => c.count), backgroundColor: tokens.chart[0] }],
   };
   const chartOptions: ChartOptions<"bar"> = {
     responsive: true,

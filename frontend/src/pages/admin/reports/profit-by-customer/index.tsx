@@ -330,7 +330,7 @@ export default function ProfitByCustomerReport() {
                     className="font-semibold" 
                     style={{ 
                       textAlign: 'right',
-                      color: item.grossProfit < 0 ? '#ef4444' : '#22c55e'
+                      color: item.grossProfit < 0 ? "var(--mantine-color-red-6)" : "var(--mantine-color-green-6)"
                     }}
                   >
                     {item.grossProfit.toFixed(2)}
@@ -354,7 +354,7 @@ export default function ProfitByCustomerReport() {
                 </Table.Td>
                 <Table.Td style={{ 
                   textAlign: 'right',
-                  color: data.data.reduce((sum, item) => sum + item.grossProfit, 0) < 0 ? '#ef4444' : '#22c55e'
+                  color: data.data.reduce((sum, item) => sum + item.grossProfit, 0) < 0 ? "var(--mantine-color-red-6)" : "var(--mantine-color-green-6)"
                 }}>
                   {data.data.reduce((sum, item) => sum + item.grossProfit, 0).toFixed(2)}
                 </Table.Td>

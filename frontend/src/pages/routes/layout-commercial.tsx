@@ -1,65 +1,28 @@
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useMemo } from "react";
 import { useLanguage } from "@/context/LanguageContext";
-import { useUser } from "@/context/UserContext";
+import { useSystemAccess } from "@/context/SystemAccessContext";
 import paths from "@/utils/constants/paths";
-import { outlineIcons, solidIcons } from "@/components/icons";
-import { Button } from "@mantine/core";
-import logo from "@/assets/logo_no_bg.png";
+import { outlineIcons } from "@/components/icons";
+import AppShell, { NavSection } from "@/components/global/app-shell";
+import { systemRoleLabel } from "@/utils/constants/system-roles";
 
-// Reservia Commercial - a lean, dedicated layout, mirroring pages/routes/layout-crm.tsx exactly
-// (see that file's own header comment for why: the Commercial role vocabulary has nothing to do
-// with the ERP's nav-config.ts/resource:action permission matrix). Same Mantine chrome/fonts as
-// the rest of the app - only the header accent color and nav items differ from CRM's.
+// Reservia Deal Engine (system id COMMERCIAL) - the shared app shell with the Deal Engine's own
+// navigation (same items and order as before). Exit in the footer returns to the portal.
 const NAV_ITEMS = [
-  { to: `/${paths.commercial}/${paths.dashboard}`, label: { en: "Dashboard", ar: "لوحة التحكم" }, Icon: outlineIcons.Squares },
-  { to: `/${paths.commercial}/${paths.commercialProjects}`, label: { en: "Projects", ar: "المشاريع" }, Icon: outlineIcons.ChartBar },
-  { to: `/${paths.commercial}/${paths.commercialMaterials}`, label: { en: "Materials", ar: "قائمة الأسعار" }, Icon: outlineIcons.Users },
-  { to: `/${paths.commercial}/${paths.commercialSuppliers}`, label: { en: "Suppliers", ar: "الموردون" }, Icon: outlineIcons.Users },
-  { to: `/${paths.commercial}/${paths.commercialPricingConfig}`, label: { en: "Pricing Config", ar: "إعدادات التسعير" }, Icon: outlineIcons.Squares },
+  { key: "de-dashboard", to: `/${paths.commercial}/${paths.dashboard}`, label: { en: "Dashboard", ar: "لوحة التحكم" }, Icon: outlineIcons.Squares },
+  { key: "de-projects", to: `/${paths.commercial}/${paths.commercialProjects}`, label: { en: "Projects", ar: "المشاريع" }, Icon: outlineIcons.ChartBar },
+  { key: "de-materials", to: `/${paths.commercial}/${paths.commercialMaterials}`, label: { en: "Materials", ar: "قائمة الأسعار" }, Icon: outlineIcons.Users },
+  { key: "de-suppliers", to: `/${paths.commercial}/${paths.commercialSuppliers}`, label: { en: "Suppliers", ar: "الموردون" }, Icon: outlineIcons.Users },
+  { key: "de-pricing", to: `/${paths.commercial}/${paths.commercialPricingConfig}`, label: { en: "Pricing Config", ar: "إعدادات التسعير" }, Icon: outlineIcons.Squares },
 ];
 
 export default function CommercialLayout() {
   const { translate } = useLanguage();
-  const { user } = useUser();
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  return (
-    <div className="flex min-h-full flex-col">
-      {/* Deep navy (#123B5D) - the ERP's own primary brand color - distinguishes the Commercial
-          shell from CRM's deep-green header while staying inside the shared palette (no new
-          font/color introduced). */}
-      <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-white sm:px-6" style={{ backgroundColor: "#123B5D" }}>
-        {/* Wraps on phones; the nav scrolls inside itself so the page never overflows sideways. */}
-        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-4 gap-y-2">
-          <Link to={`/${paths.portal}`} className="flex items-center gap-2 font-semibold tracking-tight">
-            <solidIcons.ArrowLeft style={{ transform: `rotateY(${translate("0", "180deg")})` }} />
-            <img src={logo} alt="" aria-hidden className="h-9 w-9 rounded bg-white object-contain p-0.5" />
-            <span>{translate("Reservia Deal Engine", "رزيرفيا - محرك الصفقات")}</span>
-          </Link>
-          <nav className="flex max-w-full items-center gap-1 overflow-x-auto">
-            {NAV_ITEMS.map((item) => {
-              const active = location.pathname.startsWith(item.to);
-              return (
-                <Button
-                  key={item.to}
-                  onClick={() => navigate(item.to)}
-                  variant={active ? "white" : "subtle"}
-                  color={active ? "dark" : "gray.0"}
-                  size="sm"
-                  leftSection={<item.Icon />}
-                >
-                  {translate(item.label.en, item.label.ar)}
-                </Button>
-              );
-            })}
-          </nav>
-        </div>
-        <span className="text-sm opacity-90">{user?.name}</span>
-      </header>
-      <main className="min-w-0 flex-1 bg-gray-50 p-4 sm:p-6">
-        <Outlet />
-      </main>
-    </div>
+  const { systems } = useSystemAccess();
+  const role = systems?.COMMERCIAL?.role || "";
+  const sections: NavSection[] = useMemo(
+    () => [{ key: "deal-engine", title: translate("Deal Engine", "محرك الصفقات"), items: NAV_ITEMS.map((i) => ({ key: i.key, to: i.to, label: translate(i.label.en, i.label.ar), Icon: i.Icon })) }],
+    [translate]
   );
+  return <AppShell sections={sections} subtitle={translate("Deal Engine", "محرك الصفقات")} scope="deal-engine" roleLabel={systemRoleLabel("COMMERCIAL", role, translate)} navTestId="deal-engine-nav" />;
 }

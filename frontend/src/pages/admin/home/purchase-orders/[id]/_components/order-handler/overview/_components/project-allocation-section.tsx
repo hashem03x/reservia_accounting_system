@@ -84,7 +84,7 @@ export default function ProjectAllocationSection() {
       ) : (
         data && (
           <>
-            <div className="overflow-x-auto rounded-md border dark:border-gray-700">
+            <div className="overflow-x-auto rounded-md border dark:border-line">
               <Table className="text-nowrap text-sm" withColumnBorders verticalSpacing="xs">
                 <Table.Thead>
                   <Table.Tr>
@@ -121,7 +121,7 @@ export default function ProjectAllocationSection() {
                 </Table.Tbody>
               </Table>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-gray-500 dark:text-ink-muted">
               {translate(
                 "An order is received into stock when it is created; its received stock lines then move to the order's project (the same movement its accounting already makes: inventory to PUC). Returns release the allocation first.",
                 "يُستلم الأمر في المخزون عند إنشائه؛ ثم تنتقل أصنافه المخزنية المستلمة إلى مشروع الأمر (نفس حركة قيوده: من المخزون إلى مشروعات تحت التنفيذ). المرتجعات تحرر التخصيص أولاً.",

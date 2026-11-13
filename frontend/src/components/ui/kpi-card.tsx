@@ -20,7 +20,7 @@ export default function KpiCard({
 }) {
   if (loading) {
     return (
-      <div className="flex min-h-[104px] min-w-0 flex-col gap-2 rounded-lg border border-gray-100 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex min-h-[104px] min-w-0 flex-col gap-2 rounded-lg border border-gray-100 bg-white p-4 dark:border-line dark:bg-surface">
         <Skeleton height={12} width="60%" />
         <Skeleton height={22} width="80%" />
         <Skeleton height={10} width="40%" />
@@ -36,10 +36,10 @@ export default function KpiCard({
     // itself to grow past its intended width instead of wrapping/shrinking - the actual cause of
     // the KPI value overflowing its card. `min-h-[104px]` keeps every card in a row the same
     // height even when one card's description wraps to two lines (docs section "Card Height").
-    <div className="flex min-h-[104px] min-w-0 flex-col gap-1 rounded-lg border border-gray-100 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+    <div className="flex min-h-[104px] min-w-0 flex-col gap-1 rounded-lg border border-gray-100 bg-white p-4 dark:border-line dark:bg-surface">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</span>
-        {icon && <span className="shrink-0 text-gray-400 dark:text-gray-500">{icon}</span>}
+        <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-ink-muted">{label}</span>
+        {icon && <span className="shrink-0 text-gray-400 dark:text-ink-muted">{icon}</span>}
       </div>
       {/* `break-words` is the safety net for an exceptionally long value on an exceptionally
           narrow card (e.g. "EGP 10,000,000,000.00" on a mobile single-column layout) - normally
@@ -47,8 +47,8 @@ export default function KpiCard({
           force horizontal overflow even in that edge case, rather than being clipped or spilling
           out. `text-lg sm:text-xl` is the one responsive-typography step requested - a modest,
           still-prominent reduction, never shrunk down to an unreadable size. */}
-      <span className="min-w-0 break-words text-lg font-semibold text-gray-800 dark:text-gray-100 sm:text-xl">{value}</span>
-      {subValue != null && <span className="text-xs text-gray-500 dark:text-gray-400">{subValue}</span>}
+      <span className="min-w-0 break-words text-lg font-semibold text-gray-800 dark:text-ink sm:text-xl">{value}</span>
+      {subValue != null && <span className="text-xs text-gray-500 dark:text-ink-muted">{subValue}</span>}
     </div>
   );
 }

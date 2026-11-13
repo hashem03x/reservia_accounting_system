@@ -149,7 +149,7 @@ export default function TourOverlay({
         aria-labelledby="tour-title"
         aria-describedby="tour-body"
         tabIndex={-1}
-        className="pointer-events-auto absolute rounded-xl border border-gray-200 bg-white p-4 text-gray-800 shadow-2xl outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+        className="pointer-events-auto absolute rounded-xl border border-gray-200 bg-white p-4 text-gray-800 shadow-2xl outline-none dark:border-line dark:bg-surface dark:text-ink"
         style={{ ...cardStyle, width }}
       >
         <div className="flex items-start justify-between gap-2">
@@ -158,14 +158,14 @@ export default function TourOverlay({
           </h3>
           <CloseButton size="sm" onClick={onClose} aria-label={translate("Close the tour", "إغلاق الجولة")} />
         </div>
-        <p id="tour-body" className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300" aria-live="polite">
+        <p id="tour-body" className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-ink-secondary" aria-live="polite">
           {t(step.body)}
         </p>
         {searching && (
           <p className="mt-2 text-xs text-gray-400">{translate("Loading this page...", "جاري تحميل الصفحة...")}</p>
         )}
         <div className="mt-4 flex items-center justify-between gap-2">
-          <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400">
+          <span className="text-xs tabular-nums text-gray-500 dark:text-ink-muted">
             {translate(`Step ${index + 1} of ${total}`, `الخطوة ${index + 1} من ${total}`)}
           </span>
           <div className="flex gap-1.5">

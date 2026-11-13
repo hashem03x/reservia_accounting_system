@@ -51,18 +51,18 @@ export default function CashPositionSection({
         <div className="flex flex-col gap-2">
           {summary.cash.accounts.map((account) => (
             <div key={account._id} className="flex items-center justify-between gap-2 text-sm">
-              <span className="truncate text-gray-600 dark:text-gray-300">
+              <span className="truncate text-gray-600 dark:text-ink-secondary">
                 {account.code} - {account.name}
               </span>
-              <span className="shrink-0 font-medium tabular-nums text-gray-800 dark:text-gray-100">
+              <span className="shrink-0 font-medium tabular-nums text-gray-800 dark:text-ink">
                 {formatCurrency(account.balance, language)}
               </span>
             </div>
           ))}
-          <hr className="border-gray-100 dark:border-gray-700" />
+          <hr className="border-gray-100 dark:border-line" />
           <div className="flex items-center justify-between gap-2 text-sm font-semibold">
-            <span className="text-gray-800 dark:text-gray-100">{translate("Total", "الإجمالي")}</span>
-            <span className="tabular-nums text-gray-800 dark:text-gray-100">
+            <span className="text-gray-800 dark:text-ink">{translate("Total", "الإجمالي")}</span>
+            <span className="tabular-nums text-gray-800 dark:text-ink">
               {formatCurrency(summary.cash.total, language)}
             </span>
           </div>

@@ -1,9 +1,11 @@
 import { useCallback, useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useLanguage } from "@/context/LanguageContext";
-import { useUser } from "@/context/UserContext";
 import paths from "@/utils/constants/paths";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
+import AppShell, { NavSection } from "@/components/global/app-shell";
+import { outlineIcons } from "@/components/icons";
+import { systemRoleLabel } from "@/utils/constants/system-roles";
 import "./hr.css";
 import { HrProvider, HrRole, useHr } from "./hr-context";
 import { ModalCtx, ModalSpec } from "./ui";
@@ -12,34 +14,45 @@ import { Attendance, ExpenseModal, Expenses, Leave, Timesheets, VisitModal, Visi
 import { Erp, PayDrawer, Payroll, Reports } from "./views-pay";
 import { Approvals, FormModal, Forms, PerfModal, Performance, Policy, Settings, Training, TrainingModal } from "./views-admin";
 
-// Reservia HR Portal (HR Portal Developer Spec, 11 Nov 2026) - the reference prototype's layout: a left
-// rail with grouped sections, one work area, drawers and modals on top. Inside the portal: the same
-// login, the HR system membership and its role decide what is shown; the API enforces the same rules.
+// Reservia HR Portal (HR Portal Developer Spec, 11 Nov 2026). The shared app shell (the ERP's sidebar,
+// phone header and drawer) with the prototype's grouped sections; the screens keep the prototype's
+// layouts, drawn with the platform design system (hr.css). The HR membership's role decides what is
+// shown; the API enforces the same rules.
 
-type View = { k: string; en: string; ar: string; g: [string, string]; roles: HrRole[] };
+type View = { k: string; en: string; ar: string; g: string; roles: HrRole[]; Icon: (typeof outlineIcons)[keyof typeof outlineIcons] };
 const ALL: HrRole[] = ["md", "hr", "manager", "finance"];
 const ED: HrRole[] = ["md", "hr"];
+const TIME: HrRole[] = ["md", "hr", "manager"];
+const PAY: HrRole[] = ["md", "hr", "finance"];
+const GROUPS: Record<string, [string, string]> = {
+  home: ["Home", "الرئيسية"],
+  people: ["People", "الأفراد"],
+  time: ["Time and travel", "الوقت والسفر"],
+  talent: ["Talent", "المواهب"],
+  pay: ["Pay", "الأجور"],
+  admin: ["Admin", "الإدارة"],
+};
 const VIEWS: View[] = [
-  { k: "home", en: "Overview", ar: "نظرة عامة", g: ["Home", "الرئيسية"], roles: ALL },
-  { k: "appr", en: "Approvals", ar: "الموافقات", g: ["Home", "الرئيسية"], roles: ALL },
-  { k: "people", en: "People", ar: "الموظفون", g: ["People", "الأفراد"], roles: ALL },
-  { k: "org", en: "Org chart", ar: "الهيكل التنظيمي", g: ["People", "الأفراد"], roles: ALL },
-  { k: "docs", en: "Documents", ar: "المستندات", g: ["People", "الأفراد"], roles: ED },
-  { k: "hire", en: "Hiring", ar: "التوظيف", g: ["People", "الأفراد"], roles: ED },
-  { k: "assets", en: "Assets", ar: "العهد", g: ["People", "الأفراد"], roles: ED },
-  { k: "att", en: "Attendance", ar: "الحضور", g: ["Time and travel", "الوقت والسفر"], roles: ["md", "hr", "manager"] },
-  { k: "ts", en: "Timesheets", ar: "سجلات الدوام", g: ["Time and travel", "الوقت والسفر"], roles: ["md", "hr", "manager"] },
-  { k: "leave", en: "Leave balances", ar: "أرصدة الإجازات", g: ["Time and travel", "الوقت والسفر"], roles: ["md", "hr", "manager"] },
-  { k: "visit", en: "Site visits", ar: "الزيارات الميدانية", g: ["Time and travel", "الوقت والسفر"], roles: ["md", "hr", "manager"] },
-  { k: "exp", en: "Expenses", ar: "المصروفات", g: ["Time and travel", "الوقت والسفر"], roles: ["md", "hr", "manager"] },
-  { k: "train", en: "Training", ar: "التدريب", g: ["Talent", "المواهب"], roles: ED },
-  { k: "perf", en: "Performance", ar: "الأداء", g: ["Talent", "المواهب"], roles: ED },
-  { k: "pay", en: "Payroll", ar: "الرواتب", g: ["Pay", "الأجور"], roles: ["md", "hr", "finance"] },
-  { k: "erp", en: "ERP link", ar: "الربط مع ERP", g: ["Pay", "الأجور"], roles: ["md", "hr", "finance"] },
-  { k: "reports", en: "Reports", ar: "التقارير", g: ["Pay", "الأجور"], roles: ["md", "hr", "finance"] },
-  { k: "forms", en: "Forms", ar: "النماذج", g: ["Admin", "الإدارة"], roles: ["md", "hr", "manager"] },
-  { k: "policy", en: "Policy", ar: "السياسة", g: ["Admin", "الإدارة"], roles: ALL },
-  { k: "set", en: "Settings", ar: "الإعدادات", g: ["Admin", "الإدارة"], roles: ED },
+  { k: "home", en: "Overview", ar: "نظرة عامة", g: "home", roles: ALL, Icon: outlineIcons.Home },
+  { k: "appr", en: "Approvals", ar: "الموافقات", g: "home", roles: ALL, Icon: outlineIcons.ShieldCheck },
+  { k: "people", en: "People", ar: "الموظفون", g: "people", roles: ALL, Icon: outlineIcons.Users },
+  { k: "org", en: "Org chart", ar: "الهيكل التنظيمي", g: "people", roles: ALL, Icon: outlineIcons.Compass },
+  { k: "docs", en: "Documents", ar: "المستندات", g: "people", roles: ED, Icon: outlineIcons.Document },
+  { k: "hire", en: "Hiring", ar: "التوظيف", g: "people", roles: ED, Icon: outlineIcons.UserCircle },
+  { k: "assets", en: "Assets", ar: "العهد", g: "people", roles: ED, Icon: outlineIcons.Computer },
+  { k: "att", en: "Attendance", ar: "الحضور", g: "time", roles: TIME, Icon: outlineIcons.Clock },
+  { k: "ts", en: "Timesheets", ar: "سجلات الدوام", g: "time", roles: TIME, Icon: outlineIcons.Document },
+  { k: "leave", en: "Leave balances", ar: "أرصدة الإجازات", g: "time", roles: TIME, Icon: outlineIcons.Clock },
+  { k: "visit", en: "Site visits", ar: "الزيارات الميدانية", g: "time", roles: TIME, Icon: outlineIcons.Compass },
+  { k: "exp", en: "Expenses", ar: "المصروفات", g: "time", roles: TIME, Icon: outlineIcons.Transaction },
+  { k: "train", en: "Training", ar: "التدريب", g: "talent", roles: ED, Icon: outlineIcons.ShieldCheck },
+  { k: "perf", en: "Performance", ar: "الأداء", g: "talent", roles: ED, Icon: outlineIcons.ChartBar },
+  { k: "pay", en: "Payroll", ar: "الرواتب", g: "pay", roles: PAY, Icon: outlineIcons.DollarSign },
+  { k: "erp", en: "ERP link", ar: "الربط مع ERP", g: "pay", roles: PAY, Icon: outlineIcons.Globe },
+  { k: "reports", en: "Reports", ar: "التقارير", g: "pay", roles: PAY, Icon: outlineIcons.ChartBar },
+  { k: "forms", en: "Forms", ar: "النماذج", g: "admin", roles: TIME, Icon: outlineIcons.Edit },
+  { k: "policy", en: "Policy", ar: "السياسة", g: "admin", roles: ALL, Icon: outlineIcons.Document },
+  { k: "set", en: "Settings", ar: "الإعدادات", g: "admin", roles: ED, Icon: outlineIcons.Admin },
 ];
 
 export default function HrPortal() {
@@ -51,16 +64,15 @@ export default function HrPortal() {
 }
 
 function HrShell() {
-  const { state, error, loading, toastText } = useHr();
+  const { state, error, loading } = useHr();
   const { translate } = useLanguage();
-  const { user } = useUser();
   const navigate = useNavigate();
   const params = useParams();
   const [search] = useSearchParams();
   const [modal, setModal] = useState<ModalSpec>(null);
   const role = state?.role;
-  const views = useMemo(() => VIEWS.filter((v) => !role || v.roles.includes(role)), [role]);
-  const view = views.some((v) => v.k === params.view) ? (params.view as string) : "home";
+  const visible = useMemo(() => VIEWS.filter((v) => !role || v.roles.includes(role)), [role]);
+  const view = visible.some((v) => v.k === params.view) ? (params.view as string) : "home";
   const current = VIEWS.find((v) => v.k === view);
   useDocumentTitle(`HR - ${current?.en || "Overview"}`);
   const pend = usePendingCount();
@@ -75,57 +87,42 @@ function HrShell() {
   );
   const ctx = useMemo(() => ({ modal, open: setModal, close: () => setModal(null), go }), [modal, go]);
 
-  let lastG = "";
+  const people = state?.employees.filter((e) => e.status !== "Left").length;
+  const hiring = state?.candidates.filter((c) => c.stage !== "Hired" && c.stage !== "Rejected").length;
+  const sections: NavSection[] = useMemo(
+    () =>
+      Object.keys(GROUPS)
+        .map((g) => ({
+          key: `hr-${g}`,
+          title: translate(GROUPS[g][0], GROUPS[g][1]),
+          items: visible
+            .filter((v) => v.g === g)
+            .map((v) => ({
+              key: `hr-${v.k}`,
+              // Overview is the section root, so /hr and /hr/home both select it.
+              to: v.k === "home" ? `/${paths.hr}` : `/${paths.hr}/${v.k}`,
+              label: translate(v.en, v.ar),
+              Icon: v.Icon,
+              testId: `hr-nav-${v.k}`,
+              badge: v.k === "people" ? people : v.k === "hire" ? hiring : v.k === "appr" ? pend : undefined,
+            })),
+        }))
+        .filter((s) => s.items.length),
+    [visible, translate, people, hiring, pend]
+  );
+
   return (
     <ModalCtx.Provider value={ctx}>
-      <div className="hr-app" data-testid="hr-app">
-        <div className="app">
-          <aside className="rail">
-            <div className="brand">
-              <i></i>
-              <b>{translate("Reservia HR Portal", "بوابة الموارد البشرية")}</b>
-              <span>{translate("People, time, pay and approvals", "الأفراد والوقت والأجور والموافقات")}</span>
-            </div>
-            <div className="who">
-              <span className="lbl">{translate("Working as", "المستخدم")}</span>
-              <b>{user?.name}</b> {role && <span className="pill info">{({ md: "MD", hr: "HR officer", manager: "Line manager", finance: "Finance" } as Record<string, string>)[role]}</span>}
-            </div>
-            <nav className="nav" aria-label="Sections">
-              {views.map((v) => {
-                const g = v.g[0] !== lastG ? <h5 key={`g-${v.g[0]}`}>{translate(v.g[0], v.g[1])}</h5> : null;
-                lastG = v.g[0];
-                const n = v.k === "people" ? state?.employees.filter((e) => e.status !== "Left").length : v.k === "hire" ? state?.candidates.filter((c) => c.stage !== "Hired" && c.stage !== "Rejected").length : v.k === "appr" ? pend : undefined;
-                return (
-                  <span key={v.k} style={{ display: "contents" }}>
-                    {g}
-                    <button aria-current={v.k === view ? "page" : undefined} onClick={() => go(v.k)} data-testid={`hr-nav-${v.k}`}>
-                      <span>{translate(v.en, v.ar)}</span>
-                      {n !== undefined && <span className="n">{n}</span>}
-                    </button>
-                  </span>
-                );
-              })}
-            </nav>
-            <div className="xl">
-              <small>{translate("Team tools", "أدوات الفريق")}</small>
-              <Link to={`/${paths.portal}`}>{translate("Portal", "البوابة")}</Link>
-              <Link to={`/${paths.crm}`}>CRM</Link>
-              <Link to={`/${paths.admin}`}>ERP</Link>
-            </div>
-          </aside>
-          <main className="main">
+      <AppShell sections={sections} subtitle={translate("HR Portal", "بوابة الموارد البشرية")} scope="hr" roleLabel={systemRoleLabel("HR", role, translate)} navTestId="hr-nav">
+        <div className="hr-app" data-testid="hr-app">
+          <div className="main">
             {error && !state && <div className="banner">{error}</div>}
             {loading && !state && <div className="sub">{translate("Loading...", "جار التحميل...")}</div>}
             {state && <ViewBody view={view} emp={search.get("emp") || undefined} />}
-          </main>
-        </div>
-        {state && <ModalHost modal={modal} />}
-        {toastText && (
-          <div className="toast" role="status" data-testid="hr-toast">
-            {toastText}
           </div>
-        )}
-      </div>
+          {state && <ModalHost modal={modal} />}
+        </div>
+      </AppShell>
     </ModalCtx.Provider>
   );
 }

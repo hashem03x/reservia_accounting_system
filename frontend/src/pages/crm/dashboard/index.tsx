@@ -20,22 +20,24 @@ import { segmentLabel } from "../_shared/lead-display";
 import TargetsModal from "./_components/targets-modal";
 
 // Brand colors (acceptance report section 4).
-const GREEN = "#004F2F";
-const TEAL = "#00656A";
-const AMBER = "#EDA202";
+// Design-system colors (src/theme/tokens.json via CSS variables): section titles use the shared card
+// title color; good / warning figures the brand green and gold. Theme-aware in light and dark.
+const TITLE = "var(--rsv-text)";
+const GOOD = "var(--mantine-color-green-6)";
+const WARN = "var(--mantine-color-yellow-6)";
 
 function TargetTile({ label, actual, target, translate }: { label: string; actual: number; target: number | null; translate: (en: string, ar: string) => string }) {
   const pct = target && target > 0 ? Math.min(Math.round((actual / target) * 100), 100) : null;
   return (
     <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-gray-100 p-2.5">
       <span className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</span>
-      <span className="text-lg font-semibold" style={{ color: GREEN }}>
+      <span className="text-lg font-semibold" style={{ color: GOOD }}>
         {actual}
         {target != null && <span className="text-sm font-normal text-gray-400"> / {target}</span>}
       </span>
       {pct != null ? (
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
-          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: pct >= 100 ? GREEN : AMBER }} />
+          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: pct >= 100 ? GOOD : WARN }} />
         </div>
       ) : (
         <span className="text-xs text-gray-400">{translate("No target set", "لم يُحدد هدف")}</span>
@@ -177,7 +179,7 @@ export default function CrmDashboardPage() {
           <div className="flex flex-col gap-2 text-sm">
             {/* Targets */}
             <section>
-              <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
+              <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TITLE }}>
                 {translate("Targets", "الأهداف")}
               </h3>
               {!data.targets.targetSet && (
@@ -195,7 +197,7 @@ export default function CrmDashboardPage() {
                 <TargetTile label={translate("Signed", "موقّع")} actual={data.targets.signed.actual} target={data.targets.signed.target} translate={translate} />
                 <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-gray-100 p-2.5">
                   <span className="text-xs font-medium uppercase tracking-wide text-gray-500">{translate("Value target", "هدف القيمة")}</span>
-                  <span className="text-lg font-semibold" style={{ color: GREEN }}>
+                  <span className="text-lg font-semibold" style={{ color: GOOD }}>
                     {data.targets.valueEgp.target != null ? formatAmount(data.targets.valueEgp.target, translations.currency) : "-"}
                   </span>
                 </div>
@@ -207,7 +209,7 @@ export default function CrmDashboardPage() {
                   are two separate, labelled figures, and the probability behind every weighted
                   row is printed beside it (straight from the API - never a frontend copy). */}
               <section className="rounded-lg border border-gray-100 p-2.5">
-                <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
+                <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TITLE }}>
                   {translate("Pipeline by stage", "المسار حسب المرحلة")}
                 </h3>
                 <div className="mb-2 grid grid-cols-2 gap-2">
@@ -222,6 +224,7 @@ export default function CrmDashboardPage() {
                     hint={translate("Each open lead's value x the probability of its stage (table below).", "قيمة كل عميل مفتوح × احتمال مرحلته (الجدول أدناه).")}
                   />
                 </div>
+                <Table.ScrollContainer minWidth={380}>
                 <Table verticalSpacing={2} fz="xs">
                   <Table.Thead>
                     <Table.Tr>
@@ -244,6 +247,7 @@ export default function CrmDashboardPage() {
                     ))}
                   </Table.Tbody>
                 </Table>
+                </Table.ScrollContainer>
                 {data.pipeline.unconfiguredStages?.length > 0 && (
                   <p className="mt-1 text-xs text-red-600">
                     {translate("Some stages have no configured probability and are left out of the weighted value.", "بعض المراحل ليس لها احتمال محدد ولم تُحتسب في القيمة المرجحة.")}
@@ -253,7 +257,7 @@ export default function CrmDashboardPage() {
 
               {/* Speed - Change Request 2, item 3: every first-reply figure says what it counts. */}
               <section className="rounded-lg border border-gray-100 p-2.5">
-                <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
+                <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TITLE }}>
                   {translate("Speed", "السرعة")}
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
@@ -309,7 +313,7 @@ export default function CrmDashboardPage() {
 
               {/* Segment quality (Change Request 1, Feature 5C) */}
               <section className="rounded-lg border border-gray-100 p-2.5">
-                <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
+                <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TITLE }}>
                   {translate("Segment quality", "جودة القطاع")}
                 </h3>
                 {/* Change Request 2, item 5: overall marketing cost, with the spend basis stated. */}
@@ -330,6 +334,7 @@ export default function CrmDashboardPage() {
                     hint={costHint(data.segmentQuality.totals?.effectiveSpendEgp ?? null, data.segmentQuality.totals?.qualified ?? 0, translate)}
                   />
                 </div>
+                <Table.ScrollContainer minWidth={380}>
                 <Table verticalSpacing={2} fz="xs">
                   <Table.Thead>
                     <Table.Tr>
@@ -356,6 +361,7 @@ export default function CrmDashboardPage() {
                     ))}
                   </Table.Tbody>
                 </Table>
+                </Table.ScrollContainer>
               </section>
             </div>
 
@@ -366,7 +372,7 @@ export default function CrmDashboardPage() {
             {data.team && (
               <section className="rounded-lg border border-gray-100 p-2.5">
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold" style={{ color: TEAL }}>
+                  <h3 className="text-sm font-semibold" style={{ color: TITLE }}>
                     {translate("Whole-CRM totals (for comparison)", "إجماليات النظام بالكامل (للمقارنة)")}
                   </h3>
                   <div className="flex flex-wrap gap-1">
@@ -403,7 +409,7 @@ export default function CrmDashboardPage() {
             <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
               {/* Won and lost */}
               <section className="rounded-lg border border-gray-100 p-2.5">
-                <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TEAL }}>
+                <h3 className="mb-1.5 text-sm font-semibold" style={{ color: TITLE }}>
                   {translate("Won and lost", "المربوح والخاسر")}
                 </h3>
                 <div className="mb-2 grid grid-cols-3 gap-2">
@@ -425,7 +431,7 @@ export default function CrmDashboardPage() {
               {/* This week */}
               <section className="rounded-lg border border-gray-100 p-2.5">
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold" style={{ color: TEAL }}>
+                  <h3 className="text-sm font-semibold" style={{ color: TITLE }}>
                     {translate("This week", "هذا الأسبوع")}
                   </h3>
                   <div className="flex gap-3 text-xs text-gray-500">

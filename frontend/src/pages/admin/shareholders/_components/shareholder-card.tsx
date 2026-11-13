@@ -38,14 +38,14 @@ export default function ShareholderCard({ shareholder, onChanged }: { shareholde
   const contributions = [...shareholder.contributions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+    <div className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-white p-4 dark:border-line dark:bg-surface">
       <button type="button" onClick={() => setExpanded((v) => !v)} className="flex w-full flex-wrap items-center justify-between gap-3 text-left">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-200">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-600 dark:bg-surface-muted dark:text-ink">
             {shareholder.shareholderNumber}
           </span>
           <div className="flex min-w-0 flex-col">
-            <span className="truncate font-medium text-gray-800 dark:text-gray-100">{shareholder.name}</span>
+            <span className="truncate font-medium text-gray-800 dark:text-ink">{shareholder.name}</span>
             {shareholder.nameAr && (
               <span className="truncate text-xs text-gray-400" dir="rtl">
                 {shareholder.nameAr}
@@ -59,11 +59,11 @@ export default function ShareholderCard({ shareholder, onChanged }: { shareholde
         <div className="flex items-center gap-4">
           <div className="hidden flex-col items-end sm:flex">
             <span className="text-xs text-gray-400">{translate("Ownership", "الملكية")}</span>
-            <span className="font-semibold tabular-nums text-gray-700 dark:text-gray-200">{shareholder.ownershipPercentage}%</span>
+            <span className="font-semibold tabular-nums text-gray-700 dark:text-ink">{shareholder.ownershipPercentage}%</span>
           </div>
           <div className="hidden flex-col items-end md:flex">
             <span className="text-xs text-gray-400">{translate("Remaining unpaid", "المتبقي")}</span>
-            <span className="font-semibold tabular-nums text-gray-700 dark:text-gray-200">{hasAllocation ? money(shareholder.remainingUnpaid) : "-"}</span>
+            <span className="font-semibold tabular-nums text-gray-700 dark:text-ink">{hasAllocation ? money(shareholder.remainingUnpaid) : "-"}</span>
           </div>
           <solidIcons.AngleDown style={{ transform: expanded ? "rotate(180deg)" : undefined, transition: "transform 150ms" }} />
         </div>
@@ -71,7 +71,7 @@ export default function ShareholderCard({ shareholder, onChanged }: { shareholde
 
       {hasAllocation && (
         <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-ink-muted">
             <span>
               {money(shareholder.shareCapital)} / {money(shareholder.allocatedCapital)}
             </span>
@@ -82,7 +82,7 @@ export default function ShareholderCard({ shareholder, onChanged }: { shareholde
       )}
 
       {expanded && (
-        <div className="flex flex-col gap-4 border-t border-gray-50 pt-3 dark:border-gray-700">
+        <div className="flex flex-col gap-4 border-t border-gray-50 pt-3 dark:border-line">
           <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
             <InfoRow label={translate("Address", "العنوان")} value={shareholder.address || "-"} />
             <InfoRow label={translate("National ID", "الرقم القومي")} value={shareholder.nationalId || "-"} />
@@ -93,7 +93,7 @@ export default function ShareholderCard({ shareholder, onChanged }: { shareholde
           </div>
 
           <div className="flex items-center justify-between">
-            <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{translate("Payments", "المدفوعات")}</h5>
+            <h5 className="text-sm font-semibold text-gray-700 dark:text-ink">{translate("Payments", "المدفوعات")}</h5>
             <div className="flex gap-2">
               {canUpdate && (
                 <Button variant="subtle" size="xs" onClick={openEdit} data-no-row-click>
@@ -114,9 +114,9 @@ export default function ShareholderCard({ shareholder, onChanged }: { shareholde
           {contributions.length === 0 ? (
             <p className="text-sm text-gray-400">{translate("No payments recorded yet.", "لم يتم تسجيل أي مدفوعات بعد.")}</p>
           ) : (
-            <div className="overflow-x-auto rounded-md border border-gray-100 dark:border-gray-700">
+            <div className="overflow-x-auto rounded-md border border-gray-100 dark:border-line">
               <Table striped withColumnBorders className="text-sm">
-                <Table.Thead className="bg-gray-50 dark:bg-gray-900">
+                <Table.Thead className="bg-gray-50 dark:bg-page">
                   <Table.Tr>
                     <Table.Th>{translate("Date", "التاريخ")}</Table.Th>
                     <Table.Th>{translate("Amount", "المبلغ")}</Table.Th>
@@ -156,9 +156,9 @@ export default function ShareholderCard({ shareholder, onChanged }: { shareholde
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-gray-50 py-1 last:border-0 dark:border-gray-700/60">
-      <span className="text-gray-500 dark:text-gray-400">{label}</span>
-      <span className="font-medium text-gray-700 dark:text-gray-200">{value}</span>
+    <div className="flex items-center justify-between gap-2 border-b border-gray-50 py-1 last:border-0 dark:border-line">
+      <span className="text-gray-500 dark:text-ink-muted">{label}</span>
+      <span className="font-medium text-gray-700 dark:text-ink">{value}</span>
     </div>
   );
 }

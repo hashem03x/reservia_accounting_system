@@ -131,7 +131,7 @@ export default function User() {
                 <p className="text-center">
                   {translate("Member since", "عضو منذ")} {formatDate(user.createdAt, language)}
                 </p>
-                <p className="max-w-xs rounded-xl bg-[#f5e5d5] p-3 px-6 text-center">
+                <p className="max-w-xs rounded-lg bg-[var(--mantine-color-accent-light)] p-3 px-6 text-center">
                   {isAdmin(user.role)
                     ? translate(
                         "Admins have unrestricted access to all resources and can perform any action.",

@@ -40,22 +40,23 @@ export default function Portal() {
   const noAccessAtAll = !loading && access && Object.values(access).every(s => !s.hasMembership);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-[#0d1117]">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-white px-4 py-3 dark:border-white/10 dark:bg-[#161b22] sm:px-6">
+    <div className="min-h-screen bg-page">
+      {/* Same brand block, surface, border and 64px height as the shared app shell header. */}
+      <header className="flex min-h-header flex-wrap items-center justify-between gap-3 border-b border-line bg-surface px-4 py-2 sm:px-6">
         <div className="flex items-center gap-3">
-          <Img width="36px" height="36px" src={logo || ""} alt={translations.appName} className="rounded" />
+          <Img src={logo || ""} alt={translations.appName} className="h-9 w-9 shrink-0 rounded-md bg-white" />
           <div className="leading-tight">
-            <h1 className="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">
+            <h1 className="text-base font-bold text-brand sm:text-lg">
               {translate("Central Business Portal", "البوابة المركزية للأعمال")}
             </h1>
-            <p className="text-xs text-gray-400">Reservia Integrated Energy Solutions</p>
+            <p className="text-[11.5px] text-ink-muted">Reservia Integrated Energy Solutions</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           {user?.platformAdmin && (
             <Link to={`/${paths.portal}/${paths.platformAdmin}/${paths.users}`}>
-              <Button variant="light" color="grape" size="xs" leftSection={<outlineIcons.ShieldCheck size={16} />}>
+              <Button variant="light" size="xs" leftSection={<outlineIcons.ShieldCheck size={16} />}>
                 {translate("User Management", "إدارة المستخدمين")}
               </Button>
             </Link>
@@ -66,7 +67,7 @@ export default function Portal() {
               type="button"
               onClick={() => setColorScheme(NEXT_COLOR_SCHEME[colorScheme])}
               aria-label={themeLabel}
-              className="flex h-9 w-9 items-center justify-center rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-800 dark:text-gray-300 dark:hover:bg-white/5"
+              className="flex h-9 w-9 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-surface-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-primary-400"
             >
               {(() => {
                 const SchemeIcon = COLOR_SCHEME_ICON[colorScheme];
@@ -75,13 +76,13 @@ export default function Portal() {
             </button>
           </Tooltip>
 
-          <div className="flex items-center gap-2 border-s border-gray-100 ps-2 dark:border-white/10">
+          <div className="flex items-center gap-2 border-s border-line ps-2">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-600 text-[13px] font-semibold text-white">
               {user?.name?.trim().charAt(0).toLocaleUpperCase() || "?"}
             </span>
             <div className="leading-tight">
-              <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{user?.name}</p>
-              <p className="text-xs text-gray-400">{user ? getRoleLabel(user.role, language) : ""}</p>
+              <p className="text-[13px] font-medium text-ink">{user?.name}</p>
+              <p className="text-[11.5px] text-ink-muted">{user ? getRoleLabel(user.role, language) : ""}</p>
             </div>
           </div>
 
@@ -98,10 +99,10 @@ export default function Portal() {
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <div className="mb-8">
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+          <h2 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">
             {translate(`Welcome back, ${user?.name || ""}`, `مرحباً بعودتك، ${user?.name || ""}`)}
           </h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mt-1 text-sm text-ink-muted">
             {translate(
               "This portal is your entry point to Reservia's business systems. Select a system below to get started.",
               "هذه البوابة هي نقطة الدخول إلى أنظمة أعمال Reversia. اختر أحد الأنظمة أدناه للبدء.",
@@ -120,7 +121,7 @@ export default function Portal() {
         ) : (
           <>
             {noAccessAtAll && (
-              <div className="mb-6 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800 dark:border-yellow-900/40 dark:bg-yellow-900/10 dark:text-yellow-300">
+              <div className="mb-6 rounded-lg bg-[var(--mantine-color-yellow-light)] p-4 text-sm font-medium text-ink">
                 {translate(
                   "You don't have access to any business system yet. Contact your administrator to request access.",
                   "ليس لديك وصول إلى أي نظام أعمال حتى الآن. يرجى التواصل مع المسؤول لطلب الوصول.",
@@ -142,7 +143,7 @@ export default function Portal() {
             </div>
 
             {PUBLIC_WEBSITE_URL && (
-              <p className="mt-6 text-sm text-gray-500">
+              <p className="mt-6 text-sm text-ink-muted">
                 {translate("Looking for the public website? ", "تبحث عن الموقع العام؟ ")}
                 <a href={PUBLIC_WEBSITE_URL} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">
                   {translate("Visit the public site ↗", "زيارة الموقع العام ↗")}

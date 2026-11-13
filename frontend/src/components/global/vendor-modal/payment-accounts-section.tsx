@@ -38,7 +38,7 @@ export default function PaymentAccountsSection({ accounts, setAccounts }: { acco
       </p>
 
       {accounts.map((a, i) => (
-        <div key={a._id || `new-${i}`} className={`flex flex-col gap-2 rounded-lg border p-3 ${a.isActive ? "border-gray-200 dark:border-gray-700" : "border-dashed border-gray-300 opacity-70"}`}>
+        <div key={a._id || `new-${i}`} className={`flex flex-col gap-2 rounded-lg border p-3 ${a.isActive ? "border-gray-200 dark:border-line" : "border-dashed border-gray-300 opacity-70"}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Badge variant="light">{typeLabel[a.type]}</Badge>
@@ -100,10 +100,10 @@ export function PaymentAccountsView({ accounts }: { accounts: VendorPaymentAccou
     wallet: translate("Mobile wallet", "محفظة إلكترونية"),
   };
   return (
-    <section className="flex flex-col gap-2 rounded-md bg-gray-100 p-4 dark:bg-gray-800">
+    <section className="flex flex-col gap-2 rounded-md bg-gray-100 p-4 dark:bg-surface">
       <h4>{translate("Payment Accounts (SSI)", "حسابات الدفع (تعليمات التسوية)")}</h4>
       {accounts.map((a, i) => (
-        <div key={a._id || i} className={`flex flex-col gap-[2px] border-b border-gray-200 pb-2 last:border-0 dark:border-gray-700 ${a.isActive ? "" : "opacity-60"}`}>
+        <div key={a._id || i} className={`flex flex-col gap-[2px] border-b border-gray-200 pb-2 last:border-0 dark:border-line ${a.isActive ? "" : "opacity-60"}`}>
           <div className="flex flex-wrap items-center gap-2">
             <Badge size="sm" variant="light">
               {typeLabel[a.type]}

@@ -371,7 +371,7 @@ function BusinessHours({ rows, onChange }: { rows: BusinessHoursRow[]; onChange:
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-lg border border-gray-100 p-4">
-      <h3 className="mb-3 text-sm font-semibold text-[#0B3D91]">{title}</h3>
+      <h3 className="mb-3 text-sm font-semibold text-ink">{title}</h3>
       <div className="flex flex-col gap-3">{children}</div>
     </section>
   );

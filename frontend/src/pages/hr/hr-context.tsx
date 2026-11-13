@@ -1,4 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { notifications } from "@mantine/notifications";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
 import { useLanguage } from "@/context/LanguageContext";
 
@@ -65,7 +66,6 @@ type Ctx = {
   download: (url: string, filename?: string) => Promise<void>;
   openPdf: (url: string) => Promise<void>;
   toast: (t: string) => void;
-  toastText: string;
   wantHistory: (on: boolean) => void;
 };
 
@@ -92,15 +92,12 @@ export function HrProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [month, setMonthRaw] = useState(readMonth);
-  const [toastText, setToastText] = useState("");
   const [history, setHistory] = useState(false);
-  const timer = useRef<number>();
   const seq = useRef(0);
 
+  // Feedback uses the platform's notifications (Mantine), like every other dashboard.
   const toast = useCallback((t: string) => {
-    setToastText(t);
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setToastText(""), 2800);
+    notifications.show({ message: t, className: "hr-toast", autoClose: 3500, withBorder: true });
   }, []);
 
   const reload = useCallback(async () => {
@@ -174,7 +171,7 @@ export function HrProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <HrContext.Provider value={{ state, loading, error, month, setMonth, reload, call, download, openPdf, toast, toastText, wantHistory: setHistory }}>
+    <HrContext.Provider value={{ state, loading, error, month, setMonth, reload, call, download, openPdf, toast, wantHistory: setHistory }}>
       {children}
     </HrContext.Provider>
   );

@@ -368,7 +368,7 @@ function Panel({ title, children, side }: { title: string; children: ReactNode; 
   return (
     <section className="rounded-lg border border-gray-100 p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-[#0B3D91]">{title}</h3>
+        <h3 className="text-sm font-semibold text-ink">{title}</h3>
         {side}
       </div>
       {children}

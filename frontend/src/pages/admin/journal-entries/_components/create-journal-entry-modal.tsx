@@ -403,7 +403,7 @@ export default function CreateJournalEntryModal({
             return (
               <div
                 key={index}
-                className="grid grid-cols-1 items-end gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700 sm:grid-cols-6"
+                className="grid grid-cols-1 items-end gap-2 rounded-lg border border-gray-200 p-3 dark:border-line sm:grid-cols-6"
               >
                 <Select
                   label={translate("Account (GA)", "الحساب")}
@@ -490,7 +490,7 @@ export default function CreateJournalEntryModal({
           })}
         </div>
 
-        <div className="flex flex-wrap justify-end gap-6 rounded-lg bg-gray-50 p-3 text-sm dark:bg-gray-800">
+        <div className="flex flex-wrap justify-end gap-6 rounded-lg bg-gray-50 p-3 text-sm dark:bg-surface">
           <span>
             {translate("Total Debit", "إجمالي المدين")}: <b>{totalDebit.toLocaleString()}</b> {currencyCode}
           </span>

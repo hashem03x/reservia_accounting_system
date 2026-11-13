@@ -8,14 +8,14 @@ import { formatChange, formatMetric, trendOf } from "./format";
 /** A titled KPI panel: navy header, dense metric rows. `children` is used while loading. */
 export function KpiPanel({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+    <section className="overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm dark:border-line dark:bg-surface">
       <header className="flex items-center gap-2 bg-primary-600 px-4 py-2.5 text-white dark:bg-primary-800">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-white/10 text-[15px]" aria-hidden>
           {icon}
         </span>
         <h3 className="truncate text-sm font-semibold tracking-wide text-white">{title}</h3>
       </header>
-      <div className="divide-y divide-gray-100 dark:divide-gray-700">{children}</div>
+      <div className="divide-y divide-gray-100 dark:divide-line">{children}</div>
     </section>
   );
 }
@@ -32,7 +32,7 @@ export function MetricRowSkeleton() {
 const toneClass = {
   good: "text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-900/30",
   bad: "text-red-700 bg-red-50 dark:text-red-300 dark:bg-red-900/30",
-  neutral: "text-gray-600 bg-gray-100 dark:text-gray-300 dark:bg-gray-700",
+  neutral: "text-gray-600 bg-gray-100 dark:text-ink-secondary dark:bg-surface-muted",
 };
 
 /**
@@ -49,17 +49,17 @@ export function MetricRow({ metric, comparisonLabel }: { metric: DashboardMetric
   const negative = metric.value !== null && metric.value < 0 && (metric.unit === "money" || metric.unit === "percent");
 
   return (
-    <div className="px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40">
+    <div className="px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-surface-hover">
       <div className="flex items-center justify-between gap-3">
         <Tooltip label={t(metric.formula)} multiline w={280} withArrow events={{ hover: true, focus: true, touch: true }}>
-          <span tabIndex={0} className="min-w-0 cursor-help truncate text-sm text-gray-600 underline decoration-dotted decoration-gray-300 underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:text-gray-300 dark:decoration-gray-600">
+          <span tabIndex={0} className="min-w-0 cursor-help truncate text-sm text-gray-600 underline decoration-dotted decoration-gray-300 underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:text-ink-secondary dark:decoration-gray-600">
             {t(metric.label)}
           </span>
         </Tooltip>
         <div className="flex shrink-0 items-center gap-2">
-          <span className={`whitespace-nowrap text-base font-semibold tabular-nums ${metric.value === null ? "text-gray-400 dark:text-gray-500" : negative ? "text-red-600 dark:text-red-400" : "text-gray-800 dark:text-gray-100"}`}>
+          <span className={`whitespace-nowrap text-base font-semibold tabular-nums ${metric.value === null ? "text-gray-400 dark:text-ink-muted" : negative ? "text-red-600 dark:text-red-400" : "text-gray-800 dark:text-ink"}`}>
             {value.text}
-            {value.suffix && <span className="ms-0.5 text-xs font-medium text-gray-500 dark:text-gray-400">{value.suffix}</span>}
+            {value.suffix && <span className="ms-0.5 text-xs font-medium text-gray-500 dark:text-ink-muted">{value.suffix}</span>}
           </span>
           {trend && (
             <Tooltip label={`${comparisonLabel}: ${previous.text}${previous.suffix}`} withArrow events={{ hover: true, focus: true, touch: true }}>
@@ -71,7 +71,7 @@ export function MetricRow({ metric, comparisonLabel }: { metric: DashboardMetric
           )}
         </div>
       </div>
-      {metric.value === null && metric.reason && <p className="mt-1 text-xs leading-snug text-gray-500 dark:text-gray-400">{t(metric.reason)}</p>}
+      {metric.value === null && metric.reason && <p className="mt-1 text-xs leading-snug text-gray-500 dark:text-ink-muted">{t(metric.reason)}</p>}
     </div>
   );
 }

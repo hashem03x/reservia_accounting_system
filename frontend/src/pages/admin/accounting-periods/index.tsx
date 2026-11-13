@@ -136,7 +136,7 @@ export default function AccountingPeriods() {
                         {closed ? translate("Closed", "مغلقة") : translate("Open", "مفتوحة")}
                       </Badge>
                     </Table.Td>
-                    <Table.Td className="whitespace-nowrap text-xs text-gray-600 dark:text-gray-400">
+                    <Table.Td className="whitespace-nowrap text-xs text-gray-600 dark:text-ink-muted">
                       {last
                         ? `${last.action === "closed" ? translate("Closed", "أغلقت") : translate("Reopened", "أعيد فتحها")} · ${last.by?.name || "-"} · ${formatDateAndTime(last.at, language)}`
                         : "-"}

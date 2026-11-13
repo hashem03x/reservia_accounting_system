@@ -525,7 +525,7 @@ export default function WebsiteVisualEditor() {
         <Button size="xs" variant="subtle" onClick={exitEditor} data-testid="ve-exit">
           ← {translate("Exit editor", "خروج")}
         </Button>
-        <span className="font-semibold text-[#0B3D91]">{translate("Visual Editor", "المحرر المرئي")}</span>
+        <span className="font-semibold text-brand">{translate("Visual Editor", "المحرر المرئي")}</span>
         <Select size="xs" w={240} data={pageOptions} value={path} onChange={(v) => v && setPath(v)} allowDeselect={false} searchable data-testid="ve-page" comboboxProps={{ withinPortal: true, zIndex: 400 }} />
         <SegmentedControl size="xs" value={lang} onChange={(v) => setLang(v as Lang)} data={[{ value: "en", label: "EN" }, { value: "ar", label: "عربي" }]} data-testid="ve-lang" />
         <SegmentedControl

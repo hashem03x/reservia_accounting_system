@@ -154,7 +154,7 @@ export default function ProjectCostAdjustmentSection({ projectId }: { projectId:
           {preview.lines.length > 0 && !preview.pendingDraft && (
             <div className="flex flex-col gap-2">
               {!preview.completed ? (
-                <span className="text-sm text-gray-500 dark:text-gray-400">
+                <span className="text-sm text-gray-500 dark:text-ink-muted">
                   {translate(
                     "The adjustment is prepared once the project is completed.",
                     "تُعد التسوية عند اكتمال المشروع.",

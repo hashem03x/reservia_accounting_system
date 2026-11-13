@@ -68,7 +68,7 @@ export default function YearEndCloseSection({ onChanged }: { onChanged: () => vo
   }
 
   return (
-    <section className="mb-6 rounded-lg border border-gray-200 p-4 dark:border-gray-700" data-testid="year-end-close">
+    <section className="mb-6 rounded-lg border border-gray-200 p-4 dark:border-line" data-testid="year-end-close">
       <h4 className="mb-1">{translate("Year-end close", "إقفال السنة المالية")}</h4>
       <p className="mb-3 text-xs text-gray-500">
         {translate(

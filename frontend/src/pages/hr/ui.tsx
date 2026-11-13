@@ -1,4 +1,7 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import { Button, Drawer as MDrawer } from "@mantine/core";
+import { useLanguage } from "@/context/LanguageContext";
+import SharedModal from "@/components/ui/modal";
 import { mAdd, mLabel, useHr } from "./hr-context";
 
 // Reservia HR Portal - small building blocks with the reference prototype's own class names (pill,
@@ -63,51 +66,48 @@ export function Panel({ title, small, children }: { title?: ReactNode; small?: R
   );
 }
 
-/** Right-hand drawer (prototype wrapDrawer). Escape or the scrim closes it. */
+/**
+ * Side drawer for records (prototype wrapDrawer) - Mantine's Drawer, like every other dashboard, with
+ * the shared modal's header treatment. Content sits in an .hr-app block because Mantine renders
+ * overlays outside the page (portal), and the HR layout rules are scoped to .hr-app.
+ */
 export function Drawer({ title, sub, onClose, children }: { title: string; sub?: ReactNode; onClose: () => void; children: ReactNode }) {
-  useEscape(onClose);
+  const { translate } = useLanguage();
   return (
-    <div className="scrim" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="drawer" role="dialog" aria-label={title}>
-        <div className="dh">
-          <h2>
-            {title}
-            {sub && <div className="sub">{sub}</div>}
-          </h2>
-          <button className="btn sm" onClick={onClose}>
-            Close
-          </button>
-        </div>
+    <MDrawer opened onClose={onClose} position={translate("right", "left") as "right" | "left"} size="lg" withCloseButton={false} padding={0}>
+      <div className="hr-app hr-dialog flex flex-col gap-4 p-5">
+        <DialogHeader title={title} sub={sub} onClose={onClose} />
         {children}
       </div>
-    </div>
+    </MDrawer>
   );
 }
 
-/** Centred modal (prototype wrapModal). */
+/** Centred dialog (prototype wrapModal) - the shared ERP modal (components/ui/modal). */
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  useEscape(onClose);
   return (
-    <div className="scrim center" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-label={title}>
-        <div className="dh">
-          <h2>{title}</h2>
-          <button className="btn sm" onClick={onClose}>
-            Close
-          </button>
-        </div>
+    <SharedModal opened onClose={onClose} size="lg">
+      <div className="hr-app hr-dialog flex flex-col gap-4">
+        <DialogHeader title={title} onClose={onClose} />
         {children}
       </div>
-    </div>
+    </SharedModal>
   );
 }
 
-function useEscape(fn: () => void) {
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => e.key === "Escape" && fn();
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [fn]);
+function DialogHeader({ title, sub, onClose }: { title: string; sub?: ReactNode; onClose: () => void }) {
+  const { translate } = useLanguage();
+  return (
+    <div className="flex items-start gap-3 border-b border-line pb-3">
+      <div className="min-w-0 flex-1">
+        <h3 className="text-lg font-bold text-ink">{title}</h3>
+        {sub && <div className="sub">{sub}</div>}
+      </div>
+      <Button variant="default" size="xs" onClick={onClose}>
+        {translate("Close", "إغلاق")}
+      </Button>
+    </div>
+  );
 }
 
 /* ---------- form fields: a single object of values, edited in place ---------- */

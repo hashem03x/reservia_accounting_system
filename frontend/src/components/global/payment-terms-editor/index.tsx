@@ -66,7 +66,7 @@ export default function PaymentTermsEditor({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+    <div className="flex flex-col gap-3 rounded-lg border border-gray-200 p-3 dark:border-line">
       <Select
         label={translate("Payment terms", "شروط السداد")}
         value={value?.mode ?? "none"}
@@ -114,7 +114,7 @@ export default function PaymentTermsEditor({
             {installments.map((row, i) => {
               const computed = schedule.rows[i];
               return (
-                <div key={i} className="grid grid-cols-1 items-end gap-2 rounded-md bg-gray-50 p-2 dark:bg-gray-800 sm:grid-cols-12">
+                <div key={i} className="grid grid-cols-1 items-end gap-2 rounded-md bg-gray-50 p-2 dark:bg-surface sm:grid-cols-12">
                   <TextInput
                     className="sm:col-span-4"
                     label={translate(`Installment ${i + 1} - description`, `القسط ${i + 1} - الوصف`)}
@@ -166,7 +166,7 @@ export default function PaymentTermsEditor({
                     required
                     disabled={disabled}
                   />
-                  <div className="text-xs text-gray-600 dark:text-gray-300 sm:col-span-2">
+                  <div className="text-xs text-gray-600 dark:text-ink-secondary sm:col-span-2">
                     <div>
                       {translate("Due", "الاستحقاق")}: {computed?.dueDate ? formatDate(computed.dueDate.toISOString(), language) : "-"}
                     </div>
@@ -237,7 +237,7 @@ export function PaymentScheduleView({ schedule, emptyText }: { schedule: Payment
           ))}
         </Table.Tbody>
       </Table>
-      <div className="flex flex-wrap gap-x-6 text-xs text-gray-600 tabular-nums dark:text-gray-300">
+      <div className="flex flex-wrap gap-x-6 text-xs text-gray-600 tabular-nums dark:text-ink-secondary">
         <span>
           {translate("Allocated", "المخصص")}: {money(schedule.allocatedAmount)} ({schedule.allocatedPercentage}%)
         </span>

@@ -68,7 +68,7 @@ export default function BrandsSection({ canCreate, canUpdate, canDelete }: { can
   const shown = brands.filter((b) => !kw || b.name.en.toLowerCase().includes(kw) || b.name.ar.includes(keyword.trim()));
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg bg-white p-4 shadow dark:bg-gray-900">
+    <section className="flex flex-col gap-3 rounded-lg bg-white p-4 shadow dark:bg-page">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2>{translate("Brands", "الماركات")}</h2>

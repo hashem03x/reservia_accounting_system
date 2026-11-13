@@ -1,28 +1,19 @@
 import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
 import { navIcons } from "@/components/icons";
-import Img from "@/components/ui/img";
-import logo from "@/assets/logo_no_bg.png";
+import ShellBrand from "../shell-brand";
+import { ShellProps } from "../shell-types";
 import MobileDrawer from "./components/mobile-drawer";
 
-/** The phone top bar: brand and the menu button that opens the navigation drawer. */
-export default function AdminHeader({ height }: { height: string }) {
-  const { translations, translate } = useLanguage();
+/** The phone top bar every dashboard uses: brand and the menu button that opens the navigation drawer. */
+export default function AdminHeader(props: ShellProps) {
+  const { translations } = useLanguage();
   const [opened, { open, close }] = useDisclosure(false);
 
   return (
-    <header
-      className="sticky top-0 z-40 flex w-full items-center justify-between border-b border-gray-100 bg-white px-4 dark:border-[#2a323c] dark:bg-[#161b22]"
-      style={{ height }}
-    >
+    <header className="sticky top-0 z-40 flex h-header w-full items-center justify-between border-b border-line bg-surface px-4">
       <span className="flex min-w-0 items-center gap-2.5">
-        <Img src={logo} alt={translations.appName} className="h-9 w-9 shrink-0 rounded-md bg-white" />
-        <span className="min-w-0 leading-tight">
-          <span className="block truncate text-[14px] font-bold text-primary-700 dark:text-white">
-            {translate("Reservia", "ريزيرفيا")}
-          </span>
-          <span className="block truncate text-[11.5px] text-gray-500">{translations.adminPanel}</span>
-        </span>
+        <ShellBrand subtitle={props.subtitle} />
       </span>
 
       <button
@@ -30,12 +21,12 @@ export default function AdminHeader({ height }: { height: string }) {
         onClick={open}
         aria-label={translations.nav.openMenu}
         aria-expanded={opened}
-        className="flex h-10 w-10 items-center justify-center rounded-md text-gray-600 outline-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-primary-400 dark:text-[#a8b3bd] dark:hover:bg-white/5"
+        className="flex h-10 w-10 items-center justify-center rounded-md text-ink-secondary outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-primary-400"
       >
         <navIcons.Menu size={22} aria-hidden />
       </button>
 
-      <MobileDrawer opened={opened} close={close} />
+      <MobileDrawer opened={opened} close={close} {...props} />
     </header>
   );
 }

@@ -118,9 +118,9 @@ export default function Analytics() {
     >
       <div className="flex flex-col gap-4">
         {/* Reporting period */}
-        <div className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-white p-3 dark:border-gray-700 dark:bg-gray-800 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-white p-3 dark:border-line dark:bg-surface lg:flex-row lg:items-end lg:justify-between">
           <div className="flex min-w-0 flex-col gap-1.5">
-            <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-ink-muted">
               <solidIcons.Calendar size={11} /> {translate("Reporting period", "فترة التقرير")}
             </span>
             <div className="max-w-full overflow-x-auto">
@@ -142,7 +142,7 @@ export default function Analytics() {
               </Button>
             </form>
           ) : (
-            <p className="text-xs text-gray-500 tabular-nums dark:text-gray-400">
+            <p className="text-xs text-gray-500 tabular-nums dark:text-ink-muted">
               {range.from} → {range.to}
               {data && (
                 <span className="ms-2">
@@ -183,7 +183,7 @@ export default function Analytics() {
             </div>
 
             {data && data.notes.length > 0 && (
-              <div className="flex flex-col gap-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+              <div className="flex flex-col gap-1 text-xs leading-relaxed text-gray-500 dark:text-ink-muted">
                 {data.notes.map((n, i) => (
                   <p key={i}>{isArabic ? n.ar : n.en}</p>
                 ))}

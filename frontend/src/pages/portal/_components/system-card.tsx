@@ -42,29 +42,29 @@ export default function SystemCard({ icon, name, description, entryRoute, access
   const content = (
     <>
       <div
-        className={`flex h-12 w-12 items-center justify-center rounded-xl ${
-          isLive ? "bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300" : "bg-gray-100 text-gray-400 dark:bg-white/5 dark:text-gray-500"
+        className={`flex h-12 w-12 items-center justify-center rounded-lg ${
+          isLive ? "bg-[var(--mantine-color-primary-light)] text-[var(--mantine-color-primary-light-color)]" : "bg-surface-muted text-ink-faint"
         }`}
       >
         <Icon size={24} aria-hidden />
       </div>
-      <h3 className={`mt-4 text-lg font-semibold ${isLive ? "text-gray-900 dark:text-white" : "text-gray-500 dark:text-gray-400"}`}>
+      <h3 className={`mt-4 text-lg font-semibold ${isLive ? "text-ink" : "text-ink-muted"}`}>
         {translate(name.en, name.ar)}
       </h3>
-      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{translate(description.en, description.ar)}</p>
+      <p className="mt-1 text-sm text-ink-muted">{translate(description.en, description.ar)}</p>
       <div className="mt-4">{statusBadge}</div>
       {!hasAccess && (
-        <p className="mt-2 text-xs text-gray-400">
+        <p className="mt-2 text-xs text-ink-faint">
           {translate("Contact your administrator to request access.", "يرجى التواصل مع المسؤول لطلب الوصول.")}
         </p>
       )}
     </>
   );
 
-  const cardClassName = `flex flex-col rounded-2xl border p-5 text-start shadow-sm transition-all duration-150 ${
+  const cardClassName = `flex flex-col rounded-lg border p-5 text-start shadow-card transition-all duration-150 ${
     isLive
-      ? "border-primary-200 bg-white hover:-translate-y-0.5 hover:shadow-md focus-visible:-translate-y-0.5 focus-visible:shadow-md dark:border-primary-800 dark:bg-[#161b22]"
-      : "cursor-not-allowed border-gray-100 bg-gray-50 opacity-80 dark:border-white/10 dark:bg-white/[0.02]"
+      ? "border-line bg-surface hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-raised focus-visible:-translate-y-0.5 focus-visible:shadow-raised"
+      : "cursor-not-allowed border-line bg-surface-subtle opacity-80"
   } outline-none focus-visible:ring-2 focus-visible:ring-primary-400`;
 
   if (isLive) {

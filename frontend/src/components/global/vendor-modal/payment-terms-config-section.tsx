@@ -162,7 +162,7 @@ export default function PaymentTermsConfigSection({
           </div>
 
           {installments.map((installment, index) => (
-            <div key={index} className="flex items-end gap-2 rounded-lg border border-gray-200 p-2 dark:border-gray-700">
+            <div key={index} className="flex items-end gap-2 rounded-lg border border-gray-200 p-2 dark:border-line">
               <NumberInput
                 value={installment.durationDays}
                 onChange={(v) => updateInstallment(index, { durationDays: Number(v) || 0 })}

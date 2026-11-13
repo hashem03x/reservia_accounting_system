@@ -16,7 +16,8 @@ import { LocalizedLabel } from "@/types/global";
 // read permission, `adminOnly` = the RoleGuard, neither = an unguarded route. Hiding an item is not
 // authorization - the routes and the API enforce access on their own.
 
-export type NavItem = { key: string; to: string; label: string; Icon: IconType };
+/** One destination. `badge` (a count) and `testId` are optional; every dashboard shares this shape. */
+export type NavItem = { key: string; to: string; label: string; Icon: IconType; badge?: number | string; testId?: string };
 export type NavSection = { key: string; title: string; items: NavItem[] };
 
 type ItemDef = {

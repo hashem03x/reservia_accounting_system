@@ -190,7 +190,7 @@ export default function WebsiteOverview() {
                 <ul className="flex flex-col gap-2 text-sm">
                   {data.needsAttention.map((n) => (
                     <li key={n.pageId}>
-                      <button type="button" className="font-medium text-[#0B3D91] hover:underline" onClick={() => navigate(`${pagesUrl}/${n.pageId}`)}>
+                      <button type="button" className="font-medium text-primary-600 hover:underline dark:text-primary-300" onClick={() => navigate(`${pagesUrl}/${n.pageId}`)}>
                         {n.slug}
                       </button>
                       <div className="text-xs text-gray-500">{n.problems.join("; ")}</div>

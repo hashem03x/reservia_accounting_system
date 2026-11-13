@@ -99,7 +99,7 @@ export default function Payment() {
         ) : (
           s && (
             <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <div className="rounded-md border p-3 dark:border-gray-700">
+              <div className="rounded-md border p-3 dark:border-line">
                 <div className="mb-2 flex items-center justify-between">
                   <h4>{translate("Financial Summary", "الملخص المالي")}</h4>
                   <Badge color={STATUS_COLORS[s.status]} variant="light" size="lg">
@@ -110,7 +110,7 @@ export default function Payment() {
                   {lines.map(([label, value, strong]) => (
                     <div
                       key={label}
-                      className={`flex justify-between gap-4 ${strong ? "border-t pt-1 font-semibold dark:border-gray-700" : "text-gray-600 dark:text-gray-300"}`}
+                      className={`flex justify-between gap-4 ${strong ? "border-t pt-1 font-semibold dark:border-line" : "text-gray-600 dark:text-ink-secondary"}`}
                     >
                       <dt>{label}</dt>
                       <dd className="tabular-nums">{value}</dd>
@@ -118,7 +118,7 @@ export default function Payment() {
                   ))}
                 </dl>
               </div>
-              <div className="flex flex-col gap-2 text-sm text-gray-600 dark:text-gray-300">
+              <div className="flex flex-col gap-2 text-sm text-gray-600 dark:text-ink-secondary">
                 <p>
                   {translate(
                     "Total paid counts the payments whose journal entry still stands (a reversed payment is listed but not counted), plus an Advanced Payment applied when the order was created, less refunds received on returns. Each payment belongs to this order only, so its full amount is allocated here; there are no unapplied payments.",
@@ -145,7 +145,7 @@ export default function Payment() {
           {!data || data.payments.length === 0 ? (
             <p>{translate("No payments have been made yet.", "لم يتم اصدار دفعات حتى الآن.")}</p>
           ) : (
-            <div className="overflow-x-auto rounded-md border dark:border-gray-700">
+            <div className="overflow-x-auto rounded-md border dark:border-line">
               <Table className="text-nowrap text-sm" withColumnBorders verticalSpacing="xs">
                 <Table.Thead>
                   <Table.Tr>

@@ -32,7 +32,7 @@ function FooterAction({
         onClick={onClick}
         aria-label={label}
         data-tour={dataTour}
-        className="flex h-9 w-9 items-center justify-center rounded-md text-gray-500 outline-none transition-colors duration-100 hover:bg-gray-50 hover:text-gray-800 focus-visible:ring-2 focus-visible:ring-primary-400 motion-reduce:transition-none dark:text-[#8b97a3] dark:hover:bg-white/5 dark:hover:text-white"
+        className="flex h-9 w-9 items-center justify-center rounded-md text-ink-muted outline-none transition-colors duration-100 hover:bg-surface-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-primary-400 motion-reduce:transition-none"
       >
         <Icon size={18} aria-hidden className={mirror ? translate("", "-scale-x-100") : ""} />
       </button>
@@ -40,8 +40,22 @@ function FooterAction({
   );
 }
 
-/** Signed-in user and the app preferences (tour, theme, language) plus Exit, pinned under the menu. */
-export default function SidebarFooter({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
+/**
+ * Signed-in user and the app preferences (tour, theme, language) plus Exit (back to the portal),
+ * pinned under the menu of every dashboard. `roleLabel` is the user's role in that system; the
+ * guided tour exists for the ERP only.
+ */
+export default function SidebarFooter({
+  collapsed = false,
+  onNavigate,
+  roleLabel,
+  showTour = false,
+}: {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+  roleLabel?: string;
+  showTour?: boolean;
+}) {
   const { translate, translations, toggleLanguage, language } = useLanguage();
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   const { user } = useUser();
@@ -56,15 +70,17 @@ export default function SidebarFooter({ collapsed = false, onNavigate }: { colla
 
   const actions = (
     <>
-      <FooterAction
-        Icon={navIcons.Tour}
-        label={nav.tour}
-        dataTour="make-a-tour"
-        onClick={() => {
-          onNavigate?.();
-          startTour();
-        }}
-      />
+      {showTour && (
+        <FooterAction
+          Icon={navIcons.Tour}
+          label={nav.tour}
+          dataTour="make-a-tour"
+          onClick={() => {
+            onNavigate?.();
+            startTour();
+          }}
+        />
+      )}
       <FooterAction
         Icon={COLOR_SCHEME_ICON[colorScheme]}
         label={themeLabel}
@@ -84,7 +100,7 @@ export default function SidebarFooter({ collapsed = false, onNavigate }: { colla
   );
 
   return (
-    <footer className="shrink-0 border-t border-gray-100 bg-white px-2 py-2 dark:border-[#2a323c] dark:bg-[#161b22]">
+    <footer className="shrink-0 border-t border-line bg-surface px-2 py-2">
       {!collapsed && user && (
         <div className="flex items-center gap-2.5 px-2 pb-2 pt-1">
           <span
@@ -94,8 +110,10 @@ export default function SidebarFooter({ collapsed = false, onNavigate }: { colla
             {user.name?.trim().charAt(0).toLocaleUpperCase() || "?"}
           </span>
           <span className="min-w-0 flex-1 leading-tight">
-            <span className="block truncate text-[13px] font-medium text-gray-800 dark:text-[#e6e9ec]">{user.name}</span>
-            <span className="block truncate text-[11.5px] text-gray-500">{getRoleLabel(user.role, language)}</span>
+            <span className="block truncate text-[13px] font-medium text-ink">{user.name}</span>
+            <span className="block truncate text-[11.5px] text-ink-muted" data-testid="shell-role">
+              {roleLabel || getRoleLabel(user.role, language)}
+            </span>
           </span>
         </div>
       )}

@@ -65,10 +65,10 @@ export default function QuickActionsSection() {
           <Link
             key={action.to + action.label}
             to={action.to}
-            className="flex flex-col items-center gap-2 rounded-lg border border-gray-100 px-3 py-4 text-center transition-colors hover:border-primary-200 hover:bg-primary-50 dark:border-gray-700 dark:hover:border-primary-700 dark:hover:bg-gray-700"
+            className="flex flex-col items-center gap-2 rounded-lg border border-gray-100 px-3 py-4 text-center transition-colors hover:border-primary-200 hover:bg-primary-50 dark:border-line dark:hover:border-primary-700 dark:hover:bg-surface-hover"
           >
             <action.icon size={20} className="text-primary-600 dark:text-primary-400" />
-            <span className="text-xs font-medium text-gray-700 dark:text-gray-200">{action.label}</span>
+            <span className="text-xs font-medium text-gray-700 dark:text-ink">{action.label}</span>
           </Link>
         ))}
       </div>

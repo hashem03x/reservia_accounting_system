@@ -197,7 +197,7 @@ export default function WebsiteCodeWorkspace() {
             <Panel title={open ? open.path : translate("Select a file", "اختر ملفًا")}>
               {open ? (
                 <div className="flex flex-col gap-2">
-                  <Textarea value={draft} onChange={(e) => setDraft(e.currentTarget.value)} autosize minRows={18} maxRows={40} dir="ltr" spellCheck={false} styles={{ input: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, whiteSpace: "pre", overflowX: "auto" } }} />
+                  <Textarea value={draft} onChange={(e) => setDraft(e.currentTarget.value)} autosize minRows={18} maxRows={40} dir="ltr" spellCheck={false} styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)", fontSize: 12, whiteSpace: "pre", overflowX: "auto" } }} />
                   <div className="flex flex-wrap items-end gap-2">
                     <TextInput className="flex-1" size="xs" label={translate("Describe the change", "صف التغيير")} value={message} onChange={(e) => setMessage(e.currentTarget.value)} maxLength={200} />
                     <Button size="xs" variant="default" disabled={!dirty} onClick={() => setDraft(open.content)}>

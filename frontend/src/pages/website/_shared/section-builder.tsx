@@ -132,7 +132,7 @@ export default function SectionBuilder({ pageId, onDraftChanged, onPreview }: { 
     <div className="grid gap-4 lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]" data-testid="section-builder">
       <aside className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0B3D91]">
+          <h3 className="text-sm font-semibold text-ink">
             {translate("Sections", "الأقسام")} <span className="text-gray-500">({sections.length})</span>
           </h3>
           <div className="flex gap-1">

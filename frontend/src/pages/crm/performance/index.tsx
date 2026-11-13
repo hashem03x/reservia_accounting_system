@@ -16,7 +16,8 @@ import { CRM_FORM_SEGMENTS, CrmPerformance, CrmRole } from "@/types/crm";
 import { crmStageLabel } from "../_shared/stage";
 import { segmentLabel } from "../_shared/lead-display";
 
-const TEAL = "#00656A";
+// Section titles use the shared card title color (design token).
+const TITLE = "var(--rsv-text)";
 const SMALL_SAMPLE_THRESHOLD = 10;
 
 // "Below 10 closed deals in a group: show count beside every rate" (acceptance report section 5).
@@ -111,7 +112,7 @@ export default function CrmPerformancePage() {
           <div className="flex flex-col gap-4 text-sm">
             {/* A. Speed */}
             <section>
-              <h3 className="mb-2 text-sm font-semibold" style={{ color: TEAL }}>
+              <h3 className="mb-2 text-sm font-semibold" style={{ color: TITLE }}>
                 {translate("Speed", "السرعة")}
               </h3>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -187,7 +188,7 @@ export default function CrmPerformancePage() {
 
             {/* B. Conversion */}
             <section>
-              <h3 className="mb-2 text-sm font-semibold" style={{ color: TEAL }}>
+              <h3 className="mb-2 text-sm font-semibold" style={{ color: TITLE }}>
                 {translate("Conversion", "التحويل")}
               </h3>
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -249,7 +250,7 @@ export default function CrmPerformancePage() {
 
             {/* C. Value and cost */}
             <section>
-              <h3 className="mb-2 text-sm font-semibold" style={{ color: TEAL }}>
+              <h3 className="mb-2 text-sm font-semibold" style={{ color: TITLE }}>
                 {translate("Value and cost", "القيمة والتكلفة")}
               </h3>
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -273,10 +274,10 @@ export default function CrmPerformancePage() {
                 <div className="flex flex-col gap-2">
                   <div
                     className="rounded-lg border p-3"
-                    style={{ borderColor: data.valueCost.pipelineCoverage.belowOne ? "#fca5a5" : "#e5e7eb", backgroundColor: data.valueCost.pipelineCoverage.belowOne ? "#fef2f2" : undefined }}
+                    style={{ borderColor: data.valueCost.pipelineCoverage.belowOne ? "var(--mantine-color-red-3)" : "var(--rsv-border)", backgroundColor: data.valueCost.pipelineCoverage.belowOne ? "var(--mantine-color-red-light)" : undefined }}
                   >
                     <h4 className="mb-1 text-xs font-semibold text-gray-500">{translate("Pipeline coverage", "تغطية المسار")}</h4>
-                    <span className="text-lg font-semibold" style={{ color: data.valueCost.pipelineCoverage.belowOne ? "#dc2626" : TEAL }}>
+                    <span className="text-lg font-semibold" style={{ color: data.valueCost.pipelineCoverage.belowOne ? "var(--mantine-color-red-6)" : TITLE }}>
                       {data.valueCost.pipelineCoverage.ratio != null ? `${data.valueCost.pipelineCoverage.ratio}x` : "-"}
                     </span>
                     {data.valueCost.pipelineCoverage.remainingTargetEgp != null && (
@@ -297,7 +298,7 @@ export default function CrmPerformancePage() {
             {/* D. Sources - CRM Changes Required, item 4: Source is the first touch; Last touch alongside. */}
             {data.sources && (
               <section data-testid="perf-sources">
-                <h3 className="mb-2 text-sm font-semibold" style={{ color: TEAL }}>
+                <h3 className="mb-2 text-sm font-semibold" style={{ color: TITLE }}>
                   {translate("Leads by source", "العملاء حسب المصدر")}
                 </h3>
                 <div className="rounded-lg border border-gray-100 p-3">

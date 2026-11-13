@@ -39,13 +39,13 @@ export default function PucTransfersSection({ product }: { product: Product }) {
 
   return (
     <section
-      className="flex flex-col gap-3 rounded-xl bg-white p-4 shadow dark:bg-gray-800"
+      className="flex flex-col gap-3 rounded-xl bg-white p-4 shadow dark:bg-surface"
       data-tour="product-puc-transfer"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h4>{translate("PUC Transfers", "تحويلات مشروعات تحت التنفيذ")}</h4>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <p className="text-xs text-gray-500 dark:text-ink-muted">
             {translate(
               "Move this product's stock into a project's Projects Under Construction (PUC).",
               "نقل مخزون هذا المنتج إلى مشروعات تحت التنفيذ لمشروع.",

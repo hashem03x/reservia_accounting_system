@@ -347,7 +347,7 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
   }
 
   return (
-    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-gray-200 p-3 dark:border-line">
       {error && <ErrorAlert error={error} />}
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end">

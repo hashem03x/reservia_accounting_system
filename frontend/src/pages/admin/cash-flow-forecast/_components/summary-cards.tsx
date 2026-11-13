@@ -40,7 +40,7 @@ export default function SummaryCards({ forecast }: { forecast: CashFlowForecast 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
-        <div key={card.label} className="flex flex-col gap-1 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+        <div key={card.label} className="flex flex-col gap-1 rounded-lg border border-gray-200 p-3 dark:border-line">
           <span className="text-xs text-gray-500">{card.label}</span>
           <span className={`font-semibold ${card.tone ? toneClass[card.tone] : ""}`}>{card.value}</span>
         </div>

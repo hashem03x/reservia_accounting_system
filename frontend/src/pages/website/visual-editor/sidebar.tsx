@@ -362,8 +362,8 @@ export function PageSettings({ config, scope, present, onChange, canCode, onRese
       )}
       {canCode ? (
         <>
-          <Textarea size="xs" label="CSS for this page (administrators)" value={config.routes[scope]?.css || ""} onChange={(e) => setCss("page", e.currentTarget.value)} autosize minRows={4} maxRows={14} dir="ltr" styles={{ input: { fontFamily: "ui-monospace, monospace", fontSize: 12 } }} data-testid="page-css" />
-          <Textarea size="xs" label="CSS for the whole site (administrators)" value={config.css || ""} onChange={(e) => setCss("site", e.currentTarget.value)} autosize minRows={4} maxRows={14} dir="ltr" styles={{ input: { fontFamily: "ui-monospace, monospace", fontSize: 12 } }} data-testid="site-css" />
+          <Textarea size="xs" label="CSS for this page (administrators)" value={config.routes[scope]?.css || ""} onChange={(e) => setCss("page", e.currentTarget.value)} autosize minRows={4} maxRows={14} dir="ltr" styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)", fontSize: 12 } }} data-testid="page-css" />
+          <Textarea size="xs" label="CSS for the whole site (administrators)" value={config.css || ""} onChange={(e) => setCss("site", e.currentTarget.value)} autosize minRows={4} maxRows={14} dir="ltr" styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)", fontSize: 12 } }} data-testid="site-css" />
           <p className="text-[11px] text-gray-500">Checked on save (no &lt;style&gt;, &lt;script&gt;, @import). Scripts and tracking tags belong in Custom Code.</p>
         </>
       ) : (

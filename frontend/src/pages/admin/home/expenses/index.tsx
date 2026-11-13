@@ -114,7 +114,7 @@ export default function Expenses() {
     >
       {canIReadExpenses && (
         <div
-          className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-gray-100 p-3 dark:border-gray-700 sm:grid-cols-3"
+          className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-gray-100 p-3 dark:border-line sm:grid-cols-3"
           data-tour="expenses-filters"
         >
           <ExpenseCategorySelect

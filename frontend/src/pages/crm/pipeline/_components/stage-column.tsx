@@ -10,16 +10,8 @@ import { solidIcons } from "@/components/icons";
 
 // A restrained stage-accent color (a thin top border, not a saturated full-header fill) per
 // Mantine's own named colors, so it stays consistent with stageBadgeColor's Badge elsewhere.
-const ACCENT_HEX: Record<string, string> = {
-  gray: "#9ca3af",
-  blue: "#3b82f6",
-  indigo: "#6366f1",
-  cyan: "#06b6d4",
-  yellow: "#eab308",
-  orange: "#f97316",
-  teal: "#0B7A6E",
-  red: "#ef4444",
-};
+// Mantine's own color variables (the design system), so the stripe always matches the stage's Badge.
+const accent = (color: string) => `var(--mantine-color-${color}-6)`;
 
 export default function StageColumn({
   stage,
@@ -89,7 +81,7 @@ export default function StageColumn({
     >
       <div
         className="flex items-center justify-between gap-2 rounded-t-lg border-b-2 px-2.5 py-2"
-        style={{ borderBottomColor: ACCENT_HEX[stageBadgeColor(stage)] }}
+        style={{ borderBottomColor: accent(stageBadgeColor(stage)) }}
       >
         {collapsed ? (
           <Tooltip label={crmStageLabel(translate)(stage)} position="right">
@@ -102,7 +94,7 @@ export default function StageColumn({
           <>
             <div className="flex min-w-0 items-center gap-1.5">
               <span className="truncate text-sm font-semibold text-gray-700">{crmStageLabel(translate)(stage)}</span>
-              <span className="shrink-0 rounded-full bg-gray-200 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-gray-700">{count}</span>
+              <span className="shrink-0 rounded-full bg-gray-200 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-surface-muted">{count}</span>
               {probability != null && (
                 <Tooltip label={translate("Probability of closing used for the weighted pipeline value", "احتمال الإغلاق المستخدم في القيمة المرجحة للمسار")}>
                   <span className="shrink-0 text-[11px] font-medium text-gray-400">{Math.round(probability * 100)}%</span>

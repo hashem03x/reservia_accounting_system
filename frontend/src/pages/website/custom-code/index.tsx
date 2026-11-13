@@ -240,7 +240,7 @@ function SnippetEditor({ form, pages, onClose, onSaved }: { form: Form | null; p
           maxRows={26}
           dir="ltr"
           spellCheck={false}
-          styles={{ input: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 12 } }}
+          styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)", fontSize: 12 } }}
           data-testid="snippet-code"
         />
         <div className="flex items-center justify-between text-xs text-gray-500">

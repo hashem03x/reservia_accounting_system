@@ -133,7 +133,7 @@ export default function TourProvider({ children }: { children: ReactNode }) {
         title={translate("Welcome to Reservia", "مرحباً بك في ريزرفيا")}
       >
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
+          <p className="text-sm text-gray-600 dark:text-ink-secondary">
             {translate(
               'Would you like a short guided tour of the dashboard and its modules? You can restart it any time with "Guided tour" (the map icon) at the bottom of the sidebar.',
               'هل تريد جولة إرشادية قصيرة في لوحة التحكم ووحداتها؟ يمكنك إعادتها في أي وقت من "جولة تعريفية" (أيقونة الخريطة) أسفل القائمة الجانبية.',

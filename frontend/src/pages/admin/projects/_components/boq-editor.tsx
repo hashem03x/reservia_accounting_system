@@ -73,7 +73,7 @@ export default function BoqEditor({ lines, setLines }: { lines: BoqLineInput[]; 
         )}
       </p>
       {lines.map((line, i) => (
-        <div key={i} className="grid grid-cols-1 items-end gap-2 rounded-lg border border-gray-200 p-2 dark:border-gray-700 sm:grid-cols-12">
+        <div key={i} className="grid grid-cols-1 items-end gap-2 rounded-lg border border-gray-200 p-2 dark:border-line sm:grid-cols-12">
           <div className="flex flex-col gap-1 sm:col-span-4">
             <span className="text-sm font-medium">
               {translate("Product", "المنتج")} <span className="text-red-500">*</span>

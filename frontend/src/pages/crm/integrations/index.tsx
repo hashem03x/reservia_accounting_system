@@ -135,7 +135,7 @@ function Section({ title, children, side }: { title: string; children: ReactNode
   return (
     <section className="rounded-lg border border-gray-100 p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-[#00656A]">{title}</h3>
+        <h3 className="text-sm font-semibold text-ink">{title}</h3>
         {side}
       </div>
       <div className="overflow-x-auto">{children}</div>

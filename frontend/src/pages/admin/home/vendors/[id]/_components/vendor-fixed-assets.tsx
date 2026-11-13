@@ -27,7 +27,7 @@ export default function VendorFixedAssets({ acquisitions }: { acquisitions: Vend
   return (
     <div className="flex flex-col gap-3">
       <h4>{translate("Fixed Asset Acquisitions", "اقتناء أصول ثابتة")}</h4>
-      <div className="overflow-x-auto rounded-lg bg-white p-1.5 dark:bg-gray-800">
+      <div className="overflow-x-auto rounded-lg bg-white p-1.5 dark:bg-surface">
         <Table className="text-nowrap text-sm" withColumnBorders verticalSpacing="xs">
           <Table.Thead>
             <Table.Tr>

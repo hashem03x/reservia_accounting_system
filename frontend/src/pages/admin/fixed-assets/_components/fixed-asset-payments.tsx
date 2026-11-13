@@ -119,7 +119,7 @@ export default function FixedAssetPaymentsTab({ asset }: { asset: FixedAsset }) 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-ink-secondary">
           <Badge color={STATUS_COLORS[summary.status]} variant="light" size="lg">
             {statusLabel[summary.status]}
           </Badge>
@@ -149,8 +149,8 @@ export default function FixedAssetPaymentsTab({ asset }: { asset: FixedAsset }) 
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cards.map(([label, value]) => (
-          <div key={label} className="rounded-lg border border-gray-100 p-3 dark:border-gray-700">
-            <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+          <div key={label} className="rounded-lg border border-gray-100 p-3 dark:border-line">
+            <p className="text-xs text-gray-500 dark:text-ink-muted">{label}</p>
             <p className="mt-1 text-base font-semibold tabular-nums">{value}</p>
           </div>
         ))}
@@ -244,7 +244,7 @@ export default function FixedAssetPaymentsTab({ asset }: { asset: FixedAsset }) 
             </DataTable>
           </DataTableContainer>
         )}
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-gray-500 dark:text-ink-muted">
           {translate(
             "Each payment posts Dr Suppliers (the vendor) / Cr the payment account. Reversed payments stay in the history but are not counted as paid.",
             "كل دفعة ترحّل مدين الموردين (البائع) / دائن حساب الدفع. الدفعات المعكوسة تبقى في السجل لكنها لا تُحسب ضمن المدفوع.",

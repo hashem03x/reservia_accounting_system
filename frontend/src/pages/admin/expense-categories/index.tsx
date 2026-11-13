@@ -130,7 +130,7 @@ export default function ExpenseCategories() {
           button={{ text: translate("Try again", "حاول مرة أخرى"), onClick: load }}
         />
       ) : data.length === 0 ? (
-        <p className="rounded-md border border-dashed p-6 text-center text-sm text-gray-500 dark:border-gray-700">
+        <p className="rounded-md border border-dashed p-6 text-center text-sm text-gray-500 dark:border-line">
           {translate(
             "No expense categories yet. Create one to start grouping expenses.",
             "لا توجد تصنيفات بعد. أنشئ تصنيفاً لبدء تجميع المصروفات.",

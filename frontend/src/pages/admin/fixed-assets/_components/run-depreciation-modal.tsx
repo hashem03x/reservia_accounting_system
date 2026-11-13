@@ -153,7 +153,7 @@ export default function RunDepreciationModal({
           {!!result.skipped?.length && (
             <div className="flex flex-col gap-1">
               <h5 className="text-sm font-semibold">{translate("Not depreciated this month", "لم يُهلك هذا الشهر")}</h5>
-              <ul className="list-disc ps-5 text-sm text-gray-600 dark:text-gray-300">
+              <ul className="list-disc ps-5 text-sm text-gray-600 dark:text-ink-secondary">
                 {result.skipped.map((s) => (
                   <li key={s.asset}>
                     {s.name}: {s.reason}

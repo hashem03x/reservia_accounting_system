@@ -253,7 +253,7 @@ export default function JournalEntries() {
       </div>
 
       {showFilters && (
-        <div className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 p-3 dark:border-line sm:grid-cols-2 lg:grid-cols-4">
           <TextInput
             label={translate("Entry Number", "رقم القيد")}
             value={entryNumber}

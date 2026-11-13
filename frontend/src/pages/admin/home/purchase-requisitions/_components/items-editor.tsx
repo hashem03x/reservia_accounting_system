@@ -99,7 +99,7 @@ export default function RequisitionItemsEditor({
       </div>
 
       {items.map((item, index) => (
-        <div key={index} className="grid grid-cols-1 items-end gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700 sm:grid-cols-12">
+        <div key={index} className="grid grid-cols-1 items-end gap-2 rounded-lg border border-gray-200 p-3 dark:border-line sm:grid-cols-12">
           <div className="flex flex-col gap-1 sm:col-span-4">
             <span className="text-sm font-medium">
               {translate("Product / Service", "المنتج / الخدمة")} <span className="text-red-500">*</span>

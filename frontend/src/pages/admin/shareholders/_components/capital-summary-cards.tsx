@@ -47,7 +47,7 @@ export default function CapitalSummaryCards({
 
       {capital && (
         <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-ink-muted">
             <span>{translate("Paid-in vs. Issued Capital", "المسدد مقابل رأس المال المصدر")}</span>
             <span className="tabular-nums">{paidPct}%</span>
           </div>

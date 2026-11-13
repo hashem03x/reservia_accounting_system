@@ -173,7 +173,7 @@ export default function TreasuryBalanceReport() {
         className="font-semibold" 
         style={{ 
           textAlign: 'right',
-          color: method.balance < 0 ? '#ef4444' : '#22c55e'
+          color: method.balance < 0 ? "var(--mantine-color-red-6)" : "var(--mantine-color-green-6)"
         }}
       >
         {method.balance.toFixed(2)}
@@ -207,7 +207,7 @@ export default function TreasuryBalanceReport() {
               <Table.Td 
                 style={{ 
                   textAlign: 'right',
-                  color: treasury.totals.balance < 0 ? '#ef4444' : '#22c55e'
+                  color: treasury.totals.balance < 0 ? "var(--mantine-color-red-6)" : "var(--mantine-color-green-6)"
                 }}
               >
                 {treasury.totals.balance.toFixed(2)}

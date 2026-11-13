@@ -87,7 +87,7 @@ export default function VendorExpenses({ vendorId }: { vendorId: string }) {
           {translate("No expenses for this vendor and filters.", "لا توجد مصروفات لهذا المورد بهذه الفلاتر.")}
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg bg-white p-1.5 dark:bg-gray-800">
+        <div className="overflow-x-auto rounded-lg bg-white p-1.5 dark:bg-surface">
           <Table className="text-nowrap text-sm" withColumnBorders verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>

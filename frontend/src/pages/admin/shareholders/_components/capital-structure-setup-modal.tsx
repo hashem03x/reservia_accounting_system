@@ -120,8 +120,8 @@ export default function CapitalStructureSetupModal({
 
         <div className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto pr-1">
           {rows.map((row, i) => (
-            <div key={i} className="flex flex-col gap-3 rounded-lg border border-gray-100 p-3 dark:border-gray-700">
-              <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+            <div key={i} className="flex flex-col gap-3 rounded-lg border border-gray-100 p-3 dark:border-line">
+              <h5 className="text-sm font-semibold text-gray-700 dark:text-ink">
                 {translate("Shareholder", "المساهم")} {i + 1}
               </h5>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -157,8 +157,8 @@ export default function CapitalStructureSetupModal({
                   required
                 />
                 <div className="flex flex-col gap-1">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{translate("Capital Amount (calculated)", "مبلغ رأس المال (محسوب)")}</span>
-                  <div className="flex h-9 items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+                  <span className="text-sm font-medium text-gray-700 dark:text-ink">{translate("Capital Amount (calculated)", "مبلغ رأس المال (محسوب)")}</span>
+                  <div className="flex h-9 items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-600 dark:border-line dark:bg-page dark:text-ink-secondary">
                     <outlineIcons.Lock size={12} className="mr-1.5 shrink-0" />
                     {formatAmount(issuedNum * ((typeof row.ownershipPercentage === "number" ? row.ownershipPercentage : 0) / 100), translations.currency)}
                   </div>
@@ -178,8 +178,8 @@ export default function CapitalStructureSetupModal({
             </Badge>
           </div>
         )}
-        <div className="flex items-center justify-between rounded-lg border border-gray-100 p-3 dark:border-gray-700">
-          <span className="text-sm text-gray-600 dark:text-gray-300">
+        <div className="flex items-center justify-between rounded-lg border border-gray-100 p-3 dark:border-line">
+          <span className="text-sm text-gray-600 dark:text-ink-secondary">
             {existingActiveTotal > 0 ? translate("Combined total (existing + new)", "الإجمالي (الموجود + الجديد)") : translate("Total ownership", "إجمالي نسبة الملكية")}
           </span>
           <Badge size="lg" color={isFinalized ? "teal" : "orange"} variant="light">

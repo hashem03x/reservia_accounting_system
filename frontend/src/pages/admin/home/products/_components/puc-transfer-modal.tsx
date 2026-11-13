@@ -196,13 +196,13 @@ export default function PucTransferModal({
           minRows={2}
         />
 
-        <div className="rounded-md bg-gray-50 p-3 text-sm dark:bg-gray-800">
+        <div className="rounded-md bg-gray-50 p-3 text-sm dark:bg-surface">
           <p>
             {translate("Unit cost", "تكلفة الوحدة")}:{" "}
             <b className="tabular-nums">{options?.product.cost != null ? money(unitCost) : translate("n/a", "غير متاح")}</b>{" "}
             · {translate("Amount", "القيمة")}: <b className="tabular-nums">{money(amount)}</b>
           </p>
-          <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+          <p className="mt-1 text-xs text-gray-600 dark:text-ink-muted">
             {sourceType === "warehouse"
               ? translate(
                   "Posts Dr PUC - Raw Materials (project) / Cr Materials Inventory, and reduces the warehouse stock.",

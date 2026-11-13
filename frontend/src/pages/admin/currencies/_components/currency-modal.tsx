@@ -145,7 +145,7 @@ export default function CurrencyModal({
             )}
           </Alert>
         ) : (
-          <div className="flex flex-col gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+          <div className="flex flex-col gap-3 rounded-lg border border-gray-200 p-3 dark:border-line">
             <NumberInput
               label={translate(`Exchange rate: 1 EGP = ? ${label}`, `سعر الصرف: 1 جنيه = ? ${label}`)}
               description={translate(
@@ -163,7 +163,7 @@ export default function CurrencyModal({
                 rate !== "" && !rateValid ? translate("Enter a rate greater than zero", "أدخل سعراً أكبر من صفر") : undefined
               }
             />
-            <div className="rounded-md bg-gray-50 px-3 py-2 text-sm dark:bg-gray-800" aria-live="polite">
+            <div className="rounded-md bg-gray-50 px-3 py-2 text-sm dark:bg-surface" aria-live="polite">
               {rateValid ? (
                 <>
                   <div>

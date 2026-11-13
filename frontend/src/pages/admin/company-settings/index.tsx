@@ -127,7 +127,7 @@ export default function CompanySettingsPage() {
         />
       ) : (
         <div className="flex flex-col gap-6">
-          <section className="grid gap-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700 md:grid-cols-3">
+          <section className="grid gap-4 rounded-lg border border-gray-200 p-4 dark:border-line md:grid-cols-3">
             <NumberInput
               label={LABELS.vatDefaultPct}
               description={translate(

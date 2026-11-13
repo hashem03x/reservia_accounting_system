@@ -17,6 +17,7 @@ import SectionCard from "@/components/ui/section-card";
 import EmptySection from "@/components/ui/sections/empty";
 import ErrorSection from "@/components/ui/sections/error";
 import { Skeleton } from "@mantine/core";
+import tokens from "@/theme/tokens.json";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip);
 
@@ -40,7 +41,7 @@ export default function SalesTrendChart({
   const isDark = colorScheme === "dark";
 
   const gridColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
-  const tickColor = isDark ? "#8D9BA6" : "#66727F";
+  const tickColor = isDark ? tokens.surface.dark.textMuted : tokens.surface.light.textMuted;
 
   const trend = summary?.salesTrend || [];
   const hasData = trend.some((p) => p.total > 0);
@@ -51,12 +52,12 @@ export default function SalesTrendChart({
       {
         label: translate("Sales (Total Amount incl. VAT)", "المبيعات (الإجمالي شامل الضريبة)"),
         data: trend.map((p) => p.total),
-        borderColor: "#123B5D",
+        borderColor: tokens.chart[0],
         backgroundColor: "rgba(18, 59, 93, 0.08)",
         fill: true,
         tension: 0.3,
         pointRadius: 3,
-        pointBackgroundColor: "#123B5D",
+        pointBackgroundColor: tokens.chart[0],
       },
     ],
   };

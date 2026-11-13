@@ -353,7 +353,7 @@ export default function IncomeStatementReport() {
                   <Table.Td 
                     style={{ 
                       textAlign: "right",
-                      color: data.data.netProfit.current < 0 ? "#ef4444" : "#22c55e"
+                      color: data.data.netProfit.current < 0 ? "var(--mantine-color-red-6)" : "var(--mantine-color-green-6)"
                     }}
                   >
                     {data.data.netProfit.current.toFixed(2)}
@@ -361,7 +361,7 @@ export default function IncomeStatementReport() {
                   <Table.Td 
                     style={{ 
                       textAlign: "right",
-                      color: data.data.netProfit.previous < 0 ? "#ef4444" : "#22c55e"
+                      color: data.data.netProfit.previous < 0 ? "var(--mantine-color-red-6)" : "var(--mantine-color-green-6)"
                     }}
                   >
                     {data.data.netProfit.previous.toFixed(2)}
