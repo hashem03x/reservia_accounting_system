@@ -7,6 +7,7 @@ const PurchaseOrder = require('../../../models/vendor/purchaseOrder');
 const ChartOfAccount = require('../../../models/accounting/chartOfAccountModel');
 const { isPaymentAccountEligible } = require('../../accountingConstants');
 const { createPO } = require('../../../controller/PO/purchaseOrderController');
+const { VAT_TREATMENTS, DEFAULT_VAT_TREATMENT } = require('../../vatTreatment');
 
 // Purchase Invoice CSV import schema (docs section "Purchase Invoice CSV Import"). Row-per-line-
 // item, grouped by `InvoiceReference` (a CSV-only grouping/idempotency identifier - never the
@@ -30,6 +31,7 @@ exports.headers = [
   'ItemDiscountType',
   'ItemDiscountValue',
   'VATPercentage',
+  'VATTreatment',
   'WithholdingTaxPercentage',
   'PaymentMethod',
   'PaymentAccountCode',
@@ -39,7 +41,7 @@ exports.headers = [
 exports.requiredHeaders = ['InvoiceReference', 'PONumber', 'VendorNumber', 'ProjectNumber', 'WarehouseName', 'ProductCode', 'Quantity', 'UnitPrice'];
 
 exports.exampleRows = [
-  ['INV-SAMPLE-0001', 'PO-SAMPLE-0001', '2000', 'PRJ-0000001', 'Main Warehouse', '', '10', '15000', '', '', '14', '1', '', '', 'Sample purchase invoice'],
+  ['INV-SAMPLE-0001', 'PO-SAMPLE-0001', '2000', 'PRJ-0000001', 'Main Warehouse', '', '10', '15000', '', '', '14', 'recoverable', '1', '', '', 'Sample purchase invoice'],
 ];
 
 exports.groupKey = row => (row.InvoiceReference || '').trim();
@@ -54,7 +56,7 @@ exports.validateGroup = async function validateGroup(rows, context) {
   // Every line of one invoice must agree on its own invoice-level fields (docs section "Reject
   // inconsistent [document]-level data across rows belonging to the same [document]" - the same
   // rule Phase 2 enforces for Purchase Orders, applied here to invoices).
-  const fieldsThatMustAgree = ['PONumber', 'VendorNumber', 'ProjectNumber', 'WarehouseName', 'PaymentMethod', 'PaymentAccountCode', 'VATPercentage', 'WithholdingTaxPercentage'];
+  const fieldsThatMustAgree = ['PONumber', 'VendorNumber', 'ProjectNumber', 'WarehouseName', 'PaymentMethod', 'PaymentAccountCode', 'VATPercentage', 'VATTreatment', 'WithholdingTaxPercentage'];
   for (const field of fieldsThatMustAgree) {
     const values = new Set(rows.map(r => (r.raw[field] || '').trim()).filter(Boolean));
     if (values.size > 1) {
@@ -69,6 +71,7 @@ exports.validateGroup = async function validateGroup(rows, context) {
   const paymentMethodRaw = (first.PaymentMethod || '').trim() || null;
   const paymentAccountCodeRaw = (first.PaymentAccountCode || '').trim();
   const vatRaw = (first.VATPercentage || '').trim();
+  const vatTreatmentRaw = (first.VATTreatment || '').trim();
   const withholdingRaw = (first.WithholdingTaxPercentage || '').trim();
   const notesValues = new Set(rows.map(r => (r.raw.Notes || '').trim()).filter(Boolean));
 
@@ -161,6 +164,14 @@ exports.validateGroup = async function validateGroup(rows, context) {
     if (Number.isNaN(Number(vatRaw)) || Number(vatRaw) < 0) errors.push({ column: 'VATPercentage', value: vatRaw, message: 'Must be a non-negative number.' });
     else vatPercentage = Number(vatRaw);
   }
+  // VAT Accounting Treatment (utils/vatTreatment.js) - optional column, defaulting to
+  // 'recoverable' so every existing import file (which never had this column) keeps importing
+  // byte-for-byte the same invoices it always has.
+  let vatTreatment = DEFAULT_VAT_TREATMENT;
+  if (vatTreatmentRaw) {
+    if (!VAT_TREATMENTS.includes(vatTreatmentRaw)) errors.push({ column: 'VATTreatment', value: vatTreatmentRaw, message: `Must be one of: ${VAT_TREATMENTS.join(', ')}.` });
+    else vatTreatment = vatTreatmentRaw;
+  }
   let withholdingTaxPercentage = 0;
   if (withholdingRaw) {
     if (![0, 1, 3, 5].includes(Number(withholdingRaw))) errors.push({ column: 'WithholdingTaxPercentage', value: withholdingRaw, message: 'Must be one of: 0, 1, 3, 5.' });
@@ -249,6 +260,7 @@ exports.validateGroup = async function validateGroup(rows, context) {
       paymentMethod,
       paymentAccount: paymentAccount ? paymentAccount._id : null,
       vatPercentage,
+      vatTreatment,
       withholdingTaxPercentage,
       notes: [...notesValues][0] || undefined,
       importReference: reference,
@@ -367,6 +379,13 @@ exports.fieldSpecs = [
     description: "VAT % of the invoice.",
     format: "Number >= 0",
     example: "14"
+  },
+  {
+    column: "VATTreatment",
+    required: "no",
+    description: "How this invoice's VAT is accounted for: posted to its own recoverable Input VAT line, or folded into the inventory/service cost as non-recoverable. Empty = recoverable (today's behavior).",
+    format: "recoverable or non_recoverable",
+    example: "recoverable"
   },
   {
     column: "WithholdingTaxPercentage",

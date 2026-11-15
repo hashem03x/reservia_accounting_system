@@ -9,8 +9,10 @@ import { DateInput } from "@mantine/dates";
 import ErrorAlert from "@/components/ui/error-alert";
 import Modal from "@/components/ui/modal";
 import VendorSearch from "@/components/global/vendor-search";
+import VatTreatmentSelect from "@/components/global/vat-treatment-select";
 import { Vendor } from "@/types/vendor";
 import { FixedAsset, FixedAssetAccountOption, FixedAssetAccountOptions } from "@/types/fixed-asset";
+import { DEFAULT_VAT_TREATMENT, VatTreatmentValue } from "@/utils/constants/vat-treatment";
 
 const accountLabel = (a: FixedAssetAccountOption) => `${a.code} - ${a.name}`;
 
@@ -35,6 +37,7 @@ export default function CreateFixedAssetModal({
   const [price, setPrice] = useState<string | number>("");
   const [usefulLifeMonths, setUsefulLifeMonths] = useState<string | number>("");
   const [vatPercentage, setVatPercentage] = useState<string | number>(0);
+  const [vatTreatment, setVatTreatment] = useState<VatTreatmentValue>(DEFAULT_VAT_TREATMENT);
   const [notes, setNotes] = useState("");
 
   const { loading, setLoading, error, setError } = useDataHandler({ initialData: null });
@@ -56,7 +59,10 @@ export default function CreateFixedAssetModal({
   const months = typeof usefulLifeMonths === "number" ? usefulLifeMonths : 0;
   const vat = typeof vatPercentage === "number" ? vatPercentage : 0;
   const vatAmount = Math.round(cost * vat) / 100;
-  const monthly = cost > 0 && months > 0 ? Math.round((cost / months) * 100) / 100 : 0;
+  // Preview only - the backend independently computes and stores the depreciable cost
+  // (utils/vatTreatment.js). Non-recoverable VAT is folded into the depreciable cost itself.
+  const depreciableCost = vatTreatment === "non_recoverable" ? cost + vatAmount : cost;
+  const monthly = depreciableCost > 0 && months > 0 ? Math.round((depreciableCost / months) * 100) / 100 : 0;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -75,6 +81,7 @@ export default function CreateFixedAssetModal({
           price,
           usefulLifeMonths,
           vatPercentage: vat,
+          vatTreatment,
           notes: notes || undefined,
         },
       });
@@ -95,6 +102,7 @@ export default function CreateFixedAssetModal({
       setPrice("");
       setUsefulLifeMonths("");
       setVatPercentage(0);
+      setVatTreatment(DEFAULT_VAT_TREATMENT);
       setNotes("");
       setError("");
     }, 250);
@@ -166,12 +174,20 @@ export default function CreateFixedAssetModal({
           <NumberInput label={translate("VAT %", "ضريبة القيمة المضافة %")} value={vatPercentage} onChange={setVatPercentage} min={0} max={100} decimalScale={2} />
         </div>
 
+        <VatTreatmentSelect value={vatTreatment} onChange={setVatTreatment} />
+
         <div className="flex flex-col gap-1 rounded-md bg-gray-50 p-3 text-sm text-gray-700">
           <span>
-            {translate("VAT amount", "قيمة الضريبة")}: <b>{vatAmount.toLocaleString()} {translations.currency}</b>
+            {vatTreatment === "non_recoverable"
+              ? translate("VAT amount (included in cost, non-recoverable)", "قيمة الضريبة (مُضمَّنة في التكلفة، غير قابلة للخصم)")
+              : translate("VAT amount", "قيمة الضريبة")}
+            : <b>{vatAmount.toLocaleString()} {translations.currency}</b>
           </span>
           <span>
             {translate("Owed to the vendor", "المستحق للبائع")}: <b>{(cost + vatAmount).toLocaleString()} {translations.currency}</b>
+          </span>
+          <span>
+            {translate("Depreciable cost", "التكلفة القابلة للإهلاك")}: <b>{depreciableCost.toLocaleString()} {translations.currency}</b>
           </span>
           <span>
             {translate("Monthly depreciation", "الإهلاك الشهري")}: <b>{monthly.toLocaleString()} {translations.currency}</b>

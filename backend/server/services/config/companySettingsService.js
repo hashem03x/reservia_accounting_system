@@ -1,8 +1,9 @@
 const CompanySetting = require('../../models/config/companySettingModel');
 const ApiError = require('../../utils/apiError');
+const { VAT_TREATMENTS, DEFAULT_VAT_TREATMENT, isValidVatTreatment } = require('../../utils/vatTreatment');
 
 // ERP company-level controls - see models/config/companySettingModel.js.
-const DEFAULTS = Object.freeze({ vatDefaultPct: 14, priceVarianceWarnPct: 20, preventNegativeProjectStock: true });
+const DEFAULTS = Object.freeze({ vatDefaultPct: 14, priceVarianceWarnPct: 20, preventNegativeProjectStock: true, vatTreatmentDefault: DEFAULT_VAT_TREATMENT });
 const FIELDS = Object.keys(DEFAULTS);
 
 function shape(doc) {
@@ -29,6 +30,9 @@ function validate(patch) {
     if (!FIELDS.includes(k)) continue;
     if (k === 'preventNegativeProjectStock') {
       if (typeof v !== 'boolean') throw new ApiError('preventNegativeProjectStock must be true or false.', 400);
+      clean[k] = v;
+    } else if (k === 'vatTreatmentDefault') {
+      if (!isValidVatTreatment(v)) throw new ApiError(`vatTreatmentDefault must be one of: ${VAT_TREATMENTS.join(', ')}.`, 400);
       clean[k] = v;
     } else {
       const n = Number(v);

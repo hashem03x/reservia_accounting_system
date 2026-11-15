@@ -4,6 +4,7 @@ const Vendor = require('../../models/vendor/vendor');
 const Warehouse = require('../../models/inventory/warehouseModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { isPaymentAccountEligible } = require('../accountingConstants');
+const { VAT_TREATMENTS } = require('../vatTreatment');
 
 // Fast pre-checks - services/expenses/expenseService.js re-checks the accounts and the amount
 // still owed inside the transaction.
@@ -41,6 +42,8 @@ exports.createExpenseValidator = [
     }),
   check('amount').notEmpty().withMessage('Amount is required').isFloat({ gt: 0 }).withMessage('Amount must be greater than 0'),
   check('vatPercentage').optional({ nullable: true }).isFloat({ min: 0, max: 100 }).withMessage('VAT percentage must be between 0 and 100'),
+  // VAT Accounting Treatment (utils/vatTreatment.js) - omitted keeps the schema's 'recoverable' default.
+  check('vatTreatment').optional({ nullable: true }).isIn(VAT_TREATMENTS).withMessage(`VAT treatment must be one of: ${VAT_TREATMENTS.join(', ')}`),
   check('date').optional({ nullable: true }).isISO8601().withMessage('Invalid date'),
   check('reference').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
   check('notes').optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),

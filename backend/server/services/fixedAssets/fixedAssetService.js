@@ -5,6 +5,7 @@ const Vendor = require('../../models/vendor/vendor');
 const ApiError = require('../../utils/apiError');
 const { computeOrderTotals, round2 } = require('../../utils/orderTotals');
 const { AutomaticJournalAccountCodes } = require('../../utils/accountingConstants');
+const { DEFAULT_VAT_TREATMENT, splitCostForVatTreatment } = require('../../utils/vatTreatment');
 const { postAutomaticJournalEntry, getAccountIdByCode, resolveVendorNumber, deterministicSourceId } = require('../accounting/accountingEventService');
 const { resolveFixedAssetAccounts } = require('./fixedAssetAccounts');
 const { getNextFixedAssetNumber } = require('./fixedAssetNumberService');
@@ -31,17 +32,23 @@ function postingDate(period, now = new Date()) {
 
 /**
  * Creates a Fixed Asset and its acquisition entry (FIXED_ASSET_ACQUISITION) in the caller's
- * transaction:
+ * transaction. With the default VAT Accounting Treatment ('recoverable', utils/vatTreatment.js):
  *
  *   Dr  the asset's account (Property, Plant & Equipment / Intangible Assets)   cost
  *   Dr  Input VAT (the same account Purchase Orders use)                          VAT
  *       Cr  Suppliers - the vendor (Vendor Number as Sub Account)                 cost + VAT
  *
- * and adds cost + VAT to the vendor's balance, the same way a Purchase Order does. No inventory
- * movement and no payment - the vendor is paid through the existing payment flow.
+ * With 'non_recoverable' instead, VAT is folded into the asset's debit (and its depreciable
+ * price/bookValue) - there is no separate Input VAT line at all:
+ *
+ *   Dr  the asset's account                                                  cost + VAT
+ *       Cr  Suppliers - the vendor (Vendor Number as Sub Account)                 cost + VAT
+ *
+ * Either way, cost + VAT is added to the vendor's balance, the same way a Purchase Order does. No
+ * inventory movement and no payment - the vendor is paid through the existing payment flow.
  */
 async function createFixedAsset(input, userId, session) {
-  const { name, vendor: vendorId, assetAccountId, accumulatedAccountId, depreciationAccountId, acquisitionDate, price, usefulLifeMonths, vatPercentage, notes } = input;
+  const { name, vendor: vendorId, assetAccountId, accumulatedAccountId, depreciationAccountId, acquisitionDate, price, usefulLifeMonths, vatPercentage, vatTreatment, notes } = input;
 
   const vendorNumber = await resolveVendorNumber(vendorId, { required: true }, session);
   let accounts;
@@ -57,6 +64,12 @@ async function createFixedAsset(input, userId, session) {
 
   const cost = round2(Number(price));
   const { vatAmount, total } = computeOrderTotals({ subtotal: cost, vatPercentage });
+  const resolvedVatTreatment = vatTreatment || DEFAULT_VAT_TREATMENT;
+  // VAT Accounting Treatment (utils/vatTreatment.js): 'recoverable' (default) keeps today's exact
+  // behavior - the asset is booked at its ex-VAT cost and VAT gets its own Input VAT line.
+  // 'non_recoverable' instead depreciates the asset on its VAT-INCLUSIVE cost - no separate VAT
+  // line is ever posted. Either way the vendor is owed the same `total` (cost + VAT).
+  const { costDebit: depreciableCost, vatLineAmount } = splitCostForVatTreatment({ baseCost: cost, vatAmount, vatTreatment: resolvedVatTreatment });
 
   const [asset] = await FixedAsset.create(
     [
@@ -64,12 +77,13 @@ async function createFixedAsset(input, userId, session) {
         assetNumber: await getNextFixedAssetNumber(),
         name,
         vendor: vendorId,
-        price: cost,
-        bookValue: cost,
+        price: depreciableCost,
+        bookValue: depreciableCost,
         accumulatedDepreciation: 0,
         usefulLifeMonths: Number(usefulLifeMonths),
         vatPercentage: Number(vatPercentage) || 0,
         vatAmount,
+        vatTreatment: resolvedVatTreatment,
         totalAmount: total,
         assetAccountId,
         accumulatedAccountId,
@@ -84,8 +98,8 @@ async function createFixedAsset(input, userId, session) {
     { session }
   );
 
-  const lines = [{ account: accounts.assetAccount._id, debit: cost, credit: 0 }];
-  if (vatAmount > 0) lines.push({ account: await getAccountIdByCode(AutomaticJournalAccountCodes.inputVat, session), debit: vatAmount, credit: 0 });
+  const lines = [{ account: accounts.assetAccount._id, debit: depreciableCost, credit: 0 }];
+  if (vatLineAmount > 0) lines.push({ account: await getAccountIdByCode(AutomaticJournalAccountCodes.inputVat, session), debit: vatLineAmount, credit: 0 });
   lines.push({ account: await getAccountIdByCode(AutomaticJournalAccountCodes.suppliers, session), debit: 0, credit: total });
 
   const entry = await postAutomaticJournalEntry({

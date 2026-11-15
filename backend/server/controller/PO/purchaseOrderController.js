@@ -15,6 +15,7 @@ const { stepTimer } = require('../../utils/stepTimer');
 const { postPurchaseOrderJournalEntries } = require('../../services/accounting/accountingEventService');
 const { allocatePurchaseOrderToProject, allocationState } = require('../../services/inventory/poProjectAllocationService');
 const { purchaseOrderPayments } = require('../../services/purchases/purchaseOrderPaymentService');
+const { splitPurchaseVatByGroup, allocateVatToItems } = require('../../utils/vatTreatment');
 
 // Applies a PO's items to the products they reference: recomputes each product's moving-average
 // cost (using stock levels BEFORE this purchase, same formula as before) and increments its stock
@@ -33,6 +34,32 @@ const applyPurchaseToProducts = async (purchaseOrder, warehouseId, session) => {
     itemsByProduct.get(productId).push(item);
   }
 
+  // Non-recoverable VAT (utils/vatTreatment.js): each physical item's moving-average input must
+  // include its own share of the invoice's VAT, using the EXACT SAME per-item split
+  // postPurchaseOrderJournalEntries uses for the matching inventory debit line (splitPurchaseVatByGroup
+  // + allocateVatToItems - never a second, independently-computed ratio), so Product.cost and the
+  // ledger always agree in aggregate. Skipped entirely for a recoverable invoice (today's only
+  // existing behavior) - no extra query, no change to its output.
+  let vatShareByItem = null;
+  if (purchaseOrder.vatTreatment === 'non_recoverable') {
+    const productTypes = await Product.find({ _id: { $in: [...itemsByProduct.keys()] } })
+      .select('type')
+      .session(session)
+      .lean();
+    const typeById = new Map(productTypes.map(p => [p._id.toString(), p.type]));
+    const isServiceItem = item => typeById.get(item.productId.toString()) === 'service';
+    const { physicalSubtotal, physicalVat } = splitPurchaseVatByGroup({
+      items: purchaseOrder.items,
+      vatAmount: purchaseOrder.vatAmount,
+      withholdingTaxAmount: purchaseOrder.withholdingTaxAmount,
+      isServiceItem,
+    });
+    const physicalItems = purchaseOrder.items.filter(i => !isServiceItem(i));
+    const shares = allocateVatToItems(physicalItems, physicalSubtotal, physicalVat);
+    vatShareByItem = new Map();
+    physicalItems.forEach((item, idx) => vatShareByItem.set(item, shares[idx]));
+  }
+
   for (const [productId, items] of itemsByProduct) {
     const product = await Product.findById(productId).session(session);
     if (!product) throw new ApiError(`Product with ID ${productId} not found.`);
@@ -46,7 +73,10 @@ const applyPurchaseToProducts = async (purchaseOrder, warehouseId, session) => {
     // calc new cost = (t_available + t_purchased) / (q_available + q_purchased), moving average cost
     const q_available = (product.stock || []).reduce((sum, stock) => sum + stock.quantity, 0);
     const q_purchased = items.reduce((total, item) => total + item.starterQuantity, 0);
-    const t_purchased = items.reduce((total, item) => total + item.starterQuantity * item.unitPriceAfterDiscount, 0);
+    // VAT-inclusive cost (utils/vatTreatment.js) when this invoice's VAT is non-recoverable - the
+    // per-item VAT share folds into the moving-average input exactly as it folds into the inventory
+    // debit line. Zero for a recoverable invoice (today's only existing behavior, unchanged).
+    const t_purchased = items.reduce((total, item) => total + item.starterQuantity * item.unitPriceAfterDiscount + (vatShareByItem?.get(item) || 0), 0);
     // A product defined without a cost (cost is optional - productModel.js#cost) takes this
     // purchase's own unit cost: its existing stock has no known value to average with, and
     // treating it as cost 0 would understate every later issue.
@@ -85,7 +115,7 @@ exports.createPO = asyncHandler(async (req, res, next) => {
     // destructured here - only the percentages are ever accepted from a client; the model's own
     // pre('save') hook computes every derived amount from the real item totals (docs section "Do
     // not allow clients to manipulate the final total").
-    const { vendorId, warehouseId, items, project, requisition, vatPercentage, withholdingTaxPercentage, importReference, vatExemptReason } = req.body;
+    const { vendorId, warehouseId, items, project, requisition, vatPercentage, vatTreatment, withholdingTaxPercentage, importReference, vatExemptReason } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new ApiError('Items must be a non-empty array');
@@ -106,6 +136,9 @@ exports.createPO = asyncHandler(async (req, res, next) => {
       requisition: requisition || null,
       vatPercentage,
       vatExemptReason: Number(vatPercentage) === 0 && vatExemptReason ? String(vatExemptReason).trim() : null,
+      // VAT Accounting Treatment (utils/vatTreatment.js) - omitted keeps the schema's own
+      // 'recoverable' default, so every existing caller/import that never sends this is unchanged.
+      vatTreatment: vatTreatment || undefined,
       withholdingTaxPercentage,
       importReference: importReference || undefined,
       createdBy: req.user._id,

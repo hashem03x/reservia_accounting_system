@@ -3,20 +3,25 @@ import InfoItem from "@/components/ui/info-item";
 import { OrderFinancials } from "@/types/orders";
 import { getOrderSubtotal, getOrderTotal } from "@/utils/helpers/order-totals";
 import { formatDate } from "@/utils/helpers/date-formaters";
+import { VAT_TREATMENT_OPTIONS, VatTreatmentValue } from "@/utils/constants/vat-treatment";
 
 /**
  * The money summary shared by the Sales Order and Purchase Order detail pages. "Order Total Amount"
  * is the canonical order amount (grandTotal = subtotal + VAT - withholding, persisted by the
  * backend). The subtotal is only shown when it differs, and a VAT/withholding line only when that
  * tax is actually non-zero - an order with no taxes never shows a tax line.
+ *
+ * `vatTreatment` is purchase-side only (backend utils/vatTreatment.js) - a Sales Order never has
+ * it, so the structural type simply leaves it undefined there and the row never renders.
  */
-export default function OrderAmounts({ order }: { order: OrderFinancials & { totalAmount?: number | null } }) {
+export default function OrderAmounts({ order }: { order: OrderFinancials & { totalAmount?: number | null; vatTreatment?: VatTreatmentValue } }) {
   const { translate, translations, language } = useLanguage();
   const total = getOrderTotal(order);
   const subtotal = getOrderSubtotal(order);
   const vatAmount = order.vatAmount || 0;
   const withholdingTaxAmount = order.withholdingTaxAmount || 0;
   const money = (n: number) => `${n.toFixed(2)} ${translations.currency}`;
+  const vatTreatmentOption = order.vatTreatment ? VAT_TREATMENT_OPTIONS.find((o) => o.value === order.vatTreatment) : null;
 
   return (
     <>
@@ -24,6 +29,9 @@ export default function OrderAmounts({ order }: { order: OrderFinancials & { tot
       {subtotal !== total && <InfoItem label={translate("Subtotal (before tax)", "الإجمالي قبل الضريبة")} value={money(subtotal)} />}
       {vatAmount > 0 && (
         <InfoItem label={translate("VAT", "ضريبة القيمة المضافة")} value={`(${order.vatPercentage || 0}%) ${money(vatAmount)}`} />
+      )}
+      {vatAmount > 0 && vatTreatmentOption && (
+        <InfoItem label={translate("VAT Treatment", "المعالجة الضريبية")} value={translate(vatTreatmentOption.label.en, vatTreatmentOption.label.ar)} />
       )}
       {withholdingTaxAmount > 0 && (
         <InfoItem

@@ -149,6 +149,36 @@ test('tangible asset: acquisition entry Dr asset + input VAT / Cr Suppliers with
   assert.equal(await mongoose.connection.collection('movements').countDocuments({}), 0, 'no inventory movement');
 });
 
+test('VAT Accounting Treatment "non_recoverable": VAT is folded into the asset debit and depreciated on the VAT-inclusive cost - no Input VAT line at all', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const asset = await create(VEHICLE({ vatTreatment: 'non_recoverable' }));
+  const stored = await FixedAsset.findById(asset._id).lean();
+  assert.equal(stored.vatTreatment, 'non_recoverable');
+  assert.equal(stored.vatAmount, 16800, 'the VAT amount is still computed and stored, just not posted separately');
+  assert.equal(stored.totalAmount, 136800, 'the vendor is still owed cost + VAT, exactly as the recoverable case');
+  assert.equal(stored.price, 136800, 'the depreciable cost absorbs VAT');
+  assert.equal(stored.bookValue, 136800);
+
+  const entry = await JournalEntry.findById(stored.acquisitionJournalEntry).lean();
+  assert.deepEqual(linesOf(entry), [
+    ['vehicles', 136800, 0],
+    ['suppliers', 0, 136800],
+  ], 'no separate Input VAT line at all');
+  assert.equal(entry.totalDebit, entry.totalCredit);
+  assert.equal((await Vendor.findById(vendor._id).lean()).balance, 136800, 'the vendor is owed the same amount regardless of treatment');
+
+  // Depreciates on the VAT-inclusive cost (136800 / 60), not the ex-VAT 120000/60.
+  const result = await depreciate('2026-01');
+  assert.equal(result.processed[0].amount, 2280);
+});
+
+test('VAT Accounting Treatment defaults to "recoverable" when omitted - byte-for-byte today\'s behavior', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const asset = await create(VEHICLE());
+  const stored = await FixedAsset.findById(asset._id).lean();
+  assert.equal(stored.vatTreatment, 'recoverable');
+});
+
 test('intangible asset is recorded on its Intangible Assets account and amortized', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
   const asset = await create(SOFTWARE());

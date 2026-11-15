@@ -166,6 +166,72 @@ test('a Purchase Invoice is created unpaid, with no Payment Method accepted, qua
   assert.equal(await netBalance(A.bank._id), bankBefore, 'no real payment was recorded, so the bank account must be untouched');
 });
 
+test('VAT Accounting Treatment "non_recoverable": VAT is folded into Materials Inventory/PUC - no Input VAT line, Product.cost becomes VAT-inclusive', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+
+  const [inventoryBefore, wipRawBefore, inputVatBefore] = await Promise.all([netBalance(A.inventory._id), netBalance(A.wipRaw._id), netBalance(A.inputVat._id)]);
+  const requisition = await openRequisitionFor(vendor._id, project._id, 100000);
+  const res = await callHandler(createPO, {
+    body: {
+      vendorId: String(vendor._id),
+      warehouseId: String(warehouse._id),
+      project: String(project._id),
+      requisition: String(requisition._id),
+      vatPercentage: 14,
+      vatTreatment: 'non_recoverable',
+      items: [{ productId: product._id, unitPrice: 1000, starterQuantity: 10 }],
+    },
+  });
+  assert.equal(res.status, 201);
+  const invoice = res.body.data;
+  assert.equal(invoice.vatTreatment, 'non_recoverable');
+  assert.equal(invoice.totalAmount, 10000);
+  assert.equal(invoice.vatAmount, 1400, 'VAT is still computed and stored on the document');
+  assert.equal(invoice.grandTotal, 11400, 'the vendor is owed the same total regardless of treatment');
+
+  // Materials Inventory still nets to zero (received, then moved to the project's PUC in the same
+  // transaction) - but the amount that flowed through PUC is now VAT-inclusive (10000 + 1400).
+  assert.equal(await netBalance(A.inventory._id), inventoryBefore, 'Materials Inventory must still net to zero');
+  assert.equal((await netBalance(A.wipRaw._id)) - wipRawBefore, 11400, 'PUC - Raw Materials carries the VAT-inclusive cost');
+  assert.equal(await netBalance(A.inputVat._id), inputVatBefore, 'no Input VAT line at all was posted for this invoice');
+
+  const reloadedProduct = await Product.findById(product._id).lean();
+  assert.equal(reloadedProduct.cost, 1140, 'moving-average cost absorbs the per-unit VAT share (1000 + 140)');
+});
+
+test('VAT Accounting Treatment: a recoverable purchase followed by a non-recoverable purchase of the same product mixes a VAT-exclusive and VAT-inclusive cost basis correctly', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+
+  const requisition1 = await openRequisitionFor(vendor._id, project._id, 100000);
+  await callHandler(createPO, {
+    body: {
+      vendorId: String(vendor._id),
+      warehouseId: String(warehouse._id),
+      project: String(project._id),
+      requisition: String(requisition1._id),
+      items: [{ productId: product._id, unitPrice: 1000, starterQuantity: 10 }], // recoverable (default): cost basis 1000/unit
+    },
+  });
+  let reloadedProduct = await Product.findById(product._id).lean();
+  assert.equal(reloadedProduct.cost, 1000, 'first purchase sets the moving-average cost at its VAT-exclusive unit price');
+
+  const requisition2 = await openRequisitionFor(vendor._id, project._id, 100000);
+  await callHandler(createPO, {
+    body: {
+      vendorId: String(vendor._id),
+      warehouseId: String(warehouse._id),
+      project: String(project._id),
+      requisition: String(requisition2._id),
+      vatPercentage: 14,
+      vatTreatment: 'non_recoverable',
+      items: [{ productId: product._id, unitPrice: 1000, starterQuantity: 10 }], // non-recoverable: cost basis 1140/unit
+    },
+  });
+  reloadedProduct = await Product.findById(product._id).lean();
+  // (10 @ 1000 + 10 @ 1140) / 20 = 1070.
+  assert.equal(reloadedProduct.cost, 1070, 'the weighted average correctly mixes the VAT-exclusive and VAT-inclusive cost bases');
+});
+
 test('an unpaid Purchase Invoice can still be paid afterward from a Cash/Bank account, through the standalone payment endpoint', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
 

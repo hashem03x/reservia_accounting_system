@@ -1,4 +1,5 @@
 import { ChartOfAccountRef } from "./orders";
+import { VatTreatmentValue } from "@/utils/constants/vat-treatment";
 
 export type FixedAssetStatus = "active" | "fully_depreciated" | "disposed" | "under_maintenance";
 // Derived from the asset account's Chart of Accounts group: Property, Plant & Equipment
@@ -23,7 +24,8 @@ export interface FixedAsset {
   assetCode?: string | null;
   name: string;
   vendor?: { _id: string; name: string; vendorNumber?: number | null } | null;
-  // Acquisition cost (excluding VAT).
+  // Acquisition cost - excludes VAT when vatTreatment is 'recoverable' (default), includes it
+  // when 'non_recoverable'.
   price?: number;
   bookValue: number;
   accumulatedDepreciation?: number;
@@ -31,6 +33,8 @@ export interface FixedAsset {
   monthlyDepreciation?: number;
   vatPercentage?: number;
   vatAmount?: number;
+  // VAT Accounting Treatment (utils/vatTreatment.js) - immutable once posted.
+  vatTreatment?: VatTreatmentValue;
   totalAmount?: number;
   assetAccountId?: ChartOfAccountRef | null;
   accumulatedAccountId?: ChartOfAccountRef | null;

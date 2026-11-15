@@ -164,6 +164,72 @@ test('mixed PO (Product A, Service A, Product B, Service B): lines persist, tota
   assert.deepEqual(entries.map(e => e.accountingAction).sort(), ['PO_INVENTORY_RECEIPT', 'PO_INVENTORY_TO_WIP', 'PO_SERVICE_TO_WIP']);
 });
 
+test('VAT Accounting Treatment "non_recoverable", mixed PO: VAT is folded into Materials Inventory and into EACH service\'s own PUC account (split proportionally) - no Input VAT line anywhere', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+
+  const productA = await createProduct('Product A', 50, 10);
+  const productB = await createProduct('Product B', 20, 0);
+  const serviceA = await createService('Service A', 1000, accounts[AutomaticJournalAccountCodes.wipEngineeringDesign]);
+  const serviceB = await createService('Service B', 300, accounts[AutomaticJournalAccountCodes.wipLabourWages]);
+
+  const items = [
+    { productId: productA._id, unitPrice: 50, starterQuantity: 10 }, // 500
+    { productId: serviceA._id, unitPrice: 1000, starterQuantity: 2 }, // 2000
+    { productId: productB._id, unitPrice: 20, starterQuantity: 5 }, // 100
+    { productId: serviceB._id, unitPrice: 300, starterQuantity: 1 }, // 300
+  ];
+
+  const session = await mongoose.startSession();
+  let order;
+  let entries;
+  await session.withTransaction(async () => {
+    const requisition = await openRequisitionFor(vendor._id, project._id, 2900, session);
+    [order] = await PurchaseOrder.create([{ vendorId: vendor._id, warehouseId: warehouse._id, project: project._id, requisition: requisition._id, vatPercentage: 14, vatTreatment: 'non_recoverable', items }], { session });
+    await applyPurchaseToProducts(order, warehouse._id.toString(), session);
+    entries = await postPurchaseOrderJournalEntries(order, session);
+  });
+  session.endSession();
+
+  assert.equal(order.vatTreatment, 'non_recoverable');
+  assert.equal(order.totalAmount, 2900);
+  assert.equal(order.vatAmount, 406, 'VAT is still computed and stored, just not posted separately');
+  assert.equal(order.grandTotal, 3306);
+
+  const inventoryId = idStr(accounts[AutomaticJournalAccountCodes.materialsInventory]);
+  const inputVatId = idStr(accounts[AutomaticJournalAccountCodes.inputVat]);
+  const receipt = entries.find(e => e.accountingAction === 'PO_INVENTORY_RECEIPT');
+  const toWip = entries.find(e => e.accountingAction === 'PO_INVENTORY_TO_WIP');
+  const serviceJE = entries.find(e => e.accountingAction === 'PO_SERVICE_TO_WIP');
+
+  // Physical VAT share = 406 * (600/2900) = 84 exactly -> Materials Inventory absorbs 600 + 84 = 684.
+  assert.equal(receipt.lines.find(l => idStr(l.account) === inventoryId).debit, 684, 'Materials Inventory absorbs the physical items\' VAT share');
+  assert.equal(toWip.lines.find(l => idStr(l.account) === inventoryId).credit, 684);
+  assert.equal(toWip.lines.find(l => idStr(l.account) !== inventoryId).debit, 684, 'PUC - Raw Materials carries the same VAT-inclusive amount');
+
+  // Service VAT share = 406 - 84 = 322, split proportionally between the two PUC accounts by their
+  // own subtotal (2000 and 300 out of 2300): 280 and 42 respectively.
+  assert.equal(serviceJE.lines.find(l => idStr(l.account) === idStr(accounts[AutomaticJournalAccountCodes.wipEngineeringDesign])).debit, 2280, '2000 + 280');
+  assert.equal(serviceJE.lines.find(l => idStr(l.account) === idStr(accounts[AutomaticJournalAccountCodes.wipLabourWages])).debit, 342, '300 + 42');
+
+  // No Input VAT line anywhere.
+  assert.equal(entries.every(e => !e.lines.some(l => idStr(l.account) === inputVatId)), true, 'no Input VAT line is posted for a non-recoverable invoice');
+
+  // The vendor is owed the same grandTotal regardless of treatment.
+  const suppliersId = idStr(accounts[AutomaticJournalAccountCodes.suppliers]);
+  const supplierCredit = entries.flatMap(e => e.lines).filter(l => idStr(l.account) === suppliersId).reduce((s, l) => s + l.credit, 0);
+  assert.equal(Math.round(supplierCredit * 100) / 100, 3306);
+  for (const e of entries) assert.equal(e.totalDebit, e.totalCredit);
+
+  // Products' moving-average cost absorbs their own VAT share; a service never gets one.
+  const [freshA, freshB] = await Promise.all([productA, productB].map(p => Product.findById(p._id).lean()));
+  // Product A: already has 10 units @ cost 50 (existing value 500); buys 10 more @ 50 ex-VAT, VAT
+  // share = 84 * (500/600) = 70 -> new cost = (500 existing + 500 + 70) / 20 = 53.5.
+  assert.equal(freshA.cost, 53.5);
+  // Product B: starts with 0 units (cost 20 carried with no stock); buys 5 @ 20 ex-VAT, VAT share
+  // = 84 - 70 = 14 -> new cost = (5*20 + 14) / 5 = 22.8.
+  assert.equal(freshB.cost, 22.8);
+});
+
 test('a no-tax PO with only a Service: VAT/WHT stay 0 and no tax lines are posted', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
   const service = await createService('Service Only', 750, accounts[AutomaticJournalAccountCodes.wipEngineeringDesign]);

@@ -125,6 +125,33 @@ test('creating an expense posts Dr expense + input VAT / Cr Suppliers (vendor) a
   assert.equal(await JournalEntry.countDocuments({ 'lines.account': accounts.inventory._id }), 0, 'never Inventory');
 });
 
+test('VAT Accounting Treatment "non_recoverable": VAT is folded into the expense debit - no Input VAT line at all, same amount owed to the vendor', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const expense = await create(RENT({ vatTreatment: 'non_recoverable' }));
+  const stored = await Expense.findById(expense._id).lean();
+  assert.equal(stored.vatTreatment, 'non_recoverable');
+  assert.deepEqual(
+    { amount: stored.amount, vat: stored.vatAmount, total: stored.totalAmount },
+    { amount: 10000, vat: 1400, total: 11400 },
+    'VAT is still computed and stored on the document, just not posted separately'
+  );
+
+  const entry = await JournalEntry.findById(stored.journalEntry).lean();
+  assert.deepEqual(linesOf(entry), [
+    ['rent', 11400, 0],
+    ['suppliers', 0, 11400],
+  ], 'no separate Input VAT line - the expense account absorbs the full VAT-inclusive amount');
+  assert.equal(entry.totalDebit, entry.totalCredit);
+  assert.equal(await vendorBalance(), 11400, 'the vendor is owed the same amount regardless of treatment');
+});
+
+test('VAT Accounting Treatment defaults to "recoverable" when omitted - byte-for-byte today\'s behavior', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const expense = await create(RENT());
+  const stored = await Expense.findById(expense._id).lean();
+  assert.equal(stored.vatTreatment, 'recoverable');
+});
+
 test('only an expense account can be used; nothing is created otherwise', async t => {
   if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
   await assert.rejects(() => create(RENT({ expenseAccount: accounts.inventory._id })), /expense account/);

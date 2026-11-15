@@ -21,6 +21,7 @@ const { assertPeriodsOpen } = require('./accountingPeriodService');
 const { claimAndApplyPaymentReversal, PAYMENT_ACTIONS } = require('../payments/paymentReversalService');
 const { logAccountingEvent } = require('../../utils/accountingLogger');
 const { releasePucConsumptionForReturn } = require('../inventory/pucSalesConsumptionService');
+const { allocateVatToItems } = require('../../utils/vatTreatment');
 
 // The accounting reversal engine: sales returns, purchase returns, payment reversals and settlement
 // (advance application) reversals, each as ONE transaction that posts the compensating journal
@@ -546,6 +547,20 @@ async function returnPurchaseOrder({ purchaseOrderId, items, warehouseId, refund
     const reversalEntries = [];
     const notes = [];
 
+    // VAT Accounting Treatment (utils/vatTreatment.js): when the original invoice was
+    // 'non_recoverable', its VAT was never posted to Input VAT - it was folded into the
+    // inventory/WIP/PUC debit instead (accountingEventService.js#postPurchaseOrderJournalEntries).
+    // The return must mirror that: fold the returned VAT share back into the SAME credit line(s)
+    // it was absorbed into, not into Input VAT (there is nothing posted there to reverse). Split
+    // across more than one credit line (the service side can have several PUC accounts)
+    // proportional to each line's own credit amount - the same remainder-safe allocation used for
+    // the original posting's per-account split.
+    const foldVatIntoCreditLines = (creditLines, vatAmount) => {
+      const totalCredit = round2(creditLines.reduce((s, l) => s + (l.credit || 0), 0));
+      const shares = allocateVatToItems(creditLines.map(l => ({ subtotal: l.credit || 0 })), totalCredit, vatAmount);
+      return creditLines.map((l, idx) => ({ ...l, credit: round2((l.credit || 0) + shares[idx]) }));
+    };
+
     const postReturn = async (kind, amounts, creditLines, reverses) => {
       if (amounts.net <= 0) return;
       if (!reverses) {
@@ -554,8 +569,12 @@ async function returnPurchaseOrder({ purchaseOrderId, items, warehouseId, refund
       }
       const lines = [{ account: suppliersId, debit: round2(amounts.net + amounts.vat - amounts.wht), credit: 0, project: projectId, partyNumber: vendorNumber, partyType: 'vendor' }];
       if (amounts.wht > 0) lines.push({ account: whtPayableId, debit: amounts.wht, credit: 0, project: projectId });
+      if (amounts.vat > 0 && order.vatTreatment === 'non_recoverable') {
+        creditLines = foldVatIntoCreditLines(creditLines, amounts.vat);
+      } else if (amounts.vat > 0) {
+        lines.push({ account: inputVatId, debit: 0, credit: amounts.vat, project: projectId });
+      }
       lines.push(...creditLines);
-      if (amounts.vat > 0) lines.push({ account: inputVatId, debit: 0, credit: amounts.vat, project: projectId });
       const entry = await postAutomaticJournalEntry({
         accountingAction: 'PURCHASE_RETURN',
         sourceType: 'PO_RETURN',

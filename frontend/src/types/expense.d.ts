@@ -1,6 +1,7 @@
 import { Payment } from "@/types/payment";
 import { ChartOfAccountRef } from "@/types/orders";
 import { JournalEntryRef } from "@/types/fixed-asset";
+import { VatTreatmentValue } from "@/utils/constants/vat-treatment";
 
 export type ExpenseCategory =
   | "office-supplies"
@@ -43,6 +44,8 @@ export type Expense = {
   amount?: number;
   vatPercentage?: number;
   vatAmount?: number;
+  // VAT Accounting Treatment (utils/vatTreatment.js) - immutable once posted.
+  vatTreatment?: VatTreatmentValue;
   totalAmount?: number;
   paidAmount?: number;
   remainingAmount?: number;

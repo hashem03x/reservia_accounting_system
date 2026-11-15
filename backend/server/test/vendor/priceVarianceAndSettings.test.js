@@ -31,7 +31,7 @@ after(async () => {
 });
 
 test('company settings: documented defaults before anything is saved', async () => {
-  assert.deepEqual(await settings.getCompanySettings(), { vatDefaultPct: 14, priceVarianceWarnPct: 20, preventNegativeProjectStock: true });
+  assert.deepEqual(await settings.getCompanySettings(), { vatDefaultPct: 14, priceVarianceWarnPct: 20, preventNegativeProjectStock: true, vatTreatmentDefault: 'recoverable' });
 });
 
 test('company settings: validated, and every change is recorded with who made it', async () => {

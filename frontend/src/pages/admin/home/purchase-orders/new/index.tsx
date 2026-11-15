@@ -74,7 +74,7 @@ export default function NewPurchaseOrder() {
       .catch((err) => notifyError({ language, message: (err as { message?: string })?.message || translate("Could not load the Purchase Order lines.", "تعذر تحميل بنود أمر الشراء.") }));
   }, [requisition]);
   // ERP CHG-06: VAT starts from the company rate; 0% needs a reason.
-  const { vatPercentage, setVatPercentage, vatExemptReason, setVatExemptReason, reasonMissing, vatPayload } = useInvoiceVat();
+  const { vatPercentage, setVatPercentage, vatExemptReason, setVatExemptReason, vatTreatment, setVatTreatment, reasonMissing, vatPayload } = useInvoiceVat();
   const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
   // Optional PDFs, uploaded right after the order is created.
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
@@ -152,6 +152,7 @@ export default function NewPurchaseOrder() {
           requisition: requisition._id,
           project: project || undefined,
           ...vatPayload(),
+          vatTreatment,
           withholdingTaxPercentage: Number(withholdingTaxPercentage) || 0,
           items: filteredItems.map((item) => ({
             productId: item.productData?._id,
@@ -270,6 +271,8 @@ export default function NewPurchaseOrder() {
         setVatExemptReason={setVatExemptReason}
         withholdingTaxPercentage={withholdingTaxPercentage}
         setWithholdingTaxPercentage={setWithholdingTaxPercentage}
+        vatTreatment={vatTreatment}
+        setVatTreatment={setVatTreatment}
       />
 
       <hr />

@@ -13,6 +13,7 @@ const {
 const ApiError = require('../../utils/apiError');
 const { applyEntryProjectToLines } = require('./journalEntryProjectService');
 const { logAccountingEvent } = require('../../utils/accountingLogger');
+const { splitCostForVatTreatment, splitPurchaseVatByGroup, allocateVatToItems } = require('../../utils/vatTreatment');
 
 // The automatic accounting engine - see docs/entities/automatic-accounting.md and
 // scratchpad/automatic-entries-mapping.md for the full Business Event -> Accounting Action -> JE
@@ -380,16 +381,12 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
   const physicalItems = purchaseOrder.items.filter(i => !isServiceItem(i));
   const serviceItems = purchaseOrder.items.filter(isServiceItem);
 
-  const physicalSubtotal = round2(physicalItems.reduce((s, i) => s + (i.subtotal || 0), 0));
-  const serviceSubtotal = round2(serviceItems.reduce((s, i) => s + (i.subtotal || 0), 0));
-  const totalForTax = round2(physicalSubtotal + serviceSubtotal);
-  const totalVat = round2(purchaseOrder.vatAmount || 0);
-  const totalWht = round2(purchaseOrder.withholdingTaxAmount || 0);
-  const physicalShare = totalForTax > 0 ? physicalSubtotal / totalForTax : 0;
-  const physicalVat = serviceItems.length === 0 ? totalVat : round2(totalVat * physicalShare);
-  const physicalWht = serviceItems.length === 0 ? totalWht : round2(totalWht * physicalShare);
-  const serviceVat = round2(totalVat - physicalVat);
-  const serviceWht = round2(totalWht - physicalWht);
+  const { physicalSubtotal, serviceSubtotal, physicalVat, serviceVat, physicalWht, serviceWht } = splitPurchaseVatByGroup({
+    items: purchaseOrder.items,
+    vatAmount: purchaseOrder.vatAmount,
+    withholdingTaxAmount: purchaseOrder.withholdingTaxAmount,
+    isServiceItem,
+  });
 
   // Validate every service's PUC account BEFORE posting anything, so a misconfigured service never
   // leaves a half-posted PO behind (even outside a transaction).
@@ -416,9 +413,20 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
       getAccountIdByCode(AutomaticJournalAccountCodes.withholdingTaxPayable, session),
     ]);
 
-    const receiptLines = [{ account: inventoryId, debit: physicalSubtotal, credit: 0 }];
-    if (physicalVat > 0) receiptLines.push({ account: inputVatId, debit: physicalVat, credit: 0 });
-    const supplierOwed = round2(physicalSubtotal + physicalVat - physicalWht);
+    // VAT Accounting Treatment (utils/vatTreatment.js): 'recoverable' (default) keeps the inventory
+    // debit at physicalSubtotal and VAT as its own Input VAT line, exactly as before.
+    // 'non_recoverable' instead folds physicalVat into the inventory debit - inputVatLine is then 0
+    // and the `if (inputVatLine > 0)` guard below naturally skips the Input VAT line. Either way the
+    // vendor is owed the same supplierOwed (cost + VAT - WHT).
+    const { costDebit: physicalCostDebit, vatLineAmount: inputVatLine } = splitCostForVatTreatment({
+      baseCost: physicalSubtotal,
+      vatAmount: physicalVat,
+      vatTreatment: purchaseOrder.vatTreatment,
+    });
+
+    const receiptLines = [{ account: inventoryId, debit: physicalCostDebit, credit: 0 }];
+    if (inputVatLine > 0) receiptLines.push({ account: inputVatId, debit: inputVatLine, credit: 0 });
+    const supplierOwed = round2(physicalCostDebit + inputVatLine - physicalWht);
     receiptLines.push({ account: suppliersId, debit: 0, credit: supplierOwed, partyNumber: vendorNumber, partyType: 'vendor' });
     if (physicalWht > 0) receiptLines.push({ account: whtPayableId, debit: 0, credit: physicalWht });
 
@@ -446,8 +454,8 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
           description: `Transfer received inventory to project WIP - PI ${purchaseOrder.code || purchaseOrder._id}`,
           project: projectId,
           lines: [
-            { account: wipRawMaterialsId, debit: physicalSubtotal, credit: 0, project: projectId },
-            { account: inventoryId, debit: 0, credit: physicalSubtotal, project: projectId },
+            { account: wipRawMaterialsId, debit: physicalCostDebit, credit: 0, project: projectId },
+            { account: inventoryId, debit: 0, credit: physicalCostDebit, project: projectId },
           ],
           party: { number: vendorNumber, type: 'vendor' },
           session,
@@ -466,12 +474,29 @@ async function postPurchaseOrderJournalEntries(purchaseOrder, session) {
 
     const suppliersId = await getAccountIdByCode(AutomaticJournalAccountCodes.suppliers, session);
     const lines = [];
-    for (const [pucAccountId, amount] of byPucAccount) {
+
+    // VAT Accounting Treatment (utils/vatTreatment.js): 'recoverable' (default) keeps each PUC
+    // account's debit at its own subtotal and posts serviceVat as its own Input VAT line, exactly
+    // as before. 'non_recoverable' instead folds serviceVat into the PUC debits themselves - split
+    // across accounts in proportion to their own subtotal share (allocateVatToItems, the same
+    // remainder-safe allocation used for the physical side's per-item split) since a PO can have
+    // service lines posting to more than one PUC account. Either way the vendor is owed the same
+    // supplierOwed (cost + VAT - WHT).
+    const { vatLineAmount: serviceVatLine } = splitCostForVatTreatment({ baseCost: serviceSubtotal, vatAmount: serviceVat, vatTreatment: purchaseOrder.vatTreatment });
+    let debitByPucAccount = byPucAccount;
+    if (purchaseOrder.vatTreatment === 'non_recoverable' && serviceVat > 0) {
+      const accountKeys = [...byPucAccount.keys()];
+      const pseudoItems = accountKeys.map(key => ({ subtotal: byPucAccount.get(key) }));
+      const shares = allocateVatToItems(pseudoItems, serviceSubtotal, serviceVat);
+      debitByPucAccount = new Map(accountKeys.map((key, idx) => [key, round2(byPucAccount.get(key) + shares[idx])]));
+    }
+
+    for (const [pucAccountId, amount] of debitByPucAccount) {
       if (amount > 0) lines.push({ account: pucAccountId, debit: amount, credit: 0, project: projectId });
     }
-    if (serviceVat > 0) {
+    if (serviceVatLine > 0) {
       const inputVatId = await getAccountIdByCode(AutomaticJournalAccountCodes.inputVat, session);
-      lines.push({ account: inputVatId, debit: serviceVat, credit: 0, project: projectId });
+      lines.push({ account: inputVatId, debit: serviceVatLine, credit: 0, project: projectId });
     }
     const supplierOwed = round2(serviceSubtotal + serviceVat - serviceWht);
     if (supplierOwed > 0) {

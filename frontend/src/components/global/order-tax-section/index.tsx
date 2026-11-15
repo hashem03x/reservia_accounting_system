@@ -1,6 +1,8 @@
 import { NumberInput, Select, TextInput } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import { calculateOrderTotals } from "@/utils/helpers/order-totals";
+import VatTreatmentSelect from "@/components/global/vat-treatment-select";
+import { VatTreatmentValue } from "@/utils/constants/vat-treatment";
 
 const WITHHOLDING_TAX_OPTIONS = [0, 1, 3, 5];
 
@@ -18,6 +20,8 @@ export default function OrderTaxSection({
   setWithholdingTaxPercentage,
   vatExemptReason,
   setVatExemptReason,
+  vatTreatment,
+  setVatTreatment,
 }: {
   amount: number;
   vatPercentage: string | number;
@@ -27,12 +31,18 @@ export default function OrderTaxSection({
   /** ERP CHG-06: when given, a 0% VAT asks for the reason (sales and purchase invoices). */
   vatExemptReason?: string;
   setVatExemptReason?: (value: string) => void;
+  /** VAT Accounting Treatment (utils/vatTreatment.js) - purchase-side only (Purchase Invoices).
+   * When given, shows the Recoverable/Non-Recoverable selector; a Sales Order never passes this. */
+  vatTreatment?: VatTreatmentValue;
+  setVatTreatment?: (value: VatTreatmentValue) => void;
 }) {
   const { translate, translations } = useLanguage();
 
   const vatPct = Number(vatPercentage) || 0;
   const withholdingPct = Number(withholdingTaxPercentage) || 0;
   const { vatAmount, withholdingTaxAmount, total } = calculateOrderTotals(amount, vatPct, withholdingPct);
+
+  const nonRecoverable = vatTreatment === "non_recoverable";
 
   return (
     <div className="flex flex-col gap-3">
@@ -59,6 +69,8 @@ export default function OrderTaxSection({
         />
       </div>
 
+      {vatTreatment && setVatTreatment && <VatTreatmentSelect value={vatTreatment} onChange={setVatTreatment} />}
+
       {setVatExemptReason && vatPct === 0 && (
         <TextInput
           label={translate("Reason for no VAT", "سبب عدم وجود ضريبة")}
@@ -82,7 +94,10 @@ export default function OrderTaxSection({
         {vatAmount > 0 && (
           <div className="flex justify-between">
             <span>
-              {translate("VAT", "ضريبة القيمة المضافة")} ({vatPct}%)
+              {nonRecoverable
+                ? translate("VAT (included, non-recoverable)", "ضريبة (مُضمَّنة، غير قابلة للخصم)")
+                : translate("VAT", "ضريبة القيمة المضافة")}{" "}
+              ({vatPct}%)
             </span>
             <b>
               {vatAmount.toLocaleString()} {translations.currency}

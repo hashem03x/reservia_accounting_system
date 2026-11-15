@@ -1,4 +1,5 @@
 const { body } = require('express-validator');
+const { VAT_TREATMENTS } = require('../vatTreatment');
 
 // Shared by Sales Order and Purchase Order creation (docs sections "VAT on Sales Orders and
 // Purchase Orders" / "Withholding Tax") - a single source so both order types enforce the exact
@@ -31,6 +32,11 @@ const vatAndWithholdingTaxValidators = [
     .optional()
     .custom(value => [0, 1, 3, 5].includes(Number(value)))
     .withMessage('Withholding tax percentage must be one of: 0, 1, 3, 5'),
+
+  // VAT Accounting Treatment (utils/vatTreatment.js) - purchase-side only (Purchase Invoices,
+  // Expenses, Fixed Assets); a Sales Order's own model has no such field, so this only ever takes
+  // effect where the schema actually has it. Omitted keeps the schema's 'recoverable' default.
+  body('vatTreatment').optional({ nullable: true }).isIn(VAT_TREATMENTS).withMessage(`VAT treatment must be one of: ${VAT_TREATMENTS.join(', ')}`),
 ];
 
 module.exports = { vatAndWithholdingTaxValidators };

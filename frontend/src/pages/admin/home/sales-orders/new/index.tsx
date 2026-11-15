@@ -47,7 +47,7 @@ export default function NewSalesOrder() {
   const [items, setItems] = useState<OrderItemInput[]>([emptyOrderItem]);
   const [project, setProject] = useState("");
   // ERP CHG-06: VAT starts from the company rate; 0% needs a reason.
-  const { vatPercentage, setVatPercentage, vatExemptReason, setVatExemptReason, reasonMissing, vatPayload } = useInvoiceVat();
+  const { vatPercentage, setVatPercentage, vatExemptReason, setVatExemptReason, reasonMissing, vatPayload, defaultVat } = useInvoiceVat();
   const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
   // Optional PDFs, uploaded right after the order is created.
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
@@ -226,6 +226,28 @@ export default function NewSalesOrder() {
       )}
 
       <hr />
+
+      {/* Output VAT is a pass-through liability collected from the customer, not a recoverable
+          cost - "No VAT" on a sale has no "fold into cost" equivalent (unlike purchases); it
+          reuses the existing 0%-VAT/exemption-reason mechanism below (ERP CHG-06), just surfaced
+          here as a clear, dedicated choice instead of only a percentage field to type into. */}
+      <Select
+        label={translate("VAT", "ضريبة القيمة المضافة")}
+        description={
+          Number(vatPercentage) === 0
+            ? translate("No VAT is an explicit choice - a reason is required below.", "عدم وجود ضريبة اختيار صريح - السبب مطلوب أدناه.")
+            : translate("VAT is charged at the rate below and owed to the Tax Authority.", "تُحسب الضريبة بالنسبة أدناه وتكون مستحقة لمصلحة الضرائب.")
+        }
+        value={Number(vatPercentage) === 0 ? "no_vat" : "with_vat"}
+        onChange={(v) => setVatPercentage(v === "no_vat" ? 0 : defaultVat)}
+        data={[
+          { value: "with_vat", label: translate("14% VAT", "ضريبة 14%") },
+          { value: "no_vat", label: translate("No VAT", "بدون ضريبة") },
+        ]}
+        allowDeselect={false}
+        style={{ maxWidth: 300 }}
+        data-testid="sales-vat-treatment-select"
+      />
 
       <OrderTaxSection
         amount={subtotal}

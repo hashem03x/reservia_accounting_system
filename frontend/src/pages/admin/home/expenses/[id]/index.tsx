@@ -28,6 +28,7 @@ import PaymentAccountSelect from "@/components/global/payment-account-select";
 import { Expense } from "@/types/expense";
 import { ChartOfAccountRef } from "@/types/orders";
 import { expenseStatusColors, useExpenseStatusLabel } from "../_components/status";
+import { VAT_TREATMENT_OPTIONS } from "@/utils/constants/vat-treatment";
 
 const accountText = (account?: ChartOfAccountRef | string | null) =>
   account && typeof account !== "string" ? `${account.code} - ${account.name}` : "-";
@@ -131,6 +132,15 @@ export default function ExpenseDetail() {
           label={translate("VAT", "ضريبة القيمة المضافة")}
           value={`${money(expense.vatAmount ?? 0)} (${expense.vatPercentage ?? 0}%)`}
         />
+        {(expense.vatAmount ?? 0) > 0 && (
+          <InfoItem
+            label={translate("VAT Treatment", "المعالجة الضريبية")}
+            value={(() => {
+              const option = VAT_TREATMENT_OPTIONS.find((o) => o.value === (expense.vatTreatment || "recoverable"));
+              return option ? translate(option.label.en, option.label.ar) : "-";
+            })()}
+          />
+        )}
         <InfoItem label={translate("Total", "الإجمالي")} value={money(expense.totalAmount)} />
         <InfoItem label={translate("Paid", "المدفوع")} value={money(expense.paidAmount ?? 0)} />
         <InfoItem label={translate("Remaining", "المتبقي")} value={money(remaining)} />

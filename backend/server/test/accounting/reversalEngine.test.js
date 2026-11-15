@@ -189,6 +189,38 @@ test('full purchase return of a paid service with a vendor refund: service PUC r
   assert.equal((await Vendor.findById(vendor._id)).balance, 0);
 });
 
+test('VAT Accounting Treatment "non_recoverable": a purchase return credits the VAT share back into PUC/WIP, never Input VAT (there is nothing posted there to reverse)', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  // Isolated vendor/project so this test's figures never mix with the shared `po`/`steel`/`project`
+  // fixtures' own accumulated state from the tests above.
+  const nrVendor = await Vendor.create({ name: 'Non-Recoverable Vendor', contact: { phone: `010${Date.now()}`.slice(0, 11) } });
+  const nrProject = await Project.create({ projectNumber: `PRJ-NR-${Date.now()}`, name: 'NR Villa', customer: customer._id, startDate: new Date('2026-01-01'), deliveryDate: new Date('2026-12-31') });
+  const [wipBefore, inputVatBefore] = await Promise.all([balanceOf('wipRaw'), balanceOf('inputVat')]);
+
+  // 10 bars @ 100 = 1,000; VAT 14% = 140, non-recoverable -> absorbed into inventory/WIP. Total 1,140.
+  const res = await callHandler(createPO, {
+    body: { vendorId: String(nrVendor._id), warehouseId: String(warehouse._id), project: String(nrProject._id), vatPercentage: 14, vatTreatment: 'non_recoverable', items: [{ productId: steel._id, unitPrice: 100, starterQuantity: 10 }] },
+  });
+  const nrPo = res.body.data;
+  assert.equal(nrPo.vatTreatment, 'non_recoverable');
+  assert.equal(nrPo.grandTotal, 1140);
+  assert.equal((await balanceOf('wipRaw')) - wipBefore, 1140, 'PUC - Raw Materials absorbs the VAT-inclusive cost');
+  assert.equal(await balanceOf('inputVat'), inputVatBefore, 'no Input VAT line at all was posted');
+
+  // Return 4 bars: net 400, VAT share 56 (4/10 of 140) - folded back into the SAME WIP credit, not Input VAT.
+  const { reversal } = await engine.returnPurchaseOrder({ purchaseOrderId: nrPo._id, items: [{ productId: String(steel._id), quantity: 4 }], warehouseId: String(warehouse._id), reason: 'Damaged bars', idempotencyKey: key(), userId: admin._id });
+  assert.deepEqual([reversal.type, reversal.scope, reversal.amount], ['purchase_return', 'partial', 456]);
+  const [entry] = await JournalEntry.find({ _id: { $in: reversal.reversalEntries } }).lean();
+  assert.equal(entry.accountingAction, 'PURCHASE_RETURN');
+  balanced(entry);
+  assert.deepEqual(linesOf(entry), [['suppliers', 456, 0], ['wipRaw', 0, 456]], 'no Input VAT credit line at all');
+
+  assert.equal((await balanceOf('wipRaw')) - wipBefore, 1140 - 456, 'WIP net of the return');
+  assert.equal(await balanceOf('inputVat'), inputVatBefore, 'still untouched - a non-recoverable return never posts to Input VAT');
+  const nrVendorNumber = (await Vendor.findById(nrVendor._id)).vendorNumber;
+  assert.equal(await balanceOf('suppliers', nrVendorNumber), -(1140 - 456), 'the vendor is owed exactly what remains, VAT-inclusive');
+});
+
 // ============================================================ sales returns
 let so;
 test('partial sales return: revenue, VAT, receivable and cost are de-recognized for the returned part; stock returns; refund of the excess', async t => {

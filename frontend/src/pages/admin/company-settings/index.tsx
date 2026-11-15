@@ -13,6 +13,8 @@ import ErrorSection from "@/components/ui/sections/error";
 import ErrorAlert from "@/components/ui/error-alert";
 import paths from "@/utils/constants/paths";
 import { CompanySettings } from "@/hooks/useCompanySettings";
+import VatTreatmentSelect from "@/components/global/vat-treatment-select";
+import { VAT_TREATMENT_OPTIONS } from "@/utils/constants/vat-treatment";
 
 type SettingsResponse = CompanySettings & {
   history: { at: string; byName: string | null; changes: Record<string, { from: unknown; to: unknown }> }[];
@@ -54,6 +56,7 @@ export default function CompanySettingsPage() {
     vatDefaultPct: translate("Default VAT rate", "نسبة الضريبة الافتراضية"),
     priceVarianceWarnPct: translate("Price variance warning", "تنبيه فرق السعر"),
     preventNegativeProjectStock: translate("Prevent negative project stock", "منع رصيد مخزون مشروع بالسالب"),
+    vatTreatmentDefault: translate("Default VAT treatment", "المعالجة الضريبية الافتراضية"),
   };
 
   function load() {
@@ -64,6 +67,7 @@ export default function CompanySettingsPage() {
         vatDefaultPct: res.data.vatDefaultPct,
         priceVarianceWarnPct: res.data.priceVarianceWarnPct,
         preventNegativeProjectStock: res.data.preventNegativeProjectStock,
+        vatTreatmentDefault: res.data.vatTreatmentDefault,
       });
     });
   }
@@ -103,9 +107,11 @@ export default function CompanySettingsPage() {
       ? v
         ? translate("On", "تشغيل")
         : translate("Off", "إيقاف")
-      : key.endsWith("Pct")
-        ? `${v}%`
-        : String(v);
+      : key === "vatTreatmentDefault"
+        ? translate(VAT_TREATMENT_OPTIONS.find((o) => o.value === v)?.label.en || String(v), VAT_TREATMENT_OPTIONS.find((o) => o.value === v)?.label.ar || String(v))
+        : key.endsWith("Pct")
+          ? `${v}%`
+          : String(v);
 
   return (
     <AdminLayoutBox
@@ -169,6 +175,11 @@ export default function CompanySettingsPage() {
                 )}
               </p>
             </div>
+            <VatTreatmentSelect
+              label={LABELS.vatTreatmentDefault}
+              value={form.vatTreatmentDefault}
+              onChange={(v) => setForm({ ...form, vatTreatmentDefault: v })}
+            />
             <div className="flex gap-2 md:col-span-3">
               <Button color="teal" onClick={submit} loading={save.loading} disabled={!dirty} data-testid="settings-save">
                 {translate("Save settings", "حفظ الإعدادات")}

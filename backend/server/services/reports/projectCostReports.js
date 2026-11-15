@@ -193,7 +193,7 @@ async function projectCosts(query) {
   // reference, never added to the PUC totals.
   const poFilter = { project: filteredProjects ? { $in: [...projectIds].filter(validId).map(oid) } : { $ne: null }, createdAt: { $gte: period.start, $lte: period.end } };
   if (vendor) poFilter.vendorId = vendorId;
-  const periodOrders = await coll('purchaseorders').find(poFilter, { projection: { code: 1, vendorId: 1, project: 1, items: 1, starterTotalAmount: 1, totalAmount: 1, vatAmount: 1, grandTotal: 1, paidAmount: 1, createdAt: 1 } }).toArray();
+  const periodOrders = await coll('purchaseorders').find(poFilter, { projection: { code: 1, vendorId: 1, project: 1, items: 1, starterTotalAmount: 1, totalAmount: 1, vatAmount: 1, vatTreatment: 1, grandTotal: 1, paidAmount: 1, createdAt: 1 } }).toArray();
   const recognized = await coll('journalentries')
     .aggregate([
       { $match: { sourceType: 'PO', sourceId: { $in: periodOrders.map(o => o._id) }, status: { $in: C.LEDGER_STATUSES } } },
@@ -216,7 +216,13 @@ async function projectCosts(query) {
       ordered: round2(o.starterTotalAmount ?? o.totalAmount ?? 0),
       received: round2(o.totalAmount ?? 0),
       recognized: recognizedOf.get(String(o._id)) ?? 0,
-      vat: round2(o.vatAmount || 0),
+      // VAT Accounting Treatment (utils/vatTreatment.js): 'recoverable' (default, every historical
+      // order) posts to Input VAT - shown here, unchanged. 'non_recoverable' is never posted to a
+      // VAT/Tax account at all - it is already inside `received`/`recognized`/`total` above (the
+      // ledger debit itself is VAT-inclusive), so it is shown separately here for visibility only,
+      // never added again on top of them.
+      recoverableVat: o.vatTreatment === 'non_recoverable' ? 0 : round2(o.vatAmount || 0),
+      nonRecoverableVat: o.vatTreatment === 'non_recoverable' ? round2(o.vatAmount || 0) : 0,
       total: round2(total),
       paid: round2(o.paidAmount || 0),
       outstanding: round2(total - (o.paidAmount || 0)),
@@ -298,7 +304,7 @@ async function projectCosts(query) {
           money('unitCost', 'Unit Cost', 'تكلفة الوحدة'),
           col('currency', 'Currency', 'العملة'),
           col('exchangeRate', 'Rate', 'سعر الصرف', 'number'),
-          money('costAdded', 'Cost Added (excl. VAT)', 'تكلفة مضافة (بدون الضريبة)'),
+          money('costAdded', 'Cost Added (excl. recoverable VAT)', 'تكلفة مضافة (بدون الضريبة القابلة للخصم)'),
           money('costRelieved', 'Cost Relieved', 'تكلفة محملة / محولة'),
         ],
         rows: detail,
@@ -316,23 +322,26 @@ async function projectCosts(query) {
           money('ordered', 'Ordered (excl. VAT)', 'المطلوب (بدون الضريبة)'),
           money('received', 'Received, net of returns', 'المستلم بعد المرتجعات'),
           money('recognized', 'Recognized in PUC', 'المثبت في مشروعات تحت التنفيذ'),
-          money('vat', 'Recoverable VAT', 'ضريبة قابلة للخصم'),
+          money('recoverableVat', 'Recoverable VAT', 'ضريبة قابلة للخصم'),
+          money('nonRecoverableVat', 'Non-Recoverable VAT (capitalized)', 'ضريبة غير قابلة للخصم (مرسملة)'),
           money('total', 'Total Payable', 'الإجمالي المستحق'),
           money('paid', 'Paid', 'المدفوع'),
           money('outstanding', 'Outstanding', 'المتبقي'),
         ],
         rows: poRows,
-        totals: poRows.length ? { date: null, code: 'Total', codeAr: 'الإجمالي', ...Object.fromEntries(['ordered', 'received', 'recognized', 'vat', 'total', 'paid', 'outstanding'].map(k => [k, C.sumBy(poRows, k)])) } : null,
+        totals: poRows.length
+          ? { date: null, code: 'Total', codeAr: 'الإجمالي', ...Object.fromEntries(['ordered', 'received', 'recognized', 'recoverableVat', 'nonRecoverableVat', 'total', 'paid', 'outstanding'].map(k => [k, C.sumBy(poRows, k)])) }
+          : null,
       },
     ],
     notes: [
       note(
-        'PUC (Projects Under Construction) = each project\'s WIP accounts in the ledger. Costs added = debits to them (Purchase Order materials and services, PUC transfers in, manual entries); costs relieved = credits (project cost recognized to cost of sales by Sales Orders, PUC transfers out). Each cost is counted once, at the journal entry that put it into PUC - never again from its Purchase Order or inventory movement. VAT on purchases is posted to Input VAT (recoverable), so PUC amounts exclude it; the system records no non-recoverable VAT. Categories come from the PUC account (Materials, Labor, Designs and Engineering, Equipment, Subcontractors, Services, Other).',
-        'مشروعات تحت التنفيذ = حسابات الأعمال تحت التنفيذ لكل مشروع في دفتر الأستاذ. التكاليف المضافة = المدين فيها (مواد وخدمات أوامر الشراء، التحويلات الواردة، القيود اليدوية)؛ والتكاليف المحملة = الدائن (تكلفة المشروع المحملة على تكلفة المبيعات بأوامر البيع، التحويلات الصادرة). كل تكلفة تُحتسب مرة واحدة عند القيد الذي أدخلها - ولا تُحتسب مرة أخرى من أمر الشراء أو حركة المخزون. ضريبة المشتريات ترحل لحساب ضريبة المدخلات (قابلة للخصم)، فالمبالغ بدونها؛ ولا يسجل النظام ضريبة غير قابلة للخصم. الفئات من حساب مشروعات تحت التنفيذ (مواد، عمالة، تصميمات وهندسة، معدات، مقاولو الباطن، خدمات، أخرى).'
+        'PUC (Projects Under Construction) = each project\'s WIP accounts in the ledger. Costs added = debits to them (Purchase Order materials and services, PUC transfers in, manual entries); costs relieved = credits (project cost recognized to cost of sales by Sales Orders, PUC transfers out). Each cost is counted once, at the journal entry that put it into PUC - never again from its Purchase Order or inventory movement. VAT Accounting Treatment: a purchase marked "recoverable" (the default) posts its VAT to Input VAT, so PUC amounts exclude it; a purchase marked "non-recoverable" never posts a separate VAT line at all - its VAT is folded into the PUC debit itself, so the PUC amount for that purchase is VAT-inclusive. Categories come from the PUC account (Materials, Labor, Designs and Engineering, Equipment, Subcontractors, Services, Other).',
+        'مشروعات تحت التنفيذ = حسابات الأعمال تحت التنفيذ لكل مشروع في دفتر الأستاذ. التكاليف المضافة = المدين فيها (مواد وخدمات أوامر الشراء، التحويلات الواردة، القيود اليدوية)؛ والتكاليف المحملة = الدائن (تكلفة المشروع المحملة على تكلفة المبيعات بأوامر البيع، التحويلات الصادرة). كل تكلفة تُحتسب مرة واحدة عند القيد الذي أدخلها - ولا تُحتسب مرة أخرى من أمر الشراء أو حركة المخزون. المعالجة المحاسبية للضريبة: الشراء المصنف "قابل للخصم" (الافتراضي) يرحل ضريبته لحساب ضريبة المدخلات، فمبلغ مشروعات تحت التنفيذ بدونها؛ والشراء المصنف "غير قابل للخصم" لا يرحل له أي قيد ضريبة مستقل - بل تُضاف الضريبة لمبلغ مشروعات تحت التنفيذ نفسه. الفئات من حساب مشروعات تحت التنفيذ (مواد، عمالة، تصميمات وهندسة، معدات، مقاولو الباطن، خدمات، أخرى).'
       ),
       note(
-        'Purchase Orders are listed for reference: ordered amount, received amount net of returns (in Reservia an order is received into stock when it is created), the amount its journal entries put into PUC, recoverable VAT, total payable, paid and outstanding. Their totals are never added to PUC. Paid and outstanding are the order\'s recorded payments.',
-        'أوامر الشراء معروضة للاسترشاد: المطلوب، والمستلم بعد المرتجعات (في ريزرفيا يُستلم الأمر في المخزون عند إنشائه)، والمبلغ الذي أدخلته قيوده في مشروعات تحت التنفيذ، والضريبة القابلة للخصم، والإجمالي المستحق، والمدفوع والمتبقي. لا تضاف إجمالياتها لمشروعات تحت التنفيذ. المدفوع والمتبقي من مدفوعات الأمر المسجلة.'
+        'Purchase Orders are listed for reference: ordered amount, received amount net of returns (in Reservia an order is received into stock when it is created), the amount its journal entries put into PUC, recoverable VAT (posted to Input VAT) and non-recoverable VAT (capitalized - already included in received/recognized/total, shown separately here for visibility only), total payable, paid and outstanding. Their totals are never added to PUC. Paid and outstanding are the order\'s recorded payments.',
+        'أوامر الشراء معروضة للاسترشاد: المطلوب، والمستلم بعد المرتجعات (في ريزرفيا يُستلم الأمر في المخزون عند إنشائه)، والمبلغ الذي أدخلته قيوده في مشروعات تحت التنفيذ، والضريبة القابلة للخصم (المرحلة لحساب ضريبة المدخلات) والضريبة غير القابلة للخصم (المرسملة - وهي مُضمنة بالفعل في المستلم والمثبت والإجمالي، وتُعرض هنا للاسترشاد فقط)، والإجمالي المستحق، والمدفوع والمتبقي. لا تضاف إجمالياتها لمشروعات تحت التنفيذ. المدفوع والمتبقي من مدفوعات الأمر المسجلة.'
       ),
     ],
   };

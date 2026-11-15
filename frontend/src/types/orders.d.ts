@@ -1,6 +1,7 @@
 import { Customer } from "./customer";
 import { PaymentStatus } from "./payment";
 import { Address } from "./user";
+import { VatTreatmentValue } from "@/utils/constants/vat-treatment";
 
 export type DiscountType = "percentage" | "fixed";
 export type ItemDiscount = { type: DiscountType; value: number };
@@ -49,6 +50,9 @@ export type PurchaseOrder = OrderFinancials & {
   // The Purchase Order this Invoice was created against (docs section "Link Purchase Invoices to
   // Purchase Orders") - `null` only for a historical invoice created before this link existed.
   requisition?: { _id: string; code: string; status: string; amount: number; invoicedAmount: number } | null;
+  // VAT Accounting Treatment (backend utils/vatTreatment.js) - purchase-side only; immutable once
+  // posted. Absent on a historical invoice created before this field existed (= 'recoverable').
+  vatTreatment?: VatTreatmentValue;
   items: PurchaseOrderItem[];
   starterTotalAmount: number;
   // Pre-tax SUBTOTAL (legacy field name) - NOT the order amount; see grandTotal.

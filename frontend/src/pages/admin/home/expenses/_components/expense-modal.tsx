@@ -13,9 +13,11 @@ import ErrorAlert from "@/components/ui/error-alert";
 import Modal from "@/components/ui/modal";
 import VendorSearch from "@/components/global/vendor-search";
 import PaymentAccountSelect from "@/components/global/payment-account-select";
+import VatTreatmentSelect from "@/components/global/vat-treatment-select";
 import { Vendor } from "@/types/vendor";
 import { Expense } from "@/types/expense";
 import { ChartOfAccountRef } from "@/types/orders";
+import { DEFAULT_VAT_TREATMENT, VatTreatmentValue } from "@/utils/constants/vat-treatment";
 
 // A vendor expense: Dr the chosen expense account (+ VAT) / Cr the vendor. It can be paid at once
 // (Pay now) or later from the expense's page.
@@ -38,6 +40,7 @@ export default function ExpenseModal({
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState<string | number>("");
   const [vatPercentage, setVatPercentage] = useState<string | number>(0);
+  const [vatTreatment, setVatTreatment] = useState<VatTreatmentValue>(DEFAULT_VAT_TREATMENT);
   const [date, setDate] = useState<Date | null>(new Date());
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
@@ -78,6 +81,7 @@ export default function ExpenseModal({
           category: category || undefined,
           amount,
           vatPercentage: vat,
+          vatTreatment,
           date: date ? toDateOnly(date) : undefined,
           reference: reference || undefined,
           notes: notes || undefined,
@@ -99,6 +103,7 @@ export default function ExpenseModal({
       setExpenseAccount("");
       setAmount("");
       setVatPercentage(0);
+      setVatTreatment(DEFAULT_VAT_TREATMENT);
       setDate(new Date());
       setReference("");
       setNotes("");
@@ -177,12 +182,15 @@ export default function ExpenseModal({
           />
         </div>
 
+        <VatTreatmentSelect value={vatTreatment} onChange={setVatTreatment} />
+
         <p className="-mt-2 text-sm text-gray-600">
           {translate("Total", "الإجمالي")}:{" "}
           <b>
             {total.toLocaleString()} {translations.currency}
           </b>
-          {vatAmount > 0 && ` (${translate("VAT", "الضريبة")} ${vatAmount.toLocaleString()})`}
+          {vatAmount > 0 &&
+            ` (${vatTreatment === "non_recoverable" ? translate("VAT, included", "الضريبة، مُضمَّنة") : translate("VAT", "الضريبة")} ${vatAmount.toLocaleString()})`}
         </p>
 
         <DateInput label={translate("Date", "التاريخ")} value={date} onChange={setDate} required />

@@ -77,7 +77,13 @@ async function expensesByCategory(query) {
       g.vat = round2(g.vat + vat);
       g.total = round2(g.total + total);
       g.paid = round2(g.paid + paid);
-      ledgerAmount += entry.lines.filter(l => l.debit > 0 && String(l.account) !== String(inputVatId)).reduce((s, l) => s + l.debit, 0);
+      // VAT Accounting Treatment (utils/vatTreatment.js): 'recoverable' (default) posts VAT to its
+      // own Input VAT line, so summing every OTHER debit line still equals the expense's own
+      // `amount`, exactly as before. 'non_recoverable' never posts a separate Input VAT line at
+      // all - the expense account's debit already includes VAT - so there is no ledger line left
+      // to exclude; fall back to the expense's own stored `amount` (pre-VAT) instead of assuming a
+      // separate VAT line always exists.
+      ledgerAmount += e.vatTreatment === 'non_recoverable' ? amount : entry.lines.filter(l => l.debit > 0 && String(l.account) !== String(inputVatId)).reduce((s, l) => s + l.debit, 0);
     }
   }
 

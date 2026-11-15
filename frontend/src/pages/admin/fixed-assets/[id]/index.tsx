@@ -16,6 +16,7 @@ import InfoItem from "@/components/ui/info-item";
 import JournalEntryLink from "@/components/global/journal-entry-link";
 import { FixedAsset } from "@/types/fixed-asset";
 import { ChartOfAccountRef } from "@/types/orders";
+import { VAT_TREATMENT_OPTIONS } from "@/utils/constants/vat-treatment";
 import UpdateFixedAssetModal from "../_components/update-fixed-asset-modal";
 import FixedAssetPaymentsTab from "../_components/fixed-asset-payments";
 import { fixedAssetStatusColors, useFixedAssetStatusLabel } from "../_components/status";
@@ -144,6 +145,15 @@ export default function FixedAssetDetail() {
               label={translate("VAT", "ضريبة القيمة المضافة")}
               value={`${money(asset.vatAmount ?? 0)} (${asset.vatPercentage ?? 0}%)`}
             />
+            {(asset.vatAmount ?? 0) > 0 && (
+              <InfoItem
+                label={translate("VAT Treatment", "المعالجة الضريبية")}
+                value={(() => {
+                  const option = VAT_TREATMENT_OPTIONS.find((o) => o.value === (asset.vatTreatment || "recoverable"));
+                  return option ? translate(option.label.en, option.label.ar) : "-";
+                })()}
+              />
+            )}
             <InfoItem
               label={translate("Total (owed to vendor)", "الإجمالي (المستحق للبائع)")}
               value={money(asset.totalAmount)}

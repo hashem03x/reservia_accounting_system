@@ -7,6 +7,7 @@ require('../../models/userModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const ApiError = require('../../utils/apiError');
 const { computeOrderTotals, round2 } = require('../../utils/orderTotals');
+const { DEFAULT_VAT_TREATMENT, splitCostForVatTreatment } = require('../../utils/vatTreatment');
 const { AutomaticJournalAccountCodes, SalariesPayableAccountName, isPaymentAccountEligible } = require('../../utils/accountingConstants');
 const { postAutomaticJournalEntry, getAccountIdByCode, getAccountIdByName, resolveVendorNumber } = require('../accounting/accountingEventService');
 const { resolveExpenseCategory } = require('./expenseCategoryService');
@@ -112,20 +113,27 @@ async function addExpensePayment(expenseId, { amount, paymentAccount, warehouseI
 }
 
 /**
- * Creates a vendor or salary expense and its EXPENSE_RECORDED entry in the caller's transaction:
+ * Creates a vendor or salary expense and its EXPENSE_RECORDED entry in the caller's transaction.
+ * With the default VAT Accounting Treatment ('recoverable', utils/vatTreatment.js):
  *
  *   Dr  the selected expense account                                     amount
  *   Dr  Input VAT (the same account Purchase Orders use)                VAT
  *       Cr  Suppliers (vendor expense) / Salaries Payable (salary expense)   amount + VAT
  *
- * A vendor expense also adds amount + VAT to the vendor's balance (like a Purchase Order); a salary
- * expense (`expenseType: 'salary'`) has no vendor at all - salaries are not vendor purchases, so no
- * vendor/vendor account is ever involved, and the credit goes to Salaries Payable instead. Either
- * way, when `payment` is given, it's paid straight away through addExpensePayment. Never touches
- * inventory.
+ * With 'non_recoverable' instead, VAT is folded into the expense account debit - there is no
+ * separate Input VAT line at all:
+ *
+ *   Dr  the selected expense account                                amount + VAT
+ *       Cr  Suppliers (vendor expense) / Salaries Payable (salary expense)   amount + VAT
+ *
+ * Either way, a vendor expense adds amount + VAT to the vendor's balance (like a Purchase Order);
+ * a salary expense (`expenseType: 'salary'`) has no vendor at all - salaries are not vendor
+ * purchases, so no vendor/vendor account is ever involved, and the credit goes to Salaries Payable
+ * instead. Either way, when `payment` is given, it's paid straight away through addExpensePayment.
+ * Never touches inventory.
  */
 async function createExpense(input, userId, session) {
-  const { vendor: vendorId, expenseAccount: expenseAccountId, amount, vatPercentage, date, reference, notes, payment, category, expenseType } = input;
+  const { vendor: vendorId, expenseAccount: expenseAccountId, amount, vatPercentage, vatTreatment, date, reference, notes, payment, category, expenseType } = input;
   const isSalary = expenseType === 'salary';
 
   const vendorNumber = isSalary ? null : await resolveVendorNumber(vendorId, { required: true }, session);
@@ -141,6 +149,8 @@ async function createExpense(input, userId, session) {
   const base = round2(Number(amount));
   const { vatAmount, total } = computeOrderTotals({ subtotal: base, vatPercentage });
   const expenseDate = date ? new Date(date) : new Date();
+  const resolvedVatTreatment = vatTreatment || DEFAULT_VAT_TREATMENT;
+  const { costDebit: expenseDebit, vatLineAmount } = splitCostForVatTreatment({ baseCost: base, vatAmount, vatTreatment: resolvedVatTreatment });
 
   const [expense] = await Expense.create(
     [
@@ -152,6 +162,7 @@ async function createExpense(input, userId, session) {
         amount: base,
         vatPercentage: Number(vatPercentage) || 0,
         vatAmount,
+        vatTreatment: resolvedVatTreatment,
         totalAmount: total,
         paidAmount: 0,
         paymentStatus: 'unpaid',
@@ -165,8 +176,8 @@ async function createExpense(input, userId, session) {
     { session }
   );
 
-  const lines = [{ account: expenseAccount._id, debit: base, credit: 0 }];
-  if (vatAmount > 0) lines.push({ account: await getAccountIdByCode(AutomaticJournalAccountCodes.inputVat, session), debit: vatAmount, credit: 0 });
+  const lines = [{ account: expenseAccount._id, debit: expenseDebit, credit: 0 }];
+  if (vatLineAmount > 0) lines.push({ account: await getAccountIdByCode(AutomaticJournalAccountCodes.inputVat, session), debit: vatLineAmount, credit: 0 });
   lines.push({ account: payableAccountId, debit: 0, credit: total });
 
   const entry = await postAutomaticJournalEntry({

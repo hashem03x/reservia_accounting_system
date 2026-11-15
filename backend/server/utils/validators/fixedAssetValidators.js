@@ -3,6 +3,7 @@ const Vendor = require('../../models/vendor/vendor');
 const Warehouse = require('../../models/inventory/warehouseModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { isPaymentAccountEligible } = require('../accountingConstants');
+const { VAT_TREATMENTS } = require('../vatTreatment');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
 
 // Fast pre-checks - the Chart of Accounts group rules for the three accounts are enforced by
@@ -25,6 +26,8 @@ const createFixedAssetValidators = [
   check('price').notEmpty().withMessage('Cost is required').isFloat({ gt: 0 }).withMessage('Cost must be greater than 0'),
   check('usefulLifeMonths').notEmpty().withMessage('Useful life in months is required').isInt({ gt: 0 }).withMessage('Useful life in months must be a whole number greater than 0'),
   check('vatPercentage').optional({ nullable: true }).isFloat({ min: 0, max: 100 }).withMessage('VAT percentage must be between 0 and 100'),
+  // VAT Accounting Treatment (utils/vatTreatment.js) - omitted keeps the schema's 'recoverable' default.
+  check('vatTreatment').optional({ nullable: true }).isIn(VAT_TREATMENTS).withMessage(`VAT treatment must be one of: ${VAT_TREATMENTS.join(', ')}`),
   check('notes').optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),
   validatorMiddleware,
 ];

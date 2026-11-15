@@ -8,19 +8,21 @@ const mongoose = require('mongoose');
 const DB_URI = process.env.TEST_DB_URI_TAX || 'mongodb://127.0.0.1:27017/reversia_test_tax_reports';
 
 let JournalEntry, ChartOfAccount, Project, User, Vendor, SalesOrder, PurchaseOrder, Expense;
+let Warehouse, Requisition, Product, postPurchaseOrderJournalEntries;
 let R; // report functions by key
 let runReport, buildWorkbook;
 const A = {}; // accounts
 const E = {}; // entries
 let c1, c2, v1, so1, so2, po1, ex1, p1;
 let entryNo = 700000;
+let transactionsSupported = true;
 const id = () => new mongoose.Types.ObjectId();
 const PERIOD = { from: '2026-01-01', to: '2026-06-30' };
 
 before(async () => {
   await mongoose.connect(DB_URI);
   await mongoose.connection.dropDatabase();
-  require('../../models/inventory/warehouseModel');
+  Warehouse = require('../../models/inventory/warehouseModel');
   require('../../models/vendor/paymentModel');
   JournalEntry = require('../../models/accounting/journalEntryModel');
   ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
@@ -30,10 +32,24 @@ before(async () => {
   SalesOrder = require('../../models/sales/salesOrderModel');
   PurchaseOrder = require('../../models/vendor/purchaseOrder');
   Expense = require('../../models/expense/expenseModel');
+  Requisition = require('../../models/vendor/requisitionModel');
+  Product = require('../../models/inventory/productModel');
   require('../../models/equity/shareholderModel');
+  ({ postPurchaseOrderJournalEntries } = require('../../services/accounting/accountingEventService'));
   const { REPORTS_BY_KEY } = require('../../services/reports/reportRegistry');
   R = Object.fromEntries([...REPORTS_BY_KEY].map(([k, r]) => [k, r.run]));
   ({ runReport, buildWorkbook } = require('../../controller/reports/accountingReportsController'));
+
+  const probe = await mongoose.startSession();
+  try {
+    await probe.withTransaction(async () => {
+      await mongoose.connection.collection('__txn_probe').insertOne({ ok: 1 }, { session: probe });
+    });
+  } catch (err) {
+    transactionsSupported = false;
+  } finally {
+    probe.endSession();
+  }
 
   const { AutomaticJournalAccountCodes: CODES } = require('../../utils/accountingConstants');
   const account = (key, code, name, nameAr, type, parentGroupNameEn = null) => ChartOfAccount.create({ code, name, nameAr, type, parentGroupNameEn }).then(a => (A[key] = a));
@@ -42,6 +58,7 @@ before(async () => {
   await account('suppliers', CODES.suppliers, 'Suppliers', null, 'liability');
   await account('revenue', CODES.revenue, 'Revenue', null, 'revenue');
   await account('inventory', CODES.materialsInventory, 'Materials Inventory', null, 'asset');
+  await account('wipRaw', CODES.wipRawMaterials, 'PUC - Raw Materials', null, 'asset');
   await account('rent', '61000001', 'Office Rent', null, 'expense');
   // Tax accounts: the four the automatic entries post to, plus accounts found only by name.
   await account('inputVat', CODES.inputVat, 'Egyptian Tax Authority - VAT', 'مصلحة الضرائب المصرية – قيمة مضافة', 'asset');
@@ -239,6 +256,39 @@ test('VAT - Debit: input VAT at two rates, a reversal of output VAT, a payment a
 
   const rates = section(result, 'rates').rows.map(r => [r.accountCode, r.taxRate, r.documents, r.invoiceBase, r.taxAmount]);
   assert.deepEqual(rates.sort((a, b) => b[1] - a[1]), [['11000017', 14, 1, 50000, 7000], ['11000017', 5, 1, 10000, 500]]);
+});
+
+test('VAT Accounting Treatment "non_recoverable": a real purchase posted this way never appears in the VAT - Debit report at all', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const [beforeDebit, beforeOverview] = await Promise.all([R['tax-vat-debit'](PERIOD), R['tax-accounts-overview'](PERIOD)]);
+  const beforeInputVatClosing = section(beforeOverview, 'accounts').rows.find(r => r.code === '11000017').closingDebit;
+
+  const warehouse = await Warehouse.create({ name: 'Tax Report Test Warehouse', location: 'Cairo' });
+  const product = await Product.create({ type: 'product', title: { en: 'Tax Test Product', ar: 'منتج' }, description: { en: 'd', ar: 'د' }, price: 200, cost: 100, category: id(), subcategory: id() });
+  const requisition = await Requisition.create({ vendorId: v1._id, project: p1, items: [{ description: 'x', quantity: 1, unitPrice: 100000 }] });
+  requisition.status = 'open';
+  await requisition.save();
+
+  const session = await mongoose.startSession();
+  let order;
+  await session.withTransaction(async () => {
+    [order] = await PurchaseOrder.create(
+      [{ vendorId: v1._id, warehouseId: warehouse._id, project: p1, requisition: requisition._id, vatPercentage: 14, vatTreatment: 'non_recoverable', items: [{ productId: product._id, unitPrice: 1000, starterQuantity: 10 }], createdAt: new Date('2026-06-01') }],
+      { session }
+    );
+    await postPurchaseOrderJournalEntries(order, session);
+  });
+  session.endSession();
+  assert.equal(order.vatTreatment, 'non_recoverable');
+  assert.equal(order.vatAmount, 1400, 'VAT is still computed and stored on the document');
+
+  const afterDebit = await R['tax-vat-debit'](PERIOD);
+  assert.equal(summary(afterDebit, 'total'), summary(beforeDebit, 'total'), 'the VAT - Debit report total is unchanged - no new VAT recognized');
+  assert.equal(section(afterDebit, 'movements').rows.length, section(beforeDebit, 'movements').rows.length, 'no new movement row at all for this purchase');
+
+  const afterOverview = await R['tax-accounts-overview'](PERIOD);
+  const afterInputVatClosing = section(afterOverview, 'accounts').rows.find(r => r.code === '11000017').closingDebit;
+  assert.equal(afterInputVatClosing, beforeInputVatClosing, 'the Input VAT account itself is untouched - the VAT was folded into Materials Inventory/PUC instead');
 });
 
 test('Commercial and industrial profit tax - debit and credit are kept apart from VAT', async () => {

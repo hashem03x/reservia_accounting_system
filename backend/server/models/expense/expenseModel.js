@@ -1,5 +1,6 @@
 const { Schema, model } = require('mongoose');
 const { expensesCategories } = require('../../utils/appConstant');
+const { VAT_TREATMENTS, DEFAULT_VAT_TREATMENT } = require('../../utils/vatTreatment');
 require('./expenseCategoryModel');
 
 // An Expense is either:
@@ -54,6 +55,13 @@ const expenseSchema = new Schema(
     amount: { type: Number, min: 0 }, // before VAT
     vatPercentage: { type: Number, default: 0, min: 0 },
     vatAmount: { type: Number, default: 0, min: 0 },
+    // VAT Accounting Treatment (utils/vatTreatment.js): 'recoverable' (default - today's only
+    // existing behavior) posts this expense's VAT to its own Input VAT ledger line, unchanged.
+    // 'non_recoverable' instead folds VAT into the expense account debit - no separate VAT line
+    // (see services/expenses/expenseService.js#createExpense). Fixed once posted, exactly like
+    // every other amount/account field on this model (updateExpense only ever touches
+    // reference/notes/category).
+    vatTreatment: { type: String, enum: VAT_TREATMENTS, default: DEFAULT_VAT_TREATMENT },
     totalAmount: { type: Number, min: 0 }, // amount + VAT - owed to the vendor
     paidAmount: { type: Number, default: 0, min: 0 },
     paymentStatus: { type: String, enum: ['unpaid', 'partially_paid', 'paid', null], default: null },

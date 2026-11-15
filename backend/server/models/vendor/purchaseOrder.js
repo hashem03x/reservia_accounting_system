@@ -8,6 +8,7 @@ require('../payments/advancedPaymentModel');
 require('./vendor');
 require('./requisitionModel');
 const { computeOrderTotals } = require('../../utils/orderTotals');
+const { VAT_TREATMENTS, DEFAULT_VAT_TREATMENT } = require('../../utils/vatTreatment');
 
 // const { createCanvas } = require('canvas');
 // const JsBarcode = require('jsbarcode');
@@ -74,6 +75,13 @@ const purchaseOrderSchema = new Schema(
     // ERP CHG-06: why this invoice carries no VAT. Required by the create request when VAT is an
     // explicit 0% (utils/validators/taxValidators.js); listed on the 0% VAT review report.
     vatExemptReason: { type: String, trim: true, maxlength: 300, default: null },
+    // VAT Accounting Treatment (utils/vatTreatment.js): 'recoverable' (default - today's only
+    // existing behavior) posts this invoice's VAT to its own Input VAT ledger line, unchanged.
+    // 'non_recoverable' instead folds VAT into the inventory/WIP/PUC cost debit - no separate VAT
+    // line at all (see accountingEventService.js#postPurchaseOrderJournalEntries). Set once at
+    // creation (there is no update route for this model) and stored permanently, so a later change
+    // to the company's default treatment never alters how an already-created invoice was posted.
+    vatTreatment: { type: String, enum: VAT_TREATMENTS, default: DEFAULT_VAT_TREATMENT },
     withholdingTaxPercentage: { type: Number, enum: { values: [0, 1, 3, 5], message: '{VALUE} is not a valid withholding tax percentage' }, default: 0 },
     withholdingTaxAmount: { type: Number, default: 0, min: 0 },
     // = totalAmount + vatAmount - withholdingTaxAmount - the canonical ORDER TOTAL AMOUNT
@@ -191,6 +199,14 @@ const getPaymentStatus = (paidAmount, totalAmount) => {
 // Pre-save middleware
 purchaseOrderSchema.pre('save', async function (next) {
   try {
+    // Defense-in-depth: VAT treatment is chosen once at creation (mirrors vatPercentage itself) and
+    // must never silently change on an already-created invoice - there is no update route for this
+    // model today (updatePO is commented out below), but this backstops any other write path, the
+    // same shape as JournalEntry.currency's guard (models/accounting/journalEntryModel.js).
+    if (!this.isNew && this.isModified('vatTreatment')) {
+      throw new Error('The VAT treatment of an existing Purchase Invoice cannot be changed.');
+    }
+
     // Generate unique code for new purchase orders if not provided - atomic Counter-based (see
     // orderNumberService.js), never the old race-prone `countDocuments()+1`. `this.$session()`
     // threads through the save's own transaction (if any), mirroring

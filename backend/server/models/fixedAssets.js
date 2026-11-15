@@ -1,5 +1,6 @@
 const { Schema, model } = require('mongoose');
 const { FixedAssetStatuses } = require('../utils/accountingConstants');
+const { VAT_TREATMENTS, DEFAULT_VAT_TREATMENT } = require('../utils/vatTreatment');
 
 // One processed depreciation/amortization month of an asset - the record that prevents the same
 // month from being depreciated twice (services/fixedAssets/fixedAssetService.js).
@@ -56,7 +57,8 @@ const fixedAssetSchema = Schema(
       type: Schema.Types.ObjectId,
       ref: 'Vendor',
     },
-    // Acquisition cost (excluding VAT) - the amount depreciated/amortized.
+    // Acquisition cost - the amount depreciated/amortized. Excludes VAT when vatTreatment is
+    // 'recoverable' (default); includes it when 'non_recoverable' (utils/vatTreatment.js).
     price: {
       type: Number,
       min: 0,
@@ -79,6 +81,13 @@ const fixedAssetSchema = Schema(
     },
     vatPercentage: { type: Number, default: 0, min: 0 },
     vatAmount: { type: Number, default: 0, min: 0 },
+    // VAT Accounting Treatment (utils/vatTreatment.js): 'recoverable' (default - today's only
+    // existing behavior) posts this asset's VAT to its own Input VAT ledger line, unchanged.
+    // 'non_recoverable' instead folds VAT into the asset account debit (see
+    // services/fixedAssets/fixedAssetService.js#createFixedAsset) - the asset is then depreciated
+    // on its VAT-inclusive price. Fixed once posted - there is no path that edits price/VAT after
+    // acquisition.
+    vatTreatment: { type: String, enum: VAT_TREATMENTS, default: DEFAULT_VAT_TREATMENT },
     // cost + VAT - what is owed to the vendor.
     totalAmount: { type: Number, min: 0 },
     // Chart of Accounts accounts - see services/fixedAssets/fixedAssetAccounts.js for which groups
