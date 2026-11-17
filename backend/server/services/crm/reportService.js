@@ -185,7 +185,7 @@ async function getSpeedBlock({ year, month, ownerId }) {
   const [pastSlaCount, noFollowUpCount, leads] = await Promise.all([
     Lead.countDocuments({ ...filter, stage: { $in: OPEN_STAGES }, firstReplyAt: null, replyDueAt: { $lt: now } }),
     Lead.countDocuments({ ...filter, stage: { $in: OPEN_STAGES }, followUpAt: null }),
-    Lead.find(filter).select('createdAt submittedAt firstReplyAt replyDueAt').lean(),
+    Lead.find(filter).select('createdAt submittedAt firstReplyAt replyDueAt slaCycleStartedAt').lean(),
   ]);
   const firstReply = computeFirstReplyMetrics(leads, { now });
 

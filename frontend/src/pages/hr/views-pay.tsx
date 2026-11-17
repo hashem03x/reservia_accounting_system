@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/context/LanguageContext";
 import { canEdit, daysIn, fmt, mLabel, PayRow, r1, r2, sum, useHr } from "./hr-context";
 import { Drawer, Empty, Inp, Kpi, MonthBar, Panel, Pill, Sel, Top, useFormVals, useModal } from "./ui";
 
@@ -6,17 +7,28 @@ import { Drawer, Empty, Inp, Kpi, MonthBar, Panel, Pill, Sel, Top, useFormVals, 
 // adjustments), ERP link and Reports: the reference prototype's vPay, payDrawer, vErp and vReports.
 // Every figure comes from the server engine; this file only shows it and sends decisions.
 
-const STEPS: [string, string][] = [["draft", "1. HR prepares"], ["review", "2. Review"], ["approved", "3. MD approved"], ["closed", "4. Closed and paid"]];
-const LOG_LABEL: Record<string, string> = { draft: "Sent back to HR", review: "Submitted for review", approved: "Approved", closed: "Closed and locked", reopen: "Reopened" };
-
 export function Payroll() {
   const { state, month, call, toast, openPdf, download } = useHr();
+  const { translate } = useLanguage();
   const { open, go } = useModal();
   const [note, setNote] = useState("");
   const [override, setOverride] = useState(false);
+  const STEPS: [string, string][] = [
+    ["draft", translate("1. HR prepares", "1. التحضير من الموارد البشرية")],
+    ["review", translate("2. Review", "2. المراجعة")],
+    ["approved", translate("3. MD approved", "3. موافقة المدير العام")],
+    ["closed", translate("4. Closed and paid", "4. مغلق ومدفوع")],
+  ];
+  const LOG_LABEL: Record<string, string> = {
+    draft: translate("Sent back to HR", "أُعيد إلى الموارد البشرية"),
+    review: translate("Submitted for review", "أُرسل للمراجعة"),
+    approved: translate("Approved", "تمت الموافقة"),
+    closed: translate("Closed and locked", "مغلق ومقفل"),
+    reopen: translate("Reopened", "أُعيد فتحه"),
+  };
   if (!state) return null;
   const head = (
-    <Top title="Payroll">
+    <Top title={translate("Payroll", "الرواتب")}>
       <MonthBar />
     </Top>
   );
@@ -24,7 +36,13 @@ export function Payroll() {
     return (
       <>
         {head}
-        <Empty title="Pay is not shown to your role" text="Line managers approve forms, claims and timesheets for their team. Payroll is prepared by HR, approved by the MD and read by Finance." />
+        <Empty
+          title={translate("Pay is not shown to your role", "الرواتب غير متاحة لدورك")}
+          text={translate(
+            "Line managers approve forms, claims and timesheets for their team. Payroll is prepared by HR, approved by the MD and read by Finance.",
+            "يوافق المديرون المباشرون على النماذج والمطالبات وسجلات الدوام لفريقهم. تُحضَّر الرواتب من الموارد البشرية، ويوافق عليها المدير العام، ويطلع عليها قسم المالية."
+          )}
+        />
       </>
     );
   const rows = state.payroll.rows;
@@ -32,13 +50,13 @@ export function Payroll() {
     return (
       <>
         {head}
-        <Empty title={`No employees on the payroll in ${mLabel(month)}`} />
+        <Empty title={translate(`No employees on the payroll in ${mLabel(month)}`, `لا يوجد موظفون في كشف الرواتب لشهر ${mLabel(month)}`)} />
       </>
     );
   const st = state.payroll.status;
   const si = STEPS.findIndex((s) => s[0] === st);
   const role = state.role;
-  const act = (path: string, body: Record<string, unknown> = {}, msg = "Done") =>
+  const act = (path: string, body: Record<string, unknown> = {}, msg = translate("Done", "تم")) =>
     call("POST", `payroll/${month}/${path}`, body)
       .then(() => {
         toast(msg);
@@ -50,7 +68,7 @@ export function Payroll() {
   return (
     <>
       {head}
-      <Panel title="Approval flow">
+      <Panel title={translate("Approval flow", "مسار الموافقة")}>
         <div className="flow" data-testid="pay-flow">
           {STEPS.map((x, i) => (
             <span key={x[0]} className={i < si ? "ok" : i === si ? "on" : ""}>
@@ -60,56 +78,56 @@ export function Payroll() {
         </div>
         <div className="row2" style={{ marginTop: 10 }}>
           {st !== "closed" && (role === "md" || role === "hr" || role === "finance") && (
-            <input style={{ flex: "1 1 220px" }} placeholder={st === "draft" ? "Note (needed for an override)" : "Note or reason"} value={note} onChange={(e) => setNote(e.target.value)} data-testid="pay-note" />
+            <input style={{ flex: "1 1 220px" }} placeholder={st === "draft" ? translate("Note (needed for an override)", "ملاحظة (مطلوبة للتجاوز)") : translate("Note or reason", "ملاحظة أو سبب")} value={note} onChange={(e) => setNote(e.target.value)} data-testid="pay-note" />
           )}
-          {st === "closed" && role === "md" && <input style={{ flex: "1 1 220px" }} placeholder="Reason for reopening" value={note} onChange={(e) => setNote(e.target.value)} data-testid="pay-note" />}
+          {st === "closed" && role === "md" && <input style={{ flex: "1 1 220px" }} placeholder={translate("Reason for reopening", "سبب إعادة الفتح")} value={note} onChange={(e) => setNote(e.target.value)} data-testid="pay-note" />}
           {st === "draft" && canEdit(role) && (
             <>
               {unrec > 0 && (
                 <label className="chk">
-                  <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} data-testid="pay-override" /> Submit with {unrec} blank days
+                  <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} data-testid="pay-override" /> {translate(`Submit with ${unrec} blank days`, `إرسال مع ${unrec} أيام فارغة`)}
                 </label>
               )}
-              <button className="btn primary" data-testid="pay-submit" onClick={() => act("submit", { override, note }, "Submitted for review")}>
-                Submit for review
+              <button className="btn primary" data-testid="pay-submit" onClick={() => act("submit", { override, note }, translate("Submitted for review", "أُرسل للمراجعة"))}>
+                {translate("Submit for review", "إرسال للمراجعة")}
               </button>
             </>
           )}
           {st === "review" && role === "md" && (
-            <button className="btn primary" data-testid="pay-approve" onClick={() => act("approve", { note }, "Approved")}>
-              Approve as MD
+            <button className="btn primary" data-testid="pay-approve" onClick={() => act("approve", { note }, translate("Approved", "تمت الموافقة"))}>
+              {translate("Approve as MD", "الموافقة كمدير عام")}
             </button>
           )}
           {(st === "review" || st === "approved") && (role === "md" || role === "finance") && (
-            <button className="btn" data-testid="pay-sendback" onClick={() => act("send-back", { note }, "Sent back to HR")}>
-              Send back to HR
+            <button className="btn" data-testid="pay-sendback" onClick={() => act("send-back", { note }, translate("Sent back to HR", "أُعيد إلى الموارد البشرية"))}>
+              {translate("Send back to HR", "إعادة إلى الموارد البشرية")}
             </button>
           )}
           {st === "approved" && canEdit(role) && (
-            <button className="btn primary" data-testid="pay-close" onClick={() => act("close", { note }, "Month closed")}>
-              Close and lock month
+            <button className="btn primary" data-testid="pay-close" onClick={() => act("close", { note }, translate("Month closed", "تم إغلاق الشهر"))}>
+              {translate("Close and lock month", "إغلاق وقفل الشهر")}
             </button>
           )}
           {st === "closed" && role === "md" && (
-            <button className="btn" data-testid="pay-reopen" onClick={() => act("reopen", { note }, "Month reopened")}>
-              Reopen month
+            <button className="btn" data-testid="pay-reopen" onClick={() => act("reopen", { note }, translate("Month reopened", "أُعيد فتح الشهر"))}>
+              {translate("Reopen month", "إعادة فتح الشهر")}
             </button>
           )}
           <span style={{ marginLeft: "auto" }} className="row2">
             {canEdit(role) && (
               <button className="btn" onClick={() => download(`payroll/${month}/register.csv`)}>
-                Register CSV
+                {translate("Register CSV", "ملف CSV للسجل")}
               </button>
             )}
             <button className="btn" data-testid="pay-register" onClick={() => openPdf(`payroll/${month}/register.pdf`)}>
-              Print register
+              {translate("Print register", "طباعة السجل")}
             </button>
             <button className="btn" onClick={() => download(`payroll/${month}/journal.json`)}>
-              ERP journal
+              {translate("ERP journal", "قيد نظام تخطيط الموارد")}
             </button>
             {st === "closed" && canEdit(role) && (
               <button className="btn" data-testid="pay-email-all" onClick={() => call("POST", `payroll/${month}/email`, {}).then((r) => toast(emailSummary(r.data))).catch(() => undefined)}>
-                Email all payslips
+                {translate("Email all payslips", "إرسال كل إيصالات الراتب بالبريد")}
               </button>
             )}
           </span>
@@ -120,7 +138,7 @@ export function Payroll() {
               <div key={i}>
                 <time>{String(l.at).slice(0, 10)}</time>
                 <span>
-                  {LOG_LABEL[l.s] || l.s} by {l.byName}
+                  {LOG_LABEL[l.s] || l.s} {translate("by", "من")} {l.byName}
                   {l.note ? `: ${l.note}` : ""}
                 </span>
               </div>
@@ -128,16 +146,16 @@ export function Payroll() {
           </div>
         ) : (
           <div className="sub" style={{ marginTop: 8 }}>
-            Each step is stamped with your name and the date.
+            {translate("Each step is stamped with your name and the date.", "تُسجَّل كل خطوة باسمك والتاريخ.")}
           </div>
         )}
       </Panel>
       {state.payroll.issues.length > 0 && (
-        <Panel title="Before you close">
+        <Panel title={translate("Before you close", "قبل الإغلاق")}>
           <div className="todo">
             {state.payroll.issues.map((i, n) => (
               <button key={n} onClick={() => go(i.view)}>
-                <Pill c={i.level}>{i.level === "warn" ? "Fix" : "Check"}</Pill>
+                <Pill c={i.level}>{i.level === "warn" ? translate("Fix", "تصحيح") : translate("Check", "تحقق")}</Pill>
                 <span className="who">{i.text}</span>
               </button>
             ))}
@@ -145,28 +163,28 @@ export function Payroll() {
         </Panel>
       )}
       <div className="kpis">
-        <Kpi label="Net payout" value={fmt(sum(rows, (r) => r.net))} sub="EGP to employees" />
-        <Kpi label="Employer cost" value={fmt(sum(rows, (r) => r.cost))} sub={`incl. insurance ${fmt(sum(rows, (r) => r.insEr))}`} />
-        <Kpi label="Overtime" value={fmt(sum(rows, (r) => r.otPay))} sub={`${r1(sum(rows, (r) => r.otHours))} hours`} />
-        <Kpi label="Commission" value={fmt(sum(rows, (r) => r.comm))} sub={`targets entered for ${rows.filter((r) => r.tgt != null).length} of ${rows.filter((r) => r.commBase).length} eligible`} />
-        <Kpi label="Site and travel" value={fmt(sum(rows, (r) => r.site) + sum(rows, (r) => r.reimb))} sub={`${sum(rows, (r) => r.nVisits)} visits, ${sum(rows, (r) => r.nExp)} claims`} />
-        <Kpi label="Insurance and tax withheld" value={fmt(sum(rows, (r) => r.insEmp) + sum(rows, (r) => r.tax))} sub="for the authorities" />
+        <Kpi label={translate("Net payout", "صافي المدفوع")} value={fmt(sum(rows, (r) => r.net))} sub={translate("EGP to employees", "جنيه للموظفين")} />
+        <Kpi label={translate("Employer cost", "تكلفة الشركة")} value={fmt(sum(rows, (r) => r.cost))} sub={translate(`incl. insurance ${fmt(sum(rows, (r) => r.insEr))}`, `شامل التأمينات ${fmt(sum(rows, (r) => r.insEr))}`)} />
+        <Kpi label={translate("Overtime", "العمل الإضافي")} value={fmt(sum(rows, (r) => r.otPay))} sub={translate(`${r1(sum(rows, (r) => r.otHours))} hours`, `${r1(sum(rows, (r) => r.otHours))} ساعة`)} />
+        <Kpi label={translate("Commission", "العمولة")} value={fmt(sum(rows, (r) => r.comm))} sub={translate(`targets entered for ${rows.filter((r) => r.tgt != null).length} of ${rows.filter((r) => r.commBase).length} eligible`, `أُدخلت الأهداف لـ ${rows.filter((r) => r.tgt != null).length} من ${rows.filter((r) => r.commBase).length} مؤهلين`)} />
+        <Kpi label={translate("Site and travel", "الموقع والسفر")} value={fmt(sum(rows, (r) => r.site) + sum(rows, (r) => r.reimb))} sub={translate(`${sum(rows, (r) => r.nVisits)} visits, ${sum(rows, (r) => r.nExp)} claims`, `${sum(rows, (r) => r.nVisits)} زيارة، ${sum(rows, (r) => r.nExp)} مطالبة`)} />
+        <Kpi label={translate("Insurance and tax withheld", "التأمينات والضرائب المحجوزة")} value={fmt(sum(rows, (r) => r.insEmp) + sum(rows, (r) => r.tax))} sub={translate("for the authorities", "للجهات الرسمية")} />
       </div>
       <div className="tablewrap">
         <table data-testid="pay-table">
           <thead>
             <tr>
-              <th>Employee</th>
-              <th className="num">Fixed pay</th>
-              <th className="num">Commission</th>
-              <th className="num">Absence</th>
-              <th className="num">Overtime</th>
-              <th className="num">Site</th>
-              <th className="num">Reimb.</th>
-              <th className="num">Adjust.</th>
-              <th className="num">Insurance</th>
-              <th className="num">Tax</th>
-              <th className="num">Net</th>
+              <th>{translate("Employee", "الموظف")}</th>
+              <th className="num">{translate("Fixed pay", "الراتب الثابت")}</th>
+              <th className="num">{translate("Commission", "العمولة")}</th>
+              <th className="num">{translate("Absence", "الغياب")}</th>
+              <th className="num">{translate("Overtime", "العمل الإضافي")}</th>
+              <th className="num">{translate("Site", "الموقع")}</th>
+              <th className="num">{translate("Reimb.", "الاسترداد")}</th>
+              <th className="num">{translate("Adjust.", "التعديل")}</th>
+              <th className="num">{translate("Insurance", "التأمين")}</th>
+              <th className="num">{translate("Tax", "الضريبة")}</th>
+              <th className="num">{translate("Net", "الصافي")}</th>
               <th></th>
             </tr>
           </thead>
@@ -176,11 +194,11 @@ export function Payroll() {
                 <td>
                   <b>{r.name}</b>
                   <div className="sub">
-                    {r.role} · {r.t.present} days, {r1(r.otHours)} OT h
+                    {r.role} · {translate(`${r.t.present} days, ${r1(r.otHours)} OT h`, `${r.t.present} يوم، ${r1(r.otHours)} ساعة إضافية`)}
                   </div>
                 </td>
                 <td className="num">{fmt(r.fixed)}</td>
-                <td className="num">{r.comm ? fmt(r.comm) : r.tgt == null && r.commBase ? <span className="warnline">target?</span> : ""}</td>
+                <td className="num">{r.comm ? fmt(r.comm) : r.tgt == null && r.commBase ? <span className="warnline">{translate("target?", "الهدف؟")}</span> : ""}</td>
                 <td className="num">{r.absDed + r.lateDed ? `-${fmt(r.absDed + r.lateDed)}` : ""}</td>
                 <td className="num">{r.otPay ? fmt(r.otPay) : ""}</td>
                 <td className="num">{r.site ? fmt(r.site) : ""}</td>
@@ -193,7 +211,7 @@ export function Payroll() {
                 </td>
                 <td onClick={(e) => e.stopPropagation()}>
                   <button className="btn sm" onClick={() => openPdf(`payroll/${month}/payslips/${r.id}.pdf`)}>
-                    Payslip
+                    {translate("Payslip", "إيصال الراتب")}
                   </button>
                 </td>
               </tr>
@@ -202,7 +220,7 @@ export function Payroll() {
           <tfoot>
             <tr>
               <td>
-                <b>Total</b>
+                <b>{translate("Total", "الإجمالي")}</b>
               </td>
               <td className="num">{fmt(sum(rows, (r) => r.fixed))}</td>
               <td className="num">{fmt(sum(rows, (r) => r.comm))}</td>
@@ -222,7 +240,10 @@ export function Payroll() {
         </table>
       </div>
       <div className="sub">
-        Month convention: 30 days. Fixed pay = basic gross + transport + incentive monthly payout + other, from each contract. Commission is paid {state.cfg.commPro ? "pro rata to the target achieved" : "in full when the target reaches 100%"}. Overtime hourly rate = monthly {state.cfg.otBase === "gross" ? "total wage" : "basic pay"} / 30 / {state.cfg.stdHours}. Reimbursements (transport, accommodation, meals on receipts) are {state.cfg.reimbTaxable ? "taxed" : "not taxed"}. Rates for overtime, insurance and tax are in Settings and should be confirmed with your accountant before the first run.
+        {translate(
+          `Month convention: 30 days. Fixed pay = basic gross + transport + incentive monthly payout + other, from each contract. Commission is paid ${state.cfg.commPro ? "pro rata to the target achieved" : "in full when the target reaches 100%"}. Overtime hourly rate = monthly ${state.cfg.otBase === "gross" ? "total wage" : "basic pay"} / 30 / ${state.cfg.stdHours}. Reimbursements (transport, accommodation, meals on receipts) are ${state.cfg.reimbTaxable ? "taxed" : "not taxed"}. Rates for overtime, insurance and tax are in Settings and should be confirmed with your accountant before the first run.`,
+          `قاعدة الشهر: 30 يوماً. الراتب الثابت = الأساسي الإجمالي + النقل + الحافز الشهري + أخرى، من كل عقد. تُدفع العمولة ${state.cfg.commPro ? "بالتناسب مع الهدف المحقق" : "بالكامل عند بلوغ الهدف 100%"}. سعر ساعة العمل الإضافي = ${state.cfg.otBase === "gross" ? "الأجر الإجمالي" : "الراتب الأساسي"} الشهري / 30 / ${state.cfg.stdHours}. المبالغ المستردة (النقل، الإقامة، الوجبات بإيصالات) ${state.cfg.reimbTaxable ? "خاضعة للضريبة" : "غير خاضعة للضريبة"}. معدلات العمل الإضافي والتأمين والضريبة موجودة في الإعدادات ويجب تأكيدها مع المحاسب قبل أول تشغيل.`
+        )}
       </div>
     </>
   );

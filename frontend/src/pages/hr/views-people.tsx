@@ -369,9 +369,20 @@ export function EmployeeDrawer({ id }: { id?: string }) {
                 </button>
               </>
             )}
-            {pay && (
+            {pay && row && (
               <button className="btn sm" onClick={() => open({ type: "pay", id })}>
                 Payslip
+              </button>
+            )}
+            {/* Bug fix: this button used to show whenever the viewer could see pay, regardless of
+                whether a payroll row actually exists for this employee this month (e.g. hired/
+                added after the month was closed, or payroll not run yet) - clicking it opened a
+                PayDrawer that silently rendered nothing at all (views-pay.tsx). An explicit,
+                disabled state with a reason is clearer than hiding the button outright or than a
+                silent no-op. */}
+            {pay && !row && (
+              <button className="btn sm" disabled title={`No payroll record for ${mLabel(state.month)} yet - run or check payroll for this employee.`}>
+                Payslip (not available this month)
               </button>
             )}
           </div>
@@ -529,8 +540,16 @@ export function Org() {
     );
   };
   const md = state.cfg.mdName;
-  const top = roots.filter((e) => String(e.mgr || "").trim().toLowerCase() === String(md).trim().toLowerCase() || !e.mgr);
-  const other = roots.filter((e) => !top.includes(e));
+  const mdKey = String(md || "").trim().toLowerCase();
+  // If an employee record matching the configured MD name exists, exclude them from the
+  // regular tree and show their real direct reports under the header node instead - otherwise
+  // they'd render twice (once as the header, once as their own direct report) once such a
+  // record is created (the MD intentionally has no employee record by default).
+  const mdEmployee = mdKey ? byName[mdKey] : undefined;
+  const visibleRoots = mdEmployee ? roots.filter((e) => e._id !== mdEmployee._id) : roots;
+  const top = visibleRoots.filter((e) => String(e.mgr || "").trim().toLowerCase() === mdKey || !e.mgr);
+  const other = visibleRoots.filter((e) => !top.includes(e));
+  const mdDirectReports = mdEmployee ? (kids[mdEmployee._id] || []).sort((a, b) => a.name.localeCompare(b.name)) : [];
   const byDept: Record<string, number> = {};
   E.forEach((e) => (byDept[e.dept || "Other"] = (byDept[e.dept || "Other"] || 0) + 1));
   return (
@@ -551,10 +570,13 @@ export function Org() {
         <ul className="tree">
           <li>
             <div className="node">
-              <b>{md}</b>
-              <small>Managing Director</small>
+              <b>{md || <span className="sub">Not assigned</span>}</b>
+              <small>Managing Director{!md && " - set in Settings"}</small>
             </div>
-            <ul>{top.map((e) => node(e, 1))}</ul>
+            <ul>
+              {mdDirectReports.map((e) => node(e, 1))}
+              {top.map((e) => node(e, 1))}
+            </ul>
           </li>
           {other.map((e) => node(e, 1))}
         </ul>

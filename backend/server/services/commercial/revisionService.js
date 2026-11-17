@@ -72,6 +72,13 @@ async function computeAndSave(project, engineeringInput, { manualOverrides = {},
   const built = await boqService.buildBoq({
     category: project.category, engineeringInput, country: project.country, region: project.region, manualOverrides, engineSettings,
   });
+  // Cable-breaker protection coordination (onGridEngine.js#sizeAcCable, 2026 engineering review):
+  // never let a proposal go out with an AC cable that cannot safely carry its own breaker's rated
+  // current after derating. `acCable` only exists on On-Grid/Utility-Scale results, so this is a
+  // no-op for every other category.
+  if (built.engineeringResult?.acCable?.protectionOk === false) {
+    throw new ApiError(`Cable protection requirement violated: ${built.engineeringResult.acCable.flag}`, 400);
+  }
   const pricing = boqService.priceBoq({ boqTotal: built.boqTotal, kWp: built.kWp, vatPct, levers, discountAuthorityPct: applied.discountAuthorityPct ?? config.discountAuthorityPct });
   const { feasibility, dieselComparison } = boqService.computeFeasibility({
     category: project.category, engineeringInput, pricing, boqTotal: built.boqTotal, kWp: built.kWp, engineeringResult: built.engineeringResult, engineSettings, region: project.region,

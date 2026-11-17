@@ -107,6 +107,20 @@ const AC_CABLE_PRICE_PER_M = {
   '3x16': 420, '3x25': 630, '3x35': 850, '3x50': 1195, '3x70': 1670, '3x95': 2190,
 };
 
+// Material Price List!N56:O67 - "Indicative Ampacity (A)" per AC cable size, explicitly marked in
+// the source sheet "Preliminary only; verify installation method and derating". Never used for
+// pricing - only to verify (and, when needed, correct) the length/voltage-drop-based cable pick
+// above can still be safely protected by the breaker selected in selectAcBreaker(): a 2026
+// engineering review found a 60 kW inverter's table-selected 3x35mm2 cable (94 A base here, close
+// to the review's own ~79-94 A figure once a derating factor is applied) was being left in service
+// behind a 125 A breaker - unsafe (see onGridEngine.js#sizeAcCable's cable-breaker coordination
+// step, and ratesConfigModel.js#acCableDeratingFactor for the configurable derating factor, 0.8 by
+// default, applied on top of this table).
+const AC_CABLE_AMPACITY_A = {
+  '3x1.5': 13, '3x2.5': 18, '3x4': 24, '3x6': 31, '3x10': 43,
+  '3x16': 57, '3x25': 76, '3x35': 94, '3x50': 114, '3x70': 147, '3x95': 179,
+};
+
 // Material Price List!N87:O92 - cable tray roll price list
 const CABLE_TRAY_ROLLS = [
   { lengthM: 5, pricePerRoll: 130 },
@@ -190,6 +204,7 @@ module.exports = {
   AC_CABLE_SIZES,
   AC_CABLE_MAX_LENGTH_BY_HP,
   AC_CABLE_PRICE_PER_M,
+  AC_CABLE_AMPACITY_A,
   CABLE_TRAY_ROLLS,
   AC_BREAKERS,
   MC4_CONNECTOR_PRICE_PER_PIECE,

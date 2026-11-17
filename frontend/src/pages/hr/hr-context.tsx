@@ -150,18 +150,30 @@ export function HrProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  /** Opens a PDF in a new tab (opened first so a popup blocker allows it), else downloads it. */
+  /**
+   * Opens a PDF in a new tab (opened first so a popup blocker allows it), else downloads it.
+   * Bug fix: the download fallback used to create the `<a download>` without ever inserting it
+   * into the document before `.click()` - a detached anchor's click is unreliable (several
+   * browsers/automation drivers require the node to be in the DOM), so a popup-blocked click
+   * could silently do nothing at all: no tab, no download, no error, no toast. Mirrors the
+   * append/click/remove pattern already used by utils/helpers/api-request.ts#downloadBlob, plus a
+   * success toast so the fallback path always gives visible feedback.
+   */
   const openPdf = async (url: string) => {
     const tab = window.open("", "_blank");
     try {
       const res = (await privateRequest({ url: `hr/${url}`, language, responseType: "blob" })) as { blob: Blob; filename: string };
       const objectUrl = URL.createObjectURL(res.blob);
-      if (tab) tab.location.href = objectUrl;
-      else {
+      if (tab) {
+        tab.location.href = objectUrl;
+      } else {
         const a = document.createElement("a");
         a.href = objectUrl;
         a.download = res.filename;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
+        toast("Downloaded " + res.filename);
       }
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (e) {

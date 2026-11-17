@@ -21,13 +21,14 @@ export function Kpi({ label, value, sub, alert }: { label: string; value: ReactN
 
 export function MonthBar() {
   const { month, setMonth } = useHr();
+  const { translate } = useLanguage();
   return (
     <div className="mnav">
-      <button className="btn sm" aria-label="Previous month" onClick={() => setMonth(mAdd(month, -1))}>
+      <button className="btn sm" aria-label={translate("Previous month", "الشهر السابق")} onClick={() => setMonth(mAdd(month, -1))}>
         &lsaquo;
       </button>
       <b data-testid="hr-month">{mLabel(month)}</b>
-      <button className="btn sm" aria-label="Next month" onClick={() => setMonth(mAdd(month, 1))}>
+      <button className="btn sm" aria-label={translate("Next month", "الشهر التالي")} onClick={() => setMonth(mAdd(month, 1))}>
         &rsaquo;
       </button>
     </div>

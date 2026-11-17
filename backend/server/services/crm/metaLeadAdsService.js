@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 const ApiError = require('../../utils/apiError');
-const { processIntake, formatExtraAnswers } = require('./leadIntakeService');
+const { processIntake, formatExtraAnswers, recordIgnoredEvent } = require('./leadIntakeService');
 const { parseSubmissionTimestamp } = require('../../utils/crm/businessDate');
 const IntakeEvent = require('../../models/crm/intakeEventModel');
 
@@ -168,6 +168,14 @@ async function processWebhookPayload(payload, { fetchImpl, credentials } = {}) {
       const lead = await fetchLead(change.leadgen_id, { fetchImpl, credentials });
       const args = toIntake(lead, change);
       if (!args.lead.phone) {
+        // Previously fell through with no IntakeEvent at all - indistinguishable from "Meta never
+        // sent this lead". Record it as ignored (same mechanism already used for Google Ads test
+        // leads) and log every field NAME Meta actually sent, uncensored, so a form whose phone
+        // question uses a custom field key not in FIELD_ALIASES can be diagnosed and fixed instead
+        // of silently losing every lead from that form.
+        // eslint-disable-next-line no-await-in-loop
+        await recordIgnoredEvent('meta', change.leadgen_id, 'no phone number in the form').catch(() => {});
+        console.warn(`[CRM Meta] lead ${change.leadgen_id} has no mappable phone field - form fields: ${(lead.field_data || []).map(f => f.name).join(', ') || '(none)'}`);
         results.push({ leadgenId: change.leadgen_id, skipped: 'no phone number in the form' });
         continue;
       }
@@ -199,7 +207,11 @@ async function processWebhookPayload(payload, { fetchImpl, credentials } = {}) {
 async function reprocessLead(leadgenId, { fetchImpl, credentials } = {}) {
   const lead = await fetchLead(leadgenId, { fetchImpl, credentials });
   const args = toIntake(lead, { leadgen_id: leadgenId });
-  if (!args.lead.phone) return { leadgenId, skipped: 'no phone number in the form' };
+  if (!args.lead.phone) {
+    await recordIgnoredEvent('meta', leadgenId, 'no phone number in the form').catch(() => {});
+    console.warn(`[CRM Meta] lead ${leadgenId} has no mappable phone field - form fields: ${(lead.field_data || []).map(f => f.name).join(', ') || '(none)'}`);
+    return { leadgenId, skipped: 'no phone number in the form' };
+  }
   return { leadgenId, ...(await processIntake({ channel: 'meta', ...args })) };
 }
 

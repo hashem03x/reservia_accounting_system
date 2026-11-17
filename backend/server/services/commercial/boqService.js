@@ -72,6 +72,12 @@ async function buildOnGridCatalog(country, region) {
     AC_CABLE_SIZES: onGridCatalogData.AC_CABLE_SIZES,
     AC_CABLE_MAX_LENGTH_BY_HP: onGridCatalogData.AC_CABLE_MAX_LENGTH_BY_HP,
     AC_CABLE_PRICE_PER_M: onGridCatalogData.AC_CABLE_PRICE_PER_M,
+    // Indicative ampacity is likewise a universal engineering reference table (not a priced
+    // catalog) - the derating factor IS admin-configurable (Rates Matrix), defaulting to 0.8 (the
+    // validated figure from the 2026 cable-breaker-protection engineering review) when a Rates
+    // config predates this field. See onGridEngine.js#sizeAcCable.
+    AC_CABLE_AMPACITY_A: onGridCatalogData.AC_CABLE_AMPACITY_A,
+    AC_CABLE_DERATING_FACTOR: rates.AC_CABLE_DERATING_FACTOR ?? 0.8,
     CABLE_TRAY_ROLLS: onGridCatalogData.CABLE_TRAY_ROLLS,
     MC4_CONNECTOR_PRICE_PER_PIECE: onGridCatalogData.MC4_CONNECTOR_PRICE_PER_PIECE,
     MOUNTING_STRUCTURE_RATES: rates.MOUNTING_STRUCTURE_RATES || onGridCatalogData.MOUNTING_STRUCTURE_RATES,

@@ -71,7 +71,11 @@ test('fix preserves every original BOQ value (component/description/unit/qty/uni
   });
   const byComponent = Object.fromEntries(lines.map(l => [l.component, l.total]));
   assert.equal(byComponent['PV Modules'], 698392.5); // 169 modules (QA: ceil of design kWp / module W)
-  assert.equal(lines.reduce((s, l) => s + (l.total || 0), 0), 1179007.5);
+  // AC Cable is null here: this scenario's 200 A breaker cannot be protected by any cable in the
+  // Price Book's AC cable table after derating (onGridEngine.js#sizeAcCable's cable-breaker
+  // coordination check, 2026 engineering review) - 1,179,007.5 less that no-longer-priced line (23,900).
+  assert.equal(byComponent['AC Cable'], null);
+  assert.equal(lines.reduce((s, l) => s + (l.total || 0), 0), 1155107.5);
 });
 
 test('fix applies equally to Off-Grid (13 lines, numbered 1-13, no gaps)', () => {

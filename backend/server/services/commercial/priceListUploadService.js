@@ -11,6 +11,7 @@ const CommercialRevision = require('../../models/commercial/commercialRevisionMo
 const pricingConfigService = require('./pricingConfigService');
 const { engineSettings } = require('./dealEngineSettings');
 const { EDIT_ROLES } = require('./supplierService');
+const { canonicalMaterialKey } = require('../../utils/commercial/materialKey');
 
 // Deal Engine C21-C24 / Spec Part 2 section 5 - supplier price list upload. Nothing is written to the
 // Price Book without a preview; the confirm writes only the rows shown as Update (and New rows the
@@ -61,7 +62,6 @@ const MAX_ROWS = 2000;
 
 const norm = v => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 const keyOf = (brand, model, spec) => `${String(brand).trim()} | ${String(model).trim()} | ${String(spec ?? '').trim()}`;
-const normKey = k => String(k).split('|').map(norm).join('|');
 
 /** Reads the first sheet with a header row (CSV or XLSX). Returns { headers, rows: [{header: value}] }. */
 function readFile({ buffer, originalname }) {
@@ -120,8 +120,13 @@ async function buildPreview({ supplier, headers, rows, mapping, validityDate }) 
 
   const config = await pricingConfigService.getActiveConfig();
   const fx = engineSettings(config).fxRatesEgp || {};
-  const items = await MaterialItem.find({ archived: false }).select('key category unitPrice currency supplierPrices status').lean();
-  const byKey = new Map(items.map(it => [normKey(it.key), it]));
+  const items = await MaterialItem.find({ archived: false }).select('key keyNorm category unitPrice currency supplierPrices status').lean();
+  // 2026 QA fix: matched by the canonical key (utils/commercial/materialKey.js - case, whitespace,
+  // punctuation and common unit-format insensitive), not a bare lowercase/trim of the display
+  // `key` string, so "SUN2000-60KTL-M0"/"60 kW" and "sun2000 60ktl m0"/"60kw" resolve to the SAME
+  // Price Book item instead of creating a duplicate. Legacy items saved before `keyNorm` existed
+  // fall back to computing it on the fly here (it is auto-set on their next save regardless).
+  const byKey = new Map(items.map(it => [it.keyNorm || canonicalMaterialKey({ brand: it.key.split('|')[0], model: it.key.split('|')[1], spec: it.key.split('|')[2] }), it]));
   const seen = new Map();
   const get = (row, f) => (mapping[f] ? row[mapping[f]] : undefined);
 
@@ -134,7 +139,7 @@ async function buildPreview({ supplier, headers, rows, mapping, validityDate }) 
     if (!category) errors.push('Missing category');
     if (!brand || !model) errors.push('Missing brand or model');
     const key = keyOf(brand, model, spec);
-    const nk = normKey(key);
+    const nk = canonicalMaterialKey({ brand, model, spec });
     if (brand && model) {
       if (seen.has(nk)) errors.push(`Duplicate key (also on row ${seen.get(nk)})`);
       else seen.set(nk, i + 2);
@@ -148,7 +153,10 @@ async function buildPreview({ supplier, headers, rows, mapping, validityDate }) 
     let rate = null;
     if (!CURRENCIES.includes(currency)) errors.push(`Unknown currency "${currency}"`);
     else if (currency !== 'EGP') {
-      rate = fx[currency] || null;
+      // `??` not `||`: a rate can never legitimately be 0 (validated >= 0.0001 on save,
+      // dealEngineSettings.js), but `??` is the precise "missing" check either way - never treats
+      // a real, validated rate as absent.
+      rate = fx[currency] ?? null;
       if (!rate) errors.push(`Currency without rate: enter the ${currency} rate on Pricing Configuration first`);
     }
     const egp = price !== null && (currency === 'EGP' || rate) ? Math.round(price * (currency === 'EGP' ? 1 : rate) * 100) / 100 : null;

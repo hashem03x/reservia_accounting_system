@@ -155,11 +155,26 @@ function sizeMountingStructure({ finalModules, module, structureType, structureR
 }
 
 /**
- * On-Grid Design!A44:K44 - AC cable sizing, permanently flagged by the source sheet itself as
- * "REFERENCE TABLE SELECTION - VERIFY ENGINEERING" (never presented as a fully verified number).
- * `acLengthM` is a commercial/site input (no formula derives it in the source sheet either).
+ * On-Grid Design!A44:K44 - AC cable sizing. The length/voltage-drop table lookup (E44) is ported
+ * faithfully from the source sheet, permanently self-flagged there as "REFERENCE TABLE SELECTION -
+ * VERIFY ENGINEERING" (never presented as a fully verified number) - `acLengthM` is a
+ * commercial/site input (no formula derives it in the source sheet either).
+ *
+ * 2026 engineering review finding: that length-based table pick alone is NOT sufficient - it says
+ * nothing about whether the selected cable can safely carry the current of the breaker that
+ * protects it (IEC 60364-433, In <= Iz: a protective device's rated current must not exceed the
+ * cable's own permissible current-carrying capacity). A 60 kW inverter's design current (110.45 A)
+ * selects a 125 A breaker (selectAcBreaker, below) while the length table alone selects 3x35mm2 -
+ * 94 A indicative ampacity (AC_CABLE_AMPACITY_A) x 0.8 derating = ~75 A, well under the 125 A the
+ * breaker could let through under fault conditions. Passing `breakerRatingA` (the engine now
+ * resolves the breaker BEFORE the cable - see runOnGridDesign) adds that missing coordination
+ * check: step up through the SAME ampacity-ordered AC_CABLE_SIZES table - which is monotonically
+ * increasing, so a larger size never violates the length/voltage-drop requirement already
+ * satisfied - until the derated ampacity clears the breaker rating. If no size in the Price Book's
+ * table can do so at all, this returns `protectionOk: false, cableSize: null` rather than ship an
+ * inadequate cable - see revisionService.js#computeAndSave for where that blocks a proposal.
  */
-function sizeAcCable({ inverterRatedKw, acVoltage = 400, powerFactor = 0.98, acLengthM, overridePricePerM, catalog }) {
+function sizeAcCable({ inverterRatedKw, acVoltage = 400, powerFactor = 0.98, acLengthM, overridePricePerM, catalog, breakerRatingA = null }) {
   const inverterCurrentA = round((inverterRatedKw * 1000) / (SQRT3 * acVoltage * powerFactor), 6); // C44
   const designCurrentA = round(inverterCurrentA * 1.25, 6); // D44
 
@@ -172,19 +187,48 @@ function sizeAcCable({ inverterRatedKw, acVoltage = 400, powerFactor = 0.98, acL
     else break;
   }
   if (!matchedRow) {
-    return { inverterCurrentA, designCurrentA, cableSize: null, pricePerM: null, totalCost: null, flag: 'ERROR: NO SUITABLE CABLE (below HP table range)' };
+    return { inverterCurrentA, designCurrentA, cableSize: null, pricePerM: null, totalCost: null, ampacityA: null, deratedAmpacityA: null, breakerRatingA, protectionOk: false, flag: 'ERROR: NO SUITABLE CABLE (below HP table range)' };
   }
   let sizeIndex = -1;
   for (let i = 0; i < matchedRow.lengths.length; i++) {
     if (matchedRow.lengths[i] != null && matchedRow.lengths[i] >= acLengthM) { sizeIndex = i; break; }
   }
   if (sizeIndex === -1) {
-    return { inverterCurrentA, designCurrentA, cableSize: null, pricePerM: null, totalCost: null, flag: 'ERROR: NO SUITABLE CABLE' };
+    return { inverterCurrentA, designCurrentA, cableSize: null, pricePerM: null, totalCost: null, ampacityA: null, deratedAmpacityA: null, breakerRatingA, protectionOk: false, flag: 'ERROR: NO SUITABLE CABLE' };
   }
-  const cableSize = catalog.AC_CABLE_SIZES[sizeIndex]; // E44
+
+  // Cable-breaker protection coordination (see the function comment above). Skipped entirely when
+  // no breaker rating is supplied (older/direct callers) - never changes their output.
+  const deratingFactor = catalog.AC_CABLE_DERATING_FACTOR > 0 ? catalog.AC_CABLE_DERATING_FACTOR : 0.8;
+  const ampacityTable = catalog.AC_CABLE_AMPACITY_A || {};
+  const lengthBasedSizeIndex = sizeIndex;
+  let finalSizeIndex = sizeIndex;
+  if (breakerRatingA > 0) {
+    while (finalSizeIndex < catalog.AC_CABLE_SIZES.length) {
+      const candidateAmpacity = ampacityTable[catalog.AC_CABLE_SIZES[finalSizeIndex]];
+      if (candidateAmpacity > 0 && round(candidateAmpacity * deratingFactor, 2) >= breakerRatingA) break;
+      finalSizeIndex += 1;
+    }
+    if (finalSizeIndex >= catalog.AC_CABLE_SIZES.length) {
+      const largestSize = catalog.AC_CABLE_SIZES[catalog.AC_CABLE_SIZES.length - 1];
+      return {
+        inverterCurrentA, designCurrentA, cableSize: null, pricePerM: null, totalCost: null,
+        ampacityA: null, deratedAmpacityA: null, breakerRatingA, protectionOk: false,
+        flag: `ERROR: NO CABLE IN THE PRICE BOOK PROTECTS A ${breakerRatingA} A BREAKER AFTER ${Math.round(deratingFactor * 100)}% DERATING (largest available is ${largestSize}) - use parallel runs or add a larger cable size to the Price Book`,
+      };
+    }
+  }
+
+  const cableSize = catalog.AC_CABLE_SIZES[finalSizeIndex]; // E44 (or stepped up for protection)
+  const ampacityA = ampacityTable[cableSize] ?? null;
+  const deratedAmpacityA = ampacityA != null ? round(ampacityA * deratingFactor, 2) : null;
+  const protectionOk = breakerRatingA > 0 ? deratedAmpacityA >= breakerRatingA : null;
   const pricePerM = overridePricePerM > 0 ? overridePricePerM : catalog.AC_CABLE_PRICE_PER_M[cableSize]; // G44 (override wins, per the Developer Brief's own "price = override if above 0, otherwise Price Book" rule for this exact line)
   const totalCost = round(pricePerM * acLengthM, 2); // H44
-  return { inverterCurrentA, designCurrentA, cableSize, lengthM: acLengthM, pricePerM, totalCost, flag: 'REFERENCE TABLE SELECTION - VERIFY ENGINEERING' };
+  const flag = finalSizeIndex !== lengthBasedSizeIndex
+    ? `CABLE SIZE INCREASED FROM ${catalog.AC_CABLE_SIZES[lengthBasedSizeIndex]} TO ${cableSize} FOR BREAKER PROTECTION (In <= Iz after ${Math.round(deratingFactor * 100)}% derating)`
+    : 'REFERENCE TABLE SELECTION - VERIFY ENGINEERING';
+  return { inverterCurrentA, designCurrentA, cableSize, lengthM: acLengthM, pricePerM, totalCost, ampacityA, deratedAmpacityA, breakerRatingA, protectionOk, flag };
 }
 
 /**
@@ -242,13 +286,36 @@ function sizeMc4({ totalStrings, pricePerPiece, rule = 'strings', modules = 0 })
  * (default 1.00 to 1.35) - and the check says so. Never silently returns an out-of-limit unit when a
  * better one exists.
  */
-function selectInverterByLoading({ dcKwp, inverters, ratio }) {
-  if (!inverters.length) throw new Error('Grid inverter catalog is empty');
-  const scored = inverters.map(inv => {
+function scoreInvertersByLoading({ dcKwp, inverters, ratio }) {
+  return inverters.map(inv => {
     const r = dcKwp / inv.ratedKw;
     const dist = r < ratio.min ? ratio.min - r : r > ratio.max ? r - ratio.max : 0;
     return { inv, r, dist, withinFlags: r >= ratio.flagBelow && r <= ratio.flagAbove };
   });
+}
+
+/**
+ * Whether ANY Price Book inverter lands inside the target band for this DC capacity - used to
+ * tell a genuine engineering ratio violation apart from "the Price Book simply has no inverter in
+ * this capacity range" (see dcAcCheck's `reason` field below; 2026 review finding: these two were
+ * being shown as the identical "outside-target" status, and the frontend hardcoded the "no Price
+ * Book inverter fits it" message for every one of them, which is wrong when an operator FORCED a
+ * specific inverter that happens to land outside the band on purpose).
+ */
+function hasInverterInLoadingBand({ dcKwp, inverters, ratio }) {
+  return scoreInvertersByLoading({ dcKwp, inverters, ratio }).some(s => s.dist === 0);
+}
+
+/**
+ * Deal Engine C3 - inverter loading. Picks the SMALLEST Price Book inverter whose DC/AC ratio
+ * (DC kWp / inverter kW) is inside [min, max] (default 1.10 to 1.30). When no inverter in the Price
+ * Book lands inside the band, the one closest to it is used, preferring units inside the flag limits
+ * (default 1.00 to 1.35) - and the check says so. Never silently returns an out-of-limit unit when a
+ * better one exists.
+ */
+function selectInverterByLoading({ dcKwp, inverters, ratio }) {
+  if (!inverters.length) throw new Error('Grid inverter catalog is empty');
+  const scored = scoreInvertersByLoading({ dcKwp, inverters, ratio });
   const inRange = scored.filter(s => s.dist === 0).sort((a, b) => a.inv.ratedKw - b.inv.ratedKw);
   if (inRange.length) return inRange[0].inv;
   const pool = scored.some(s => s.withinFlags) ? scored.filter(s => s.withinFlags) : scored;
@@ -256,13 +323,24 @@ function selectInverterByLoading({ dcKwp, inverters, ratio }) {
   return pool[0].inv;
 }
 
-/** C3 Design-tab check for a DC/AC ratio: in the target band, outside it, or flagged below/above. */
-function dcAcCheck(value, ratio, forced = false) {
+/**
+ * C3 Design-tab check for a DC/AC ratio: in the target band, outside it, or flagged below/above.
+ * `reason` (2026 review fix) tells the frontend WHY a non-"in-range" status happened, so it never
+ * has to guess from `status` alone:
+ *   - 'forced'              the estimator forced a specific inverter (see `forced`) - whatever the
+ *                           ratio says, this was a deliberate choice, not a Price Book gap.
+ *   - 'no-candidate-in-band' auto-selection ran and genuinely found no inverter in [min, max] for
+ *                           this DC capacity - a real Price Book coverage gap.
+ *   - null                  status is 'in-range', or a candidate WAS in-band (so "outside-target"/
+ *                           "below"/"above" here reflects a real ratio reading, not a missing size).
+ */
+function dcAcCheck(value, ratio, forced = false, hasInBandCandidate = null) {
   let status = 'in-range';
   if (value < ratio.flagBelow) status = 'below';
   else if (value > ratio.flagAbove) status = 'above';
   else if (value < ratio.min || value > ratio.max) status = 'outside-target';
-  return { ratio: value, target: { min: ratio.min, max: ratio.max }, flagLimits: { below: ratio.flagBelow, above: ratio.flagAbove }, status, flagged: status === 'below' || status === 'above', forced };
+  const reason = status === 'in-range' ? null : forced ? 'forced' : hasInBandCandidate === false ? 'no-candidate-in-band' : null;
+  return { ratio: value, target: { min: ratio.min, max: ratio.max }, flagLimits: { below: ratio.flagBelow, above: ratio.flagAbove }, status, flagged: status === 'below' || status === 'above', forced, reason };
 }
 
 /**
@@ -356,15 +434,23 @@ function runOnGridDesign(input, catalog) {
   const inverter = chooseInverter();
   const inverterQty = 1; // On-Grid Design!D14 - manual input, default 1 in the reference scenario
   const dcAcRatio = round(pv.selectedCapacityKwp / (inverter.ratedKw * inverterQty), 6); // G14
-  const dcAc = engineSettings ? dcAcCheck(dcAcRatio, engineSettings.dcAcRatio, !!forcedInverter) : null;
+  // Whether the Price Book actually HAS a candidate in the target band - lets dcAcCheck tell a
+  // real Price Book coverage gap apart from a genuine ratio violation (see dcAcCheck's `reason`).
+  const inBandCandidateExists = engineSettings && !forcedInverter
+    ? hasInverterInLoadingBand({ dcKwp: pv.selectedCapacityKwp, inverters: inverterCandidates, ratio: engineSettings.dcAcRatio })
+    : null;
+  const dcAc = engineSettings ? dcAcCheck(dcAcRatio, engineSettings.dcAcRatio, !!forcedInverter, inBandCandidateExists) : null;
 
   const designKwp = kWp;
   const dcRoute = catalog.DC_CABLE_ROUTE_M_PER_KWP > 0 ? catalog.DC_CABLE_ROUTE_M_PER_KWP : 8;
   const dcCable = sizeDcCable({ module, finalModules: strings.finalModules, cables: catalog.DC_CABLES, designKwp, routeMPerKwp: dcRoute, brand: dcCableBrand });
   const structure = sizeMountingStructure({ finalModules: strings.finalModules, module, structureType, structureRates: catalog.MOUNTING_STRUCTURE_RATES, capacityKwp: designKwp });
-  const acCable = sizeAcCable({ inverterRatedKw: inverter.ratedKw, acLengthM, overridePricePerM: acPricePerMOverride, catalog });
-  const tray = sizeCableTray({ dcCableLengthM: dcCable.lengthM, acCableLengthM: acLengthM, rolls: catalog.CABLE_TRAY_ROLLS });
+  // Breaker before cable: the AC cable must be protected by the breaker that will actually be
+  // installed (sizeAcCable's cable-breaker coordination check needs its rating), not just sized
+  // against the raw design current in isolation.
   const breaker = selectAcBreaker({ inverterRatedKw: inverter.ratedKw, inverterQty, breakers: catalog.AC_BREAKERS });
+  const acCable = sizeAcCable({ inverterRatedKw: inverter.ratedKw, acLengthM, overridePricePerM: acPricePerMOverride, catalog, breakerRatingA: breaker.ratingA });
+  const tray = sizeCableTray({ dcCableLengthM: dcCable.lengthM, acCableLengthM: acLengthM, rolls: catalog.CABLE_TRAY_ROLLS });
   const mc4 = sizeMc4({
     totalStrings: strings.parallelStrings,
     modules: pv.modulesRequired,
@@ -438,6 +524,7 @@ function runOnGridDesign(input, catalog) {
 
 module.exports = {
   selectInverterByLoading,
+  hasInverterInLoadingBand,
   dcAcCheck,
   estimateCapacityFromArea,
   sizePvModules,

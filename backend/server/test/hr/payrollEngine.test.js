@@ -239,6 +239,96 @@ test('November 2026 register: the engine reproduces the prototype register (comm
   assert.equal(Object.keys(net).length, 6);
 });
 
+// Bug report (Nov 2026 QA, issue 2.5): "payroll tax appears to annualize part-month salary,
+// possibly understating tax for mid-month joiners". The engine's method (annualize this month's
+// ACTUAL taxable pay x12, run it through the annual brackets, divide by 12 - payrollEngine.js
+// calcPay, `const annual = Math.max(0, (taxM - insEmp) * 12 - c.exemption)`) is a line-for-line
+// port of the client's prototype and is the standard monthly-withholding-by-annualization method;
+// changing it is a tax-policy decision that needs the accountant's sign-off (see the UI copy in
+// views-pay.tsx: "should be confirmed with your accountant"), not something to alter unverified.
+// These tests do NOT change the formula - they pin its current, verified-by-hand behavior with
+// concrete figures so a future change to the formula is caught, and they make the part-month
+// behavior the bug report flagged explicit and checkable rather than merely asserted. No database
+// and no prototype file needed (unlike the HAVE_PROTOTYPE-gated tests above), so these always run.
+test('income tax: full month baseline matches hand-computed bracket math', () => {
+  // basic=30000, full month (30/30 days employed), uninsured to isolate the tax math.
+  // annual = 30000*12 - 20000(exemption) = 340000 -> 0 + 1500 + 2250 + 26000 + 31500 = 61250/yr.
+  const eng = P.createEngine({
+    cfg: {}, today: '2026-11-30',
+    employees: [{ id: 'a', code: 'A', hire: '2025-01-01', basic: 30000, insured: false }],
+  });
+  const r = eng.calcPay(eng.empsIn('2026-11')[0], '2026-11');
+  assert.equal(eng.taxAnnual(340000), 61250);
+  assert.ok(Math.abs(r.tax - 61250 / 12) < 1e-6, `tax ${r.tax}`);
+  assert.ok(Math.abs(r.net - (30000 - 61250 / 12)) < 1e-6, `net ${r.net}`);
+});
+
+test('income tax: mid-month joiner annualizes the prorated salary, not the full-rate salary', () => {
+  // Joins 16 Nov (November has 30 days) -> employed days 16..30 = 15 of 30 -> f = 0.5.
+  // fixed = 30000*0.5 = 15000; the engine annualizes THIS prorated figure (15000*12=180000), not
+  // the employee's true full-rate annual pay (30000*12=360000) - exactly the behavior the bug
+  // report describes. annual = 180000 - 20000 = 160000 -> 0+1500+2250+18000 = 21750/yr.
+  const eng = P.createEngine({
+    cfg: {}, today: '2026-11-30',
+    employees: [{ id: 'a', code: 'A', hire: '2026-11-16', basic: 30000, insured: false }],
+  });
+  const r = eng.calcPay(eng.empsIn('2026-11')[0], '2026-11');
+  assert.ok(Math.abs(r.fixed - 15000) < 1e-6, `fixed ${r.fixed}`);
+  assert.equal(eng.taxAnnual(160000), 21750);
+  assert.ok(Math.abs(r.tax - 21750 / 12) < 1e-6, `tax ${r.tax}`);
+  assert.ok(Math.abs(r.net - (15000 - 21750 / 12)) < 1e-6, `net ${r.net}`);
+});
+
+test('income tax: mid-month leaver prorates and annualizes the same way', () => {
+  // Leaves 20 Nov -> employed days 1..20 = 20 of 30 -> f = 2/3. basic=60000 -> fixed = 40000.
+  // annual = 40000*12 - 20000 = 460000 -> 0+1500+2250+26000+45000+15000 = 89750/yr.
+  const eng = P.createEngine({
+    cfg: {}, today: '2026-11-30',
+    employees: [{ id: 'a', code: 'A', hire: '2025-01-01', end: '2026-11-20', basic: 60000, insured: false }],
+  });
+  const r = eng.calcPay(eng.empsIn('2026-11')[0], '2026-11');
+  assert.ok(Math.abs(r.fixed - 40000) < 1e-6, `fixed ${r.fixed}`);
+  assert.equal(eng.taxAnnual(460000), 89750);
+  assert.ok(Math.abs(r.tax - 89750 / 12) < 1e-6, `tax ${r.tax}`);
+  assert.ok(Math.abs(r.net - (40000 - 89750 / 12)) < 1e-6, `net ${r.net}`);
+});
+
+test('taxAnnual: bracket boundaries are inclusive to the lower bracket, no double-counting', () => {
+  const eng = P.createEngine({ cfg: {}, today: '2026-11-30', employees: [] });
+  assert.equal(eng.taxAnnual(0), 0);
+  assert.equal(eng.taxAnnual(40000), 0, 'exactly at the 0% ceiling');
+  assert.ok(Math.abs(eng.taxAnnual(40000.01) - 0.001) < 1e-9, 'one cent into the 10% bracket');
+  assert.equal(eng.taxAnnual(55000), 1500, 'exactly at the 10% ceiling');
+  assert.equal(eng.taxAnnual(70000), 1500 + 2250, 'exactly at the 15% ceiling');
+  assert.equal(eng.taxAnnual(200000), 1500 + 2250 + 26000, 'exactly at the 20% ceiling');
+});
+
+test('income tax: annualized income at or below the exemption pays zero tax (clamped, never negative)', () => {
+  // basic=1500/month, full month, uninsured: annual = 1500*12 - 20000 = -2000 -> clamped to 0.
+  const eng = P.createEngine({
+    cfg: {}, today: '2026-11-30',
+    employees: [{ id: 'a', code: 'A', hire: '2025-01-01', basic: 1500, insured: false }],
+  });
+  const r = eng.calcPay(eng.empsIn('2026-11')[0], '2026-11');
+  assert.equal(r.tax, 0);
+  assert.ok(Math.abs(r.net - 1500) < 1e-6, `net ${r.net}`);
+});
+
+test('income tax: the exemption is read from config, never hardcoded', () => {
+  // basic=5000/month, full month, uninsured. With the default 20000 exemption, annual =
+  // 60000-20000=40000, exactly the 0% ceiling -> tax 0. With exemption overridden to 0, the same
+  // pay produces a different, non-zero tax - proving the engine reads c.exemption, not a literal.
+  const employees = [{ id: 'a', code: 'A', hire: '2025-01-01', basic: 5000, insured: false }];
+  const withDefault = P.createEngine({ cfg: {}, today: '2026-11-30', employees });
+  const rDefault = withDefault.calcPay(withDefault.empsIn('2026-11')[0], '2026-11');
+  assert.equal(rDefault.tax, 0);
+  const withZeroExemption = P.createEngine({ cfg: { exemption: 0 }, today: '2026-11-30', employees });
+  const rZero = withZeroExemption.calcPay(withZeroExemption.empsIn('2026-11')[0], '2026-11');
+  // annual = 60000 - 0 = 60000 -> 0+1500(40-55k)+750(55-60k@15%) = 2250/yr.
+  assert.equal(withZeroExemption.taxAnnual(60000), 2250);
+  assert.ok(Math.abs(rZero.tax - 2250 / 12) < 1e-6, `tax ${rZero.tax}`);
+});
+
 test('commission rules: full at 100%, nothing below; pro rata capped at 150%', () => {
   const base = { cfg: {}, today: '2026-11-30', employees: [{ id: 'a', code: 'A', hire: '2025-01-01', basic: 10000, commission: 4000 }], targets: { 'a_2026-11': 80 } };
   let eng = P.createEngine(base);

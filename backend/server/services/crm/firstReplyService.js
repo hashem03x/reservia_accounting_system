@@ -27,9 +27,16 @@ const SLA_WORKING_HOURS = 8;
 
 const VIA_BY_ACTIVITY_TYPE = { call: 'call', email: 'email', whatsapp_out: 'whatsapp_out' };
 
-/** When the customer originally enquired - the SLA clock's start. Legacy leads fall back to createdAt. */
+/**
+ * The start of the lead's CURRENT SLA cycle. A lead reopened after being Lost
+ * (leadService.js#reopenSla) gets a fresh `slaCycleStartedAt`, which wins over the original
+ * enquiry time - otherwise a reply logged after a reopen would still be measured from the
+ * original (possibly months-old) submission and always score as a massive SLA miss. A lead that
+ * has never been reopened has no `slaCycleStartedAt` and falls through exactly as before:
+ * `submittedAt`, else `createdAt`.
+ */
 function leadOriginAt(lead) {
-  return lead.submittedAt || lead.createdAt;
+  return lead.slaCycleStartedAt || lead.submittedAt || lead.createdAt;
 }
 
 /** The firstReplyVia value an activity type would record, or null if that type is not a reply. */

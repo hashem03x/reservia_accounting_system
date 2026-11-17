@@ -14,7 +14,7 @@ const { evaluateStageTransition, canOverride, STAGES, STAGE_LABELS } = require('
 const { trackEvent } = require('./amplitudeService');
 const { pickAutoAssignee, notifyAssignment, notifyReassignment, notifyUnassigned, notifyReopened, assignmentStrategy, AUTO_ASSIGN_CHANNELS } = require('./leadAssignmentService');
 const { GOVERNORATE_NAMES_EN } = require('../../utils/crm/constants');
-const { offerFirstReply, replyViaForActivityType, SLA_WORKING_HOURS } = require('./firstReplyService');
+const { offerFirstReply, replyViaForActivityType, SLA_WORKING_HOURS, leadOriginAt, hoursToFirstReply } = require('./firstReplyService');
 const { touchFromIntakeInput, isAttributable, sameTouch, HISTORY_LIMIT } = require('../../utils/crm/attribution');
 
 /**
@@ -279,6 +279,35 @@ async function mergeRepeatEnquiry(lead, input, { userId, skipRepeatNote }) {
 }
 
 /**
+ * SLA reopen fix (Nov 2026 QA finding): a lead reopened after being Lost must start a FRESH reply
+ * obligation, not keep carrying whatever deadline/overdue-flag the PREVIOUS cycle left behind -
+ * the SLA clock did not restart on reopen before this fix (addWorkingHours was only ever called
+ * from Lead.create). This archives the closing cycle (so a historical breach is never lost, just
+ * no longer confused with the active obligation) and returns the `$set` patch for a fresh cycle
+ * starting now: `slaCycleStartedAt`/`replyDueAt` reset, `firstReplyAt`/`firstReplyVia` cleared so
+ * the next qualifying reply is measured from THIS reopen (firstReplyService.js#leadOriginAt reads
+ * `slaCycleStartedAt` ahead of the original `submittedAt`).
+ */
+function reopenSla(lead, now) {
+  const breached = lead.firstReplyAt ? hoursToFirstReply(lead) > SLA_WORKING_HOURS : new Date(lead.replyDueAt).getTime() < now.getTime();
+  const closedCycle = {
+    startedAt: lead.slaCycleStartedAt || leadOriginAt(lead),
+    endedAt: now,
+    replyDueAt: lead.replyDueAt,
+    firstReplyAt: lead.firstReplyAt || null,
+    firstReplyVia: lead.firstReplyVia || null,
+    breached,
+  };
+  return {
+    slaCycles: [...(lead.slaCycles || []), closedCycle],
+    slaCycleStartedAt: now,
+    replyDueAt: addWorkingHours(now, SLA_WORKING_HOURS),
+    firstReplyAt: null,
+    firstReplyVia: null,
+  };
+}
+
+/**
  * Reopens a Lost lead to New because the customer came back (CRM Changes Required, item 2). The
  * move is recorded like any stage change (stage history, timeline) and the Deal Engine deal, if
  * any, goes back to Open. The lost reason stays in the timeline; the lead's own field is cleared
@@ -288,9 +317,10 @@ async function mergeRepeatEnquiry(lead, input, { userId, skipRepeatNote }) {
 async function reopenLostOnRepeat(lead, input, { userId = null } = {}) {
   const now = new Date();
   const previousReason = lead.lostReason || null;
-  const res = await Lead.updateOne({ _id: lead._id, stage: 'lost' }, { $set: { stage: 'new', stageChangedAt: now, lostReason: null } });
+  const sla = reopenSla(lead, now);
+  const res = await Lead.updateOne({ _id: lead._id, stage: 'lost' }, { $set: { stage: 'new', stageChangedAt: now, lostReason: null, ...sla } });
   if (res.modifiedCount !== 1) return;
-  Object.assign(lead, { stage: 'new', stageChangedAt: now, lostReason: null });
+  Object.assign(lead, { stage: 'new', stageChangedAt: now, lostReason: null, ...sla });
   await StageHistory.create({ lead: lead._id, from: 'lost', to: 'new', changedBy: userId || null, lostReason: null });
   const origin = describeOrigin(input);
   const notified = await notifyReopened(lead, { origin });
@@ -463,6 +493,11 @@ async function changeStage(leadId, input, { userId = null, role } = {}) {
       if (input.valueEgp !== undefined) lead.valueEgp = input.valueEgp;
       if (input.followUpAt !== undefined) lead.followUpAt = input.followUpAt;
       if (input.governorate) lead.governorate = input.governorate;
+      // A manual reopen (Lost -> anything else) resets the SLA clock exactly like the automatic
+      // repeat-enquiry reopen above - see reopenSla()'s header comment for why a plain field reset
+      // is not enough (leadOriginAt must move too, or the next reply is measured from the
+      // original, possibly months-old enquiry).
+      if (from === 'lost' && input.to !== 'lost') Object.assign(lead, reopenSla(lead, changedAt));
       await lead.save({ session });
 
       await StageHistory.create(
@@ -559,4 +594,4 @@ async function setLeadArchived(leadId, archived, { userId = null, reason = null 
   return shapeLead(lead);
 }
 
-module.exports = { intakeLead, recordActivity, changeStage, reassignLead, setLeadArchived, updateLeadDetails, STAGES };
+module.exports = { intakeLead, recordActivity, changeStage, reassignLead, setLeadArchived, updateLeadDetails, STAGES, reopenSla };

@@ -1,17 +1,19 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter as Router, Navigate, Route, Routes } from "react-router-dom";
 import useColorScheme from "@/hooks/useColorScheme";
+import LoadingSection from "@/components/ui/sections/loading";
 import paths from "@/utils/constants/paths";
 import roles from "@/utils/constants/roles";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
 
 // Routing Pages
-import Layout from "@/pages/routes/layout";
-import AdminLayout from "@/pages/routes/layout-admin";
-import CrmLayout from "@/pages/routes/layout-crm";
-import CommercialLayout from "@/pages/routes/layout-commercial";
-import WebsiteLayout from "@/pages/routes/layout-website";
-import HrPortal from "@/pages/hr";
+const Layout = lazy(() => import("@/pages/routes/layout"));
+const AdminLayout = lazy(() => import("@/pages/routes/layout-admin"));
+const CrmLayout = lazy(() => import("@/pages/routes/layout-crm"));
+const CommercialLayout = lazy(() => import("@/pages/routes/layout-commercial"));
+const WebsiteLayout = lazy(() => import("@/pages/routes/layout-website"));
+const HrPortal = lazy(() => import("@/pages/hr"));
 import NotFound from "@/pages/routes/not-found";
 import AuthGaurd from "@/pages/routes/auth-gaurd";
 import RoleGuard from "@/pages/routes/role-guard";
@@ -20,138 +22,139 @@ import SystemGuard from "@/pages/routes/system-guard";
 import PlatformAdminGuard from "@/pages/routes/platform-admin-guard";
 
 // Auth Pages
-import Login from "@/pages/outer/login";
-import ForgotPassword from "@/pages/outer/forgot-password";
-import VerifyCode from "@/pages/outer/verify-code";
-import ResetPassword from "@/pages/outer/reset-password";
+const Login = lazy(() => import("@/pages/outer/login"));
+const ForgotPassword = lazy(() => import("@/pages/outer/forgot-password"));
+const VerifyCode = lazy(() => import("@/pages/outer/verify-code"));
+const ResetPassword = lazy(() => import("@/pages/outer/reset-password"));
 
 // Account Page
-import Profile from "@/pages/inner/profile";
+const Profile = lazy(() => import("@/pages/inner/profile"));
 
 // Central Business Portal
-import Portal from "@/pages/portal";
-import PlatformAdminUsers from "@/pages/portal/admin/users";
-import PlatformAdminUser from "@/pages/portal/admin/users/[id]";
+const Portal = lazy(() => import("@/pages/portal"));
+const PlatformAdminUsers = lazy(() => import("@/pages/portal/admin/users"));
+const PlatformAdminUser = lazy(() => import("@/pages/portal/admin/users/[id]"));
 
 // Admin Panel Pages
-import Admin from "@/pages/admin";
-import AP_Home from "@/pages/admin/home";
-import AP_Vendors from "@/pages/admin/home/vendors";
-import AP_Vendor from "@/pages/admin/home/vendors/[id]";
-import AP_PurchaseOrders from "@/pages/admin/home/purchase-orders";
-import AP_PurchaseOrder from "@/pages/admin/home/purchase-orders/[id]";
-import AP_NewPurchaseOrder from "@/pages/admin/home/purchase-orders/new";
-import AP_PurchaseRequisitions from "@/pages/admin/home/purchase-requisitions";
-import AP_PurchaseRequisition from "@/pages/admin/home/purchase-requisitions/[id]";
-import AP_NewPurchaseRequisition from "@/pages/admin/home/purchase-requisitions/new";
-import AP_Products from "@/pages/admin/home/products";
-import AP_Product from "@/pages/admin/home/products/[id]";
-import AP_ProductTransactions from "@/pages/admin/home/products/[id]/transactions";
-import AP_NewProduct from "@/pages/admin/home/products/new";
-import AP_SalesOrders from "@/pages/admin/home/sales-orders";
-import AP_SalesOrder from "@/pages/admin/home/sales-orders/[id]";
-import AP_NewSalesOrder from "@/pages/admin/home/sales-orders/new";
-import AP_Customers from "@/pages/admin/home/customers";
-import AP_Customer from "@/pages/admin/home/customers/[id]";
-import AP_Expenses from "@/pages/admin/home/expenses";
-import AP_Expense from "@/pages/admin/home/expenses/[id]";
-import AP_Warehouses from "@/pages/admin/home/warehouses";
-import AP_ProjectInventory from "@/pages/admin/home/project-inventory";
-import AP_Transfers from "@/pages/admin/home/transfers";
-import AP_Transfer from "@/pages/admin/home/transfers/[id]";
-import AP_Reports from "@/pages/admin/reports";
-import AP_VendorsReport from "@/pages/admin/reports/vendors";
-import AP_CustomersReport from "@/pages/admin/reports/customers";
-import AP_PurchaseOrdersReport from "@/pages/admin/reports/purchase-orders";
-import AP_SalesOrdersReport from "@/pages/admin/reports/sales-orders";
-import AP_ProductsReport from "@/pages/admin/reports/products";
-import AP_InventoryTransferReport from "@/pages/admin/reports/inventory-transfer";
-import AP_InventorySummaryReport from "@/pages/admin/reports/inventory-summary";
-import AP_ExpensesReport from "@/pages/admin/reports/expenses";
-import AP_PaymentsReport from "@/pages/admin/reports/payments";
-import AP_VariantHistoryReport from "@/pages/admin/reports/variant-history";
-import AP_TreasuryBalanceReport from "@/pages/admin/reports/treasury-balance";
-import AP_ProfitBySalesReport from "@/pages/admin/reports/profit-by-sales";
-import AP_ProfitByCustomerReport from "@/pages/admin/reports/profit-by-customer";
-import AP_ProfitByProductReport from "@/pages/admin/reports/profit-by-product";
-import AP_Cash from "@/pages/admin/cash";
-import AP_Currencies from "@/pages/admin/currencies";
-import AP_Categories from "@/pages/admin/categories";
+const Admin = lazy(() => import("@/pages/admin"));
+const AP_Home = lazy(() => import("@/pages/admin/home"));
+const AP_Vendors = lazy(() => import("@/pages/admin/home/vendors"));
+const AP_Vendor = lazy(() => import("@/pages/admin/home/vendors/[id]"));
+const AP_PurchaseOrders = lazy(() => import("@/pages/admin/home/purchase-orders"));
+const AP_PurchaseOrder = lazy(() => import("@/pages/admin/home/purchase-orders/[id]"));
+const AP_NewPurchaseOrder = lazy(() => import("@/pages/admin/home/purchase-orders/new"));
+const AP_PurchaseRequisitions = lazy(() => import("@/pages/admin/home/purchase-requisitions"));
+const AP_PurchaseRequisition = lazy(() => import("@/pages/admin/home/purchase-requisitions/[id]"));
+const AP_NewPurchaseRequisition = lazy(() => import("@/pages/admin/home/purchase-requisitions/new"));
+const AP_Products = lazy(() => import("@/pages/admin/home/products"));
+const AP_Product = lazy(() => import("@/pages/admin/home/products/[id]"));
+const AP_ProductTransactions = lazy(() => import("@/pages/admin/home/products/[id]/transactions"));
+const AP_NewProduct = lazy(() => import("@/pages/admin/home/products/new"));
+const AP_SalesOrders = lazy(() => import("@/pages/admin/home/sales-orders"));
+const AP_SalesOrder = lazy(() => import("@/pages/admin/home/sales-orders/[id]"));
+const AP_NewSalesOrder = lazy(() => import("@/pages/admin/home/sales-orders/new"));
+const AP_Customers = lazy(() => import("@/pages/admin/home/customers"));
+const AP_Customer = lazy(() => import("@/pages/admin/home/customers/[id]"));
+const AP_Expenses = lazy(() => import("@/pages/admin/home/expenses"));
+const AP_Expense = lazy(() => import("@/pages/admin/home/expenses/[id]"));
+const AP_Warehouses = lazy(() => import("@/pages/admin/home/warehouses"));
+const AP_ProjectInventory = lazy(() => import("@/pages/admin/home/project-inventory"));
+const AP_Transfers = lazy(() => import("@/pages/admin/home/transfers"));
+const AP_Transfer = lazy(() => import("@/pages/admin/home/transfers/[id]"));
+const AP_Reports = lazy(() => import("@/pages/admin/reports"));
+const AP_VendorsReport = lazy(() => import("@/pages/admin/reports/vendors"));
+const AP_CustomersReport = lazy(() => import("@/pages/admin/reports/customers"));
+const AP_PurchaseOrdersReport = lazy(() => import("@/pages/admin/reports/purchase-orders"));
+const AP_SalesOrdersReport = lazy(() => import("@/pages/admin/reports/sales-orders"));
+const AP_ProductsReport = lazy(() => import("@/pages/admin/reports/products"));
+const AP_InventoryTransferReport = lazy(() => import("@/pages/admin/reports/inventory-transfer"));
+const AP_InventorySummaryReport = lazy(() => import("@/pages/admin/reports/inventory-summary"));
+const AP_ExpensesReport = lazy(() => import("@/pages/admin/reports/expenses"));
+const AP_PaymentsReport = lazy(() => import("@/pages/admin/reports/payments"));
+const AP_VariantHistoryReport = lazy(() => import("@/pages/admin/reports/variant-history"));
+const AP_TreasuryBalanceReport = lazy(() => import("@/pages/admin/reports/treasury-balance"));
+const AP_ProfitBySalesReport = lazy(() => import("@/pages/admin/reports/profit-by-sales"));
+const AP_ProfitByCustomerReport = lazy(() => import("@/pages/admin/reports/profit-by-customer"));
+const AP_ProfitByProductReport = lazy(() => import("@/pages/admin/reports/profit-by-product"));
+const AP_Cash = lazy(() => import("@/pages/admin/cash"));
+const AP_Currencies = lazy(() => import("@/pages/admin/currencies"));
+const AP_Categories = lazy(() => import("@/pages/admin/categories"));
 // Hidden pages (their routes are commented out below) - imports kept here, commented, to restore together.
 // import AP_Coupons from "@/pages/admin/coupons";
 // import AP_Customization from "@/pages/admin/customization";
 // import AP_Governorates from "@/pages/admin/governorates";
-import AP_Transactions from "@/pages/admin/transactions";
-import AP_Transaction from "@/pages/admin/transactions/[id]";
-import AP_Users from "@/pages/admin/users";
-import AP_User from "@/pages/admin/users/[id]";
-import ReturnsReport from "@/pages/admin/reports/returns";
-import IncomeStatementReport from "@/pages/admin/reports/income-statement";
-import AP_FixedAssets from "@/pages/admin/fixed-assets";
-import AP_FixedAsset from "@/pages/admin/fixed-assets/[id]";
-import AP_FixedAssetsReport from "@/pages/admin/reports/fixed-assets";
-import AP_BalanceSheetReport from "@/pages/admin/reports/balance-sheet";
-import AP_Analytics from "@/pages/admin/analytics";
-import AP_CashFlowForecast from "@/pages/admin/cash-flow-forecast";
-import AP_ProjectCashFlowForecast from "@/pages/admin/cash-flow-forecast/[projectId]";
-import AP_Projects from "@/pages/admin/projects";
-import AP_Project from "@/pages/admin/projects/[id]";
-import AP_Sectors from "@/pages/admin/sectors";
-import AP_ProjectManagers from "@/pages/admin/project-managers";
-import AP_Backup from "@/pages/admin/backup";
-import AP_AccountingPeriods from "@/pages/admin/accounting-periods";
-import AP_ExpenseCategories from "@/pages/admin/expense-categories";
-import AP_CompanySettings from "@/pages/admin/company-settings";
-import AP_Accounts from "@/pages/admin/accounts";
-import AP_AccountParentGroups from "@/pages/admin/account-parent-groups";
-import AP_JournalEntries from "@/pages/admin/journal-entries";
-import AP_JournalEntry from "@/pages/admin/journal-entries/[id]";
-import AP_AdvancedPayments from "@/pages/admin/advanced-payments";
-import AP_AdvancedPayment from "@/pages/admin/advanced-payments/[id]";
-import AP_Shareholders from "@/pages/admin/shareholders";
-import AP_FinancialReports from "@/pages/admin/financial-reports";
-import AP_FinancialReport from "@/pages/admin/financial-reports/[key]";
-import AP_Shareholder from "@/pages/admin/shareholders/[id]";
+const AP_Transactions = lazy(() => import("@/pages/admin/transactions"));
+const AP_Transaction = lazy(() => import("@/pages/admin/transactions/[id]"));
+const AP_Users = lazy(() => import("@/pages/admin/users"));
+const AP_User = lazy(() => import("@/pages/admin/users/[id]"));
+const ReturnsReport = lazy(() => import("@/pages/admin/reports/returns"));
+const IncomeStatementReport = lazy(() => import("@/pages/admin/reports/income-statement"));
+const AP_FixedAssets = lazy(() => import("@/pages/admin/fixed-assets"));
+const AP_FixedAsset = lazy(() => import("@/pages/admin/fixed-assets/[id]"));
+const AP_FixedAssetsReport = lazy(() => import("@/pages/admin/reports/fixed-assets"));
+const AP_BalanceSheetReport = lazy(() => import("@/pages/admin/reports/balance-sheet"));
+const AP_Analytics = lazy(() => import("@/pages/admin/analytics"));
+const AP_CashFlowForecast = lazy(() => import("@/pages/admin/cash-flow-forecast"));
+const AP_ProjectCashFlowForecast = lazy(() => import("@/pages/admin/cash-flow-forecast/[projectId]"));
+const AP_Projects = lazy(() => import("@/pages/admin/projects"));
+const AP_Project = lazy(() => import("@/pages/admin/projects/[id]"));
+const AP_Sectors = lazy(() => import("@/pages/admin/sectors"));
+const AP_ProjectManagers = lazy(() => import("@/pages/admin/project-managers"));
+const AP_Backup = lazy(() => import("@/pages/admin/backup"));
+const AP_AccountingPeriods = lazy(() => import("@/pages/admin/accounting-periods"));
+const AP_ExpenseCategories = lazy(() => import("@/pages/admin/expense-categories"));
+const AP_CompanySettings = lazy(() => import("@/pages/admin/company-settings"));
+const AP_Accounts = lazy(() => import("@/pages/admin/accounts"));
+const AP_AccountParentGroups = lazy(() => import("@/pages/admin/account-parent-groups"));
+const AP_JournalEntries = lazy(() => import("@/pages/admin/journal-entries"));
+const AP_JournalEntry = lazy(() => import("@/pages/admin/journal-entries/[id]"));
+const AP_AdvancedPayments = lazy(() => import("@/pages/admin/advanced-payments"));
+const AP_AdvancedPayment = lazy(() => import("@/pages/admin/advanced-payments/[id]"));
+const AP_Shareholders = lazy(() => import("@/pages/admin/shareholders"));
+const AP_FinancialReports = lazy(() => import("@/pages/admin/financial-reports"));
+const AP_FinancialReport = lazy(() => import("@/pages/admin/financial-reports/[key]"));
+const AP_Shareholder = lazy(() => import("@/pages/admin/shareholders/[id]"));
 
 // Reservia CRM Pages
-import Crm from "@/pages/crm";
-import CRM_Dashboard from "@/pages/crm/dashboard";
-import CRM_Pipeline from "@/pages/crm/pipeline";
-import CRM_Leads from "@/pages/crm/leads";
-import CRM_Lead from "@/pages/crm/leads/[id]";
-import CRM_Performance from "@/pages/crm/performance";
-import CRM_Integrations from "@/pages/crm/integrations";
+const Crm = lazy(() => import("@/pages/crm"));
+const CRM_Dashboard = lazy(() => import("@/pages/crm/dashboard"));
+const CRM_Pipeline = lazy(() => import("@/pages/crm/pipeline"));
+const CRM_Leads = lazy(() => import("@/pages/crm/leads"));
+const CRM_Lead = lazy(() => import("@/pages/crm/leads/[id]"));
+const CRM_Performance = lazy(() => import("@/pages/crm/performance"));
+const CRM_Integrations = lazy(() => import("@/pages/crm/integrations"));
 import CrmRoleGuard from "@/pages/routes/crm-role-guard";
 
 // Reservia Commercial Pages
-import Commercial from "@/pages/commercial";
-import COM_Dashboard from "@/pages/commercial/dashboard";
-import COM_Projects from "@/pages/commercial/projects";
-import COM_Project from "@/pages/commercial/projects/[id]";
-import COM_Materials from "@/pages/commercial/materials";
-import COM_PricingConfig from "@/pages/commercial/pricing-config";
-import COM_Suppliers from "@/pages/commercial/suppliers";
-import COM_Supplier from "@/pages/commercial/suppliers/[id]";
+const Commercial = lazy(() => import("@/pages/commercial"));
+const COM_Dashboard = lazy(() => import("@/pages/commercial/dashboard"));
+const COM_Projects = lazy(() => import("@/pages/commercial/projects"));
+const COM_Project = lazy(() => import("@/pages/commercial/projects/[id]"));
+const COM_Materials = lazy(() => import("@/pages/commercial/materials"));
+const COM_PricingConfig = lazy(() => import("@/pages/commercial/pricing-config"));
+const COM_Suppliers = lazy(() => import("@/pages/commercial/suppliers"));
+const COM_Supplier = lazy(() => import("@/pages/commercial/suppliers/[id]"));
 
 // Website Management Pages
-import WebsiteOverview from "@/pages/website";
-import WebsitePages from "@/pages/website/pages";
-import WebsitePageEditor from "@/pages/website/pages/[id]";
-import WebsiteSettingsPage from "@/pages/website/settings";
+const WebsiteOverview = lazy(() => import("@/pages/website"));
+const WebsitePages = lazy(() => import("@/pages/website/pages"));
+const WebsitePageEditor = lazy(() => import("@/pages/website/pages/[id]"));
+const WebsiteSettingsPage = lazy(() => import("@/pages/website/settings"));
 import WebsiteRoleGuard from "@/pages/routes/website-role-guard";
-import WebsiteMediaLibrary from "@/pages/website/media";
-import WebsiteNavigationPage from "@/pages/website/navigation";
-import WebsiteIntegrationsPage from "@/pages/website/integrations";
-import WebsiteCustomCodePage from "@/pages/website/custom-code";
-import WebsiteActivityPage from "@/pages/website/activity";
-import WebsiteVisualEditor from "@/pages/website/visual-editor";
-import WebsiteCodeWorkspace from "@/pages/website/code";
+const WebsiteMediaLibrary = lazy(() => import("@/pages/website/media"));
+const WebsiteNavigationPage = lazy(() => import("@/pages/website/navigation"));
+const WebsiteIntegrationsPage = lazy(() => import("@/pages/website/integrations"));
+const WebsiteCustomCodePage = lazy(() => import("@/pages/website/custom-code"));
+const WebsiteActivityPage = lazy(() => import("@/pages/website/activity"));
+const WebsiteVisualEditor = lazy(() => import("@/pages/website/visual-editor"));
+const WebsiteCodeWorkspace = lazy(() => import("@/pages/website/code"));
 
 export default function App() {
   useColorScheme();
 
   return (
     <Router>
+      <Suspense fallback={<LoadingSection className="min-h-screen" />}>
       <Routes>
         <Route element={<Layout />}>
           {/* Root: send straight into the app - AuthGaurd/RoleGuard below route it to
@@ -454,6 +457,7 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
+      </Suspense>
     </Router>
   );
 }

@@ -21,6 +21,14 @@ const ratesConfigSchema = new Schema(
     earthingRateEgpPerKwp: { type: Number, required: true, default: 100 },
     accessoriesRateEgpPerKwp: { type: Number, required: true, default: 85 },
     dcCableRouteMPerKwp: { type: Number, required: true, default: 8 },
+    // AC cable-breaker protection coordination (IEC 60364-433, In <= Iz): the fraction of a cable's
+    // table ampacity (catalogData/onGridCatalog.js#AC_CABLE_AMPACITY_A) it can be trusted for once
+    // installation conditions (grouping, ambient temperature, conduit vs free air) are accounted
+    // for. 0.8 is the default validated by the 2026 engineering review that found a 60 kW
+    // inverter's table-selected 3x35mm2 AC cable left behind a 125 A breaker unprotected - see
+    // onGridEngine.js#sizeAcCable. Configurable per country/revision like every other rate here,
+    // never hardcoded in the engine itself.
+    acCableDeratingFactor: { type: Number, required: true, default: 0.8, min: 0.1, max: 1 },
     effectiveDate: { type: Date, required: true, default: Date.now },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },

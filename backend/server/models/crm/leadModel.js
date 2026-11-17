@@ -156,8 +156,8 @@ const leadSchema = new Schema(
     mdApproved: { type: Boolean, default: false },
 
     // The SLA pair (brief section 7): `replyDueAt` is computed once at creation (or at reopen -
-    // see services/crm/leadService.js) via utils/crm/workingHours.js#addWorkingHours; a lead is
-    // "reply overdue" (derived, never stored) when `!firstReplyAt && replyDueAt < now`.
+    // see services/crm/leadService.js#reopenSla) via utils/crm/workingHours.js#addWorkingHours; a
+    // lead is "reply overdue" (derived, never stored) when `!firstReplyAt && replyDueAt < now`.
     // `firstReplyAt` is set the first time a HUMAN activity (call/email/whatsapp_out) is logged -
     // an automated WhatsApp acknowledgement never sets it (brief: "An automated WhatsApp
     // acknowledgement does not count as the first human reply").
@@ -172,6 +172,29 @@ const leadSchema = new Schema(
     // Equal to createdAt for leads entered live. Absent on legacy leads - read it through
     // services/crm/firstReplyService.js#leadOriginAt, which falls back to createdAt.
     submittedAt: { type: Date, default: null },
+    // SLA reopen fix (Nov 2026 QA): a lead reopened after being Lost starts a FRESH reply
+    // obligation - see services/crm/leadService.js#reopenSla. `slaCycleStartedAt` is the start of
+    // the CURRENT cycle; leadOriginAt() (services/crm/firstReplyService.js) reads it ahead of
+    // submittedAt/createdAt so "hours to first reply" is measured from the reopen, never from the
+    // original (possibly months-old) enquiry. null for a lead that has never been reopened - every
+    // existing consumer is unaffected (falls straight through to submittedAt/createdAt as before).
+    slaCycleStartedAt: { type: Date, default: null },
+    // Archive of every CLOSED SLA cycle (one per reopen), so a stale breach from a previous cycle
+    // is never confused with the current, active obligation - see reopenSla(). Never trimmed.
+    slaCycles: {
+      type: [
+        {
+          _id: false,
+          startedAt: { type: Date, required: true },
+          endedAt: { type: Date, required: true },
+          replyDueAt: { type: Date, required: true },
+          firstReplyAt: { type: Date, default: null },
+          firstReplyVia: { type: String, enum: [...FIRST_REPLY_VIA, null], default: null },
+          breached: { type: Boolean, required: true },
+        },
+      ],
+      default: [],
+    },
 
     // Amplitude correlation id (brief section 4H: "safe, pseudonymous identifiers... only") - a
     // random, non-personal device id. For a website-originated lead this IS the visitor's own

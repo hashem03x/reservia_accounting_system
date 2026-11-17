@@ -78,14 +78,55 @@ test('On-Grid Design: mounting structure on the design kWp (brief 3.1)', () => {
   assert.equal(design.structure.totalCost, 116000);
 });
 
-test('On-Grid Design: AC cable sizing (On-Grid Design!C44/D44/E44/G44/H44) - permanently flagged VERIFY ENGINEERING', () => {
+test('On-Grid Design: AC cable sizing (On-Grid Design!C44/D44/E44/G44/H44) - the length-table pick alone (no breaker coordination) stays the faithful workbook figure', () => {
   const { design } = referenceScenario();
   assert.equal(round(design.acCable.inverterCurrentA, 5), 147.28323);
   assert.equal(round(design.acCable.designCurrentA, 5), 184.10404);
-  assert.equal(design.acCable.cableSize, '3x50');
-  assert.equal(design.acCable.pricePerM, 1195);
-  assert.equal(design.acCable.totalCost, 23900);
-  assert.equal(design.acCable.flag, 'REFERENCE TABLE SELECTION - VERIFY ENGINEERING');
+  // sizeAcCable called directly, with no breakerRatingA, reproduces the un-coordinated workbook pick.
+  const uncoordinated = engine.sizeAcCable({ inverterRatedKw: 100, acLengthM: 20, catalog });
+  assert.equal(uncoordinated.cableSize, '3x50');
+  assert.equal(uncoordinated.pricePerM, 1195);
+  assert.equal(uncoordinated.totalCost, 23900);
+  assert.equal(uncoordinated.flag, 'REFERENCE TABLE SELECTION - VERIFY ENGINEERING');
+});
+
+// 2026 engineering review finding: the length-table pick alone says nothing about whether the
+// selected cable can safely carry the current of the breaker that protects it (IEC 60364-433,
+// In <= Iz). `runOnGridDesign` now resolves the breaker FIRST and passes its rating into
+// sizeAcCable so it can verify (and, when needed, correct) this. For this 100 kW reference
+// scenario the required breaker is 200 A, but even the largest cable in the Price Book's AC cable
+// table (3x95, 179 A indicative ampacity x 0.8 derating = 143.2 A) cannot protect it - a real gap
+// in the Price Book (no single-run cable above 95mm2 is priced), not something this engine may
+// invent a number for. The correct, validated behavior is an explicit, blocking flag instead of
+// silently shipping the old 3x50mm2/200A mismatch (94 A-class cable behind a 200 A breaker, an
+// even worse version of the exact defect reported for the 60 kW/125 A worked example below).
+test('On-Grid Design: AC cable sizing is coordinated with the selected breaker (IEC 60364-433 In <= Iz) - this reference scenario has no cable in the Price Book that can protect its 200 A breaker', () => {
+  const { design } = referenceScenario();
+  assert.equal(design.breaker.ratingA, 200);
+  assert.equal(design.acCable.breakerRatingA, 200);
+  assert.equal(design.acCable.protectionOk, false);
+  assert.equal(design.acCable.cableSize, null);
+  assert.equal(design.acCable.totalCost, null);
+  assert.match(design.acCable.flag, /NO CABLE IN THE PRICE BOOK PROTECTS A 200 A BREAKER/);
+});
+
+// The task's own worked example: a 60 kW inverter's design current (110.46 A) selects a 125 A
+// breaker; the length-table alone would pick 3x35mm2 (94 A x 0.8 derating = ~75 A - inadequate,
+// exactly the reported defect). The coordination check steps up to the smallest cable in the
+// table whose derated ampacity actually clears 125 A.
+test('On-Grid Design: AC cable sizing steps up from the length-table pick when it cannot protect the breaker (the exact reported 60 kW / 125 A / 3x35mm2 defect)', () => {
+  const breaker = engine.selectAcBreaker({ inverterRatedKw: 60, inverterQty: 1, breakers: catalog.AC_BREAKERS });
+  assert.equal(breaker.ratingA, 125);
+
+  const uncoordinated = engine.sizeAcCable({ inverterRatedKw: 60, acLengthM: 20, catalog });
+  assert.equal(uncoordinated.cableSize, '3x35', 'the length table alone still picks the undersized cable - confirms this reproduces the reported defect');
+
+  const coordinated = engine.sizeAcCable({ inverterRatedKw: 60, acLengthM: 20, catalog, breakerRatingA: breaker.ratingA });
+  assert.equal(coordinated.cableSize, '3x95');
+  assert.equal(coordinated.ampacityA, 179);
+  assert.equal(coordinated.deratedAmpacityA, 143.2);
+  assert.equal(coordinated.protectionOk, true);
+  assert.match(coordinated.flag, /CABLE SIZE INCREASED FROM 3x35 TO 3x95 FOR BREAKER PROTECTION/);
 });
 
 test('On-Grid Design: cable tray roll combination (On-Grid Design!D48/E48/F48/G48)', () => {
@@ -123,7 +164,11 @@ test('BOQ: 169 modules billed (ceil of design kWp / module W), every per-kWp lin
   assert.equal(byComponent['Solar Inverters'], 253030);
   assert.equal(byComponent['DC Solar Cable'], 29440);
   assert.equal(byComponent['Mounting Structure'], 116000);
-  assert.equal(byComponent['AC Cable'], 23900);
+  // AC Cable: no cable in the Price Book's table can protect this scenario's 200 A breaker after
+  // derating (see the cable-breaker coordination test above) - the line is correctly null/flagged,
+  // not a priced figure, until the Price Book gets a larger cable size.
+  assert.equal(byComponent['AC Cable'], null);
+  assert.match(boq.lines.find(l => l.component === 'AC Cable').flag, /NO CABLE IN THE PRICE BOOK PROTECTS A 200 A BREAKER/);
   assert.equal(byComponent['Cable Tray'], 2965);
   assert.equal(byComponent['AC Circuit Breaker'], 3100);
   assert.equal(byComponent['MC4 Connectors'], 1200);
@@ -132,15 +177,64 @@ test('BOQ: 169 modules billed (ceil of design kWp / module W), every per-kWp lin
   assert.equal(byComponent['Accessories'], 6800); // R74's 85 EGP/kWp unless the Rates matrix says otherwise
   assert.equal(byComponent['Installation'], 28800);
   assert.equal(byComponent['Transportation'], 2500);
-  assert.equal(boq.total, 1179007.5);
+  // 1,179,007.5 less the no-longer-priced AC Cable line (23,900) - see the comment above.
+  assert.equal(boq.total, 1155107.5);
   assert.equal(boq.designKwp, 80);
-  assert.equal(round(boq.perKwp, 5), 14737.59375);
+  assert.equal(round(boq.perKwp, 6), 14438.84375);
 });
 
 test('Installation rate band collapses band 2 into band 1 (BOQ On-Grid Design!F21 quirk, preserved)', () => {
   assert.equal(engine.installationBand(30), 1);
   assert.equal(engine.installationBand(31), 3); // jumps straight from band 1 to band 3
   assert.equal(engine.transportBand(30), 2); // transport correctly uses band 2 here
+});
+
+// 2026 review finding: "outside-target" (the yellow, non-hard-flagged status) has two genuinely
+// different causes that used to be indistinguishable to the frontend - a real Price Book coverage
+// gap (no inverter rated 60-100 kW exists) vs. an estimator deliberately forcing a specific
+// inverter. `dcAcCheck`'s new `reason` field lets the UI tell them apart instead of hardcoding
+// "no Price Book inverter fits it" for every "outside-target" result.
+const DC_AC_RATIO = { min: 1.1, max: 1.3, flagBelow: 1.0, flagAbove: 1.35 };
+
+test('DC/AC check reason: auto-selection with no 60-100kW inverter in the Price Book reports "no-candidate-in-band"', () => {
+  const { design } = engine.runOnGridDesign(
+    { kWp: 80, module: JINKO_475, inverterCandidates: HUAWEI_INVERTERS, structureType: 'Hangar Roof', modulesPerStringOverride: 14, acLengthM: 20, country: 'Egypt', region: 'Cairo - 10th of Ramadan', engineSettings: { dcAcRatio: DC_AC_RATIO } },
+    catalog
+  );
+  assert.equal(design.inverter.model, 'SUN2000-60KTL-M0', 'nearest available below the gap');
+  assert.equal(design.dcAc.status, 'outside-target');
+  assert.equal(design.dcAc.forced, false);
+  assert.equal(design.dcAc.reason, 'no-candidate-in-band');
+});
+
+test('DC/AC check reason: an estimator-forced inverter outside the band reports "forced", never "no-candidate-in-band"', () => {
+  const { design } = engine.runOnGridDesign(
+    {
+      kWp: 80, module: JINKO_475, inverterCandidates: HUAWEI_INVERTERS, structureType: 'Hangar Roof', modulesPerStringOverride: 14, acLengthM: 20,
+      country: 'Egypt', region: 'Cairo - 10th of Ramadan', engineSettings: { dcAcRatio: DC_AC_RATIO }, inverterModel: 'SUN2000-60KTL-M0',
+    },
+    catalog
+  );
+  assert.equal(design.inverter.model, 'SUN2000-60KTL-M0');
+  assert.equal(design.dcAc.status, 'outside-target');
+  assert.equal(design.dcAc.forced, true);
+  assert.equal(design.dcAc.reason, 'forced', 'a deliberate operator choice, not a Price Book gap - even though no candidate is in-band either');
+});
+
+test('DC/AC check reason: an in-range result always reports a null reason', () => {
+  // 75 kWp DC / 60 kW inverter = 1.25, inside [1.1, 1.3].
+  const { design } = engine.runOnGridDesign(
+    { kWp: 75, module: JINKO_475, inverterCandidates: HUAWEI_INVERTERS, structureType: 'Hangar Roof', modulesPerStringOverride: 1, acLengthM: 20, country: 'Egypt', region: 'Cairo - 10th of Ramadan', engineSettings: { dcAcRatio: DC_AC_RATIO } },
+    catalog
+  );
+  assert.equal(design.inverter.model, 'SUN2000-60KTL-M0');
+  assert.equal(design.dcAc.status, 'in-range');
+  assert.equal(design.dcAc.reason, null);
+});
+
+test('hasInverterInLoadingBand: true when a candidate exists, false across the 60-100kW gap', () => {
+  assert.equal(engine.hasInverterInLoadingBand({ dcKwp: 75, inverters: HUAWEI_INVERTERS, ratio: DC_AC_RATIO }), true);
+  assert.equal(engine.hasInverterInLoadingBand({ dcKwp: 80, inverters: HUAWEI_INVERTERS, ratio: DC_AC_RATIO }), false);
 });
 
 test('Estimator Input: area-based kWp + monthly production estimate (Estimator Input!B9/D12:D24)', () => {

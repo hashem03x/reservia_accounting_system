@@ -37,6 +37,7 @@ function toEngineCatalogShape(ratesConfig) {
     EARTHING_RATE_EGP_PER_KWP: ratesConfig.earthingRateEgpPerKwp ?? null,
     ACCESSORIES_RATE_EGP_PER_KWP: ratesConfig.accessoriesRateEgpPerKwp ?? null,
     DC_CABLE_ROUTE_M_PER_KWP: ratesConfig.dcCableRouteMPerKwp ?? null,
+    AC_CABLE_DERATING_FACTOR: ratesConfig.acCableDeratingFactor ?? null,
   };
 }
 

@@ -1,4 +1,5 @@
 const { Schema, model } = require('mongoose');
+const { canonicalMaterialKey } = require('../../utils/commercial/materialKey');
 
 // Reservia Commercial - the Price Book / material catalog. Stores each of the three source
 // workbooks' own price-list sheets (On_Grid.xlsx's Material Price List, Off_Grid.xlsx's inline
@@ -71,7 +72,16 @@ const materialItemSchema = new Schema(
     referenceValidUntil: { type: Date, default: null },
     // Unique composite key (brand | model | spec) - mirrors the Price Book's own `key` convention
     // in the Developer Brief, used by priceBookLookup.js to resolve an engineering selection.
+    // Exact string, case-preserving - kept for the human-readable audit trail; NOT what duplicate
+    // detection runs against any more (see `keyNorm`).
     key: { type: String, required: true, unique: true, trim: true },
+    // 2026 QA fix: the CANONICAL matching key (utils/commercial/materialKey.js) - auto-computed
+    // below from brand/model/spec on every save, so it is always correct regardless of which
+    // caller created/edited the document. Case/whitespace/punctuation/common-unit-format
+    // insensitive, so "SUN2000-60KTL-M0"/"60 kW" and "sun2000 60ktl m0"/"60kw" resolve to the SAME
+    // item instead of silently creating a duplicate Price Book entry. Unique + sparse so a legacy
+    // document saved before this field existed (null until its next save) can never collide.
+    keyNorm: { type: String, default: null },
     archived: { type: Boolean, default: false },
     archivedAt: { type: Date, default: null },
     archivedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
@@ -82,5 +92,15 @@ const materialItemSchema = new Schema(
 
 materialItemSchema.index({ category: 1, archived: 1 });
 materialItemSchema.index({ brand: 'text', model: 'text', spec: 'text' });
+// Sparse: a legacy document saved before `keyNorm` existed has it as `null` until its next save,
+// and `null` is never considered a duplicate of another `null` under a sparse unique index.
+materialItemSchema.index({ keyNorm: 1 }, { unique: true, sparse: true });
+
+materialItemSchema.pre('save', function (next) {
+  if (this.isModified('brand') || this.isModified('model') || this.isModified('spec') || this.isNew) {
+    this.keyNorm = canonicalMaterialKey({ brand: this.brand, model: this.model, spec: this.spec });
+  }
+  next();
+});
 
 module.exports = model('CommercialMaterialItem', materialItemSchema);

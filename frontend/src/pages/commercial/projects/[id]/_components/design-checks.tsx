@@ -4,7 +4,18 @@ import SectionCard from "@/components/ui/section-card";
 import { CommercialRevision } from "@/types/commercial";
 import { ruleVersionLabel } from "../../../_shared/ruleVersion";
 
-type DcAc = { ratio: number; target: { min: number; max: number }; flagLimits: { below: number; above: number }; status: "in-range" | "outside-target" | "below" | "above"; flagged: boolean; forced: boolean };
+type DcAc = {
+  ratio: number;
+  target: { min: number; max: number };
+  flagLimits: { below: number; above: number };
+  status: "in-range" | "outside-target" | "below" | "above";
+  flagged: boolean;
+  forced: boolean;
+  // 2026 review fix: WHY a non-"in-range" status happened, decided by the backend (never
+  // inferred from `status` alone, which used to make this screen claim "no Price Book inverter
+  // fits it" even when the estimator had deliberately forced an inverter outside the band).
+  reason?: "forced" | "no-candidate-in-band" | null;
+};
 
 // Deal Engine C3 / C5 / C11 - the design checks for the current revision: the selected inverter and
 // its DC/AC ratio against the configured target (flagged below 1.00 / above 1.35 by default), the
@@ -17,6 +28,15 @@ export default function DesignChecks({ revision }: { revision: CommercialRevisio
   if (!d?.inverter && !perf) return null;
   const dcAc = d.dcAc;
   const color = !dcAc ? "gray" : dcAc.status === "in-range" ? "teal" : dcAc.flagged ? "red" : "yellow";
+  // "outside-target" (yellow, not a hard flag) has two genuinely different causes - never guess
+  // between them from `status` alone (that used to claim "no Price Book inverter fits it" even
+  // when the estimator had deliberately forced an inverter that happens to land outside the band).
+  const outsideTargetText =
+    dcAc?.reason === "forced"
+      ? translate("outside the target band (inverter forced by the estimator)", "خارج النطاق المستهدف (العاكس مختار يدوياً)")
+      : dcAc?.reason === "no-candidate-in-band"
+        ? translate("outside the target band (no Price Book inverter fits it)", "خارج النطاق المستهدف (لا يوجد عاكس مناسب في قائمة الأسعار)")
+        : translate("outside the target band", "خارج النطاق المستهدف");
   const statusText = !dcAc
     ? translate("calculated before the loading rule", "حُسب قبل قاعدة التحميل")
     : dcAc.status === "in-range"
@@ -25,7 +45,7 @@ export default function DesignChecks({ revision }: { revision: CommercialRevisio
         ? translate("BELOW range - inverter oversized", "أقل من النطاق - العاكس أكبر من اللازم")
         : dcAc.status === "above"
           ? translate("ABOVE range - inverter undersized", "أعلى من النطاق - العاكس أصغر من اللازم")
-          : translate("outside the target band (no Price Book inverter fits it)", "خارج النطاق المستهدف (لا يوجد عاكس مناسب في قائمة الأسعار)");
+          : outsideTargetText;
   return (
     <SectionCard title={translate("Design checks", "مراجعات التصميم")}>
       <div className="flex flex-col gap-2 text-sm" data-testid="design-checks">

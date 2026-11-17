@@ -110,7 +110,7 @@ async function getSpeedSection({ year, month, ownerId, segment }) {
 
   // Change Request 2, item 3: the SAME calculation as the Dashboard's Speed block
   // (services/crm/firstReplyService.js) - working hours from the original submission time.
-  const leadsInScope = await Lead.find(filter).select('createdAt submittedAt firstReplyAt replyDueAt').lean();
+  const leadsInScope = await Lead.find(filter).select('createdAt submittedAt firstReplyAt replyDueAt slaCycleStartedAt').lean();
   const metrics = computeFirstReplyMetrics(leadsInScope);
   const hoursToFirstReply = {
     avgHours: metrics.avgHours,

@@ -41,7 +41,18 @@ test('acceptance (live R74 prices): 169 modules, price per kWp = net / 80, GP 30
   assert.ok(Math.abs(r.pricing.netExclVat / r.boqTotal - 1762668.9972850003 / 1191565) < 1e-12);
 });
 
-test('acceptance (reference BOQ lines): materials 1,154,265, COGS 1,191,565 -> net 1,762,669, GP 30.8%, 22,033/kWp, payback 4.2775 y at 10%', () => {
+// 2026 engineering review correction (see onGridEngine.test.js's cable-breaker coordination
+// tests): this scenario's 100 kW inverter needs a 200 A breaker, which the Price Book's own AC
+// cable table cannot protect at any size (largest is 3x95, 179 A x 0.8 derating = 143.2 A) - so
+// sizeAcCable now correctly returns `cableSize: null` here instead of the reference document's
+// own 3x50mm2/23,900 EGP figure, which carried the exact same undersized-cable defect the task
+// asked to fix. The materials/COGS/net/perKwp/payback figures below are the reference brief
+// section 8 numbers MINUS that one no-longer-priced AC Cable line (23,900 EGP) and its knock-on
+// effect through the pricing/feasibility stack - every other line is untouched. If brief section 8
+// is a contractually-cited document anywhere, its own AC cable figure should be re-reviewed by
+// Engineering/Finance; this test was not re-derived from a corrected reference document, only from
+// the corrected engine run.
+test('acceptance (reference BOQ lines): materials 1,130,365, COGS 1,167,665 -> net 1,727,314, GP 30.8%, 21,591/kWp, payback 4.2073 y at 10% (AC Cable now unpriced - see comment above)', () => {
   const refModule = { ...JINKO, pricePerWatt: 4085 / 475 }; // reference Price Book: 4,085 EGP per module
   const refCatalog = { ...catalog, ACCESSORIES_RATE_EGP_PER_KWP: 150 }; // brief 3.1 / reference Rates: 150 EGP/kWp
   const r = run(
@@ -54,13 +65,15 @@ test('acceptance (reference BOQ lines): materials 1,154,265, COGS 1,191,565 -> n
       'AC Distribution Board': { qty: 1, unitPrice: 4400, notes: 'reference: board up to 80 kWp' },
     }
   );
-  const materials = r.lines.filter(l => !['Installation', 'Transportation', 'Travel & Accommodation', 'Site Personnel Allowance'].includes(l.component)).reduce((s, l) => s + l.total, 0);
-  assert.equal(Math.round(materials), 1154265);
-  assert.equal(Math.round(r.boqTotal), 1191565);
-  assert.ok(Math.abs(r.pricing.netExclVat - 1762669) <= 1, `net ${r.pricing.netExclVat}`);
-  assert.ok(Math.abs(r.pricing.perKwpExclVat - 22033) <= 1);
+  assert.equal(r.lines.find(l => l.component === 'AC Cable').total, null);
+  assert.match(r.lines.find(l => l.component === 'AC Cable').flag, /NO CABLE IN THE PRICE BOOK PROTECTS A 200 A BREAKER/);
+  const materials = r.lines.filter(l => !['Installation', 'Transportation', 'Travel & Accommodation', 'Site Personnel Allowance'].includes(l.component)).reduce((s, l) => s + (l.total || 0), 0);
+  assert.equal(Math.round(materials), 1130365);
+  assert.equal(Math.round(r.boqTotal), 1167665);
+  assert.ok(Math.abs(r.pricing.netExclVat - 1727314) <= 1, `net ${r.pricing.netExclVat}`);
+  assert.ok(Math.abs(r.pricing.perKwpExclVat - 21591.42) <= 1);
   assert.ok(Math.abs(r.pricing.grossProfitPct - 0.3084) < 0.0001);
-  assert.ok(Math.abs(r.feasibility.headline.paybackYears - 4.2775) < 0.0001, `payback ${r.feasibility.headline.paybackYears}`);
+  assert.ok(Math.abs(r.feasibility.headline.paybackYears - 4.2073) < 0.0001, `payback ${r.feasibility.headline.paybackYears}`);
   assert.equal(r.lines.find(l => l.component === 'DC Solar Cable').total, 32640); // 640 m x 51
   assert.equal(r.lines.find(l => l.component === 'Site Personnel Allowance').total, 6000);
   assert.equal(r.lines.find(l => l.component === 'Travel & Accommodation'), undefined, 'Greater Cairo has no travel, hotel or per diem (brief 3.2)');
