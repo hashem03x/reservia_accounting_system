@@ -124,7 +124,17 @@ const limiter = rateLimit({
   message: { success: false, error: 'Too many requests. Please try again later.' },
 });
 app.use(mongoSanitize());
-app.use(xss());
+// `xss-clean` HTML-entity-escapes every `<`/`>` in every request body string (verified: a payload
+// of '<p>hi</p>' becomes '&lt;p>hi&lt;/p>' before any controller runs) - correct for every field in
+// this app except the ONE field that is deliberately meant to carry real HTML: a blog post's rich-
+// text body (server/utils/website/htmlSanitizer.js is the real, allowlist-based defense for that
+// field, run explicitly in the controller on save). Same shape as `skipForPublicRoutes` above -
+// everything else on this route (titles, slugs, category, tags, author name) still has no business
+// containing HTML and gets no exemption; express-validator's normal string/length checks are enough
+// for those, same as every other route in the app.
+const HTML_BODY_ROUTE_PREFIX = '/api/v1/website/blog-posts';
+const skipForHtmlRoutes = middleware => (req, res, next) => (req.path.startsWith(HTML_BODY_ROUTE_PREFIX) ? next() : middleware(req, res, next));
+app.use(skipForHtmlRoutes(xss()));
 
 i18next
   .use(Backend)

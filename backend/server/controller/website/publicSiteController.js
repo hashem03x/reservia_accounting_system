@@ -4,11 +4,13 @@ const apiResponse = require('../../utils/apiResponse');
 const ApiError = require('../../utils/apiError');
 const WebsitePage = require('../../models/website/websitePageModel');
 const WebsiteSection = require('../../models/website/websiteSectionModel');
+const WebsiteBlogPost = require('../../models/website/websiteBlogPostModel');
 const WebsiteNavigation = require('../../models/website/websiteNavigationModel');
 const WebsiteIntegration = require('../../models/website/websiteIntegrationModel');
 const WebsiteCustomCode = require('../../models/website/websiteCustomCodeModel');
-const { loadSettings, loadPublishedPages } = require('../../services/website/publishedSite');
+const { loadSettings, loadPublishedPages, loadPublishedBlogPosts } = require('../../services/website/publishedSite');
 const { resolveSite, resolveDraft, normalizePath } = require('../../utils/website/seoResolver');
+const { resolveBlogPost } = require('../../utils/website/blogSeoResolver');
 const { publicNavigation } = require('../../utils/website/navigation');
 const { publicIntegrations } = require('./integrationController');
 const { verifyPreviewToken } = require('../../utils/website/previewToken');
@@ -104,6 +106,24 @@ const pageOutput = (p, resolved) => ({
   sections: p.pageType === 'managed' ? p.sections : [],
 });
 
+const blogPostOutput = (p, resolved) => ({
+  slug: p.slug,
+  titleEn: p.titleEn || '',
+  titleAr: p.titleAr || '',
+  excerptEn: p.excerptEn || '',
+  excerptAr: p.excerptAr || '',
+  bodyEn: p.bodyEn || '',
+  bodyAr: p.bodyAr || '',
+  category: p.category || '',
+  tags: p.tags || [],
+  author: p.author || {},
+  featuredImage: p.featuredImage || null,
+  showRecentSidebar: p.showRecentSidebar !== false,
+  locales: p.locales,
+  publishedAt: p.publishedAt,
+  seo: resolved,
+});
+
 /**
  * Hash of everything the website renders from the feed (all of it except the generation time), so
  * a build can stamp WHICH published content it was made from (build-site.mjs writes it to
@@ -116,14 +136,16 @@ function feedContentHash(data) {
 
 /** The published-content feed (data part of GET /website/public/site). */
 async function buildPublicFeed() {
-  const [settings, pages, integrationsDoc] = await Promise.all([loadSettings(), loadPublishedPages(), WebsiteIntegration.findById(WebsiteIntegration.SINGLETON_ID).lean()]);
+  const [settings, pages, blogPosts, integrationsDoc] = await Promise.all([loadSettings(), loadPublishedPages(), loadPublishedBlogPosts(), WebsiteIntegration.findById(WebsiteIntegration.SINGLETON_ID).lean()]);
   const site = resolveSite(pages, settings);
   const seoBySlug = new Map(site.pages.map(p => [p.slug, p]));
   const [navigation, customCode, visual] = await Promise.all([loadNavigation(pages), loadCustomCode(pages), publishedVisual()]);
 
   const data = {
     // Bumped only when the shape changes INCOMPATIBLY - every field added since v1 is optional,
-    // so an older website build keeps working on a newer feed.
+    // so an older website build keeps working on a newer feed. `blogPosts` is one such additive
+    // field (Blog Management) - the website's build-time route discovery (cmsRoutes()-equivalent)
+    // reads it the same way it already reads `pages`.
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     origin: site.origin,
@@ -134,6 +156,7 @@ async function buildPublicFeed() {
     // The published Visual Editor design of the real website (applied by the website build).
     visual,
     pages: pages.map(p => pageOutput(p, seoBySlug.get(p.slug))),
+    blogPosts: blogPosts.map(p => blogPostOutput(p, resolveBlogPost(p, site.origin, settings))),
   };
   data.contentHash = feedContentHash(data);
   return data;
@@ -147,6 +170,23 @@ const getPublicSite = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Website content', true, data));
 });
 
+/** GET /website/public/preview/:token - ONE blog post's current draft, for the signed preview link. */
+async function blogPostPreviewResponse(grant, settings) {
+  const post = await WebsiteBlogPost.findById(grant.pageId).lean();
+  if (!post || !post.isActive) return { error: 'This blog post no longer exists.' };
+  const resolved = resolveBlogPost({ ...post, publishedAt: post.publishedAt || new Date() }, settings.publicSiteUrl, settings);
+  return {
+    data: {
+      schemaVersion: 1,
+      preview: true,
+      expiresAt: new Date(grant.exp * 1000).toISOString(),
+      origin: settings.publicSiteUrl || '',
+      settings: publicSettings(settings),
+      blogPost: { ...blogPostOutput(post, resolved), status: post.status },
+    },
+  };
+}
+
 /** GET /website/public/preview/:token - ONE page's current draft, for the signed preview link. */
 const getPublicPreview = asyncHandler(async (req, res, next) => {
   res.set('Cache-Control', 'no-store, max-age=0');
@@ -154,6 +194,13 @@ const getPublicPreview = asyncHandler(async (req, res, next) => {
   res.set('Referrer-Policy', 'no-referrer');
   const grant = verifyPreviewToken(req.params.token);
   if (!grant) return next(new ApiError('This preview link is invalid or has expired. Open a new preview from the dashboard.', 401));
+
+  if (grant.kind === 'blogPost') {
+    const settings = await loadSettings();
+    const result = await blogPostPreviewResponse(grant, settings);
+    if (result.error) return next(new ApiError(result.error, 404));
+    return res.status(200).json(apiResponse('Draft preview', true, result.data));
+  }
 
   const page = await WebsitePage.findById(grant.pageId).lean();
   if (!page || !page.isActive) return next(new ApiError('This page no longer exists.', 404));

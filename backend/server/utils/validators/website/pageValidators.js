@@ -129,4 +129,4 @@ const publishPageValidators = [check('label').optional().isString().trim().isLen
 // The live preview takes the same (unsaved) fields as an update, validated the same way.
 const previewPageSeoValidators = updatePageValidators;
 
-module.exports = { createPageValidators, updatePageValidators, duplicatePageValidators, publishPageValidators, previewPageSeoValidators, SEO_TEXT_LIMITS };
+module.exports = { createPageValidators, updatePageValidators, duplicatePageValidators, publishPageValidators, previewPageSeoValidators, SEO_TEXT_LIMITS, slugRule, seoRule, SEO_KEYS, NON_PUBLIC_PATH };

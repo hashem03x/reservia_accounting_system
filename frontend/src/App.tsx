@@ -139,6 +139,8 @@ const COM_Supplier = lazy(() => import("@/pages/commercial/suppliers/[id]"));
 const WebsiteOverview = lazy(() => import("@/pages/website"));
 const WebsitePages = lazy(() => import("@/pages/website/pages"));
 const WebsitePageEditor = lazy(() => import("@/pages/website/pages/[id]"));
+const WebsiteBlogPosts = lazy(() => import("@/pages/website/blog"));
+const WebsiteBlogPostEditor = lazy(() => import("@/pages/website/blog/[id]"));
 const WebsiteSettingsPage = lazy(() => import("@/pages/website/settings"));
 import WebsiteRoleGuard from "@/pages/routes/website-role-guard";
 const WebsiteMediaLibrary = lazy(() => import("@/pages/website/media"));
@@ -435,6 +437,8 @@ export default function App() {
                   <Route path={paths.website} element={<WebsiteOverview />} />
                   <Route path={paths.website + "/" + paths.websitePages} element={<WebsitePages />} />
                   <Route path={paths.website + "/" + paths.websitePages + "/:id"} element={<WebsitePageEditor />} />
+                  <Route path={paths.website + "/" + paths.websiteBlog} element={<WebsiteBlogPosts />} />
+                  <Route path={paths.website + "/" + paths.websiteBlog + "/:id"} element={<WebsiteBlogPostEditor />} />
                   <Route path={paths.website + "/" + paths.websiteMedia} element={<WebsiteMediaLibrary />} />
                   <Route path={paths.website + "/" + paths.websiteNavigation} element={<WebsiteNavigationPage />} />
                   <Route path={paths.website + "/" + paths.websiteActivity} element={<WebsiteActivityPage />} />

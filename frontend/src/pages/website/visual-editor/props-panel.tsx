@@ -364,7 +364,10 @@ export function NodeControls({ nodeId, config, onChange, readOnly, canCode, lang
     <div className="flex flex-col gap-3" data-testid="node-controls">
       {node.type === "heading" && (
         <>
-          <SegmentedControl size="xs" value={String(p.level || 2)} onChange={(v) => set({ level: Number(v) })} data={["2", "3", "4"].map((v) => ({ value: v, label: `H${v}` }))} disabled={readOnly} />
+          <SegmentedControl size="xs" value={String(p.level || 2)} onChange={(v) => set({ level: Number(v) })} data={["1", "2", "3", "4", "5", "6"].map((v) => ({ value: v, label: `H${v}` }))} disabled={readOnly} data-testid="node-heading-level" />
+          {Number(p.level) === 1 && (
+            <p className="text-xs text-orange-600">This page's title is already an H1 - consider H2 or lower for a content heading, so the page keeps a single main heading.</p>
+          )}
           <LangFields label="Heading" current={lang} value={loc("text")} readOnly={readOnly} testId="node-text" onChange={(l, v) => set({ text: { ...loc("text"), [l]: v } }, `text:${l}`)} />
         </>
       )}

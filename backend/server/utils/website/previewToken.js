@@ -21,12 +21,16 @@ function secret() {
 const b64 = buf => Buffer.from(buf).toString('base64url');
 const sign = data => crypto.createHmac('sha256', secret()).update(data).digest('base64url');
 
-function createPreviewToken(pageId, { userId, ttlSeconds = TTL_SECONDS, now = Date.now() } = {}) {
-  const payload = b64(JSON.stringify({ p: String(pageId), u: userId ? String(userId) : null, exp: Math.floor(now / 1000) + ttlSeconds }));
+// `kind` ('page'|'blogPost', default 'page') lets ONE preview endpoint (GET
+// /website/public/preview/:token) serve either a WebsitePage or a WebsiteBlogPost draft - the
+// signed payload itself carries which, so no second public route/token scheme was needed. Omitted
+// (old tokens already in flight) defaults to 'page', preserving their exact prior behavior.
+function createPreviewToken(pageId, { userId, kind = 'page', ttlSeconds = TTL_SECONDS, now = Date.now() } = {}) {
+  const payload = b64(JSON.stringify({ p: String(pageId), k: kind === 'blogPost' ? 'blogPost' : 'page', u: userId ? String(userId) : null, exp: Math.floor(now / 1000) + ttlSeconds }));
   return { token: `${payload}.${sign(payload)}`, expiresAt: new Date((Math.floor(now / 1000) + ttlSeconds) * 1000) };
 }
 
-/** The page id the token grants, or null when it is malformed, forged or expired. */
+/** The page/post id (and kind) the token grants, or null when it is malformed, forged or expired. */
 function verifyPreviewToken(token, { now = Date.now() } = {}) {
   if (typeof token !== 'string' || token.length > 600) return null;
   const [payload, sig] = token.split('.');
@@ -37,7 +41,7 @@ function verifyPreviewToken(token, { now = Date.now() } = {}) {
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (!data.p || !/^[a-f0-9]{24}$/i.test(data.p) || !(data.exp > Math.floor(now / 1000))) return null;
-    return { pageId: data.p, userId: data.u || null, exp: data.exp };
+    return { pageId: data.p, kind: data.k === 'blogPost' ? 'blogPost' : 'page', userId: data.u || null, exp: data.exp };
   } catch {
     return null;
   }

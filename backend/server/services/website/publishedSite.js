@@ -2,6 +2,8 @@ const WebsitePage = require('../../models/website/websitePageModel');
 const WebsiteSection = require('../../models/website/websiteSectionModel');
 const WebsiteRevision = require('../../models/website/websiteRevisionModel');
 const WebsiteSettings = require('../../models/website/websiteSettingsModel');
+const WebsiteBlogPost = require('../../models/website/websiteBlogPostModel');
+const WebsiteBlogPostRevision = require('../../models/website/websiteBlogPostRevisionModel');
 
 // Website Management - reads the data seoResolver.js works on. Two views of the site:
 //   - PUBLISHED: what is live. Every page's seo/sections/locales come from its publishedRevision's
@@ -71,4 +73,40 @@ async function loadDraftPages() {
   return pages.map(p => ({ ...p, sections: visibleSorted(byPage.get(String(p._id))).map(sectionForOutput) }));
 }
 
-module.exports = { loadSettings, loadPublishedPages, loadDraftPages };
+/** Every live blog post with its published snapshot - the sibling of loadPublishedPages() above. */
+async function loadPublishedBlogPosts() {
+  const posts = await WebsiteBlogPost.find({ isActive: true, status: 'published', publishedRevision: { $ne: null } })
+    .sort({ publishedAt: -1 })
+    .lean();
+  if (!posts.length) return [];
+  const revisions = await WebsiteBlogPostRevision.find({ _id: { $in: posts.map(p => p.publishedRevision) } }).lean();
+  const byId = new Map(revisions.map(r => [String(r._id), r]));
+
+  const out = [];
+  for (const p of posts) {
+    const rev = byId.get(String(p.publishedRevision));
+    if (!rev) continue;
+    const snap = rev.snapshot || {};
+    out.push({
+      _id: p._id,
+      slug: p.slug,
+      titleEn: snap.titleEn !== undefined ? snap.titleEn : p.titleEn || '',
+      titleAr: snap.titleAr !== undefined ? snap.titleAr : p.titleAr || '',
+      excerptEn: snap.excerptEn !== undefined ? snap.excerptEn : p.excerptEn || '',
+      excerptAr: snap.excerptAr !== undefined ? snap.excerptAr : p.excerptAr || '',
+      bodyEn: snap.bodyEn !== undefined ? snap.bodyEn : p.bodyEn || '',
+      bodyAr: snap.bodyAr !== undefined ? snap.bodyAr : p.bodyAr || '',
+      category: snap.category !== undefined ? snap.category : p.category || '',
+      tags: Array.isArray(snap.tags) ? snap.tags : p.tags || [],
+      author: snap.author || p.author || {},
+      featuredImage: snap.featuredImage !== undefined ? snap.featuredImage : p.featuredImage || null,
+      showRecentSidebar: snap.showRecentSidebar !== false,
+      locales: Array.isArray(snap.locales) && snap.locales.length ? snap.locales : p.locales,
+      seo: snap.seo || {},
+      publishedAt: rev.publishedAt,
+    });
+  }
+  return out;
+}
+
+module.exports = { loadSettings, loadPublishedPages, loadDraftPages, loadPublishedBlogPosts };

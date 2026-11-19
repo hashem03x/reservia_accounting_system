@@ -11,6 +11,7 @@ const { loadSettings, loadPublishedPages, loadDraftPages } = require('../../serv
 const { publishProblems, resolveDraft, resolveSite, normalizePath } = require('../../utils/website/seoResolver');
 const WebsiteNavigation = require('../../models/website/websiteNavigationModel');
 const publishing = require('../../services/website/publishingService');
+const blogPublishing = require('../../services/website/blogPublishingService');
 const { createPreviewToken } = require('../../utils/website/previewToken');
 const { validateSettings } = require('../../utils/website/sectionValidation');
 
@@ -268,14 +269,20 @@ const restorePage = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Page restored as a draft', true, result));
 });
 
-/** GET /pages/cron/scheduled - applies due scheduled publishes (Vercel Cron, Bearer CRON_SECRET). */
+/**
+ * GET /pages/cron/scheduled - applies due scheduled publishes (Vercel Cron, Bearer CRON_SECRET).
+ * Also applies due BLOG POST schedules in the same tick (services/website/blogPublishingService.js#
+ * runDueBlogSchedules) - there is no second external scheduler configured for this repo to point at
+ * a blog-only cron route, so one tick covers both.
+ */
 const runScheduledPublishes = asyncHandler(async (req, res, next) => {
   const expected = process.env.CRON_SECRET;
   const given = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
   const ok = expected && given.length === expected.length && require('crypto').timingSafeEqual(Buffer.from(given), Buffer.from(expected));
   if (!ok) return next(new ApiError('Unauthorized.', 401));
-  const result = await publishing.runDueSchedules();
-  res.status(200).json(apiResponse(`${result.published.length} scheduled page(s) published`, true, result));
+  const [result, blogResult] = await Promise.all([publishing.runDueSchedules(), blogPublishing.runDueBlogSchedules()]);
+  const combined = { published: result.published, blogPostsPublished: blogResult.published, deploy: result.deploy || blogResult.deploy };
+  res.status(200).json(apiResponse(`${result.published.length} scheduled page(s) and ${blogResult.published.length} scheduled blog post(s) published`, true, combined));
 });
 
 /** POST /pages/:id/preview-token - a 30-minute signed link that renders THIS page's draft on the real website. */

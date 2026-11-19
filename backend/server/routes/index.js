@@ -191,6 +191,9 @@ const mountRoutes = app => {
   // the Media Library. Gated by its own middleware/websiteAccess.js, not the ERP's permission
   // matrix - same pattern as CRM/Commercial above.
   app.use('/api/v1/website/pages', require('./website/pageRoute'));
+  // Blog Management - a sibling of Pages (own model/revision/publishing service, not squeezed
+  // into WebsitePage), gated the same way (requireWebsiteAccess + per-route capability).
+  app.use('/api/v1/website/blog-posts', require('./website/blogPostRoute'));
   app.use('/api/v1/website/media', require('./website/mediaRoute'));
   app.use('/api/v1/website/settings', require('./website/settingsRoute'));
   // Overview, activity log, live-site rebuild, navigation, integrations, custom code (per-route auth).

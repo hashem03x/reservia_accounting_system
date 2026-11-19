@@ -261,6 +261,73 @@ export interface WebsiteRevision {
   publishedAt: string;
 }
 
+// ---- Blog Management ----
+export interface BlogAuthor {
+  nameEn?: string;
+  nameAr?: string;
+  avatarUrl?: string | null;
+}
+
+export interface WebsiteBlogPost {
+  _id: string;
+  slug: string;
+  titleEn: string;
+  titleAr: string;
+  excerptEn: string;
+  excerptAr: string;
+  bodyEn: string;
+  bodyAr: string;
+  category: string;
+  tags: string[];
+  author: BlogAuthor;
+  featuredImage: WebsiteImageRef;
+  showRecentSidebar: boolean;
+  displayStatus?: WebsiteDisplayStatus;
+  scheduledPublishAt?: string | null;
+  scheduledRevision?: string | null;
+  locales: WebsiteLocale[];
+  seo: WebsiteSeo;
+  status: WebsitePageStatus;
+  publishedAt: string | null;
+  publishedBy?: { _id: string; name: string } | string | null;
+  publishedRevision: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebsiteBlogPostRevision {
+  _id: string;
+  post: string;
+  label: string | null;
+  publishedBy: { _id: string; name: string } | string;
+  publishedAt: string;
+}
+
+/** A blog post in one language, resolved by blogSeoResolver.js - a simpler sibling of ResolvedSeo
+ * (no breadcrumbs, no section-derived heading). */
+export interface ResolvedBlogSeo {
+  locale: WebsiteLocale;
+  url: string;
+  title: string;
+  titleSource: "custom" | "content";
+  description: string;
+  descriptionSource: "custom" | "content" | "none";
+  canonical: string;
+  robots: string;
+  indexable: boolean;
+  datePublished: string | null;
+  openGraph: { type: string; title: string; description: string; image: string | null; url: string; locale: string; siteName: string };
+  twitter: { card: string; cardSource: "custom" | "auto"; title: string; description: string; image: string | null; site: string | null };
+  warnings: SeoWarning[];
+}
+
+export interface BlogSeoPreview {
+  ar?: ResolvedBlogSeo;
+  en?: ResolvedBlogSeo;
+  problems: string[];
+}
+
 export interface WebsiteMedia {
   _id: string;
   kind: "image" | "video";

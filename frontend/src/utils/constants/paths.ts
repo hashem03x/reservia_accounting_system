@@ -69,6 +69,7 @@ const paths = {
   website: "website",
   websiteOverview: "overview",
   websitePages: "pages",
+  websiteBlog: "blog",
   websiteSettings: "settings",
   websiteMedia: "media",
   websiteNavigation: "navigation",

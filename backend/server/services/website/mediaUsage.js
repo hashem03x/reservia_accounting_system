@@ -4,6 +4,18 @@ const WebsitePage = require('../../models/website/websitePageModel');
 const WebsiteSection = require('../../models/website/websiteSectionModel');
 const WebsiteRevision = require('../../models/website/websiteRevisionModel');
 const WebsiteSettings = require('../../models/website/websiteSettingsModel');
+const WebsiteBlogPost = require('../../models/website/websiteBlogPostModel');
+const WebsiteBlogPostRevision = require('../../models/website/websiteBlogPostRevisionModel');
+
+/** <img src="..."> URLs inside a blog body HTML string - collectStrings can't see into a string's
+ * own markup, so inline images need this small extraction before they're added to the index. */
+function collectInlineImageUrls(html, out) {
+  const re = /<img[^>]+src=["']([^"']+)["']/gi;
+  let m;
+  // eslint-disable-next-line no-cond-assign
+  while ((m = re.exec(String(html || '')))) out.add(m[1]);
+  return out;
+}
 
 // Website Management - where is a media file used? One scan of everything that can reference a
 // media URL, answering for every URL at once (the library list shows a usage count per file):
@@ -61,6 +73,32 @@ async function buildUsageIndex() {
     const labels = { logo: 'Site logo', logoDark: 'Site logo (dark)', favicon: 'Favicon', defaultOgImage: 'Default share image' };
     for (const [key, label] of Object.entries(labels)) if (settings[key]?.url) add(map, settings[key].url, { scope: 'live', where: label, pageId: null, pageSlug: null });
   }
+
+  // Blog posts - Featured Image/author avatar (structured fields, picked up generically by
+  // collectStrings) and inline <img> URLs inside bodyEn/Ar (a string, so extracted separately).
+  const posts = await WebsiteBlogPost.find({ isActive: true }).select('slug featuredImage author publishedRevision scheduledRevision status bodyEn bodyAr seo.ogImage').lean();
+  const postById = new Map(posts.map(p => [String(p._id), p]));
+  for (const p of posts) {
+    const draftStrings = collectStrings([p.featuredImage, p.author, p.seo?.ogImage], new Set());
+    collectInlineImageUrls(p.bodyEn, draftStrings);
+    collectInlineImageUrls(p.bodyAr, draftStrings);
+    for (const str of draftStrings) add(map, str, { scope: 'draft', where: 'Blog post', pageId: p._id, pageSlug: p.slug });
+  }
+  const liveBlogRevisionIds = posts.flatMap(p => [p.status === 'published' ? p.publishedRevision : null, p.scheduledRevision]).filter(Boolean);
+  if (liveBlogRevisionIds.length) {
+    const revisions = await WebsiteBlogPostRevision.find({ _id: { $in: liveBlogRevisionIds } }).select('post snapshot').lean();
+    for (const r of revisions) {
+      const p = postById.get(String(r.post));
+      if (!p) continue;
+      const scheduled = String(r._id) === String(p.scheduledRevision);
+      const snap = r.snapshot || {};
+      const liveStrings = collectStrings([snap.featuredImage, snap.author, snap.seo?.ogImage], new Set());
+      collectInlineImageUrls(snap.bodyEn, liveStrings);
+      collectInlineImageUrls(snap.bodyAr, liveStrings);
+      for (const str of liveStrings) add(map, str, { scope: 'live', where: scheduled ? 'Scheduled blog post' : 'Published blog post', pageId: p._id, pageSlug: p.slug });
+    }
+  }
+
   return map;
 }
 

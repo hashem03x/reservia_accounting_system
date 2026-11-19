@@ -16,6 +16,7 @@ const NAV_ITEMS: { to: string; label: { en: string; ar: string }; Icon: (typeof 
   { to: `/${paths.website}`, label: { en: "Overview", ar: "نظرة عامة" }, Icon: outlineIcons.Squares },
   { to: `/${paths.website}/${paths.websiteVisualEditor}`, label: { en: "Visual Editor", ar: "المحرر المرئي" }, Icon: outlineIcons.Edit },
   { to: `/${paths.website}/${paths.websitePages}`, label: { en: "Pages", ar: "الصفحات" }, Icon: outlineIcons.Document },
+  { to: `/${paths.website}/${paths.websiteBlog}`, label: { en: "Blog", ar: "المقالات" }, Icon: outlineIcons.List },
   { to: `/${paths.website}/${paths.websiteMedia}`, label: { en: "Media", ar: "الوسائط" }, Icon: outlineIcons.Photo },
   { to: `/${paths.website}/${paths.websiteNavigation}`, label: { en: "Navigation", ar: "التنقل" }, Icon: outlineIcons.Compass },
   { to: `/${paths.website}/${paths.websiteSettings}`, label: { en: "Settings", ar: "الإعدادات" }, Icon: outlineIcons.Admin, capability: "settings.manage" },
