@@ -347,6 +347,7 @@ async function updateLeadDetails(leadId, input, { userId = null } = {}) {
   if (!lead) throw new ApiError('Lead not found.', 404);
   if (input.governorate && !GOVERNORATE_NAMES_EN.includes(input.governorate)) throw new ApiError('Choose a governorate from the list.', 400);
   const changes = [];
+  let nameChanged = false;
   for (const key of EDITABLE_FIELDS) {
     if (input[key] === undefined) continue;
     let next = input[key];
@@ -355,11 +356,19 @@ async function updateLeadDetails(leadId, input, { userId = null } = {}) {
     const prev = lead[key] ?? null;
     if (String(prev ?? '') === String(next ?? '')) continue;
     lead[key] = next;
+    if (key === 'name') nameChanged = true;
     changes.push(`${FIELD_LABELS[key]}: ${prev ?? '(empty)'} -> ${next ?? '(empty)'}`);
   }
   if (!changes.length) return shapeLead(lead);
   await lead.save();
   await Activity.create({ lead: lead._id, type: 'system', body: `Lead details updated. ${changes.join('; ')}.`, author: userId });
+  // Pending Fixes item 5: a renamed lead's Deal Engine project name follows it. Never fails the
+  // edit itself - same "sync failures are recorded, not thrown" convention as the rest of this handoff.
+  if (nameChanged && lead.name) {
+    // eslint-disable-next-line global-require
+    const { syncProjectNameFromLead } = require('./commercialHandoffService');
+    await syncProjectNameFromLead(lead).catch(err => console.error(`[CRM->Deal Engine] project name sync failed for lead ${lead.refCode}: ${err.message}`));
+  }
   return shapeLead(lead);
 }
 
@@ -493,6 +502,11 @@ async function changeStage(leadId, input, { userId = null, role } = {}) {
       if (input.valueEgp !== undefined) lead.valueEgp = input.valueEgp;
       if (input.followUpAt !== undefined) lead.followUpAt = input.followUpAt;
       if (input.governorate) lead.governorate = input.governorate;
+      // Pending Fixes item 3: a one-time region choice for THIS handoff, read by
+      // commercialHandoffService.js#projectHeaderFromLead the moment the Commercial project is
+      // first created (below, via onStageChanged -> ensureProjectForLead), then inert - the region
+      // is never recomputed once a project exists.
+      if (input.to === 'proposal_sent' && input.region) lead.regionOverride = input.region;
       // A manual reopen (Lost -> anything else) resets the SLA clock exactly like the automatic
       // repeat-enquiry reopen above - see reopenSla()'s header comment for why a plain field reset
       // is not enough (leadOriginAt must move too, or the next reply is measured from the
@@ -506,7 +520,9 @@ async function changeStage(leadId, input, { userId = null, role } = {}) {
             lead: lead._id,
             from,
             to: input.to,
-            changedBy: userId,
+            // Pending Fixes item 2: "Handled by" - who on the team actually worked this stage,
+            // picked from the user list; defaults to whoever is logged in and applying the change.
+            changedBy: input.handledBy || userId,
             lostReason: input.to === 'lost' ? ctx.lostReason : null,
             valueEgpAtChange: input.to === 'won' ? ctx.valueEgp : null,
             mdApproved: input.to === 'won' ? ctx.mdApproved : false,

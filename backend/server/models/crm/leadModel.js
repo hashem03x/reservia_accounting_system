@@ -81,6 +81,11 @@ const leadSchema = new Schema(
     phoneE164: { type: String, required: true, unique: true, trim: true },
     segment: { type: String, enum: SEGMENTS, default: 'unknown' },
     governorate: { type: String, trim: true, maxlength: 100, default: null },
+    // CRM/Deal Engine Pending Fixes (19 Nov 2026), item 3: a one-time region choice made AT Proposal
+    // sent, when the governorate's nearest-Rates-region mapping is wrong for this specific deal. Takes
+    // precedence over the governorate mapping in commercialHandoffService.js#projectHeaderFromLead,
+    // but only at the moment the Commercial project is first created - never recomputed afterward.
+    regionOverride: { type: String, trim: true, maxlength: 100, default: null },
     // Display source label (e.g. "Google ads", "Website form", "WhatsApp", "Vendor or partner") -
     // free text because the brief's own list of channels/campaigns keeps growing; `channel` below
     // is the constrained, machine-checked acquisition path.

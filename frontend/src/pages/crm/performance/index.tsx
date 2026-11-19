@@ -51,8 +51,9 @@ export default function CrmPerformancePage() {
 
   const { privateRequest, loading, setLoading, error, setError, data, setData } = useDataHandler<CrmPerformance | null>({ initialData: null, initialLoading: true });
 
+  // Fetched for every viewer, not just managers - the "Handled by" win-rate table (Pending Fixes
+  // item 2) needs it to show names, not raw ids, regardless of who is looking at Performance.
   useEffect(() => {
-    if (!isManager) return;
     privateRequest({ url: "crm/team", language })
       .then(res => setTeam((res.data as { _id: string; name: string }[]).map(u => ({ value: u._id, label: u.name }))))
       .catch(() => {});
@@ -235,6 +236,30 @@ export default function CrmPerformancePage() {
                       ))}
                     </div>
                   )}
+                </div>
+
+                <div className="rounded-lg border border-gray-100 p-3">
+                  <h4 className="mb-2 text-xs font-semibold text-gray-500">{translate("Win rate by handled by", "معدل الفوز حسب من قام بالمتابعة")}</h4>
+                  <Table verticalSpacing={2} fz="xs">
+                    <Table.Tbody>
+                      {data.conversion.winRateByHandler.map(h => (
+                        <Table.Tr key={h.handledBy}>
+                          <Table.Td>{team.find(t => t.value === h.handledBy)?.label || translate("Unassigned", "غير مخصص")}</Table.Td>
+                          <Table.Td className="text-right">
+                            {dash(h.winRatePct, "%")}
+                            <SampleTag n={h.sampleSize} />
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                      {data.conversion.winRateByHandler.length === 0 && (
+                        <Table.Tr>
+                          <Table.Td colSpan={2} className="text-center text-gray-400">
+                            {translate("No won or lost deals this month.", "لا توجد صفقات فوز أو خسارة هذا الشهر.")}
+                          </Table.Td>
+                        </Table.Tr>
+                      )}
+                    </Table.Tbody>
+                  </Table>
                 </div>
               </div>
 

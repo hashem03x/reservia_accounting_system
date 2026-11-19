@@ -86,8 +86,14 @@ exports.getLeadById = asyncHandler(async (req, res, next) => {
   res.status(200).json(apiResponse('Lead retrieved successfully', true, { lead, activities, stageHistory, firstReply }));
 });
 
+// Pending Fixes item 1: "Add an Owner control to New Lead... MD and admin can set it." A sales or
+// technical login can still create a lead; it just can never hand-pick who it lands on - that
+// field is silently dropped for them server-side (defense in depth - the New Lead form never shows
+// it to begin with), falling back to intakeLead's own creator/auto-assign default.
 exports.createLead = asyncHandler(async (req, res) => {
-  const { lead, created } = await leadService.intakeLead(req.body, { userId: req.user._id });
+  const canSetOwner = req.crmRole === 'md' || req.crmRole === 'admin';
+  const input = canSetOwner ? req.body : { ...req.body, owner: undefined };
+  const { lead, created } = await leadService.intakeLead(input, { userId: req.user._id });
   res.status(created ? 201 : 200).json(apiResponse(created ? 'Lead created successfully' : 'A lead for this phone number already exists - merged.', true, lead));
 });
 

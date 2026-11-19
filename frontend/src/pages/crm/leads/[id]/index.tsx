@@ -13,6 +13,7 @@ import handleRequest from "@/utils/helpers/handle-request";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import paths from "@/utils/constants/paths";
 import { CRM_LOST_REASONS, CrmActivity, CrmActivityType, CrmLead, CrmLeadFirstReply, CrmRole, CrmStage, CrmStageHistory } from "@/types/crm";
+import { EGYPT_REGIONS } from "@/types/commercial";
 import { Alert, Badge, Button, NumberInput, Select, Textarea, TextInput, Tooltip } from "@mantine/core";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
@@ -141,7 +142,14 @@ export default function CrmLeadDetail() {
     >
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <section className="flex flex-col gap-4 lg:col-span-1">
-          <InfoCard lead={lead} overdue={overdue} firstReply={data.firstReply} canEdit={role === "md" || role === "admin" || role === "sales"} onEdited={load} />
+          <InfoCard
+            lead={lead}
+            overdue={overdue}
+            firstReply={data.firstReply}
+            canEdit={role === "md" || role === "admin" || role === "sales"}
+            canReassignOwner={role === "md" || role === "admin"}
+            onEdited={load}
+          />
           <LeadCommercialCard lead={lead} onChanged={load} />
           <LeadAttributionCard lead={lead} />
           <StageChangeCard lead={lead} onChanged={load} />
@@ -223,7 +231,21 @@ function ArchiveAction({ lead, onChanged, onArchivedAway }: { lead: CrmLead; onC
   );
 }
 
-function InfoCard({ lead, overdue, firstReply, canEdit, onEdited }: { lead: CrmLead; overdue: boolean; firstReply?: CrmLeadFirstReply; canEdit: boolean; onEdited: () => void }) {
+function InfoCard({
+  lead,
+  overdue,
+  firstReply,
+  canEdit,
+  canReassignOwner,
+  onEdited,
+}: {
+  lead: CrmLead;
+  overdue: boolean;
+  firstReply?: CrmLeadFirstReply;
+  canEdit: boolean;
+  canReassignOwner: boolean;
+  onEdited: () => void;
+}) {
   const { language, translate, translations } = useLanguage();
   const row = (label: string, value: React.ReactNode) => (
     <div className="flex items-center justify-between gap-2 border-b border-gray-50 py-1.5 text-sm last:border-0">
@@ -251,7 +273,10 @@ function InfoCard({ lead, overdue, firstReply, canEdit, onEdited }: { lead: CrmL
       {row(translate("Source", "المصدر"), lead.source)}
       {campaign && row(translate("Campaign", "الحملة"), <TruncatedText text={campaign} maxWidthClassName="max-w-[180px]" />)}
       {row(translate("Governorate", "المحافظة"), lead.governorate || "-")}
-      {row(translate("Owner", "المسؤول"), lead.owner?.name || translate("Unassigned", "غير مخصص"))}
+      {row(
+        translate("Owner", "المسؤول"),
+        canReassignOwner ? <OwnerReassign lead={lead} onChanged={onEdited} /> : lead.owner?.name || translate("Unassigned", "غير مخصص"),
+      )}
       {row(translate("Value", "القيمة"), lead.valueEgp ? formatAmount(lead.valueEgp, translations.currency) : "-")}
       {backdated && row(translate("Originally submitted", "تاريخ الإرسال الأصلي"), formatCairoDateTime(lead.submittedAt, language))}
       {row(backdated ? translate("Added to the CRM", "أُضيف إلى النظام") : translate("Created", "تاريخ الإنشاء"), formatCairoDateTime(lead.createdAt, language))}
@@ -308,6 +333,49 @@ function InfoCard({ lead, overdue, firstReply, canEdit, onEdited }: { lead: CrmL
   );
 }
 
+// Pending Fixes item 1: owner reassignment, MD/admin only (route-gated server-side too -
+// requireCrmRole('admin', 'md') on PATCH /crm/leads/:id/owner). Reuses that already-audited
+// endpoint (writes to the lead's timeline) rather than the generic edit-details one, which
+// deliberately excludes `owner` from its editable fields.
+function OwnerReassign({ lead, onChanged }: { lead: CrmLead; onChanged: () => void }) {
+  const { language, translate } = useLanguage();
+  const privateRequest = usePrivateRequest();
+  const [team, setTeam] = useState<{ value: string; label: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    privateRequest({ url: "crm/team", language })
+      .then((res) => setTeam((res.data as { _id: string; name: string }[]).map((u) => ({ value: u._id, label: u.name }))))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function reassign(ownerId: string | null) {
+    setSaving(true);
+    try {
+      await privateRequest({ language, method: "PATCH", url: `crm/leads/${lead._id}/owner`, data: { owner: ownerId } });
+      onChanged();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Select
+      value={lead.owner?._id || null}
+      onChange={(v) => reassign(v || null)}
+      data={team}
+      placeholder={translate("Unassigned", "غير مخصص")}
+      size="xs"
+      w={160}
+      searchable
+      clearable
+      disabled={saving}
+      data-testid="lead-owner-reassign"
+    />
+  );
+}
+
 function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => void }) {
   const { language, translate } = useLanguage();
   const { systems } = useSystemAccess();
@@ -319,12 +387,26 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
   const [overrideReason, setOverrideReason] = useState("");
   const [overrideForced, setOverrideForced] = useState(false);
   const [governorate, setGovernorate] = useState("");
+  const [handledBy, setHandledBy] = useState("");
+  const [region, setRegion] = useState("");
+  const [team, setTeam] = useState<{ value: string; label: string }[]>([]);
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
+
+  // Pending Fixes item 2: "Handled by" is offered on every stage change, picked from the user list.
+  useEffect(() => {
+    privateRequest({ url: "crm/team", language })
+      .then((res) => setTeam((res.data as { _id: string; name: string }[]).map((u) => ({ value: u._id, label: u.name }))))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const normalStages = allowedNextStages(lead.stage, role) as CrmStage[];
   const overrideStages = overrideOnlyStages(lead.stage, role) as CrmStage[];
   const { needsLostReason, needsValue, needsFollowUp } = stageExtraFieldRequirements(to);
   const needsGovernorate = needsGovernorateFor(to, lead.governorate);
+  // Pending Fixes item 3: an OPTIONAL one-time region choice, offered only when moving to Proposal
+  // sent - the normal governorate-based mapping is used whenever this is left blank.
+  const offersRegion = to === "proposal_sent";
   // Change Request 2, item 1: an MD-only override, needed when the chosen stage skips the order
   // (or when the server says so for a move this screen didn't anticipate).
   const needsOverride = role === "md" && !!to && (overrideStages.includes(to as CrmStage) || overrideForced);
@@ -350,6 +432,8 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
             followUpAt: followUpAt || undefined,
             overrideReason: needsOverride ? overrideReason.trim() : undefined,
             governorate: needsGovernorate ? governorate : undefined,
+            handledBy: handledBy || undefined,
+            region: offersRegion && region ? region : undefined,
           },
         });
       } catch (err) {
@@ -362,6 +446,8 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
       setOverrideReason("");
       setOverrideForced(false);
       setGovernorate("");
+      setHandledBy("");
+      setRegion("");
       onChanged();
     });
   }
@@ -378,8 +464,8 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
       <h4>{translate("Change Stage", "تغيير المرحلة")}</h4>
       <p className="text-xs text-gray-400">
         {translate(
-          "Stages move one step at a time: New, Contacted, Qualified, Site survey, Proposal sent, Won or Lost.",
-          "تتحرك المراحل خطوة واحدة في كل مرة: جديد، تم التواصل، مؤهل، مسح الموقع، تم إرسال العرض، ثم فوز أو خسارة.",
+          "Stages move one step at a time: New, Contacted, Qualified, Site survey, Proposal sent, Negotiation, Won or Lost.",
+          "تتحرك المراحل خطوة واحدة في كل مرة: جديد، تم التواصل، مؤهل، مسح الموقع، تم إرسال العرض، تفاوض، ثم فوز أو خسارة.",
         )}
       </p>
       <Select
@@ -405,6 +491,29 @@ function StageChangeCard({ lead, onChanged }: { lead: CrmLead; onChanged: () => 
           description={translate("This lead has no governorate yet. It is needed from Qualified on (the Deal Engine region).", "لا توجد محافظة لهذا العميل بعد، وهي مطلوبة من مرحلة مؤهل (منطقة محرك الصفقات).")}
         />
       )}
+      {offersRegion && (
+        <Select
+          value={region || null}
+          onChange={(v) => setRegion(v || "")}
+          data={EGYPT_REGIONS.map((r) => ({ value: r, label: r }))}
+          label={translate("Deal Engine region override (optional)", "تجاوز منطقة محرك الصفقات (اختياري)")}
+          description={translate(
+            "Only if the governorate's automatic mapping is wrong for this deal. Leave empty to use the normal mapping.",
+            "فقط إذا كان الربط التلقائي للمحافظة غير صحيح لهذه الصفقة. اتركه فارغًا لاستخدام الربط المعتاد.",
+          )}
+          searchable
+          clearable
+        />
+      )}
+      <Select
+        value={handledBy || null}
+        onChange={(v) => setHandledBy(v || "")}
+        data={team}
+        label={translate("Handled by (optional)", "تمت المتابعة من (اختياري)")}
+        description={translate("Leave empty if you are the one who worked this stage.", "اتركه فارغًا إذا كنت أنت من قام بهذه المرحلة.")}
+        searchable
+        clearable
+      />
       {needsLostReason && (
         <Select
           value={lostReason || null}

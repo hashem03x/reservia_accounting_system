@@ -71,6 +71,12 @@ function projectHeaderFromLead(lead, { cityRegions = null } = {}) {
   if (!lead.name || !String(lead.name).trim()) {
     throw new ApiError('The lead has no customer name - add the name on the lead, then retry the Deal Engine sync.', 400);
   }
+  // Pending Fixes item 3: a one-time region choice made by the user AT Proposal sent
+  // (leadService.js#changeStage) wins over every automatic mapping below - it exists specifically
+  // for the governorates whose nearest-region guess is wrong for a given deal.
+  if (lead.regionOverride) {
+    return { category: sector.category, subCategory: sector.subCategory, country: 'Egypt', region: lead.regionOverride, regionNote: `Region chosen by the user at Proposal sent (${lead.regionOverride}).` };
+  }
   // Deal Engine C26: the configured city/governorate table (attachment A3) first, then the built-in
   // governorate table (nearest region for governorates without a rates row of their own).
   const fromTable = cityRegions && lead.governorate ? Object.entries(cityRegions).find(([c]) => c.toLowerCase() === String(lead.governorate).trim().toLowerCase()) : null;
@@ -172,6 +178,21 @@ async function ensureProjectForLead(lead, { userId = null } = {}) {
     }
     throw err;
   }
+}
+
+/**
+ * Pending Fixes item 5: "Update the Deal Engine project name when the lead is renamed." The
+ * project's name is built the same way as at creation (`${name} - ${refCode}`) - only the name half
+ * ever changes on a rename, the ref code is immutable. A no-op (not an error) when the lead has no
+ * linked project yet, or the computed name already matches.
+ */
+async function syncProjectNameFromLead(lead) {
+  const project = await findLinkedProject(lead);
+  if (!project) return null;
+  const name = `${String(lead.name).trim()} - ${lead.refCode}`.slice(0, 200);
+  if (project.name === name) return project;
+  await CommercialProject.updateOne({ _id: project._id }, { $set: { name } });
+  return project;
 }
 
 // Brief 3.5 - ERP budget = BOQ cost groups + site costs + overhead + contingency + incentives.
@@ -325,4 +346,4 @@ async function onStageChanged(leadId, from, to, { userId = null } = {}) {
   return last;
 }
 
-module.exports = { syncLeadEvent, retrySync, onStageChanged, ensureProjectForLead, projectHeaderFromLead, erpBudgetFromRevision, eventForStage, SEGMENT_TO_SECTOR };
+module.exports = { syncLeadEvent, retrySync, onStageChanged, ensureProjectForLead, projectHeaderFromLead, erpBudgetFromRevision, eventForStage, SEGMENT_TO_SECTOR, syncProjectNameFromLead };

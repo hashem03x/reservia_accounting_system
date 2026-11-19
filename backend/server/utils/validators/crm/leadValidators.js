@@ -4,6 +4,7 @@ const { normalizeEgyptianPhone } = require('../../crm/phone');
 const { FORM_SEGMENTS, CHANNELS, LOST_REASONS, SOURCES, GOVERNORATE_NAMES_EN } = require('../../crm/constants');
 const { STAGES } = require('../../crm/stageRules');
 const { toDateOnly } = require('../../crm/businessDate');
+const { EGYPT_REGIONS } = require('../../commercial/regions');
 
 exports.createLeadValidator = [
   check('phone')
@@ -79,6 +80,13 @@ exports.changeStageValidator = [
   check('overrideReason').optional({ nullable: true }).isString().withMessage('Override reason must be text.').trim().isLength({ max: 500 }),
   // CRM Changes Required, item 1: the governorate can be given with the move (asked for at Qualified).
   check('governorate').optional({ nullable: true, checkFalsy: true }).isIn(GOVERNORATE_NAMES_EN).withMessage('Choose a governorate from the list.'),
+  // CRM/Deal Engine Pending Fixes (19 Nov 2026), item 2: who on the team actually worked this stage
+  // change, when it differs from whoever is logged in and clicking Apply. Any valid user id - the
+  // service stores it on StageHistory.changedBy, defaulting to the acting user when omitted.
+  check('handledBy').optional({ nullable: true }).isMongoId().withMessage('Invalid handledBy id'),
+  // Pending Fixes item 3: a one-time region override, offered only when moving to Proposal sent -
+  // see leadService.js#changeStage and commercialHandoffService.js#projectHeaderFromLead.
+  check('region').optional({ nullable: true, checkFalsy: true }).isIn(EGYPT_REGIONS).withMessage('Choose a Rates matrix region from the list.'),
   // mdApproved is deliberately NOT accepted here - services/crm/leadService.js#changeStage never
   // trusts a client-supplied approval flag (a request body is not proof the MD approved
   // anything); only the acting role genuinely being 'md' can satisfy the >EGP 1M rule.

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
+import { useSystemAccess } from "@/context/SystemAccessContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
-import { CRM_CHANNELS, CRM_FORM_SEGMENTS, CRM_GOVERNORATES, CRM_SOURCES, CrmChannel, CrmLead, CrmSegment, CrmSource } from "@/types/crm";
+import { CRM_CHANNELS, CRM_FORM_SEGMENTS, CRM_GOVERNORATES, CRM_SOURCES, CrmChannel, CrmLead, CrmRole, CrmSegment, CrmSource } from "@/types/crm";
 import { Button, NumberInput, Select, TextInput } from "@mantine/core";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
@@ -32,6 +33,9 @@ export default function LeadModal({
   callback: (lead: CrmLead) => void;
 }) {
   const { language, translate, translations } = useLanguage();
+  const { systems } = useSystemAccess();
+  const role = systems?.CRM?.role as CrmRole | null | undefined;
+  const canSetOwner = role === "md" || role === "admin";
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -42,8 +46,19 @@ export default function LeadModal({
   const [source, setSource] = useState<CrmSource | "">("");
   const [governorate, setGovernorate] = useState("");
   const [valueEgp, setValueEgp] = useState<string | number>("");
+  const [owner, setOwner] = useState("");
+  const [team, setTeam] = useState<{ value: string; label: string }[]>([]);
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
+
+  // Pending Fixes item 1: the owner list is only ever needed (and only ever shown) to MD/admin.
+  useEffect(() => {
+    if (!opened || !canSetOwner) return;
+    privateRequest({ url: "crm/team", language })
+      .then((res) => setTeam((res.data as { _id: string; name: string }[]).map((u) => ({ value: u._id, label: u.name }))))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened, canSetOwner]);
 
   function reset() {
     setName("");
@@ -55,6 +70,7 @@ export default function LeadModal({
     setSource("");
     setGovernorate("");
     setValueEgp("");
+    setOwner("");
     setError("");
   }
 
@@ -80,6 +96,7 @@ export default function LeadModal({
           source: source || undefined,
           governorate: governorate || undefined,
           valueEgp: valueEgp === "" ? undefined : Number(valueEgp),
+          owner: canSetOwner && owner ? owner : undefined,
         },
       });
       callback(res.data);
@@ -160,6 +177,18 @@ export default function LeadModal({
           label={translate("Estimated value - EGP (optional)", "القيمة التقديرية - جنيه (اختياري)")}
           min={0}
         />
+        {canSetOwner && (
+          <Select
+            value={owner || null}
+            onChange={(v) => setOwner(v || "")}
+            data={team}
+            label={translate("Owner (optional)", "المسؤول (اختياري)")}
+            description={translate("Leave empty to assign yourself, or auto-assign for automated channels.", "اتركه فارغًا لتعيين نفسك، أو التعيين التلقائي للقنوات التلقائية.")}
+            searchable
+            clearable
+            data-testid="lead-owner-select"
+          />
+        )}
 
         <div className="flex gap-2 pt-1">
           <Button onClick={handleClose} variant="light" color="dark" fullWidth>

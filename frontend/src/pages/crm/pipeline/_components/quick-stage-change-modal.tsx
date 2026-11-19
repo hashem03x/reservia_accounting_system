@@ -4,6 +4,7 @@ import { useSystemAccess } from "@/context/SystemAccessContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { CRM_LOST_REASONS, CrmLead, CrmStage } from "@/types/crm";
+import { EGYPT_REGIONS } from "@/types/commercial";
 import { crmStageLabel } from "../../_shared/stage";
 import { MD_APPROVAL_THRESHOLD_EGP, needsGovernorateFor, stageExtraFieldRequirements } from "../../_shared/lead-display";
 import GovernorateSelect from "../../_shared/governorate-select";
@@ -43,10 +44,14 @@ export default function QuickStageChangeModal({
   const [overrideMode, setOverrideMode] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
   const [governorate, setGovernorate] = useState("");
+  const [handledBy, setHandledBy] = useState("");
+  const [region, setRegion] = useState("");
+  const [team, setTeam] = useState<{ value: string; label: string }[]>([]);
 
   const opened = !!lead && !!to;
   const { needsLostReason, needsValue, needsFollowUp } = stageExtraFieldRequirements(to || "");
   const needsGovernorate = needsGovernorateFor(to || "", lead?.governorate);
+  const offersRegion = to === "proposal_sent";
 
   useEffect(() => {
     if (opened) {
@@ -55,11 +60,22 @@ export default function QuickStageChangeModal({
       setFollowUpAt("");
       setOverrideReason("");
       setGovernorate("");
+      setHandledBy("");
+      setRegion("");
       setOverrideMode(requiresOverride && isMd);
       setError("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?._id, to, requiresOverride]);
+
+  // Pending Fixes item 2: offered on every stage change, same as the lead page's StageChangeCard.
+  useEffect(() => {
+    if (!opened) return;
+    privateRequest({ url: "crm/team", language })
+      .then((res) => setTeam((res.data as { _id: string; name: string }[]).map((u) => ({ value: u._id, label: u.name }))))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened]);
 
   function submit() {
     if (!lead || !to) return;
@@ -76,6 +92,8 @@ export default function QuickStageChangeModal({
             followUpAt: needsFollowUp ? followUpAt : undefined,
             overrideReason: overrideMode ? overrideReason.trim() : undefined,
             governorate: needsGovernorate ? governorate : undefined,
+            handledBy: handledBy || undefined,
+            region: offersRegion && region ? region : undefined,
           },
         });
       } catch (err) {
@@ -119,6 +137,29 @@ export default function QuickStageChangeModal({
             description={translate("This lead has no governorate yet. It is needed from Qualified on (the Deal Engine region).", "لا توجد محافظة لهذا العميل بعد، وهي مطلوبة من مرحلة مؤهل (منطقة محرك الصفقات).")}
           />
         )}
+        {offersRegion && (
+          <Select
+            value={region || null}
+            onChange={(v) => setRegion(v || "")}
+            data={EGYPT_REGIONS.map((r) => ({ value: r, label: r }))}
+            label={translate("Deal Engine region override (optional)", "تجاوز منطقة محرك الصفقات (اختياري)")}
+            description={translate(
+              "Only if the governorate's automatic mapping is wrong for this deal. Leave empty to use the normal mapping.",
+              "فقط إذا كان الربط التلقائي للمحافظة غير صحيح لهذه الصفقة. اتركه فارغًا لاستخدام الربط المعتاد.",
+            )}
+            searchable
+            clearable
+          />
+        )}
+        <Select
+          value={handledBy || null}
+          onChange={(v) => setHandledBy(v || "")}
+          data={team}
+          label={translate("Handled by (optional)", "تمت المتابعة من (اختياري)")}
+          description={translate("Leave empty if you are the one who worked this stage.", "اتركه فارغًا إذا كنت أنت من قام بهذه المرحلة.")}
+          searchable
+          clearable
+        />
         {needsLostReason && (
           <Select
             value={lostReason || null}

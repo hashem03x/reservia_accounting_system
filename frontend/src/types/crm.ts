@@ -370,6 +370,10 @@ export type CrmPerfConversion = {
   winRateBySegment: (CrmSegmentRateRow & { sampleSize: number })[];
   winRateBySource: { source: string; won: number; lost: number; sampleSize: number; winRatePct: number | null }[];
   winRateByOwner: { owner: string; won: number; lost: number; sampleSize: number; winRatePct: number | null }[];
+  // Pending Fixes item 2: "Handled by" - who worked the won/lost stage change, not the lead's
+  // current owner. `handledBy` is a user id ("unassigned" when no one is recorded) - map it to a
+  // name via the same CRM team list the owner filter already fetches.
+  winRateByHandler: { handledBy: string; won: number; lost: number; sampleSize: number; winRatePct: number | null }[];
   lossRatePct: number | null;
   lostReasonsRanked: CrmLostReasonRow[];
   lostByStageChart: { stage: string; count: number }[];

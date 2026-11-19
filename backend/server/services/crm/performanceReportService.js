@@ -220,6 +220,32 @@ async function getConversionSection({ year, month, ownerId, segment }) {
   });
   const winRateBySource = rateBy('source');
   const winRateByOwner = rateBy('owner');
+  // Pending Fixes item 2: "Handled by" attribution in Performance - who actually worked the stage
+  // that won or lost the deal (StageHistory.changedBy on that specific row), not the lead's current
+  // owner. wonRows/lostRows are raw CrmStageHistory documents (via aggregate), so changedBy is
+  // already a plain field here, not populated - the frontend maps the id to a name itself (same
+  // team list it already fetches for the owner filter).
+  function rateByHandler() {
+    const groups = {};
+    for (const e of wonRows) {
+      const k = e.changedBy ? String(e.changedBy) : 'unassigned';
+      groups[k] = groups[k] || { won: 0, lost: 0 };
+      groups[k].won += 1;
+    }
+    for (const e of lostRows) {
+      const k = e.changedBy ? String(e.changedBy) : 'unassigned';
+      groups[k] = groups[k] || { won: 0, lost: 0 };
+      groups[k].lost += 1;
+    }
+    return Object.entries(groups).map(([handledBy, { won, lost }]) => ({
+      handledBy,
+      won,
+      lost,
+      sampleSize: won + lost,
+      winRatePct: won + lost === 0 ? null : Math.round((won / (won + lost)) * 1000) / 10,
+    }));
+  }
+  const winRateByHandler = rateByHandler();
 
   const lostReasonCounts = {};
   const lostByStage = {};
@@ -246,6 +272,7 @@ async function getConversionSection({ year, month, ownerId, segment }) {
     winRateBySegment,
     winRateBySource,
     winRateByOwner,
+    winRateByHandler,
     lossRatePct,
     lostReasonsRanked,
     lostByStageChart,

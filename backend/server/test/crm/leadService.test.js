@@ -13,16 +13,17 @@ const mongoose = require('mongoose');
 const DB_URI = process.env.TEST_DB_URI;
 const RUN = !!DB_URI;
 
-let Lead, Activity, StageHistory, leadService;
+let Lead, Activity, StageHistory, User, CommercialProject, leadService;
 
 before(async () => {
   if (!RUN) return;
   await mongoose.connect(DB_URI);
   await mongoose.connection.dropDatabase();
-  require('../../models/userModel');
+  User = require('../../models/userModel');
   Lead = require('../../models/crm/leadModel');
   Activity = require('../../models/crm/activityModel');
   StageHistory = require('../../models/crm/stageHistoryModel');
+  CommercialProject = require('../../models/commercial/commercialProjectModel');
   leadService = require('../../services/crm/leadService');
   await Lead.init();
   await Activity.init();
@@ -37,8 +38,20 @@ after(async () => {
 
 beforeEach(async () => {
   if (!RUN) return;
-  await Promise.all([Lead.deleteMany({}), Activity.deleteMany({}), StageHistory.deleteMany({})]);
+  await Promise.all([Lead.deleteMany({}), Activity.deleteMany({}), StageHistory.deleteMany({}), User.deleteMany({}), CommercialProject.deleteMany({})]);
 });
+
+function crmUser(name, role = 'sales', overrides = {}) {
+  return User.create({
+    name,
+    email: `${name.toLowerCase().replace(/\s+/g, '.')}@reservia.test`,
+    password: 'x',
+    role: 'operator',
+    type: 'online',
+    systemMemberships: [{ system: 'CRM', role, isActive: true }],
+    ...overrides,
+  });
+}
 
 const maybeTest = RUN ? test : test.skip;
 
@@ -170,4 +183,70 @@ maybeTest('changeStage: a lost lead can only be reopened by Admin or the MD', as
 
   const reopened = await leadService.changeStage(lead._id, { to: 'contacted' }, { role: 'admin' });
   assert.equal(reopened.stage, 'contacted');
+});
+
+// ---------------------------------------------------------------- Pending Fixes (19 Nov 2026)
+
+maybeTest('changeStage: "Handled by" attributes the stage change to the named team member, not the logged-in actor', async () => {
+  const actor = await crmUser('Logged In Admin', 'admin');
+  const handler = await crmUser('Mona Khaled', 'sales');
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011112222', channel: 'phone' });
+
+  await leadService.changeStage(lead._id, { to: 'contacted', followUpAt: null, handledBy: handler._id }, { userId: actor._id, role: 'admin' });
+
+  const history = await StageHistory.find({ lead: lead._id }).sort({ createdAt: 1 }).lean();
+  assert.equal(history.length, 2);
+  assert.equal(String(history[1].changedBy), String(handler._id), 'StageHistory.changedBy must be the named handler, not the acting admin');
+});
+
+maybeTest('changeStage: omitting "Handled by" still attributes the change to whoever is logged in (unchanged default)', async () => {
+  const actor = await crmUser('Logged In Sales', 'sales');
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011113333', channel: 'phone' });
+
+  await leadService.changeStage(lead._id, { to: 'contacted', followUpAt: null }, { userId: actor._id, role: 'sales' });
+
+  const history = await StageHistory.find({ lead: lead._id }).sort({ createdAt: 1 }).lean();
+  assert.equal(String(history[1].changedBy), String(actor._id));
+});
+
+maybeTest('updateLeadDetails: renaming a lead with a linked Deal Engine project renames the project to match', async () => {
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011114444', channel: 'phone', name: 'Old Name' });
+  const project = await CommercialProject.create({
+    projectCode: 'ONG-TEST001',
+    name: `Old Name - ${lead.refCode}`,
+    customer: new mongoose.Types.ObjectId(),
+    country: 'Egypt',
+    category: 'On-Grid C&I',
+    crmLead: lead._id,
+    crmLeadRef: lead.refCode,
+  });
+
+  await leadService.updateLeadDetails(lead._id, { name: 'New Name' });
+
+  const reloaded = await CommercialProject.findById(project._id).lean();
+  assert.equal(reloaded.name, `New Name - ${lead.refCode}`);
+});
+
+maybeTest('updateLeadDetails: a lead with NO linked Deal Engine project is renamed without error (nothing to sync)', async () => {
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011115555', channel: 'phone', name: 'Solo Name' });
+  const updated = await leadService.updateLeadDetails(lead._id, { name: 'Solo Renamed' });
+  assert.equal(updated.name, 'Solo Renamed');
+});
+
+maybeTest('updateLeadDetails: renaming a field OTHER than name never touches the linked project (no spurious writes)', async () => {
+  const { lead } = await leadService.intakeLead({ governorate: 'Cairo', phone: '01011116666', channel: 'phone', name: 'Steady Name' });
+  const project = await CommercialProject.create({
+    projectCode: 'ONG-TEST002',
+    name: `Steady Name - ${lead.refCode}`,
+    customer: new mongoose.Types.ObjectId(),
+    country: 'Egypt',
+    category: 'On-Grid C&I',
+    crmLead: lead._id,
+    crmLeadRef: lead.refCode,
+  });
+
+  await leadService.updateLeadDetails(lead._id, { email: 'new@example.com' });
+
+  const reloaded = await CommercialProject.findById(project._id).lean();
+  assert.equal(reloaded.name, `Steady Name - ${lead.refCode}`, 'project name must be untouched when the lead\'s name itself did not change');
 });
