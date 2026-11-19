@@ -1,6 +1,7 @@
 'use strict';
 
 const ApiError = require('../apiError');
+const { priceCommercialRevision } = require('../../services/commercial/commercialPricingService');
 
 // Reservia Deal Engine - Changes Required Rev 02 (19 Nov 2026), R1-R4 + R12-R13: the ONE place the
 // tab/field visibility matrix (section 4) and the pricing-authority split (section 5) are defined.
@@ -266,6 +267,78 @@ function shapeRevisionForRole(revisionObj, roles) {
   return out;
 }
 
+/**
+ * R9: server-side validation of a COMPUTED revision's pricing against the policy version's Sales
+ * limits - run only when the acting roles are Sales-limited on Pricing (S&C/MD are "editable
+ * without limit", section 5.2). `pricing` is the real priceCommercialRevision() result the
+ * revision was just computed with (not a guess); `salesLimits` is pricingConfigService's resolved
+ * per-category row (section 5.1/R7). Every check is skipped (not approximated) when its limit is
+ * still unset (null) - "do not invent missing approved business limits".
+ *
+ * Concession % = (policy net price - this net price) / policy net price, where the policy net
+ * price is the SAME cogs/levers/VAT priced at the policy's own default category addition and zero
+ * discount - verified byte-for-byte against the PDF's worked example (294.8 kWp factory, COGS EGP
+ * 4,467,599): category 15%/discount 3% -> 6.26% (A6), category 10%/discount 5% -> 12.18% (A7).
+ */
+function assertSalesPricingWithinLimits(roles, pricing, salesLimits) {
+  const level = widestLevel(PROJECT_TAB_MATRIX.pricing, roles);
+  if (level !== 'limited') return; // S&C/MD: "editable without limit" - nothing to check.
+  if (!salesLimits) return;
+
+  const { categoryAdditionMinPct, categoryAdditionMaxPct, discountMaxPct, concessionCeilingPct, gpFloorPct, categoryAdditionDefaultPct } = salesLimits;
+
+  if (categoryAdditionMinPct != null && pricing.categoryAdditionPct < categoryAdditionMinPct) {
+    throw new ApiError(`Category addition ${pct(pricing.categoryAdditionPct)} is below the ${pct(categoryAdditionMinPct)} minimum allowed for Sales. Ask the Sales and Commercial Director.`, 400);
+  }
+  if (categoryAdditionMaxPct != null && pricing.categoryAdditionPct > categoryAdditionMaxPct) {
+    throw new ApiError(`Category addition ${pct(pricing.categoryAdditionPct)} is above the ${pct(categoryAdditionMaxPct)} maximum allowed for Sales. Ask the Sales and Commercial Director.`, 400);
+  }
+  if (discountMaxPct != null && pricing.discountPct > discountMaxPct) {
+    throw new ApiError(`Discount ${pct(pricing.discountPct)} is above the ${pct(discountMaxPct)} allowed for Sales. Ask the Sales and Commercial Director.`, 400);
+  }
+  if (gpFloorPct != null && pricing.grossProfitPct != null && pricing.grossProfitPct < gpFloorPct) {
+    throw new ApiError(`Gross profit ${pct(pricing.grossProfitPct)} is below the ${pct(gpFloorPct)} floor. Ask the Sales and Commercial Director.`, 400);
+  }
+  if (concessionCeilingPct != null && categoryAdditionDefaultPct != null) {
+    const policy = priceCommercialRevision({
+      cogs: pricing.cogs, kWp: pricing.designKwp, vatPct: pricing.vatPct,
+      overheadPct: pricing.overheadPct, contingencyPct: pricing.contingencyPct, profitPct: pricing.profitPct,
+      salesBonusPct: pricing.salesBonusPct, engineeringIncentivePct: pricing.engineeringIncentivePct,
+      categoryAdditionPct: categoryAdditionDefaultPct, discountPct: 0,
+    });
+    const concessionPct = policy.netExclVat ? (policy.netExclVat - pricing.netExclVat) / policy.netExclVat : 0;
+    if (concessionPct > concessionCeilingPct) {
+      throw new ApiError(
+        `Concession ${pct(concessionPct)} (category addition and discount together) is above the ${pct(concessionCeilingPct)} ceiling, even though each value is inside its own range. Ask the Sales and Commercial Director.`,
+        400
+      );
+    }
+  }
+}
+function pct(fraction) {
+  return `${Math.round(fraction * 1000) / 10}%`;
+}
+
+/**
+ * R11: touching any of the five policy levers on a SPECIFIC deal's Pricing tab (as opposed to the
+ * Pricing Policy page itself) is a deal override by definition - the normal, no-override state is
+ * simply never sending these keys here at all (computeAndSave inherits them silently from the
+ * active policy). Only meaningful for roles whose Pricing access is 'edit' (S&C/MD) - Sales is
+ * already blocked from these keys entirely by assertPricingWriteAllowed.
+ */
+function isPolicyLeverOverride(roles, pricingOverrides) {
+  if (!pricingOverrides || typeof pricingOverrides !== 'object') return false;
+  if (widestLevel(PROJECT_TAB_MATRIX.pricing, roles) !== 'edit') return false;
+  return Object.keys(pricingOverrides).some(k => POLICY_LEVER_KEYS.includes(k));
+}
+
+/** R11: a deal override must carry a reason - checked server-side, never just required by the form. */
+function assertOverrideReasonGiven(overrideReason) {
+  if (!String(overrideReason || '').trim()) {
+    throw new ApiError('A reason is required to override a pricing policy lever on this deal.', 400);
+  }
+}
+
 module.exports = {
   ALL_ROLES,
   ROLE_LABELS,
@@ -283,6 +356,9 @@ module.exports = {
   canEditFully,
   assertPricingWriteAllowed,
   assertEngineeringInputWriteAllowed,
+  assertSalesPricingWithinLimits,
+  isPolicyLeverOverride,
+  assertOverrideReasonGiven,
   assertCanViewPricing,
   assertCanAccessEnginePage,
   assertCanAccessProposal,

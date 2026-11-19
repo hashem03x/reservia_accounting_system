@@ -145,6 +145,20 @@ const commercialRevisionSchema = new Schema(
     md: { type: approvalStageSchema, default: () => ({}) },
     mdRequired: { type: Boolean, default: false },
     releaseStatus: { type: String, enum: ['NOT RELEASED', 'APPROVED FOR ISSUE'], default: 'NOT RELEASED' },
+    // R11: a deal-specific override of a policy lever by the S&C Director or MD (section 5.2's
+    // "Override of policy vN" tab state) - logged with the reason and visible on Approvals so the
+    // MD notices it. Set by revisionController.js whenever one of the five policy levers is sent
+    // on THIS deal's Pricing tab (controller/commercial/revisionController.js#recomputeRevision);
+    // never set from the Pricing Policy page itself (that is a configuration change, not a deal
+    // override - see pricingConfigModel.js's own versioning instead).
+    policyOverride: {
+      active: { type: Boolean, default: false },
+      reason: { type: String, trim: true, maxlength: 500, default: null },
+      by: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+      byName: { type: String, default: null },
+      at: { type: Date, default: null },
+      policyVersion: { type: Number, default: null },
+    },
 
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },

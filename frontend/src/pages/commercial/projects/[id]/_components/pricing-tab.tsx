@@ -1,14 +1,19 @@
 import { useState } from "react";
 import dayjs from "dayjs";
-import { Alert, Badge, Button } from "@mantine/core";
+import { Alert, Badge, Button, Textarea } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
+import { useSystemAccess } from "@/context/SystemAccessContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import SectionCard from "@/components/ui/section-card";
-import { CommercialProject, CommercialRevision, PricingLevers } from "@/types/commercial";
+import { CommercialProject, CommercialRevision, CommercialRole, PricingLevers } from "@/types/commercial";
 import PctInput, { toPct } from "../../../_shared/PctInput";
 import { perKwpBasis } from "../../../_shared/ruleVersion";
+
+// R2/R9/R11: the five policy levers (read-only to Sales; an S&C/MD deal override needs a reason).
+// Category addition and discount are Sales' own fields - never part of this set.
+const POLICY_LEVER_KEYS: (keyof PricingLevers)[] = ["overheadPct", "contingencyPct", "profitPct", "salesBonusPct", "engineeringIncentivePct"];
 
 const LEVERS: { key: keyof PricingLevers; en: string; ar: string }[] = [
   { key: "overheadPct", en: "Overhead % (of COGS)", ar: "المصروفات العامة % (من التكلفة)" },
@@ -26,6 +31,12 @@ const LEVERS: { key: keyof PricingLevers; en: string; ar: string }[] = [
 // or explicitly re-applies the current configuration (QA finding B3).
 export default function PricingTab({ project, revision, onChanged }: { project: CommercialProject; revision: CommercialRevision; onChanged: () => void }) {
   const { translate, language } = useLanguage();
+  const { systems } = useSystemAccess();
+  const role = systems?.COMMERCIAL?.role as CommercialRole | null | undefined;
+  // R2/5.2: Sales/BDM gets the five policy levers read-only (shown "as set by the policy version
+  // applied"); only the Commercial Director/MD may change them here, as a logged deal override.
+  const leversReadOnly = role === "sales";
+  const canOverride = role === "commercial_director" || role === "md";
   const p = revision.pricing;
   const applied = revision.pricingConfigApplied;
   const cur = project.currency;
@@ -33,19 +44,25 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
   const [levers, setLevers] = useState<Record<keyof PricingLevers, number>>(
     () => Object.fromEntries(LEVERS.map((l) => [l.key, toPct(p[l.key] as number)])) as Record<keyof PricingLevers, number>
   );
+  const [overrideReason, setOverrideReason] = useState("");
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler<null>({ initialData: null });
 
   function save(body: Record<string, unknown>) {
     handleRequest(language, setLoading, setError, async () => {
       await privateRequest({ url: `commercial/revisions/${revision._id}`, method: "PATCH", data: body, language });
+      setOverrideReason("");
       onChanged();
     });
   }
 
+  // R11: touching a policy lever is a deal override, by definition, for S&C/MD - a reason is
+  // required (the backend refuses it with a 400 otherwise; this just makes the form usable).
+  const isOverride = canOverride && POLICY_LEVER_KEYS.some((k) => Math.abs(levers[k] - toPct(p[k] as number)) > 0.0001);
+
   function handleSave() {
     const pricingOverrides = Object.fromEntries(LEVERS.map((l) => [l.key, levers[l.key] / 100]));
-    save({ engineeringInput: revision.engineeringInput, pricingOverrides });
+    save({ engineeringInput: revision.engineeringInput, pricingOverrides, ...(isOverride ? { overrideReason } : {}) });
   }
 
   const Row = ({ label, value, bold, muted }: { label: string; value: React.ReactNode; bold?: boolean; muted?: boolean }) => (
@@ -70,24 +87,57 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
               {translate("Draft - recalculating here also refreshes the site costs for the project's current region.", "مسودة - إعادة الحساب هنا تحدّث أيضاً تكاليف الموقع لمنطقة المشروع الحالية.")}
             </Alert>
           )}
+          {revision.policyOverride?.active && (
+            <Alert color="orange" variant="light" mb="xs">
+              {translate(
+                `Override of policy v${revision.policyOverride.policyVersion ?? "?"} - ${revision.policyOverride.byName || "someone"}: "${revision.policyOverride.reason}"`,
+                `تجاوز لسياسة الإصدار ${revision.policyOverride.policyVersion ?? "?"} - ${revision.policyOverride.byName || "شخص"}: "${revision.policyOverride.reason}"`
+              )}
+            </Alert>
+          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {LEVERS.map((l) => (
-              <PctInput key={l.key} label={translate(l.en, l.ar)} value={levers[l.key]} onChange={(v) => setLevers((prev) => ({ ...prev, [l.key]: v }))} />
+              <PctInput
+                key={l.key}
+                label={translate(l.en, l.ar)}
+                value={levers[l.key]}
+                onChange={(v) => setLevers((prev) => ({ ...prev, [l.key]: v }))}
+                disabled={leversReadOnly && POLICY_LEVER_KEYS.includes(l.key)}
+              />
             ))}
           </div>
+          {leversReadOnly && (
+            <p className="mt-2 text-xs text-gray-400">
+              {translate(
+                "The five policy levers are read-only for Sales, shown as set by the policy version applied. Category addition and discount are yours to move within the Sales limits.",
+                "عوامل السياسة الخمسة للقراءة فقط للمبيعات، وتُعرض كما حددها إصدار السياسة المطبق. إضافة الفئة والخصم بين يديك ضمن حدود المبيعات."
+              )}
+            </p>
+          )}
           {p.discountAboveAuthority && (
             <p className="mt-2 text-xs text-amber-700">
               {translate("Discount is above the authority limit - Stage 2 must review it.", "الخصم أعلى من حد الصلاحية - يجب مراجعته في المرحلة 2.")}
             </p>
           )}
+          {isOverride && (
+            <Textarea
+              mt="xs"
+              label={translate("Reason for this override (required - logged and flagged on Approvals)", "سبب هذا التجاوز (مطلوب - يُسجَّل ويُعلَّم في الموافقات)")}
+              value={overrideReason}
+              onChange={(e) => setOverrideReason(e.currentTarget.value)}
+              required
+            />
+          )}
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button onClick={handleSave} loading={loading} color="teal">
+            <Button onClick={handleSave} loading={loading} color={isOverride ? "orange" : "teal"} disabled={isOverride && !overrideReason.trim()}>
               {translate("Recalculate Pricing", "إعادة حساب التسعير")}
             </Button>
-            <Button variant="light" loading={loading} onClick={() => save({ applyCurrentConfig: true })}>
-              {translate("Apply current default levers", "تطبيق القيم الافتراضية الحالية")}
-            </Button>
+            {canOverride && (
+              <Button variant="light" loading={loading} onClick={() => save({ applyCurrentConfig: true })}>
+                {translate("Apply current default levers", "تطبيق القيم الافتراضية الحالية")}
+              </Button>
+            )}
           </div>
           <p className="mt-2 text-xs text-gray-400">
             {translate(

@@ -8,6 +8,7 @@ const { pickLevers, LEVER_KEYS } = require('./commercialPricingService');
 const { resolveProjectRegion } = require('../../utils/commercial/regions');
 const { computeMdRequired } = require('./approvalService');
 const dealEngineSettings = require('./dealEngineSettings');
+const { assertSalesPricingWithinLimits } = require('../../utils/commercial/dealEnginePermissions');
 
 // Reservia Commercial - revision lifecycle. Mirrors services/crm/quotationService.js's
 // versioning: creating a new revision never edits a previous one, it flips the previous
@@ -109,6 +110,10 @@ async function createRevision(projectId, engineeringInput, opts = {}) {
   if (!project) throw new ApiError('Deal Engine project not found.', 404);
 
   const computed = await computeAndSave(project, engineeringInput, { ...opts, revision: null });
+  // R9: checked on the REAL computed result, before anything is persisted - never a separate,
+  // possibly-diverging dry-run calculation (opts.roles/salesLimits come from the controller;
+  // absent for internal callers like duplicateProject, which correctly skip this check).
+  if (opts.salesLimits) assertSalesPricingWithinLimits(opts.roles, computed.pricing, opts.salesLimits);
   const previousCount = await CommercialRevision.countDocuments({ project: project._id });
 
   if (previousCount > 0) {
@@ -164,6 +169,7 @@ async function recomputeCurrentRevision(revisionId, engineeringInput, opts = {})
 
   const project = await CommercialProject.findById(revision.project);
   const computed = await computeAndSave(project, engineeringInput || revision.engineeringInput, { ...opts, revision });
+  if (opts.salesLimits) assertSalesPricingWithinLimits(opts.roles, computed.pricing, opts.salesLimits);
 
   await resetSignedStages(revision, 'engineering input or pricing changed after sign-off.', { userId: opts.userId });
   Object.assign(revision, computed);

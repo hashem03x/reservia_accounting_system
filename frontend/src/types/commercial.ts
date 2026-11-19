@@ -56,6 +56,17 @@ export type PricingLevers = {
   discountPct: number;
 };
 
+// Deal Engine Changes Required Rev 02, R6/R7 - a null limit means "not yet set" (the MD has not
+// confirmed a value), never a guessed one; R9's server-side validation skips a null limit entirely.
+export type SalesLimits = {
+  categoryAdditionDefaultPct: number;
+  categoryAdditionMinPct: number | null;
+  categoryAdditionMaxPct: number | null;
+  discountMaxPct: number;
+  concessionCeilingPct: number | null;
+  gpFloorPct: number;
+};
+
 export type PricingConfig = {
   _id: string;
   version: number;
@@ -63,6 +74,9 @@ export type PricingConfig = {
   vatPctByCountry: Record<string, number>;
   categoryOverrides: Partial<Record<CommercialCategory, Partial<PricingLevers>>>;
   discountAuthorityPct: number;
+  salesLimits: SalesLimits;
+  salesLimitsBySector: Partial<Record<CommercialCategory, Partial<SalesLimits>>>;
+  requireMdApprovalForPolicyChange: boolean;
   note: string;
   updatedByName: string | null;
   updatedAt: string;
@@ -170,6 +184,8 @@ export type CommercialRevision = {
   invalidatedAt?: string | null;
   invalidationReason?: string | null;
   pricingConfigApplied?: PricingConfigApplied;
+  // R11: a deal-specific override of a policy lever by the S&C Director or MD.
+  policyOverride?: { active: boolean; reason: string | null; byName: string | null; at: string | null; policyVersion: number | null };
   waitingOn?: string | null;
   createdAt: string;
   updatedAt: string;

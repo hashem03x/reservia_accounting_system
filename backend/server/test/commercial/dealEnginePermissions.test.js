@@ -11,10 +11,14 @@ const {
   assertCanAccessEnginePage,
   assertCanAccessProposal,
   assertCanAccessApprovals,
+  assertSalesPricingWithinLimits,
+  isPolicyLeverOverride,
+  assertOverrideReasonGiven,
   shapeProjectForRole,
   shapeRevisionForRole,
   PROJECT_TAB_MATRIX,
 } = require('../../utils/commercial/dealEnginePermissions');
+const { priceCommercialRevision } = require('../../services/commercial/commercialPricingService');
 
 // Deal Engine Changes Required Rev 02 (19 Nov 2026), R1-R4 + R12-R13. Every function here is pure
 // (no DB, no transaction) - unlike the CRM/Commercial integration suites, these tests run for
@@ -236,4 +240,89 @@ test('shapeRevisionForRole gives md everything untouched', () => {
   const revision = { pricing: { netExclVat: 999 }, feasibility: { paybackYears: 5 }, boqLines: [{ component: 'Pump', unitPrice: 50 }], boqTotal: 50 };
   const shaped = shapeRevisionForRole(revision, ['md']);
   assert.deepEqual(shaped, revision);
+});
+
+// ---------------------------------------------------------------- R9: Sales-limits validation
+// Every scenario below uses the PDF's own worked example (294.8 kWp factory, COGS EGP 4,467,599,
+// policy v1: overhead 10%, contingency 2%, profit 10%, sales bonus 5.5%, engineering incentive 5%,
+// policy default category addition 19%) - the pricing object is the REAL priceCommercialRevision()
+// output for each scenario, not a hand-built fixture, so this is exercising the actual formula.
+
+const WORKED_EXAMPLE_LEVERS = { cogs: 4467599, overheadPct: 0.1, contingencyPct: 0.02, profitPct: 0.1, salesBonusPct: 0.055, engineeringIncentivePct: 0.05, vatPct: 0.14 };
+const EXAMPLE_LIMITS = { categoryAdditionDefaultPct: 0.19, categoryAdditionMinPct: 0.1, categoryAdditionMaxPct: 0.19, discountMaxPct: 0.05, concessionCeilingPct: 0.08, gpFloorPct: 0.15 };
+
+function priced(categoryAdditionPct, discountPct) {
+  return priceCommercialRevision({ ...WORKED_EXAMPLE_LEVERS, categoryAdditionPct, discountPct });
+}
+
+test('A6: category 15%/discount 3% -> concession 6.26%, inside the 8% ceiling -> accepted', () => {
+  const pricing = priced(0.15, 0.03);
+  assert.equal(Math.round(pricing.netExclVat), 6195121); // matches the PDF's own figure exactly
+  assert.doesNotThrow(() => assertSalesPricingWithinLimits(['sales'], pricing, EXAMPLE_LIMITS));
+});
+
+test('A7: category 10%/discount 5% -> each value is within its own range, but the COMBINED concession (12.18%) breaks the 8% ceiling -> refused', () => {
+  const pricing = priced(0.1, 0.05);
+  assert.equal(Math.round(pricing.netExclVat), 5803588); // matches the PDF's own figure exactly
+  assert.throws(() => assertSalesPricingWithinLimits(['sales'], pricing, EXAMPLE_LIMITS), err => {
+    assert.match(err.message, /Concession 12\.2% .* above the 8% ceiling/);
+    assert.equal(err.statusCode, 400);
+    return true;
+  });
+});
+
+test('A5: discount 7% (policy max 5%) is refused on the discount check alone, naming the field - never gets as far as computing a concession', () => {
+  const pricing = priced(0.19, 0.07); // category still at the policy default - only discount is out of range
+  assert.throws(() => assertSalesPricingWithinLimits(['sales'], pricing, EXAMPLE_LIMITS), /Discount 7% is above the 5% allowed for Sales/);
+});
+
+test('category addition below the minimum is refused, naming the field', () => {
+  const pricing = priced(0.05, 0);
+  assert.throws(() => assertSalesPricingWithinLimits(['sales'], pricing, EXAMPLE_LIMITS), /Category addition 5% is below the 10% minimum/);
+});
+
+test('category addition above the maximum is refused, naming the field', () => {
+  const pricing = priced(0.25, 0);
+  assert.throws(() => assertSalesPricingWithinLimits(['sales'], pricing, EXAMPLE_LIMITS), /Category addition 25% is above the 19% maximum/);
+});
+
+test('gross profit below the floor is refused, independent of the concession check', () => {
+  // Deliberately tiny profit lever to drag GP% below a 40% floor - isolates the GP-floor branch.
+  const pricing = priced(0.19, 0);
+  assert.throws(() => assertSalesPricingWithinLimits(['sales'], pricing, { ...EXAMPLE_LIMITS, gpFloorPct: 0.4 }), /Gross profit .* is below the 40% floor/);
+});
+
+test('every Sales-limits check is SKIPPED (not approximated) when its limit is unset (null) - "do not invent missing business limits"', () => {
+  const pricing = priced(0.05, 0.2); // would violate every bound above if any were enforced
+  const unset = { categoryAdditionDefaultPct: 0.19, categoryAdditionMinPct: null, categoryAdditionMaxPct: null, discountMaxPct: null, concessionCeilingPct: null, gpFloorPct: null };
+  assert.doesNotThrow(() => assertSalesPricingWithinLimits(['sales'], pricing, unset));
+});
+
+test('S&C Director and MD are "editable without limit" - the Sales-limits check never applies to them, no matter the values', () => {
+  const pricing = priced(0.05, 0.3);
+  assert.doesNotThrow(() => assertSalesPricingWithinLimits(['commercial_director'], pricing, EXAMPLE_LIMITS));
+  assert.doesNotThrow(() => assertSalesPricingWithinLimits(['md'], pricing, EXAMPLE_LIMITS));
+});
+
+test('a mixed technical+sales user still gets the Sales-limits check (widest Pricing access is "limited", not "edit")', () => {
+  const pricing = priced(0.1, 0.05);
+  assert.throws(() => assertSalesPricingWithinLimits(['technical', 'sales'], pricing, EXAMPLE_LIMITS), /ceiling/);
+});
+
+// ---------------------------------------------------------------- R11: deal override + reason
+
+test('isPolicyLeverOverride: S&C/MD touching a policy lever on a deal IS an override; touching only category/discount is NOT', () => {
+  assert.equal(isPolicyLeverOverride(['commercial_director'], { overheadPct: 0.12 }), true);
+  assert.equal(isPolicyLeverOverride(['md'], { profitPct: 0.08 }), true);
+  assert.equal(isPolicyLeverOverride(['commercial_director'], { categoryAdditionPct: 0.15, discountPct: 0.03 }), false);
+  assert.equal(isPolicyLeverOverride(['sales'], { categoryAdditionPct: 0.15 }), false, 'sales has "limited" access, never "edit" - never an override by this definition');
+  assert.equal(isPolicyLeverOverride(['technical'], { overheadPct: 0.12 }), false, 'technical has no Pricing access at all - assertPricingWriteAllowed would already have refused this');
+  assert.equal(isPolicyLeverOverride(['md'], undefined), false);
+});
+
+test('assertOverrideReasonGiven throws on empty/whitespace-only/missing reasons, passes on a real one', () => {
+  assert.throws(() => assertOverrideReasonGiven(undefined), /A reason is required/);
+  assert.throws(() => assertOverrideReasonGiven(''), /A reason is required/);
+  assert.throws(() => assertOverrideReasonGiven('   '), /A reason is required/);
+  assert.doesNotThrow(() => assertOverrideReasonGiven('Customer matched a competitor quote - approved by the MD on the call.'));
 });

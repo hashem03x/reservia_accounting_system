@@ -24,7 +24,12 @@ exports.getConfig = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Pricing configuration', true, { ...config, canManage: pricingConfigService.canManagePricingConfig(req.user), limits: pricingConfigService.LEVER_MAX }));
 });
 
+// R8: requireManageAccess above is the base "may open the page" gate; a SAVE additionally needs
+// assertCanSavePolicyChange, which reads the config's OWN requireMdApprovalForPolicyChange setting
+// (so it has to run here, after the config is loaded, not as a route-level middleware).
 exports.updateConfig = asyncHandler(async (req, res) => {
+  const current = await pricingConfigService.getActiveConfig();
+  pricingConfigService.assertCanSavePolicyChange(req.user, current);
   const config = await pricingConfigService.updateConfig(req.body || {}, { userId: req.user._id, userName: req.user.name || null });
   console.info(`[Commercial] pricing configuration v${config.version} saved by user ${req.user._id}`);
   res.status(200).json(apiResponse('Pricing configuration saved. New revisions use it; existing revisions keep the rates they were priced with.', true, config));

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import errorMessage from "@/utils/helpers/error-message";
-import { Alert, Button, Table, Textarea } from "@mantine/core";
+import { Alert, Button, NumberInput, Switch, Table, Textarea } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
@@ -12,6 +12,12 @@ import ErrorSection from "@/components/ui/sections/error";
 import SectionCard from "@/components/ui/section-card";
 import { PricingConfig, PricingLevers } from "@/types/commercial";
 import PctInput, { toPct } from "../_shared/PctInput";
+
+// Nullable Sales-limits fields (R6/R7) - "" means "not set" (never 0, which is a real, different
+// value from "no limit configured"). Mirrors toPct's fraction<->percent convention.
+type NullablePct = number | "";
+const toPctOrUnset = (fraction: number | null | undefined): NullablePct => (fraction == null ? "" : toPct(fraction));
+const fromPctOrUnset = (pct: NullablePct): number | null => (pct === "" ? null : pct / 100);
 import EngineSettingsCard from "./engine-settings-card";
 import ProposalTextCard, { ProposalSettings } from "./proposal-text-card";
 
@@ -39,6 +45,13 @@ export default function PricingConfigPage() {
   const [vatEgypt, setVatEgypt] = useState(14);
   const [vatKsa, setVatKsa] = useState(15);
   const [discountAuthority, setDiscountAuthority] = useState(5);
+  const [categoryAdditionDefault, setCategoryAdditionDefault] = useState(19);
+  const [categoryAdditionMin, setCategoryAdditionMin] = useState<NullablePct>("");
+  const [categoryAdditionMax, setCategoryAdditionMax] = useState<NullablePct>("");
+  const [discountMax, setDiscountMax] = useState(5);
+  const [concessionCeiling, setConcessionCeiling] = useState<NullablePct>("");
+  const [gpFloor, setGpFloor] = useState(15);
+  const [requireMdApproval, setRequireMdApproval] = useState(false);
   const [note, setNote] = useState("");
   const [history, setHistory] = useState<AuditRow[]>([]);
   const [saving, setSaving] = useState(false);
@@ -57,6 +70,13 @@ export default function PricingConfigPage() {
       setVatEgypt(toPct(c.vatPctByCountry.Egypt ?? 0.14));
       setVatKsa(toPct(c.vatPctByCountry["Saudi Arabia"] ?? 0.15));
       setDiscountAuthority(toPct(c.discountAuthorityPct ?? 0.05));
+      setCategoryAdditionDefault(toPct(c.salesLimits?.categoryAdditionDefaultPct ?? 0.19));
+      setCategoryAdditionMin(toPctOrUnset(c.salesLimits?.categoryAdditionMinPct));
+      setCategoryAdditionMax(toPctOrUnset(c.salesLimits?.categoryAdditionMaxPct));
+      setDiscountMax(toPct(c.salesLimits?.discountMaxPct ?? 0.05));
+      setConcessionCeiling(toPctOrUnset(c.salesLimits?.concessionCeilingPct));
+      setGpFloor(toPct(c.salesLimits?.gpFloorPct ?? 0.15));
+      setRequireMdApproval(!!c.requireMdApprovalForPolicyChange);
       setHistory(hist.data as AuditRow[]);
     });
   }
@@ -79,6 +99,15 @@ export default function PricingConfigPage() {
           levers: Object.fromEntries(LEVERS.map((l) => [l.key, levers[l.key] / 100])),
           vatPctByCountry: { Egypt: vatEgypt / 100, "Saudi Arabia": vatKsa / 100 },
           discountAuthorityPct: discountAuthority / 100,
+          salesLimits: {
+            categoryAdditionDefaultPct: categoryAdditionDefault / 100,
+            categoryAdditionMinPct: fromPctOrUnset(categoryAdditionMin),
+            categoryAdditionMaxPct: fromPctOrUnset(categoryAdditionMax),
+            discountMaxPct: discountMax / 100,
+            concessionCeilingPct: fromPctOrUnset(concessionCeiling),
+            gpFloorPct: gpFloor / 100,
+          },
+          requireMdApprovalForPolicyChange: requireMdApproval,
           note,
         },
         language,
@@ -116,10 +145,16 @@ export default function PricingConfigPage() {
           </div>
           {canManage && (
             <>
-              <Textarea mt="sm" label={translate("Reason for the change (kept in the audit log)", "سبب التغيير (يُحفظ في السجل)")} value={note} onChange={(e) => setNote(e.currentTarget.value)} />
+              <Textarea
+                mt="sm"
+                label={translate("Reason for the change (required - kept in the audit log)", "سبب التغيير (مطلوب - يُحفظ في السجل)")}
+                value={note}
+                onChange={(e) => setNote(e.currentTarget.value)}
+                required
+              />
               {saveError && <p className="mt-2 text-sm text-red-600">{saveError}</p>}
               {saved && <p className="mt-2 text-sm text-teal-700">{saved}</p>}
-              <Button mt="sm" color="teal" loading={saving} onClick={save}>
+              <Button mt="sm" color="teal" loading={saving} onClick={save} disabled={!note.trim()}>
                 {translate("Save configuration", "حفظ الإعدادات")}
               </Button>
             </>
@@ -136,6 +171,52 @@ export default function PricingConfigPage() {
             <li>{translate("Existing revisions are never changed by a configuration edit - the Pricing tab can re-apply the current defaults explicitly.", "لا تتغير النسخ الحالية بتعديل الإعدادات - يمكن إعادة تطبيق القيم الافتراضية من تبويب التسعير.")}</li>
             <li>{translate("Profit is taken on COGS; sales bonus and engineering incentive on the markup pool; category addition on the base price.", "الربح على التكلفة؛ المكافأة والحافز على مجمع الهوامش؛ إضافة الفئة على السعر الأساسي.")}</li>
           </ul>
+        </SectionCard>
+      </div>
+
+      <div className="mt-4">
+        <SectionCard title={translate("Sales limits (Deal Engine Changes Required Rev 02)", "حدود المبيعات (التغييرات المطلوبة لمحرك الصفقات، نسخة 2)")}>
+          <p className="mb-3 text-xs text-gray-500">
+            {translate(
+              "What Sales / BDM may move on a deal's Pricing tab without the Sales and Commercial Director's approval. A blank minimum, maximum or concession ceiling means it is not yet set - Sales may move that value freely until the MD confirms a real limit.",
+              "ما يمكن لفريق المبيعات تغييره في تبويب التسعير دون موافقة المدير التجاري والمبيعات. الحد الأدنى أو الأقصى أو سقف التنازل الفارغ يعني أنه لم يُحدد بعد - يمكن للمبيعات تغيير هذه القيمة بحرية حتى يؤكد المدير العام حدًا حقيقيًا."
+            )}
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <PctInput label={translate("Category addition - default", "إضافة الفئة - الافتراضي")} value={categoryAdditionDefault} onChange={setCategoryAdditionDefault} disabled={!canManage} />
+            <NumberInput
+              label={translate("Category addition - minimum", "إضافة الفئة - الحد الأدنى")}
+              placeholder={translate("Not set", "غير محدد")}
+              value={categoryAdditionMin}
+              onChange={(v) => setCategoryAdditionMin(typeof v === "number" ? v : "")}
+              suffix="%" min={0} max={100} disabled={!canManage}
+            />
+            <NumberInput
+              label={translate("Category addition - maximum", "إضافة الفئة - الحد الأقصى")}
+              placeholder={translate("Not set", "غير محدد")}
+              value={categoryAdditionMax}
+              onChange={(v) => setCategoryAdditionMax(typeof v === "number" ? v : "")}
+              suffix="%" min={0} max={100} disabled={!canManage}
+            />
+            <PctInput label={translate("Discount - maximum", "الخصم - الحد الأقصى")} value={discountMax} onChange={setDiscountMax} disabled={!canManage} />
+            <NumberInput
+              label={translate("Overall concession ceiling", "سقف التنازل الإجمالي")}
+              description={translate("Max combined drop of the net price from category addition + discount together", "أقصى انخفاض إجمالي في السعر الصافي من إضافة الفئة والخصم معًا")}
+              placeholder={translate("Not set", "غير محدد")}
+              value={concessionCeiling}
+              onChange={(v) => setConcessionCeiling(typeof v === "number" ? v : "")}
+              suffix="%" min={0} max={100} disabled={!canManage}
+            />
+            <PctInput label={translate("GP floor", "الحد الأدنى لإجمالي الربح")} description={translate("Stage 1 cannot pass below it", "لا يمكن أن تمر المرحلة الأولى دون هذا الحد")} value={gpFloor} onChange={setGpFloor} disabled={!canManage} />
+          </div>
+          <Switch
+            mt="md"
+            label={translate("Require MD approval for any pricing policy change", "تتطلب أي تغيير في سياسة التسعير موافقة المدير العام")}
+            description={translate("Off by default. When on, only the MD (not the Commercial Director) can save this page.", "معطل افتراضيًا. عند التفعيل، يمكن للمدير العام فقط (دون المدير التجاري) حفظ هذه الصفحة.")}
+            checked={requireMdApproval}
+            onChange={(e) => setRequireMdApproval(e.currentTarget.checked)}
+            disabled={!canManage}
+          />
         </SectionCard>
       </div>
 
