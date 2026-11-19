@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const proposalService = require('../../services/commercial/proposalService');
+const { assertCanAccessProposal } = require('../../utils/commercial/dealEnginePermissions');
 
 // Deal Engine C12-C17. The internal copy (priced BOQ, pricing stack, approval log) is for the MD,
 // the Commercial Director and Sales - checked here from the DB-loaded membership (req.commercialRole).
@@ -9,7 +10,8 @@ const INTERNAL_ROLES = ['md', 'commercial_director', 'sales'];
 
 function copyFor(req) {
   const copy = req.query.copy === 'internal' ? 'internal' : 'customer';
-  if (copy === 'internal' && !INTERNAL_ROLES.includes(req.commercialRole)) {
+  // R13: widest right across every role the user holds, not just the first.
+  if (copy === 'internal' && !(req.commercialRoles || []).some(r => INTERNAL_ROLES.includes(r))) {
     throw new ApiError('The internal copy (with prices and the pricing stack) is for the MD, the Commercial Director and Sales.', 403);
   }
   return copy;
@@ -24,7 +26,10 @@ function sendPdf(res, pdf, filename) {
 
 const crmRoleOf = user => (Array.isArray(user?.systemMemberships) ? user.systemMemberships.find(m => m.system === 'CRM' && m.isActive)?.role : null) || null;
 
+// R2/R12: the whole Proposal tab is Hidden to Technical/Procurement/Member (A1/A12/A13) - a direct
+// API request from one of them must be refused exactly like the UI would hide the tab.
 exports.issueProposal = asyncHandler(async (req, res) => {
+  assertCanAccessProposal(req.commercialRoles);
   const proposal = await proposalService.issueProposal(req.params.revisionId, {
     userId: req.user._id,
     userName: req.user.name || null,
@@ -36,22 +41,26 @@ exports.issueProposal = asyncHandler(async (req, res) => {
 });
 
 exports.releaseCheck = asyncHandler(async (req, res) => {
+  assertCanAccessProposal(req.commercialRoles);
   res.status(200).json(apiResponse('Release check', true, await proposalService.releaseCheck(req.params.revisionId)));
 });
 
 exports.previewProposal = asyncHandler(async (req, res) => {
+  assertCanAccessProposal(req.commercialRoles);
   const copy = copyFor(req);
   const { pdf, proposalNumber } = await proposalService.previewProposal(req.params.revisionId, { copy });
   sendPdf(res, pdf, `DRAFT-${proposalNumber}${copy === 'internal' ? '-internal' : ''}.pdf`);
 });
 
 exports.getProposalPdf = asyncHandler(async (req, res) => {
+  assertCanAccessProposal(req.commercialRoles);
   const copy = copyFor(req);
   const { pdf, proposal } = await proposalService.getProposalPdf(req.params.id, { copy });
   sendPdf(res, pdf, `${proposal.proposalNumber}${copy === 'internal' ? '-internal' : ''}.pdf`);
 });
 
 exports.listProposalsForProject = asyncHandler(async (req, res) => {
+  assertCanAccessProposal(req.commercialRoles);
   const proposals = await proposalService.listProposalsForProject(req.params.projectId);
   res.status(200).json(apiResponse('Proposals retrieved successfully', true, proposals));
 });

@@ -4,6 +4,7 @@ const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const ApiFeatures = require('../../utils/apiFeatures');
 const { canonicalMaterialKey } = require('../../utils/commercial/materialKey');
+const { assertCanAccessEnginePage } = require('../../utils/commercial/dealEnginePermissions');
 
 // Reservia Commercial - Material Price List admin. Price edits never overwrite history (the
 // project's own explicit rule): updatePrice appends to priceHistory, archive is soft-delete only.
@@ -27,7 +28,13 @@ exports.getMaterial = asyncHandler(async (req, res, next) => {
   res.status(200).json(apiResponse('Material retrieved successfully', true, material));
 });
 
+// R12/R2: "procurement owns Materials, Suppliers and price list uploads" (section 3) - md and
+// procurement may edit; commercial_director is read-only (section 4.2); sales/technical/member
+// have no business writing to the Price Book, matching T2's finding that nothing enforces this
+// today. Reads stay open to every Commercial-access role - see dealEnginePermissions.js's own
+// comment on why (BOQ lines reference materialItemKey).
 exports.createMaterial = asyncHandler(async (req, res, next) => {
+  assertCanAccessEnginePage(req.commercialRoles, 'materials', 'edit');
   const { category, brand, model, spec = '', unit } = req.body;
   if (!category) return next(new ApiError('Category is required.', 400));
   if (!brand || !model) return next(new ApiError('Brand and model are required.', 400));
@@ -59,6 +66,7 @@ exports.createMaterial = asyncHandler(async (req, res, next) => {
 
 /** Updates technical fields freely, but a unitPrice/currency CHANGE appends to priceHistory rather than silently overwriting it. */
 exports.updateMaterial = asyncHandler(async (req, res, next) => {
+  assertCanAccessEnginePage(req.commercialRoles, 'materials', 'edit');
   const material = await MaterialItem.findById(req.params.id);
   if (!material) return next(new ApiError('Material not found.', 404));
 
@@ -73,6 +81,7 @@ exports.updateMaterial = asyncHandler(async (req, res, next) => {
 });
 
 exports.archiveMaterial = asyncHandler(async (req, res, next) => {
+  assertCanAccessEnginePage(req.commercialRoles, 'materials', 'edit');
   const material = await MaterialItem.findByIdAndUpdate(req.params.id, { archived: true, archivedAt: new Date(), archivedBy: req.user._id }, { new: true });
   if (!material) return next(new ApiError('Material not found.', 404));
   res.status(200).json(apiResponse('Material archived successfully', true, material));

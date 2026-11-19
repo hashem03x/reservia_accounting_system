@@ -13,6 +13,7 @@ const { waitingOn } = require('../../services/commercial/approvalService');
 const { CATEGORIES, SCOPES } = require('../../utils/commercial/constants');
 const { resolveProjectRegion, EGYPT_REGIONS, RATES_MATRIX_COUNTRIES } = require('../../utils/commercial/regions');
 const sharedCustomers = require('../../services/customer/sharedCustomerService');
+const { shapeProjectForRole } = require('../../utils/commercial/dealEnginePermissions');
 
 const STAGE_POPULATE = ['stage1.approver', 'stage2.approver', 'md.approver'].map(path => ({ path, select: 'name' }));
 
@@ -94,6 +95,7 @@ async function validateHeader(body, { existing = null } = {}) {
 
 // Matches handlersFactory.getAll()'s own response shape ({results, paginationResult, data}),
 // which the frontend's PaginatedData<T> type expects.
+// R2/R12: "Projects list (value and GP columns)... Technical/Procurement/Member View (no prices)."
 exports.listProjects = asyncHandler(async (req, res) => {
   const filter = { archived: false };
   if (req.query.category) filter.category = req.query.category;
@@ -102,15 +104,19 @@ exports.listProjects = asyncHandler(async (req, res) => {
   const mongooseQuery = CommercialProject.find(filter);
   const { mongooseQuery: query, paginationResult } = new ApiFeatures(mongooseQuery, req.query).paginate(countDocuments).sort().filter(filter).limitFields();
   const projects = await query;
-  res.status(200).json({ results: projects.length, paginationResult, data: projects });
+  const data = projects.map(p => shapeProjectForRole(p.toObject(), req.commercialRoles));
+  res.status(200).json({ results: data.length, paginationResult, data });
 });
 
+// R2/R12: Overview's price/GP/release-status sub-section is Hidden to Technical/Procurement/
+// Member (A1/A12/A13) - shapeProjectForRole strips it (and the current revision's pricing/
+// feasibility/BOQ costs) entirely from the response, not just from what the UI renders.
 exports.getProject = asyncHandler(async (req, res, next) => {
   const project = await CommercialProject.findById(req.params.id).populate({ path: 'currentRevision', populate: STAGE_POPULATE });
   if (!project) return next(new ApiError('Deal Engine project not found.', 404));
   const data = project.toObject();
   if (data.currentRevision) data.currentRevision.waitingOn = waitingOn(project.currentRevision);
-  res.status(200).json(apiResponse('Project retrieved successfully', true, data));
+  res.status(200).json(apiResponse('Project retrieved successfully', true, shapeProjectForRole(data, req.commercialRoles)));
 });
 
 /** Creates the project header (validated) with its deal identifiers and, if engineeringInput is supplied, its first revision. */
@@ -205,7 +211,8 @@ exports.archiveProject = asyncHandler(async (req, res, next) => {
 
 exports.listRevisions = asyncHandler(async (req, res) => {
   const revisions = await CommercialRevision.find({ project: req.params.id }).sort({ revisionNumber: -1 }).populate(STAGE_POPULATE);
-  res.status(200).json(apiResponse('Revisions retrieved successfully', true, revisions));
+  const data = revisions.map(r => shapeRevisionForRole(r.toObject(), req.commercialRoles));
+  res.status(200).json(apiResponse('Revisions retrieved successfully', true, data));
 });
 
 // ---------------------------------------------------------------- form options + shared customers

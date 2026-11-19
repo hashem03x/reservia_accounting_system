@@ -3,6 +3,7 @@ const CommercialRevision = require('../../models/commercial/commercialRevisionMo
 const CommercialApproval = require('../../models/commercial/commercialApprovalModel');
 const CommercialProject = require('../../models/commercial/commercialProjectModel');
 const User = require('../../models/userModel');
+const { roleLabel } = require('../../utils/commercial/dealEnginePermissions');
 
 // Reservia Commercial - the two-stage-plus-MD approval workflow (Developer Brief section 4). Server-
 // enforced stage order and role (never trust a frontend-only restriction): Stage 2 cannot be set
@@ -22,6 +23,12 @@ const STAGE_ROLES = {
 };
 const STAGE_FIELD = { STAGE1: 'stage1', STAGE2: 'stage2', MD: 'md' };
 const STAGE_LABEL = { STAGE1: 'Stage 1', STAGE2: 'Stage 2', MD: 'MD sign-off' };
+// R1: "use one set of names everywhere" - these were three different spellings of the same two
+// roles before (T7): this error message joined raw codes ("sales / technical"), while waitingOn()
+// spelled them out by hand ("Sales & Technical"). Both now build the label from the SAME
+// dealEnginePermissions.js#ROLE_LABELS map the rest of the Deal Engine uses, so a role rename never
+// has to be repeated in three places again.
+const stageRoleLabel = stage => STAGE_ROLES[stage].map(roleLabel).join(' or ');
 
 const GP_FLOOR_DEFAULT = 0.15; // ASSUMPTION per the brief section 9 - confirm with Ahmed
 const MD_THRESHOLD_EGP_DEFAULT = 1500000; // brief section 9 / CRM rule
@@ -55,8 +62,8 @@ async function syncProjectRollups(revision) {
 /** The "Waiting on" line of brief 4.1: the next sign-off this revision needs, or null when released. */
 function waitingOn(revision) {
   if (revision.status === 'Draft') return 'Recalculation (the revision is in Draft)';
-  if (revision.stage1.status !== 'Approved') return 'Stage 1 - Sales & Technical';
-  if (revision.stage2.status !== 'Approved') return 'Stage 2 - Sales & Commercial Director';
+  if (revision.stage1.status !== 'Approved') return `Stage 1 - ${stageRoleLabel('STAGE1')}`;
+  if (revision.stage2.status !== 'Approved') return `Stage 2 - ${stageRoleLabel('STAGE2')}`;
   if (revision.mdRequired && revision.md.status !== 'Approved') return 'MD sign-off';
   return null;
 }
@@ -65,7 +72,7 @@ async function setStageStatus(revisionId, stage, status, { userId, userRole, not
   if (!STAGE_ROLES[stage]) throw new ApiError(`Unknown approval stage "${stage}"`, 400);
   if (!['Approved', 'Rejected'].includes(status)) throw new ApiError('Status must be Approved or Rejected.', 400);
   if (!STAGE_ROLES[stage].includes(userRole)) {
-    throw new ApiError(`${STAGE_LABEL[stage]} can only be signed by the ${STAGE_ROLES[stage].join(' / ')} role. Your Deal Engine role is "${userRole}".`, 403);
+    throw new ApiError(`${STAGE_LABEL[stage]} can only be signed by ${stageRoleLabel(stage)}. Your Deal Engine role is "${userRole ? roleLabel(userRole) : 'none'}".`, 403);
   }
 
   const revision = await CommercialRevision.findById(revisionId);

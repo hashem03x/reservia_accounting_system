@@ -11,7 +11,11 @@ const LABELS: Partial<Record<SystemId, Record<string, { en: string; ar: string }
   },
   COMMERCIAL: {
     md: { en: "Managing Director", ar: "المدير العام" },
-    commercial_director: { en: "Commercial Director", ar: "المدير التجاري" },
+    // R1 (Deal Engine Changes Required Rev 02): "use one set of names everywhere... Show the
+    // label (for example 'Sales and Commercial Director') on every screen" - this used to say
+    // just "Commercial Director" here, a THIRD spelling alongside Approvals' "Sales & Commercial
+    // Director" and User Management's raw "commercial_director" (T7's exact finding).
+    commercial_director: { en: "Sales and Commercial Director", ar: "المدير التجاري والمبيعات" },
     sales: { en: "Sales", ar: "المبيعات" },
     technical: { en: "Technical", ar: "فني" },
     procurement: { en: "Procurement", ar: "المشتريات" },
