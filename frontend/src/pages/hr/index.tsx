@@ -74,7 +74,7 @@ function HrShell() {
   const visible = useMemo(() => VIEWS.filter((v) => !role || v.roles.includes(role)), [role]);
   const view = visible.some((v) => v.k === params.view) ? (params.view as string) : "home";
   const current = VIEWS.find((v) => v.k === view);
-  useDocumentTitle(`HR - ${current?.en || "Overview"}`);
+  useDocumentTitle(translate(`HR - ${current?.en || "Overview"}`, `الموارد البشرية - ${current?.ar || "نظرة عامة"}`));
   const pend = usePendingCount();
 
   const go = useCallback(

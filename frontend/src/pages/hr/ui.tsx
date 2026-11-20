@@ -187,8 +187,12 @@ export function ArmedButton({ label = "Delete", armed = "Click again to delete",
 }
 
 export const SL: Record<string, [string, string]> = { ok: ["Valid", "good"], soon: ["Due soon", "warn"], exp: ["Expired", "bad"], miss: ["Missing", "bad0"], na: ["n/a", ""] };
+export const SL_AR: Record<string, string> = { ok: "سارٍ", soon: "قريب الانتهاء", exp: "منتهي", miss: "غير مكتمل", na: "غير متاح" };
 export const SL_ICON: Record<string, string> = { ok: "✓", soon: "!", exp: "×", miss: "–", na: "n/a" };
-export const statusPill = (s: string) => <Pill c={s === "Approved" ? "good" : s === "Rejected" ? "bad" : "warn"}>{s}</Pill>;
+/** Display label for an SL status key, translated when a translate() function is passed; the key itself (SL/SL_ICON lookup) stays English. */
+export const slText = (s: string, translate?: (en: string, ar: string) => string) => (translate ? translate(SL[s]?.[0] ?? s, SL_AR[s] ?? s) : SL[s]?.[0] ?? s);
+const ST_AR: Record<string, string> = { Pending: "قيد الانتظار", Approved: "مُعتمد", Rejected: "مرفوض" };
+export const statusPill = (s: string, translate?: (en: string, ar: string) => string) => <Pill c={s === "Approved" ? "good" : s === "Rejected" ? "bad" : "warn"}>{translate ? translate(s, ST_AR[s] ?? s) : s}</Pill>;
 export const monthOf = (d?: string) => String(d || "").slice(0, 7);
 export { mLabel };
 
