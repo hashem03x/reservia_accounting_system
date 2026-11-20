@@ -242,6 +242,90 @@ maybeTest('approved leave posts to attendance; rejecting removes it; claims need
   assert.equal(ok.body.data.receiptOverride, true);
 });
 
+maybeTest('HR Portal D1: a leave request over the remaining balance is blocked; only the MD can send it anyway, with a reason stamped on the record', async () => {
+  const { hr, md } = await team();
+  const e = (await api('POST', '/employees', { user: hr, body: { name: 'Over Balance', hire: '2026-01-01', basic: 9000 } })).body.data;
+  // 21 annual days a year (DEFAULTS.annualDays); two full months of working days is far more than that.
+  const over = { ft: 'leave', empId: e._id, ltype: 'Annual leave', from: '2099-01-01', to: '2099-02-28' };
+  const blocked = await api('POST', '/forms', { user: hr, body: over });
+  assert.equal(blocked.status, 403, blocked.text);
+  assert.match(blocked.body.message, /remaining leave balance/);
+  assert.equal(await M.HrForm.countDocuments({ employee: e._id }), 0, 'nothing was saved');
+  const mdNoReason = await api('POST', '/forms', { user: md, body: over });
+  assert.equal(mdNoReason.status, 400, mdNoReason.text);
+  assert.match(mdNoReason.body.message, /reason/);
+  const sent = await api('POST', '/forms', { user: md, body: { ...over, balanceOverrideReason: 'Approved exception - project between contracts' } });
+  assert.equal(sent.status, 200, sent.text);
+  assert.equal(sent.body.data.form.balanceOverride, true);
+  assert.equal(sent.body.data.form.balanceOverrideReason, 'Approved exception - project between contracts');
+  assert.equal(sent.body.data.form.balanceOverrideByName, 'Mona MD');
+  const saved = await M.HrForm.findById(sent.body.data.form._id).lean();
+  assert.equal(saved.balanceOverride, true);
+  // A request within the remaining balance is never blocked, for any role that can submit forms.
+  const within = await api('POST', '/forms', { user: hr, body: { ft: 'leave', empId: e._id, ltype: 'Annual leave', from: '2099-06-01', to: '2099-06-03' } });
+  assert.equal(within.status, 200, within.text);
+  assert.equal(within.body.data.form.balanceOverride, false);
+});
+
+maybeTest('HR Portal D11: reopening an approved timesheet needs a reason, which is stamped on the record and surfaced until re-approved', async () => {
+  const { hr } = await team();
+  const month = '2026-09';
+  const e = (await api('POST', '/employees', { user: hr, body: { name: 'Reopen Target', hire: '2026-01-01', basic: 12000 } })).body.data;
+  await api('POST', `/attendance/${e._id}/${month}/fill`, { user: hr });
+  const approved = await api('POST', `/timesheets/${e._id}/${month}/approve`, { user: hr });
+  assert.equal(approved.status, 200, approved.text);
+
+  const noReason = await api('POST', `/timesheets/${e._id}/${month}/reopen`, { user: hr, body: {} });
+  assert.equal(noReason.status, 400, noReason.text);
+  assert.match(noReason.body.message, /reason/);
+  let att = await M.HrAttendance.findOne({ employee: e._id, month }).lean();
+  assert.ok(att.approval?.at, 'still approved - the rejected reopen changed nothing');
+
+  const ok = await api('POST', `/timesheets/${e._id}/${month}/reopen`, { user: hr, body: { reason: 'Late overtime entry for payroll' } });
+  assert.equal(ok.status, 200, ok.text);
+  att = await M.HrAttendance.findOne({ employee: e._id, month }).lean();
+  assert.equal(att.approval, undefined, 'unapproved again');
+  assert.equal(att.lastReopen.reason, 'Late overtime entry for payroll');
+  assert.equal(att.lastReopen.byName, 'Hala HR');
+  const auditRow = await M.HrAudit.findOne({ table: 'timesheets', rowId: `${e._id}:${month}`, action: 'reopen' }).lean();
+  assert.equal(auditRow.note, 'Late overtime entry for payroll');
+
+  const s = (await api('GET', `/state?month=${month}`, { user: hr })).body.data;
+  assert.equal(s.time[e._id].approval, null, 'back in the Approvals queue');
+  assert.equal(s.time[e._id].lastReopen.reason, 'Late overtime entry for payroll');
+});
+
+maybeTest('HR Portal D12: bulk mark present for a date range and several employees - skips weekends, holidays and already-recorded days, is blocked by an approved timesheet, and reports what it skipped', async () => {
+  const { hr } = await team();
+  const a = (await api('POST', '/employees', { user: hr, body: { name: 'Bulk A', hire: '2026-01-01', basic: 9000 } })).body.data;
+  const b = (await api('POST', '/employees', { user: hr, body: { name: 'Bulk B', hire: '2026-01-01', basic: 9000 } })).body.data;
+  // Approve B's September timesheet (requires every working day filled first), then simulate the
+  // data drifting afterward (e.g. a later correction) so one day is blank again on an approved
+  // timesheet - the only way that state can occur, and exactly what the lock below must catch.
+  await api('POST', `/attendance/${b._id}/2026-09/fill`, { user: hr });
+  await api('POST', `/timesheets/${b._id}/2026-09/approve`, { user: hr });
+  await mongoose.connection.collection('hrattendances').updateOne({ employee: new mongoose.Types.ObjectId(b._id), month: '2026-09' }, { $unset: { 'days.01': 1 } });
+
+  const r = await api('POST', '/attendance/bulk-fill', { user: hr, body: { employeeIds: [a._id, b._id], from: '2026-09-01', to: '2026-09-07' } });
+  assert.equal(r.status, 200, r.text);
+  // 2026-09-01 is a Tuesday; the default work week is Sun-Thu (Fri/Sat off). Of Sep 1-7: Tue 1,
+  // Wed 2, Thu 3 work, Fri 4/Sat 5 are rest days, Sun 6/Mon 7 work - 5 working days for A.
+  assert.equal(r.body.data.filled, 5, `filled ${JSON.stringify(r.body.data)}`);
+  assert.equal(r.body.data.skipped.length, 1, `skipped ${JSON.stringify(r.body.data)}`);
+  assert.equal(r.body.data.skipped[0].employeeId, String(b._id));
+  assert.match(r.body.data.skipped[0].reason, /approved/);
+  // B's blanked-out day is genuinely still blank - the lock refused the write, nothing silently happened.
+  const attB = await M.HrAttendance.findOne({ employee: b._id, month: '2026-09' }).lean();
+  assert.equal(attB.days['01'], undefined);
+
+  const attA = await M.HrAttendance.findOne({ employee: a._id, month: '2026-09' }).lean();
+  assert.equal(Object.keys(attA.days).filter(d => attA.days[d].s === 'P').length, 5);
+
+  // Running it again for A does nothing new (every day is now already recorded) - idempotent, no duplicate work reported as filled.
+  const again = await api('POST', '/attendance/bulk-fill', { user: hr, body: { employeeIds: [a._id], from: '2026-09-01', to: '2026-09-07' } });
+  assert.equal(again.body.data.filled, 0, `filled ${JSON.stringify(again.body.data)}`);
+});
+
 maybeTest('a Done site visit records V days and pays its allowance', async () => {
   const { hr, md } = await team();
   const e = (await api('POST', '/employees', { user: hr, body: { name: 'Site Engineer', hire: '2026-01-01', basic: 15000, transport: 0 } })).body.data;

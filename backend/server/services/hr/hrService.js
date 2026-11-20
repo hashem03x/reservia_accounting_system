@@ -26,7 +26,7 @@ async function found(Model, id, label) {
 const plain = d => (d && d.toObject ? d.toObject() : d);
 
 /* ===================== employees ===================== */
-const EMP_FIELDS = ['code', 'name', 'role', 'dept', 'status', 'type', 'hire', 'end', 'city', 'mgr', 'phone', 'email', 'emg', 'emgp', 'file', 'nat', 'sin', 'edu', 'cno', 'offerDate', 'cstart', 'cend', 'probEnd', 'paym', 'signedFile'];
+const EMP_FIELDS = ['code', 'name', 'role', 'dept', 'status', 'type', 'hire', 'end', 'city', 'mgr', 'phone', 'email', 'emg', 'emgp', 'file', 'nat', 'sin', 'sinRegDate', 'edu', 'cno', 'offerDate', 'cstart', 'cend', 'probEnd', 'paym', 'signedFile'];
 
 async function nextCode() {
   const all = await M.HrEmployee.find({}, { code: 1 }).lean();
@@ -43,7 +43,7 @@ async function cleanEmployee(body, existing) {
   });
   if (existing === null || o.name !== undefined) if (!(o.name ?? existing?.name)) throw new ApiError('Enter the employee name.', 400);
   if (existing === null || o.hire !== undefined) assertDate(o.hire ?? existing?.hire, 'Joining date');
-  ['end', 'offerDate', 'cstart', 'cend', 'probEnd'].forEach(k => {
+  ['end', 'offerDate', 'cstart', 'cend', 'probEnd', 'sinRegDate'].forEach(k => {
     if (o[k]) assertDate(o[k], k);
   });
   if (o.end && (o.hire || existing?.hire) && o.end < (o.hire || existing.hire)) throw new ApiError('The leaving date is before the joining date.', 400);
@@ -63,7 +63,10 @@ async function cleanEmployee(body, existing) {
   C.PAY_FIELDS.forEach(k => {
     if (body[k] !== undefined) {
       payTouched = true;
-      pay[k] = num(body[k], k, { min: 0, max: 10000000 }) || 0;
+      // HR Portal D5: clearing insBase back to blank means "use the rule" (null), not 0 - same
+      // fix as createEmployee's default above, applied when editing an existing override too.
+      const n = num(body[k], k, { min: 0, max: 10000000 });
+      pay[k] = n === undefined ? (k === 'insBase' ? null : 0) : n;
     }
   });
   return { o, pay, payTouched };
@@ -76,7 +79,10 @@ async function createEmployee(body, ctx) {
   if (await M.HrEmployee.exists({ code: o.code })) throw new ApiError(`Employee code ${o.code} is already used.`, 409);
   if (!o.cend && (o.cstart || o.hire)) o.cend = P.addMonthsTo(o.cstart || o.hire, 12);
   if (!o.probEnd && o.hire) o.probEnd = P.addMonthsTo(o.hire, 3);
-  const full = Object.assign({ basic: 0, transport: 0, incentive: 0, commission: 0, other: 0, insBase: 0 }, pay);
+  // HR Portal D5: insBase defaults to null ("use the rule" - payrollEngine.js#calcPay already
+  // treats any non-positive value this way), not 0 - a stored 0 round-tripped through decryption
+  // and displayed as the literal digit "0" in the override field, instead of the intended blank.
+  const full = Object.assign({ basic: 0, transport: 0, incentive: 0, commission: 0, other: 0, insBase: null }, pay);
   const doc = await M.HrEmployee.create(Object.assign(o, { payBox: crypto.seal(full), createdBy: ctx.user?._id, updatedBy: ctx.user?._id }));
   await audit(ctx, 'employees', doc._id, 'create', null, { ...o, pay: full });
   return C.shapeEmployee(doc.toObject(), ctx.role);
@@ -234,6 +240,62 @@ async function fillBlanks(employeeId, month, ctx) {
   return { filled: Object.keys(upd).length };
 }
 
+/**
+ * HR Portal D12: "mark present" for a date range and several employees at once - one action
+ * instead of one per day per person. Reuses fillBlanks' own skip rule (only a genuinely blank
+ * working day is touched: not already recorded, not a rest day, not a holiday) and writeDays'
+ * own lock checks (a month under review/closed, or an approved timesheet, is never silently
+ * skipped - reported instead) - no new business rule, pure composition of what already exists.
+ */
+async function bulkMarkPresent(employeeIds, from, to, ctx) {
+  assertRole(ctx, EDIT_ROLES, 'edit timesheets');
+  assertDate(from, 'From date');
+  assertDate(to, 'To date');
+  if (to < from) throw new ApiError('Check the date range.', 400);
+  if (P.diffDays(to, from) > 366) throw new ApiError('The date range cannot exceed a year.', 400);
+  const ids = (employeeIds || []).map(id => oid(id));
+  if (!ids.length) throw new ApiError('Choose at least one employee.', 400);
+
+  const months = [];
+  for (let m = from.slice(0, 7); m <= to.slice(0, 7); m = P.mAdd(m, 1)) months.push(m);
+
+  let filled = 0;
+  const skipped = [];
+  for (const month of months) {
+    // eslint-disable-next-line no-await-in-loop
+    const { engine } = await C.loadMonth(month);
+    const s = P.mins(engine.cfg.shiftStart) || 540;
+    const t = [s, s + (engine.cfg.stdHours + engine.cfg.breakH) * 60].map(x => `${P.pad(Math.floor(x / 60) % 24)}:${P.pad(x % 60)}`);
+    for (const id of ids) {
+      const e = engine.empById(String(id));
+      if (!e) {
+        skipped.push({ employeeId: String(id), month, reason: 'Employee not found' });
+        continue;
+      }
+      const upd = {};
+      for (let i = 1; i <= P.daysIn(month); i++) {
+        const date = `${month}-${P.pad(i)}`;
+        if (date < from || date > to) continue;
+        const inf = engine.dayInfo(e, date);
+        if (!inf.emp) continue; // outside employment dates - nothing to skip-report, just not applicable
+        if (inf.rest) continue;
+        if (inf.hol) continue;
+        if (inf.s) continue; // already recorded - never overwritten
+        upd[date] = { s: 'P', in: t[0], out: t[1] };
+      }
+      if (!Object.keys(upd).length) continue;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await writeDays(id, month, upd, ctx, { action: 'bulk-fill' });
+        filled += Object.keys(upd).length;
+      } catch (err) {
+        skipped.push({ employeeId: String(id), month, reason: err.message });
+      }
+    }
+  }
+  return { filled, skipped };
+}
+
 async function approveTimesheet(employeeId, month, ctx) {
   assertMonth(month);
   await C.assertCanDecideFor(ctx, employeeId);
@@ -249,14 +311,18 @@ async function approveTimesheet(employeeId, month, ctx) {
   return approval;
 }
 
-async function reopenTimesheet(employeeId, month, ctx) {
+async function reopenTimesheet(employeeId, month, reason, ctx) {
   assertMonth(month);
   await C.assertCanDecideFor(ctx, employeeId);
+  // HR Portal D11: mandatory reason, same rule as the existing payroll-run reopen.
+  const cleanReason = str(reason, 500);
+  if (!cleanReason) throw new ApiError('Give the reason for reopening.', 400);
   // Reopen is allowed until the payroll month is closed (spec section 7).
   const run = await C.runOf(month);
   if (run?.status === 'closed') throw new ApiError(`${P.mLabel(month)} payroll is closed.`, 409);
-  await M.HrAttendance.updateOne({ employee: oid(employeeId), month }, { $unset: { approval: 1 } });
-  await audit(ctx, 'timesheets', `${employeeId}:${month}`, 'reopen', null, null);
+  const lastReopen = { at: new Date(), by: ctx.user?._id, byName: C.userName(ctx.user), reason: cleanReason };
+  await M.HrAttendance.updateOne({ employee: oid(employeeId), month }, { $unset: { approval: 1 }, $set: { lastReopen } });
+  await audit(ctx, 'timesheets', `${employeeId}:${month}`, 'reopen', null, null, cleanReason);
 }
 
 /* ===================== site visits ===================== */
@@ -392,6 +458,7 @@ async function cleanForm(ft, b, engine) {
   const e = engine.empById(String(f.employee));
   if (!e) throw new ApiError('Employee not found.', 404);
   const warnings = [];
+  let leaveBalanceExceeded = false;
   if (ft === 'leave') {
     Object.assign(f, { ltype: P.LEAVE_TYPES.includes(b.ltype) ? b.ltype : 'Annual leave', from: assertDate(b.from, 'First day of leave'), to: assertDate(b.to, 'Last day of leave'), cover: str(b.cover, 120) || '', phone: str(b.phone, 40) || '' });
     if (f.to < f.from) throw new ApiError('Check the leave dates.', 400);
@@ -400,8 +467,13 @@ async function cleanForm(ft, b, engine) {
     const yr = f.from.slice(0, 4);
     const used = engine.leaveUsed(String(f.employee), yr);
     const ent = engine.leaveEnt(e, yr);
-    // Balance and casual-leave rules warn, never block (spec section 7).
-    if ((f.ltype === 'Annual leave' || f.ltype === 'Casual leave') && used + f.days > ent) warnings.push(`This takes the annual balance to ${used + f.days} of ${ent} days.`);
+    // HR Portal D1: an Annual/Casual request over the remaining balance blocks sending - the MD
+    // may still send it, with a mandatory reason (see saveForm). Casual-leave's own separate caps
+    // (below) still only warn - D1 only asked for the balance rule to block.
+    if ((f.ltype === 'Annual leave' || f.ltype === 'Casual leave') && used + f.days > ent) {
+      leaveBalanceExceeded = true;
+      warnings.push(`This takes the annual balance to ${used + f.days} of ${ent} days.`);
+    }
     if (f.ltype === 'Casual leave') {
       if (f.days > 2) warnings.push('More than 2 days of casual leave at once.');
       if (engine.casualUsed(String(f.employee), yr) + f.days > 7) warnings.push('Casual leave above 7 days this year.');
@@ -420,7 +492,7 @@ async function cleanForm(ft, b, engine) {
     Object.assign(f, { from: assertDate(b.from, 'First day'), city: str(b.city, 80) || '', site: str(b.site, 200) || '', purpose: P.PURPOSES.includes(b.purpose) ? b.purpose : P.PURPOSES[0], days: Math.max(1, Math.round(+b.days || 1)), nights: Math.max(0, Math.round(+b.nights || 0)), back: assertDate(b.back || b.from, 'Expected return'), transport: str(b.transport, 80) || '', stay: str(b.stay, 80) || '', meals: str(b.meals, 80) || '', ref: str(b.ref, 120) || '' });
     if (!f.site) throw new ApiError('Enter the client or site.', 400);
   }
-  return { f, warnings };
+  return { f, warnings, leaveBalanceExceeded };
 }
 
 async function unpostLeave(formId, ctx) {
@@ -473,7 +545,20 @@ async function saveForm(id, body, ctx) {
     before = plain(doc);
     if (doc.status !== 'Pending') throw new ApiError('A decided form cannot be edited. Change the decision first.', 409);
   }
-  const { f, warnings } = await cleanForm(ft, body, engine);
+  const { f, warnings, leaveBalanceExceeded } = await cleanForm(ft, body, engine);
+  // HR Portal D1: block sending a leave request that exceeds the remaining balance. The MD may
+  // still send it, but only with a reason - stamped on the record (balanceOverride*), not just a
+  // warning that is easy to miss.
+  if (leaveBalanceExceeded) {
+    const overrideReason = str(body.balanceOverrideReason, 500);
+    if (ctx.role !== 'md') {
+      throw new ApiError('This request exceeds the remaining leave balance. Only the MD can send it anyway, with a reason.', 403);
+    }
+    if (!overrideReason) {
+      throw new ApiError('This request exceeds the remaining leave balance. Give a reason to send it anyway.', 400);
+    }
+    Object.assign(f, { balanceOverride: true, balanceOverrideReason: overrideReason, balanceOverrideBy: ctx.user?._id, balanceOverrideByName: C.userName(ctx.user), balanceOverrideAt: C.todayCairo() });
+  }
   if (doc) {
     Object.assign(doc, f, { updatedBy: ctx.user?._id });
     await doc.save();
@@ -677,7 +762,7 @@ async function removeExampleTeam(ctx) {
 }
 
 module.exports = {
-  createEmployee, updateEmployee, deleteEmployee, saveDocument, saveExit, saveDay, saveTimesheetDays, fillBlanks, approveTimesheet, reopenTimesheet,
+  createEmployee, updateEmployee, deleteEmployee, saveDocument, saveExit, saveDay, saveTimesheetDays, fillBlanks, bulkMarkPresent, approveTimesheet, reopenTimesheet,
   saveVisit, deleteVisit, saveExpense, decideExpense, deleteExpense, saveForm, decideForm, deleteForm, setTarget, addAdjustment, deleteAdjustment,
   saveSimple, deleteSimple, hireCandidate, loadExampleTeam, removeExampleTeam, oid,
 };

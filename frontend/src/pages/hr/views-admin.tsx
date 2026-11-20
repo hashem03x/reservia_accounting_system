@@ -342,6 +342,7 @@ export function FormModal({ id, ft: ft0, empId }: { id?: string; ft?: string; em
     if (f.v.ltype === "Casual leave") hints.push("Casual leave: 2 days at most at a time, 7 a year, taken from the annual balance.");
     if (f.v.ltype === "Sick leave") hints.push("Attach the medical certificate to the personnel file.");
     if (f.v.ltype === "Unpaid leave") hints.push("Unpaid leave needs the written approval of the MD.");
+    if (f.v.balanceOverride) hints.push(`Sent over the remaining balance - MD override by ${f.v.balanceOverrideByName || "the MD"} on ${f.v.balanceOverrideAt}: "${f.v.balanceOverrideReason}"`);
   }
   if (ft === "ot") {
     if (f.v.odate && f.v.odate < today) hints.push("Policy: approval must come before the work starts. This date has passed, so record it as an exception with a reason.");
@@ -386,6 +387,11 @@ export function FormModal({ id, ft: ft0, empId }: { id?: string; ft?: string; em
             <Inp label="Who covers your work" k="cover" f={f} disabled={!edit || ro} />
             <Inp label="Phone during leave" k="phone" f={f} disabled={!edit || ro} />
             <Txt label="Reason or note" k="reason" f={f} />
+            {/* HR Portal D1: sending a request over the remaining balance is blocked unless the MD
+                gives a reason here - shown only to the MD, since nobody else can send it anyway. */}
+            {state.role === "md" && !ro && (
+              <Txt label="Reason to send anyway if this is over the remaining balance (MD only)" k="balanceOverrideReason" f={f} />
+            )}
           </>
         )}
         {ft === "ot" && (
@@ -894,7 +900,7 @@ export function Settings() {
   const ww = (f.v.workWeek || []) as number[];
   const save = () => {
     const values: Record<string, unknown> = {};
-    const keys = ["stdHours", "breakH", "shiftStart", "grace", "graceTimes", "lateDeduct", "annualDays", "workWeek", "otDay", "otNight", "otFri", "otSat", "otHol", "nightFrom", "nightTo", "otBase", "siteGC", "siteOut", "perDiem", "insEmp", "insEr", "insMin", "insMax", "exemption", "brackets", "siteTaxable", "sickPaid", "insBaseMode", "reimbTaxable", "hrName", "mdName", "holidays", "cities", "req"];
+    const keys = ["stdHours", "breakH", "shiftStart", "grace", "graceTimes", "lateDeduct", "annualDays", "workWeek", "otDay", "otNight", "otFri", "otSat", "otHol", "nightFrom", "nightTo", "otBase", "siteGC", "siteOut", "perDiem", "insEmp", "insEr", "insMin", "insMax", "exemption", "brackets", "siteTaxable", "sickPaid", "insBaseMode", "insProrate", "taxMethod", "martyrsPct", "reimbTaxable", "hrName", "mdName", "holidays", "cities", "req"];
     keys.forEach((k) => {
       if (JSON.stringify(f.v[k]) !== JSON.stringify(c[k])) values[k] = f.v[k];
     });
@@ -967,6 +973,22 @@ export function Settings() {
             {N("Insurable wage ceiling (EGP a month)", "insMax", "Two sources give 16,700 for 2026; one older page gives 14,500", "1")}
             {N("Personal exemption (EGP a year)", "exemption", "Applied before the brackets", "1")}
             <Sel label="Insurable wage is based on" k="insBaseMode" f={f} full disabled={!edit} opts={[["all", "Total fixed wage (basic, transport, incentive, other): Law 14 of 2025 Art. 1 counts allowances and incentives as wage"], ["basicother", "Basic plus other fixed allowances"], ["basic", "Basic gross salary only"]]} />
+            <Chk label="Prorate insurance for a partial month (today's rule)" k="insProrate" f={f} full />
+            <Sel
+              label="Income tax method"
+              k="taxMethod"
+              f={f}
+              full
+              disabled={!edit}
+              opts={[
+                ["prorated", "Annualize the prorated month's pay (today's default)"],
+                ["fullMonthEquivalent", "Annualize the full-month-equivalent pay, then prorate the resulting tax"],
+              ]}
+            />
+            <div className="hint full">
+              Set the default only after the accountant confirms. Open an employee's Payroll row for a month with a partial-month joiner or leaver to preview both figures side by side before changing this.
+            </div>
+            {N("Martyrs and Veterans of War Fund %", "martyrsPct", "0 = off, until Finance confirms the rate and the base (same insurable wage as social insurance)", "0.01")}
             <Sel label="Performance commission" k="commRule" f={f} disabled={!edit} opts={[["full", "Paid in full at 100% of target, nothing below (offer wording)"], ["pro", "Paid pro rata to the percentage achieved, capped at 150%"]]} />
             <Chk label="Treat site allowances as taxable pay" k="siteTaxable" f={f} full />
             <Chk label="Treat receipted reimbursements as taxable pay" k="reimbTaxable" f={f} full />

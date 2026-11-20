@@ -82,7 +82,8 @@ async function state(month, ctx, { withHistory = false } = {}) {
       days.push({ date: d.date, dow: d.dow, emp: d.emp, rest: d.rest, hol: d.hol, s: d.s, in: d.in, out: d.out, n: d.n, worked: P.r2(d.worked), ot: P.r2(d.ot), otN: P.r2(d.otN), sp: P.r2(d.sp), spT: d.spT, late: d.late, inGrace: !!d.inGrace, unrec: d.unrec, present: d.present });
     }
     const a = raw.attendance.find(x => String(x.employee) === e.id && x.month === month);
-    time[e.id] = { t: r.t, otHours: r.otHours, otD: r.otD, otN: r.otN, otR: r.otR, otH: r.otH, days, approval: a?.approval?.at ? a.approval : null };
+    // HR Portal D11: who reopened this timesheet, when and why - shown inline, not only in the audit log.
+    time[e.id] = { t: r.t, otHours: r.otHours, otD: r.otD, otN: r.otN, otR: r.otR, otH: r.otH, days, approval: a?.approval?.at ? a.approval : null, lastReopen: a?.lastReopen?.at ? a.lastReopen : null };
   });
 
   const { rows, frozen, run } = seePay ? await payRows(month, L) : { rows: [], frozen: false, run: await M.HrPayrollRun.findOne({ month }).lean() };

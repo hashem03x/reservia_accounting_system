@@ -22,6 +22,7 @@ router.put('/employees/:id/exit', c.saveExit);
 router.post('/attendance/day', c.saveDay);
 router.put('/attendance/:empId/:month', c.saveDays);
 router.post('/attendance/:empId/:month/fill', c.fillBlanks);
+router.post('/attendance/bulk-fill', c.bulkMarkPresent);
 router.post('/timesheets/:empId/:month/approve', c.approveTimesheet);
 router.post('/timesheets/:empId/:month/reopen', c.reopenTimesheet);
 

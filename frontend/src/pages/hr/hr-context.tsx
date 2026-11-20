@@ -23,6 +23,9 @@ export type PayRow = {
   id: string; name: string; code: string; dept: string; role: string; email: string; t: Counts; gross: number; fixed: number; basic: number; transport: number; incentive: number; other: number;
   comm: number; commBase: number; tgt: number | null; absDed: number; unpaidDays: number; lateDed: number; hr: number; otD: number; otN: number; otF: number; otS: number; otR: number; otH: number;
   otPay: number; site: number; reimb: number; nVisits: number; nExp: number; addTx: number; addNo: number; ded: number; insBase: number; insEmp: number; insEr: number; tax: number; net: number; earn: number; cost: number; otHours: number;
+  // HR Portal D4/D6: always computed so the two tax methods can be previewed side by side before
+  // the accountant confirms which to use, and the Martyrs Fund levy (0 while unconfigured).
+  taxProrated: number; taxFullMonthEquivalent: number; martyrsAmt: number;
 };
 export type Visit = { _id: string; employee: string; date: string; city: string; site: string; purpose: string; status: string; days: number; nights: number; transport?: number; accom?: number; meals?: number; mealsProvided?: boolean; ref?: string; notes?: string; report?: string; zone: string; gc: boolean; pay?: { allow: number; pd: number; reimb: number; total: number }; example?: boolean };
 export type Expense = { _id: string; employee: string; date: string; type: string; amount: number; payMonth: string; ref?: string; desc?: string; receipt: boolean; receiptOverride?: boolean; status: string; by?: string; note?: string; example?: boolean };
@@ -31,13 +34,15 @@ export type Cfg = Record<string, unknown> & {
   stdHours: number; breakH: number; shiftStart: string; grace: number; graceTimes: number; lateDeduct: boolean; annualDays: number; workWeek: number[];
   otDay: number; otNight: number; otFri: number; otSat: number; otHol: number; nightFrom: number; nightTo: number; otBase: string; siteGC: number; siteOut: number; perDiem: number;
   insEmp: number; insEr: number; insMin: number; insMax: number; exemption: number; brackets: [number | null, number][]; siteTaxable: boolean; sickPaid: boolean; insBaseMode: string; commPro: boolean; reimbTaxable: boolean;
+  // HR Portal D4/D5/D6.
+  insProrate: boolean; taxMethod: "prorated" | "fullMonthEquivalent"; martyrsPct: number;
   hrName: string; mdName: string; erpName: string; erpUrl: string; erpCo: string; erpAuto: boolean; gl: Record<string, string>; holidays: string; cities: { n: string; z: string }[]; req: { n: string; m: number; d: string }[];
 };
 export type HrState = {
   month: string; today: string; role: HrRole; me: string | null; cfg: Cfg; cfgVersion: { effectiveMonth: string; at: string; byName: string } | null;
   lists: { DEPTS: string[]; EMP_STATUS: string[]; EMP_TYPE: string[]; PAY_METHODS: string[]; DOCS: { k: string; n: string; s: string; exp?: number }[]; STAGES: string[]; PURPOSES: string[]; VISIT_STATUS: string[]; ASSET_TYPES: string[]; EXPENSE_TYPES: string[]; CERT_KINDS: string[]; LEAVE_TYPES: string[]; OT_KINDS: string[] };
   employees: Employee[]; inMonth: string[];
-  time: Record<string, { t: Counts; otHours: number; otD: number; otN: number; otR: number; otH: number; days: DayRec[]; approval: { at: string; byName: string } | null }>;
+  time: Record<string, { t: Counts; otHours: number; otD: number; otN: number; otR: number; otH: number; days: DayRec[]; approval: { at: string; byName: string } | null; lastReopen: { at: string; byName: string; reason: string } | null }>;
   visits: Visit[]; expenses: Expense[]; forms: Form[]; targets: { empId: string; pct: number }[]; adjustments: { _id: string; empId: string; label: string; type: string; amount: number; taxable: boolean }[];
   trainings: Training[]; assets: Asset[]; performance: Review[]; candidates: Candidate[];
   leave: { empId: string; ent: number; used: number; cas: number; sick: number; unp: number; pend: number; left: number }[];
@@ -151,33 +156,29 @@ export function HrProvider({ children }: { children: ReactNode }) {
   };
 
   /**
-   * Opens a PDF in a new tab (opened first so a popup blocker allows it), else downloads it.
-   * Bug fix: the download fallback used to create the `<a download>` without ever inserting it
-   * into the document before `.click()` - a detached anchor's click is unreliable (several
-   * browsers/automation drivers require the node to be in the DOM), so a popup-blocked click
-   * could silently do nothing at all: no tab, no download, no error, no toast. Mirrors the
-   * append/click/remove pattern already used by utils/helpers/api-request.ts#downloadBlob, plus a
-   * success toast so the fallback path always gives visible feedback.
+   * HR Portal D3: downloads the PDF directly in the current tab - never a popup. A new-tab
+   * `window.open` used to be tried first (opened synchronously so a popup blocker allows it, then
+   * navigated to the PDF once fetched); that still opened a new window, which is exactly what D3
+   * reports as broken ("opens a new window, which browsers block..."). D3's required behavior is
+   * "open in the same tab or download as PDF" - downloading satisfies that without the new-tab
+   * popup-blocker risk at all, and without leaving the SPA to navigate the current tab to a blob
+   * URL (which would lose the app's in-memory state for no benefit over a download).
+   * Append/click/remove pattern (not a detached `<a download>`.click(), which is unreliable in
+   * several browsers/automation drivers) mirrors utils/helpers/api-request.ts#downloadBlob.
    */
   const openPdf = async (url: string) => {
-    const tab = window.open("", "_blank");
     try {
       const res = (await privateRequest({ url: `hr/${url}`, language, responseType: "blob" })) as { blob: Blob; filename: string };
       const objectUrl = URL.createObjectURL(res.blob);
-      if (tab) {
-        tab.location.href = objectUrl;
-      } else {
-        const a = document.createElement("a");
-        a.href = objectUrl;
-        a.download = res.filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        toast("Downloaded " + res.filename);
-      }
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = res.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast("Downloaded " + res.filename);
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (e) {
-      tab?.close();
       toast((e as Error).message || "Could not open the PDF.");
     }
   };

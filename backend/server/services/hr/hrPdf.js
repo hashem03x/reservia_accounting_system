@@ -145,6 +145,8 @@ function slipRows(r, m, cfg, extras) {
   if (r.lateDed) R.push([`Late arrival: ${r.t.late} minutes`, `-${fmt(r.lateDed)}`]);
   (extras.adjustments || []).filter(a => a.type !== 'add').forEach(a => R.push([a.label, `-${fmt(a.amount)}`]));
   R.push([`Social insurance, employee share ${cfg.insEmp}% on ${fmt(r.insBase)}`, `-${fmt(r.insEmp)}`]);
+  // HR Portal D6: Martyrs and Veterans of War Fund - only shown once Finance sets a rate above 0.
+  if (r.martyrsAmt) R.push([`Martyrs and Veterans of War Fund, ${cfg.martyrsPct}% on ${fmt(r.insBase)}`, `-${fmt(r.martyrsAmt)}`]);
   R.push(['Income tax', `-${fmt(r.tax)}`]);
   R.push(['Net pay (EGP)', fmt(r.net), 'net']);
   return R;

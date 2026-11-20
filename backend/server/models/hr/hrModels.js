@@ -44,6 +44,9 @@ const employeeSchema = new Schema(
     file: String, // personnel file location
     nat: { type: String, default: 'Egyptian' },
     sin: String, // social insurance number
+    // HR Portal D5: no social insurance REGISTRATION was recorded for anyone (only the number) -
+    // the date the registration itself was filed, on the employee record (not only in Documents).
+    sinRegDate: String, // YYYY-MM-DD
     edu: String,
     // Contract (one current contract; earlier versions kept in `contractHistory`).
     cno: String,
@@ -72,6 +75,12 @@ const attendanceSchema = new Schema(
     // DD -> { s, in, out, n, src }. src: manual | form | device (the device API comes in Phase 3).
     days: { type: Schema.Types.Mixed, default: {} },
     approval: { at: Date, by: ref('User'), byName: String },
+    // HR Portal D11: the full audit trail already exists in HrAudit (who, when, action) - this is
+    // the SAME information mirrored onto the record itself, so the Timesheets view can show it
+    // inline without a separate audit-log query. Overwritten by each new reopen - HrAudit keeps
+    // the full history; this is only "who/when/why most recently", same convention as `approval`
+    // just above.
+    lastReopen: { at: Date, by: ref('User'), byName: String, reason: String },
     ...exampleFields,
     ...audit,
   },
@@ -141,6 +150,15 @@ const formSchema = new Schema(
     city: String, purpose: String, nights: Number, back: String, transport: String, stay: String, meals: String, ref: String,
     reason: String,
     exception: { type: Boolean, default: false }, // an overtime request dated in the past
+    // HR Portal D1: a leave request that would exceed the remaining balance is blocked at send
+    // time unless the MD overrides it with a mandatory reason - stamped here, on the record
+    // itself, not only in the generic audit log (same convention as Deal Engine's
+    // commercialRevisionModel.js#policyOverride).
+    balanceOverride: { type: Boolean, default: false },
+    balanceOverrideReason: String,
+    balanceOverrideBy: ref('User'),
+    balanceOverrideByName: String,
+    balanceOverrideAt: String,
     by: String, // decided by (name)
     decidedBy: ref('User'),
     decided: String,

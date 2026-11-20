@@ -60,8 +60,9 @@ exports.saveExit = asyncHandler(async (req, res) => ok(res, 'Exit checklist save
 exports.saveDay = asyncHandler(async (req, res) => ok(res, 'Day saved', await svc.saveDay(req.body?.date, req.body?.rows, ctx(req))));
 exports.saveDays = asyncHandler(async (req, res) => ok(res, 'Timesheet saved', (await svc.saveTimesheetDays(req.params.empId, req.params.month, req.body?.days, ctx(req))) && true));
 exports.fillBlanks = asyncHandler(async (req, res) => ok(res, 'Blank working days marked present', await svc.fillBlanks(req.params.empId, req.params.month, ctx(req))));
+exports.bulkMarkPresent = asyncHandler(async (req, res) => ok(res, 'Blank working days marked present', await svc.bulkMarkPresent(req.body?.employeeIds, req.body?.from, req.body?.to, ctx(req))));
 exports.approveTimesheet = asyncHandler(async (req, res) => ok(res, 'Timesheet approved', await svc.approveTimesheet(req.params.empId, req.params.month, ctx(req))));
-exports.reopenTimesheet = asyncHandler(async (req, res) => ok(res, 'Timesheet reopened', await svc.reopenTimesheet(req.params.empId, req.params.month, ctx(req))));
+exports.reopenTimesheet = asyncHandler(async (req, res) => ok(res, 'Timesheet reopened', await svc.reopenTimesheet(req.params.empId, req.params.month, req.body?.reason, ctx(req))));
 
 exports.saveVisit = asyncHandler(async (req, res) => ok(res, 'Visit saved', await svc.saveVisit(req.params.id, req.body || {}, ctx(req))));
 exports.deleteVisit = asyncHandler(async (req, res) => ok(res, 'Visit deleted', await svc.deleteVisit(req.params.id, ctx(req))));

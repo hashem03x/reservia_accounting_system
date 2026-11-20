@@ -168,7 +168,7 @@ export function Payroll() {
         <Kpi label={translate("Overtime", "العمل الإضافي")} value={fmt(sum(rows, (r) => r.otPay))} sub={translate(`${r1(sum(rows, (r) => r.otHours))} hours`, `${r1(sum(rows, (r) => r.otHours))} ساعة`)} />
         <Kpi label={translate("Commission", "العمولة")} value={fmt(sum(rows, (r) => r.comm))} sub={translate(`targets entered for ${rows.filter((r) => r.tgt != null).length} of ${rows.filter((r) => r.commBase).length} eligible`, `أُدخلت الأهداف لـ ${rows.filter((r) => r.tgt != null).length} من ${rows.filter((r) => r.commBase).length} مؤهلين`)} />
         <Kpi label={translate("Site and travel", "الموقع والسفر")} value={fmt(sum(rows, (r) => r.site) + sum(rows, (r) => r.reimb))} sub={translate(`${sum(rows, (r) => r.nVisits)} visits, ${sum(rows, (r) => r.nExp)} claims`, `${sum(rows, (r) => r.nVisits)} زيارة، ${sum(rows, (r) => r.nExp)} مطالبة`)} />
-        <Kpi label={translate("Insurance and tax withheld", "التأمينات والضرائب المحجوزة")} value={fmt(sum(rows, (r) => r.insEmp) + sum(rows, (r) => r.tax))} sub={translate("for the authorities", "للجهات الرسمية")} />
+        <Kpi label={translate("Insurance and tax withheld", "التأمينات والضرائب المحجوزة")} value={fmt(sum(rows, (r) => r.insEmp) + sum(rows, (r) => r.martyrsAmt) + sum(rows, (r) => r.tax))} sub={translate("for the authorities", "للجهات الرسمية")} />
       </div>
       <div className="tablewrap">
         <table data-testid="pay-table">
@@ -301,6 +301,7 @@ export function PayDrawer({ id }: { id: string }) {
           {r.lateDed ? L(`Late arrival: ${r.t.late} min (after the free grace arrivals)`, `-${fmt(r.lateDed)}`) : null}
           {ad.filter((a) => a.type !== "add").map((a) => L(a.label, `-${fmt(a.amount)}`))}
           {L(`Social insurance, employee ${c.insEmp}% on ${fmt(r.insBase)}`, `-${fmt(r.insEmp)}`)}
+          {r.martyrsAmt ? L(`Martyrs and Veterans of War Fund, ${c.martyrsPct}% on ${fmt(r.insBase)}`, `-${fmt(r.martyrsAmt)}`) : null}
           {L("Income tax", `-${fmt(r.tax)}`)}
           {L("Net payout", fmt(r.net), "net")}
         </tbody>
@@ -308,6 +309,14 @@ export function PayDrawer({ id }: { id: string }) {
       <div className="sub">
         Employer cost this month: {fmt(r.cost)} EGP including employer insurance of {fmt(r.insEr)}.
       </div>
+      {/* HR Portal D4: both tax methods, always shown here so the accountant can compare before
+          Settings' taxMethod default is changed - never only computed, never hidden. */}
+      {Math.abs(r.taxProrated - r.taxFullMonthEquivalent) > 0.5 && (
+        <div className="sub">
+          Income tax by method: prorated (current default) {fmt(r.taxProrated)} EGP · full-month-equivalent {fmt(r.taxFullMonthEquivalent)} EGP. This month is currently charged by the{" "}
+          {c.taxMethod === "fullMonthEquivalent" ? "full-month-equivalent" : "prorated"} method (Settings).
+        </div>
+      )}
       {open && (
         <div className="sect">
           <h4>Performance target for {mLabel(month)}</h4>
@@ -395,11 +404,17 @@ export function Erp() {
   add(g.site, sum(rows, (r) => r.site), 0, "Site and travel allowances");
   add(g.reimb, sum(rows, (r) => r.reimb), 0, "Travel reimbursements");
   add(g.insEr, sum(rows, (r) => r.insEr), 0, "Employer social insurance");
-  add(g.sal, 0, sum(rows, (r) => r.absDed + r.lateDed + r.ded), "Absence, late and other deductions");
+  // HR Portal D9: itemized, mirrors payrollEngine.js#erpJournal exactly.
+  add(g.sal, 0, sum(rows, (r) => r.absDed), "Absence deduction");
+  add(g.sal, 0, sum(rows, (r) => r.lateDed), "Late arrival deduction");
+  add(g.sal, 0, sum(rows, (r) => r.ded), "Manual payroll adjustments (deductions)");
   add(g.insPay, 0, sum(rows, (r) => r.insEmp + r.insEr), "Social insurance payable");
+  // HR Portal D6: mirrors payrollEngine.js#erpJournal exactly - without this line the preview
+  // below would not balance once a Martyrs Fund rate is set (net is already net of the levy).
+  add(g.martyrsPay, 0, sum(rows, (r) => r.martyrsAmt), "Martyrs Fund payable");
   add(g.taxPay, 0, sum(rows, (r) => r.tax), "Income tax payable");
   add(g.net, 0, sum(rows, (r) => r.net), "Net salaries payable");
-  const GL_LABEL: Record<string, string> = { sal: "Salaries and wages", allow: "Allowances, incentive, commission", ot: "Overtime", site: "Site and travel allowances", reimb: "Reimbursements", insEr: "Employer social insurance", insPay: "Social insurance payable", taxPay: "Income tax payable", net: "Net salaries payable" };
+  const GL_LABEL: Record<string, string> = { sal: "Salaries and wages", allow: "Allowances, incentive, commission", ot: "Overtime", site: "Site and travel allowances", reimb: "Reimbursements", insEr: "Employer social insurance", insPay: "Social insurance payable", taxPay: "Income tax payable", martyrsPay: "Martyrs Fund payable", net: "Net salaries payable" };
   const canSet = state.role === "md" || state.role === "hr" || state.role === "finance";
   const save = () => {
     const gl: Record<string, string> = {};
@@ -441,7 +456,10 @@ export function Erp() {
           </div>
         )}
       </Panel>
-      <Panel title={`Journal for ${mLabel(month)}`} small={`${st}${erp ? (erp.ok ? ` · posted, reference ${erp.reference}` : ` · last attempt failed: ${erp.error}`) : ""}`}>
+      {/* HR Portal D8: a brand-new month with no ERP endpoint configured has never been posted
+          (`erp` is null) - the small text below is otherwise ok, this just also covers the case
+          where a stale/legacy run has no endpoint and no recorded error either. */}
+      <Panel title={`Journal for ${mLabel(month)}`} small={`${st}${!c.erpUrl ? " · No ERP endpoint set" : erp ? (erp.ok ? ` · posted, reference ${erp.reference}` : ` · last attempt failed: ${erp.error || "unknown error"}`) : ""}`}>
         <div className="tablewrap">
           <table>
             <thead>
@@ -474,7 +492,12 @@ export function Erp() {
           </table>
         </div>
         <div className="row2" style={{ marginTop: 10 }}>
-          <button className="btn primary" disabled={st === "draft" || st === "review"} title={st === "draft" || st === "review" ? "Approve the month first" : ""} onClick={() => call("POST", `payroll/${month}/erp`).then((r) => toast(r.data.ok ? `Posted to the ERP, reference ${r.data.reference}` : `The ERP did not accept it: ${r.data.error}`)).catch(() => undefined)}>
+          <button
+            className="btn primary"
+            disabled={st === "draft" || st === "review" || !c.erpUrl}
+            title={st === "draft" || st === "review" ? "Approve the month first" : !c.erpUrl ? "Save an ERP endpoint above first" : ""}
+            onClick={() => call("POST", `payroll/${month}/erp`).then((r) => toast(r.data.ok ? `Posted to the ERP, reference ${r.data.reference}` : `The ERP did not accept it: ${r.data.error}`)).catch(() => undefined)}
+          >
             {erp && !erp.ok ? "Retry post to ERP" : "Post to ERP"}
           </button>
           <button className="btn" onClick={() => download(`payroll/${month}/journal.json`)}>

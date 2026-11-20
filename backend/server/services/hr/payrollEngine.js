@@ -64,6 +64,19 @@ const DEFAULTS = Object.freeze({
   otDay: 1.35, otNight: 1.7, otFri: 2.0, otSat: 1.5, otHol: 3.0, nightFrom: 22, nightTo: 6, otBase: 'gross',
   siteGC: 1.5, siteOut: 2.0, perDiem: 250,
   insEmp: 11, insEr: 18.75, insMin: 2700, insMax: 16700,
+  // HR Portal D5: on (today's existing behavior, matching the verified November 2026 reference
+  // payroll) prorates the insurance base by the employed fraction of the month; off charges the
+  // full month's insurance even for a partial month.
+  insProrate: true,
+  // HR Portal D4: 'prorated' is today's existing method (annualize the already-prorated month -
+  // the verified reference payroll's figures); 'fullMonthEquivalent' annualizes the full-month
+  // base instead, then prorates the resulting tax. Not changed from 'prorated' until the
+  // accountant confirms which is correct (both are always computed - see calcPay's
+  // taxProrated/taxFullMonthEquivalent).
+  taxMethod: 'prorated',
+  // HR Portal D6: Martyrs and Veterans of War Fund rate (%) - 0 (off) until Finance confirms the
+  // rate and the base against the official text.
+  martyrsPct: 0,
   exemption: 20000,
   brackets: [[40000, 0], [55000, 10], [70000, 15], [200000, 20], [400000, 22.5], [1200000, 25], [null, 27.5]],
   siteTaxable: false, sickPaid: true, insBaseMode: 'all', commPro: false, reimbTaxable: false,
@@ -73,6 +86,9 @@ const DEFAULTS = Object.freeze({
     sal: '5100 Salaries and wages', allow: '5110 Allowances', ot: '5120 Overtime', site: '5130 Site and travel allowances',
     reimb: '5140 Travel reimbursements', insEr: '5150 Social insurance, employer', insPay: '2310 Social insurance payable',
     taxPay: '2320 Income tax payable', net: '2330 Salaries payable',
+    // HR Portal D6: the Martyrs Fund employee deduction needs its own payable account, same shape
+    // as insPay/taxPay above - without it the journal would not balance once a rate is set.
+    martyrsPay: '2340 Martyrs Fund payable',
   },
   holidays: '2026-10-06\n2027-01-07\n2027-01-25\n2027-04-25\n2027-05-01\n2027-06-30\n2027-07-23',
   cities: [
@@ -335,18 +351,36 @@ function createEngine(data) {
       e.insured === false
         ? 0
         : Math.min(c.insMax, Math.max(c.insMin, +e.insBase > 0 ? +e.insBase : c.insBaseMode === 'basic' ? basic : c.insBaseMode === 'basicother' ? basic + oth : gross));
-    const insEmp = e.insured === false ? 0 : ((insBase * c.insEmp) / 100) * f;
-    const insEr = e.insured === false ? 0 : ((insBase * c.insEr) / 100) * f;
+    // HR Portal D5: insurance proration is a setting (`insProrate`, default true = today's always-
+    // prorated behavior - the November 2026 reference payroll's own 16/30 figures are this
+    // default, so turning the setting on preserves exactly what is already verified correct). An
+    // employee's own `insBase` override (above) already means "use the rule" when left blank -
+    // this setting only affects whether the computed/overridden base is itself prorated by `f`.
+    const insF = c.insProrate === false ? 1 : f;
+    const insEmp = e.insured === false ? 0 : ((insBase * c.insEmp) / 100) * insF;
+    const insEr = e.insured === false ? 0 : ((insBase * c.insEr) / 100) * insF;
+    // HR Portal D6: Egypt's Martyrs and Veterans of War Fund levy - a rate setting (`martyrsPct`),
+    // off (0) until Finance confirms both the rate and the base. Uses the same insurable base and
+    // proration as social insurance above - a reasonable, clearly-labelled default that has zero
+    // effect while the rate is 0, and can be revisited once Finance confirms it.
+    const martyrsAmt = e.insured === false ? 0 : ((insBase * (c.martyrsPct || 0)) / 100) * insF;
     const taxM = fixed - absDed - lateDed + otPay + comm + addTx + (c.siteTaxable ? site : 0) + (c.reimbTaxable ? reimb : 0);
-    const annual = Math.max(0, (taxM - insEmp) * 12 - c.exemption);
-    const tax = taxAnnual(annual) / 12;
+    // HR Portal D4: two tax methods, both always computed so Settings/Payroll can preview both
+    // before the accountant confirms which one is correct (the PDF's own worked example: Yasser,
+    // joined 15 Nov, prorated method ~750, full-month-equivalent ~1,304 - both reproduced exactly
+    // by the formulas below). `taxMethod` defaults to 'prorated' (today's behavior) until changed.
+    const taxProrated = taxAnnual(Math.max(0, (taxM - insEmp) * 12 - c.exemption)) / 12;
+    const fullBasis = gross - absDed - lateDed + otPay + comm + addTx + (c.siteTaxable ? site : 0) + (c.reimbTaxable ? reimb : 0);
+    const insEmpFullMonth = e.insured === false ? 0 : (insBase * c.insEmp) / 100;
+    const taxFullMonthEquivalent = (taxAnnual(Math.max(0, (fullBasis - insEmpFullMonth) * 12 - c.exemption)) / 12) * f;
+    const tax = c.taxMethod === 'fullMonthEquivalent' ? taxFullMonthEquivalent : taxProrated;
     const earn = fixed + otPay + comm + site + reimb + addTx + addNo;
-    const net = earn - absDed - lateDed - ded - insEmp - tax;
+    const net = earn - absDed - lateDed - ded - insEmp - martyrsAmt - tax;
     return {
       id: e.id, name: e.name, code: e.code, dept: e.dept, role: e.role, email: e.email || '', t, gross, fixed,
       basic: basic * f, transport: tr * f, incentive: inc * f, other: oth * f, comm, commBase: +e.commission || 0, tgt: tgtOf(e.id, m),
       absDed, unpaidDays, lateDed, hr, otD: t.otD, otN: t.otN, otF: t.otF, otS: t.otS, otR: t.otR, otH: t.otH, otPay, site, reimb,
-      nVisits: vs.length, nExp: ex.length, addTx, addNo, ded, insBase, insEmp, insEr, tax, net, earn,
+      nVisits: vs.length, nExp: ex.length, addTx, addNo, ded, insBase, insEmp, insEr, martyrsAmt, tax, taxProrated, taxFullMonthEquivalent, net, earn,
       cost: earn - 0 + insEr, otHours: t.otD + t.otN + t.otF + t.otS + t.otH,
     };
   }
@@ -442,9 +476,15 @@ function createEngine(data) {
     add(g.site, sum(rows, 'site'), 0, 'Site and travel allowances');
     add(g.reimb, sum(rows, 'reimb'), 0, 'Travel reimbursements');
     add(g.insEr, sum(rows, 'insEr'), 0, 'Employer social insurance');
-    const ded = sum(rows, 'absDed') + sum(rows, 'lateDed') + sum(rows, 'ded');
-    add(g.sal, 0, ded, 'Absence, late and other deductions');
+    // HR Portal D9: itemized (same credit account, g.sal - a deduction still reduces salary
+    // expense) so a manual adjustment is never merged into, or mistaken for, absence/lateness.
+    add(g.sal, 0, sum(rows, 'absDed'), 'Absence deduction');
+    add(g.sal, 0, sum(rows, 'lateDed'), 'Late arrival deduction');
+    add(g.sal, 0, sum(rows, 'ded'), 'Manual payroll adjustments (deductions)');
     add(g.insPay, 0, sum(rows, 'insEmp') + sum(rows, 'insEr'), 'Social insurance payable');
+    // HR Portal D6: only ever a nonzero line once Finance sets a rate - keeps the journal balanced
+    // either way (net above is already net of this deduction).
+    add(g.martyrsPay, 0, sum(rows, 'martyrsAmt'), 'Martyrs Fund payable');
     add(g.taxPay, 0, sum(rows, 'tax'), 'Income tax payable');
     add(g.net, 0, sum(rows, 'net'), 'Net salaries payable');
     return {

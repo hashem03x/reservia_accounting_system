@@ -61,6 +61,21 @@ function assertRowsEqual(actual, expected, label) {
   });
 }
 
+/** HR Portal D9: collapses our engine's itemized absence/late/adjustment deduction lines back
+ * into the prototype's single "Absence, late and other deductions" line, for comparing against
+ * the (unitemized) prototype oracle's own journal output. */
+function mergeDeductionLines(lines) {
+  const names = ['Absence deduction', 'Late arrival deduction', 'Manual payroll adjustments (deductions)'];
+  const merged = lines.filter(l => !names.includes(l.memo));
+  const ded = lines.filter(l => names.includes(l.memo)).reduce((s, l) => s + l.credit, 0);
+  if (ded) {
+    const sal = merged.findIndex(l => l.memo === 'Basic salaries');
+    const salLine = merged[sal];
+    merged.splice(sal + 1, 0, { co: salLine.co, period: salLine.period, account: salLine.account, debit: 0, credit: ded, memo: 'Absence, late and other deductions' });
+  }
+  return merged;
+}
+
 /** Edge records added to both sides: every calculation branch the example team does not reach. */
 function edgeCases(month) {
   const d = n => `${month}-${P.pad(n)}`;
@@ -184,7 +199,11 @@ test('calcPay equals the prototype for every employee, date and setting branch',
         // ERP journal: identical lines, and balanced.
         const jA = engA.erpJournal(month, theirs, 'draft', 'x');
         const jP = Pr.erpJournal(month);
-        assert.deepEqual(jA.lines, JSON.parse(JSON.stringify(jP.lines)), 'ERP journal lines');
+        // HR Portal D9: our engine itemizes absence/late/manual-adjustment deductions into three
+        // lines (same credit account, g.sal) instead of the prototype's one combined line - a
+        // deliberate, required change, not a drift. Merged back into the prototype's shape here so
+        // this still verifies every OTHER line matches exactly.
+        assert.deepEqual(mergeDeductionLines(jA.lines), JSON.parse(JSON.stringify(jP.lines)), 'ERP journal lines');
         assert.deepEqual(jA.employees, JSON.parse(JSON.stringify(jP.employees)), 'ERP journal employees');
         const dr = jA.lines.reduce((a, l) => a + l.debit, 0);
         const cr = jA.lines.reduce((a, l) => a + l.credit, 0);
@@ -291,6 +310,70 @@ test('income tax: mid-month leaver prorates and annualizes the same way', () => 
   assert.equal(eng.taxAnnual(460000), 89750);
   assert.ok(Math.abs(r.tax - 89750 / 12) < 1e-6, `tax ${r.tax}`);
   assert.ok(Math.abs(r.net - (40000 - 89750 / 12)) < 1e-6, `net ${r.net}`);
+});
+
+test('HR Portal D4: income tax method setting - the November 2026 reference payroll\'s own worked example (Yasser, joined 15 Nov, basic 20000)', () => {
+  // DEFAULTS as found: 30-day month, insurance 11%/18.75%, ceiling 16700, exemption 20000.
+  // Joined 15 Nov -> employed days 15..30 = 16 of 30 -> f = 16/30. Reproduces the source document's
+  // two figures exactly: prorated ~750 (today's default method), full-month-equivalent ~1,304.
+  const eng = P.createEngine({
+    cfg: {}, today: '2026-11-30',
+    employees: [{ id: 'a', code: 'A', hire: '2026-11-15', basic: 20000 }],
+  });
+  const r = eng.calcPay(eng.empsIn('2026-11')[0], '2026-11');
+  assert.ok(Math.abs(r.insEmp - 980) < 1, `insurance ${r.insEmp} (expected ~980, prorated ceiling)`);
+  assert.ok(Math.abs(r.taxProrated - 750) < 1, `taxProrated ${r.taxProrated} (expected ~750)`);
+  assert.ok(Math.abs(r.taxFullMonthEquivalent - 1304) < 1, `taxFullMonthEquivalent ${r.taxFullMonthEquivalent} (expected ~1,304)`);
+  // Default method is 'prorated' - unchanged behavior until the accountant confirms otherwise.
+  assert.ok(Math.abs(r.tax - r.taxProrated) < 1e-9);
+});
+
+test('HR Portal D4: switching the taxMethod setting to fullMonthEquivalent changes which figure is charged', () => {
+  const eng = P.createEngine({
+    cfg: { taxMethod: 'fullMonthEquivalent' }, today: '2026-11-30',
+    employees: [{ id: 'a', code: 'A', hire: '2026-11-15', basic: 20000 }],
+  });
+  const r = eng.calcPay(eng.empsIn('2026-11')[0], '2026-11');
+  assert.ok(Math.abs(r.tax - r.taxFullMonthEquivalent) < 1e-9);
+  assert.ok(Math.abs(r.tax - 1304) < 1);
+});
+
+test('HR Portal D5: insurance proration is a setting - on (default) matches the verified reference payroll; off charges the full month even for a partial-month joiner', () => {
+  const base = { id: 'a', code: 'A', hire: '2026-11-15', basic: 20000 };
+  const on = P.createEngine({ cfg: {}, today: '2026-11-30', employees: [base] });
+  const off = P.createEngine({ cfg: { insProrate: false }, today: '2026-11-30', employees: [base] });
+  const rOn = on.calcPay(on.empsIn('2026-11')[0], '2026-11');
+  const rOff = off.calcPay(off.empsIn('2026-11')[0], '2026-11');
+  assert.ok(Math.abs(rOn.insEmp - 980) < 1, `prorated insurance ${rOn.insEmp}`);
+  assert.ok(Math.abs(rOff.insEmp - 1837) < 1, `full-month insurance ${rOff.insEmp} (16700 ceiling x 11%, unprorated)`);
+});
+
+test('HR Portal D6: Martyrs Fund levy is off (0) by default and has zero effect on net pay; a configured rate deducts and is reported separately from social insurance', () => {
+  const emp = { id: 'a', code: 'A', hire: '2025-01-01', basic: 20000, insured: true };
+  const off = P.createEngine({ cfg: {}, today: '2026-11-30', employees: [emp] });
+  const on = P.createEngine({ cfg: { martyrsPct: 0.05 }, today: '2026-11-30', employees: [emp] });
+  const rOff = off.calcPay(off.empsIn('2026-11')[0], '2026-11');
+  const rOn = on.calcPay(on.empsIn('2026-11')[0], '2026-11');
+  assert.equal(rOff.martyrsAmt, 0);
+  assert.ok(rOn.martyrsAmt > 0, `martyrsAmt ${rOn.martyrsAmt}`);
+  assert.ok(Math.abs(rOn.martyrsAmt - (rOn.insBase * 0.05) / 100) < 1e-6);
+  assert.ok(Math.abs(rOff.net - rOn.net - rOn.martyrsAmt) < 1e-6, 'the levy reduces net pay by exactly its own amount, nothing else changes');
+});
+
+test('HR Portal D6: the ERP journal still balances once a Martyrs Fund rate is configured (its own payable line, not absorbed into net)', () => {
+  const employees = [
+    { id: 'a', code: 'A', hire: '2025-01-01', basic: 20000, insured: true },
+    { id: 'b', code: 'B', hire: '2026-11-15', basic: 30000, transport: 1000, insured: true },
+  ];
+  const eng = P.createEngine({ cfg: { martyrsPct: 0.05 }, today: '2026-11-30', employees });
+  const rows = eng.empsIn('2026-11').map(e => eng.calcPay(e, '2026-11'));
+  assert.ok(rows.some(r => r.martyrsAmt > 0), 'at least one row actually carries the levy');
+  const j = eng.erpJournal('2026-11', rows, 'draft', '2026-11-30');
+  const dr = j.lines.reduce((s, l) => s + l.debit, 0);
+  const cr = j.lines.reduce((s, l) => s + l.credit, 0);
+  assert.ok(Math.abs(dr - cr) < 0.01, `journal balances (debit ${dr} vs credit ${cr})`);
+  const martyrsLine = j.lines.find(l => l.memo === 'Martyrs Fund payable');
+  assert.ok(martyrsLine && martyrsLine.credit > 0);
 });
 
 test('taxAnnual: bracket boundaries are inclusive to the lower bracket, no double-counting', () => {

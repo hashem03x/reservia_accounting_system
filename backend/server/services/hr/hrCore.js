@@ -81,6 +81,7 @@ function validateSettings(patch) {
       if (k === 'shiftStart' && !TIME_RE.test(out[k])) throw new ApiError('Shift start must be HH:MM.', 400);
       if (k === 'otBase' && !['gross', 'basic'].includes(out[k])) throw new ApiError('Overtime base must be gross or basic.', 400);
       if (k === 'insBaseMode' && !['all', 'basicother', 'basic'].includes(out[k])) throw new ApiError('Insurable wage base is all, basicother or basic.', 400);
+      if (k === 'taxMethod' && !['prorated', 'fullMonthEquivalent'].includes(out[k])) throw new ApiError('Income tax method is prorated or fullMonthEquivalent.', 400);
       if (k === 'erpUrl' && out[k] && !/^https:\/\//.test(out[k])) throw new ApiError('The ERP endpoint must start with https://', 400);
     } else if (k === 'workWeek') {
       if (!Array.isArray(v) || v.some(d => !Number.isInteger(d) || d < 0 || d > 6)) throw new ApiError('Working days are weekday numbers 0 (Sun) to 6 (Sat).', 400);
@@ -175,13 +176,14 @@ function shapeEmployee(e, role) {
   const o = {
     _id: String(e._id), code: e.code, name: e.name, role: e.role, dept: e.dept, status: e.status, type: e.type, hire: e.hire, end: e.end || '',
     city: e.city, mgr: e.mgr, mgrId: e.mgrId ? String(e.mgrId) : null, user: e.user ? String(e.user) : null, phone: e.phone, email: e.email,
-    emg: e.emg, emgp: e.emgp, file: e.file, nat: e.nat, sin: e.sin, edu: e.edu, cno: e.cno, offerDate: e.offerDate, cstart: e.cstart,
+    emg: e.emg, emgp: e.emgp, file: e.file, nat: e.nat, sin: e.sin, sinRegDate: e.sinRegDate, edu: e.edu, cno: e.cno, offerDate: e.offerDate, cstart: e.cstart,
     cend: e.cend, probEnd: e.probEnd, paym: e.paym, insured: e.insured !== false, docs: docsObj(e.docs),
     exit: e.exit ? { last: e.exit.last, reason: e.exit.reason, steps: docsObj(e.exit.steps) } : null, example: !!e.example,
   };
   if (role === 'manager') {
     delete o.docs;
     delete o.sin;
+    delete o.sinRegDate;
     delete o.paym;
   }
   if (canSeePay(role)) {

@@ -253,10 +253,15 @@ export function EmployeeDrawer({ id }: { id?: string }) {
   const pay = state.canSeePay;
   const save = async () => {
     const body: Record<string, unknown> = {};
-    ["code", "name", "role", "dept", "status", "type", "hire", "end", "city", "mgr", "phone", "email", "emg", "emgp", "file", "nat", "sin", "edu", "cno", "offerDate", "cstart", "cend", "probEnd", "paym", "insured"].forEach((k) => (body[k] = f.v[k] ?? ""));
+    ["code", "name", "role", "dept", "status", "type", "hire", "end", "city", "mgr", "phone", "email", "emg", "emgp", "file", "nat", "sin", "sinRegDate", "edu", "cno", "offerDate", "cstart", "cend", "probEnd", "paym", "insured"].forEach((k) => (body[k] = f.v[k] ?? ""));
     if (edit) body.user = f.v.user || null;
     body.insured = !!f.v.insured;
-    if (pay) ["basic", "transport", "incentive", "commission", "other", "insBase"].forEach((k) => (body[k] = +f.v[k] || 0));
+    if (pay) {
+      ["basic", "transport", "incentive", "commission", "other"].forEach((k) => (body[k] = +f.v[k] || 0));
+      // HR Portal D5: a blank override means "use the rule" (null), never the digit 0 - sending 0
+      // here would re-create the exact bug D5 reports (the field always showing "0").
+      body.insBase = f.v.insBase === "" || f.v.insBase == null ? null : +f.v.insBase || 0;
+    }
     await (id ? call("PATCH", `employees/${id}`, body) : call("POST", "employees", body));
     toast("Saved");
     close();
@@ -297,6 +302,9 @@ export function EmployeeDrawer({ id }: { id?: string }) {
           <Inp label="Probation ends" k="probEnd" f={f} type="date" disabled={ro} />
           <Inp label="Nationality" k="nat" f={f} disabled={ro} />
           {state.role !== "manager" && <Inp label="Social insurance No." k="sin" f={f} disabled={ro} />}
+          {/* HR Portal D5: the registration DATE, not only the number - on the employee record
+              itself, not only inside Documents. Hidden from a line manager, same as the number. */}
+          {state.role !== "manager" && <Inp label="Social insurance registration date" k="sinRegDate" f={f} type="date" disabled={ro} />}
           <Inp label="Highest qualification" k="edu" f={f} disabled={ro} />
         </div>
         <div className="sub" style={{ marginTop: 6 }}>

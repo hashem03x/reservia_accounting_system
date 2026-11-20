@@ -38,6 +38,12 @@ export function Attendance() {
   const [mode, setMode] = useState<"day" | "grid">("day");
   const [day, setDay] = useState(() => (state && state.today.slice(0, 7) === month ? state.today : `${month}-01`));
   const [rows, setRows] = useState<Record<string, { s: string; in: string; out: string; n: string }>>({});
+  // HR Portal D12: bulk "mark present" for a date range and selected employees.
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkFrom, setBulkFrom] = useState("");
+  const [bulkTo, setBulkTo] = useState("");
+  const [bulkIds, setBulkIds] = useState<string[]>([]);
+  const [bulkRunning, setBulkRunning] = useState(false);
   useEffect(() => {
     if (day.slice(0, 7) !== month) setDay(state && state.today.slice(0, 7) === month ? state.today : `${month}-01`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,6 +201,9 @@ export function Attendance() {
             <button className="btn" onClick={fillDay} disabled={lk}>
               Mark blanks present
             </button>
+            <button className="btn" onClick={() => setBulkOpen((o) => !o)} disabled={lk} data-testid="att-bulk-toggle">
+              Bulk mark present…
+            </button>
             <button className="btn primary" onClick={saveDay} disabled={lk} data-testid="att-save-day">
               Save day
             </button>
@@ -202,6 +211,68 @@ export function Attendance() {
         )}
       </div>
       {lk && <div className="banner">{lockedBanner(st)}</div>}
+      {edit && bulkOpen && (
+        <div className="sect" data-testid="att-bulk-panel">
+          <h4>Bulk mark present</h4>
+          <div className="sub">Marks every genuinely blank working day present, for the people chosen below, across the date range. Weekends, holidays, already-recorded days and approved timesheets are skipped automatically.</div>
+          <div className="row2" style={{ marginTop: 6 }}>
+            <label>
+              From
+              <input type="date" value={bulkFrom} onChange={(e) => setBulkFrom(e.target.value)} />
+            </label>
+            <label>
+              To
+              <input type="date" value={bulkTo} onChange={(e) => setBulkTo(e.target.value)} />
+            </label>
+          </div>
+          <div className="fg" style={{ marginTop: 6 }}>
+            {state.employees
+              .filter((e) => e.status !== "Left")
+              .map((e) => (
+                <label key={e._id} className="chk">
+                  <input
+                    type="checkbox"
+                    checked={bulkIds.includes(e._id)}
+                    onChange={(ev) => setBulkIds((o) => (ev.target.checked ? [...o, e._id] : o.filter((x) => x !== e._id)))}
+                  />{" "}
+                  {e.name}
+                </label>
+              ))}
+          </div>
+          <div className="row2" style={{ marginTop: 6 }}>
+            <button
+              className="btn"
+              onClick={() => setBulkIds(state.employees.filter((e) => e.status !== "Left").map((e) => e._id))}
+            >
+              Select all
+            </button>
+            <button
+              className="btn primary"
+              disabled={bulkRunning || !bulkFrom || !bulkTo || !bulkIds.length}
+              onClick={async () => {
+                setBulkRunning(true);
+                try {
+                  const r = await call("POST", "attendance/bulk-fill", { employeeIds: bulkIds, from: bulkFrom, to: bulkTo });
+                  const { filled, skipped } = r.data as { filled: number; skipped: { employeeId: string; month: string; reason: string }[] };
+                  toast(
+                    skipped.length
+                      ? `Marked ${filled} day(s) present. Skipped ${skipped.length}: ${skipped
+                          .slice(0, 3)
+                          .map((s) => `${byId[s.employeeId]?.name || s.employeeId} (${s.reason})`)
+                          .join("; ")}${skipped.length > 3 ? "…" : ""}`
+                      : `Marked ${filled} day(s) present. Nothing skipped.`
+                  );
+                  setBulkOpen(false);
+                } finally {
+                  setBulkRunning(false);
+                }
+              }}
+            >
+              Run
+            </button>
+          </div>
+        </div>
+      )}
       {!E2.length ? (
         <Empty title="Nobody on the payroll for this date" />
       ) : (
@@ -271,6 +342,7 @@ export function Attendance() {
 export function Timesheets({ initialEmp }: { initialEmp?: string }) {
   const { state, month, call, toast } = useHr();
   const [emp, setEmp] = useState(initialEmp || "");
+  const [reopenReason, setReopenReason] = useState("");
   if (!state) return null;
   const byId = Object.fromEntries(state.employees.map((e) => [e._id, e]));
   const E = state.inMonth;
@@ -322,9 +394,21 @@ export function Timesheets({ initialEmp }: { initialEmp?: string }) {
             <>
               <Pill c="good">Approved {String(ap.at).slice(0, 10)}</Pill>
               {canDecide && (
-                <button className="btn" disabled={st === "closed"} onClick={() => call("POST", `timesheets/${id}/${month}/reopen`).then(() => toast("Timesheet reopened"))}>
-                  Reopen
-                </button>
+                <>
+                  <input placeholder="Reason for reopening" value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} style={{ width: 200 }} data-testid="ts-reopen-reason" />
+                  <button
+                    className="btn"
+                    disabled={st === "closed" || !reopenReason.trim()}
+                    onClick={() =>
+                      call("POST", `timesheets/${id}/${month}/reopen`, { reason: reopenReason }).then(() => {
+                        toast("Timesheet reopened");
+                        setReopenReason("");
+                      })
+                    }
+                  >
+                    Reopen
+                  </button>
+                </>
               )}
             </>
           ) : (
@@ -344,6 +428,13 @@ export function Timesheets({ initialEmp }: { initialEmp?: string }) {
         </span>
       </div>
       {lk && <div className="banner">{lockedBanner(st)}</div>}
+      {/* HR Portal D11: visible on the record itself, not only in the audit log. Shown whenever
+          the timesheet is currently un-approved (waiting in Approvals) because of a reopen. */}
+      {!ap && t.lastReopen && (
+        <div className="banner info">
+          Reopened by {t.lastReopen.byName} on {String(t.lastReopen.at).slice(0, 10)}: {t.lastReopen.reason}
+        </div>
+      )}
       <div className="kpis">
         <Kpi label="Days present" value={t.t.present} sub={`of ${t.t.emp} calendar days`} />
         <Kpi label="Absent or unpaid" value={t.t.absent + t.t.uleave} sub={`${t.t.leave} annual, ${t.t.sick} sick leave days`} />
@@ -460,7 +551,11 @@ export function Leave() {
                         </button>
                         <div className="sub">
                           {e.role}
-                          {e.hire > `${yr}-01-01` ? ` · joined ${e.hire}, pro rata` : ""}
+                          {e.hire > `${yr}-01-01` ? ` · joined ${e.hire}, pro rata on the calendar days since joining` : ""}
+                          {/* HR Portal D7: no separate probation leave rule exists yet (MD decision
+                              needed) - a probationary employee accrues the same pro-rata entitlement
+                              as anyone else until one is set, shown here rather than left silent. */}
+                          {e.status === "Probation" ? " · on probation, no separate leave rule yet" : ""}
                         </div>
                       </td>
                       <td className="num">{r.ent}</td>
