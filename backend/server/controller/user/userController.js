@@ -50,7 +50,11 @@ exports.getUser = factory.getOne(User);
  */
 exports.createUser = asyncHandler(async (req, res, next) => {
   const { name, email, phone, password, role } = req.body;
-  const user = await User.create({ name, email, phone, role, password: await bcrypt.hash(password, 5) });
+  // Pre-launch audit finding: do not pre-hash here - userModel.js's pre('save') hook already
+  // hashes `password` on every create/save, so pre-hashing here double-hashed it and the user
+  // could never log in. The two findByIdAndUpdate-based password routes below (which the hook does
+  // NOT run for) correctly keep their own bcrypt.hash call - only this .create() path changes.
+  const user = await User.create({ name, email, phone, role, password });
   if (!user) return next(new ApiError('User not created', 500));
   await user.savePermissions();
 

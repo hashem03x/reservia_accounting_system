@@ -127,8 +127,8 @@ value, because Vite reads them at startup.
 
 `VITE_ABOUT_ID` is only needed by **Customization → About** (logo and barcode-sticker settings).
 A fresh database has no About document, and the rest of the app works without it.
-`VITE_GOOGLE_CLIENT_ID` is only needed for the Google sign-in button. Email/password login works
-without it.
+
+Login is email/password only (Google OAuth sign-in was removed, 22 Nov 2026 pre-launch audit).
 
 ## 3. Local URLs
 

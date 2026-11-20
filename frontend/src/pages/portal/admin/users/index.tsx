@@ -8,7 +8,7 @@ import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { notifySuccess } from "@/utils/helpers/notifiers";
 import paths from "@/utils/constants/paths";
-import { Badge, Button, Pagination, Table, TextInput, PasswordInput, Select } from "@mantine/core";
+import { Badge, Button, Pagination, Table, TextInput, PasswordInput, Select, Switch } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import Modal from "@/components/ui/modal";
@@ -16,7 +16,8 @@ import ErrorAlert from "@/components/ui/error-alert";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import EmptySection from "@/components/ui/sections/empty";
-import { rolesArray } from "@/utils/constants/roles";
+import systems, { RegistrySystem, roleOptionsFor } from "@/utils/constants/systems";
+import { SystemId } from "@/types/systems";
 import { DataTableContainer } from "@/components/ui/data-table";
 import { ClickableRow } from "@/components/ui/clickable-row";
 
@@ -152,30 +153,64 @@ export default function PlatformAdminUsers() {
 
 // =============================================================
 
+// Pre-launch audit (22 Nov 2026): ERP access must be OPTIONAL, and every system's role selector
+// must only appear once that system is toggled on - a user created here with, say, only CRM and
+// Deal Engine enabled gets no ERP membership and no forced ERP role at all. Mirrors the per-system
+// toggle+role pattern already proven on the user detail page's System Access grid ([id]/index.tsx)
+// rather than inventing a second one.
+function emptySystemRows(): Record<SystemId, { granted: boolean; role: string }> {
+  const rows = {} as Record<SystemId, { granted: boolean; role: string }>;
+  for (const s of systems) rows[s.id] = { granted: false, role: "" };
+  return rows;
+}
+
 function CreateUserModal({ opened, close, onCreated }: { opened: boolean; close: () => void; onCreated: () => void }) {
   const { language, translate } = useLanguage();
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
+  const [registry, setRegistry] = useState<RegistrySystem[]>([]);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<string>("user");
+  const [rows, setRows] = useState(emptySystemRows());
+
+  useEffect(() => {
+    if (!opened) return;
+    privateRequest({ url: "admin/platform/systems", language })
+      .then(res => setRegistry(res.data as RegistrySystem[]))
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened]);
 
   function reset() {
     setName("");
     setEmail("");
     setPhone("");
     setPassword("");
-    setRole("user");
+    setRows(emptySystemRows());
     setError("");
   }
+
+  const grantedIds = (Object.keys(rows) as SystemId[]).filter(id => rows[id].granted);
+  const missingRole = grantedIds.filter(id => !rows[id].role);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     handleRequest(language, setLoading, setError, async () => {
-      await privateRequest({ url: "admin/platform/users", method: "POST", data: { name, email, phone, password, role }, language });
-      notifySuccess({ language, title: translate("Success", "نجاح"), message: translate("User created. Assign system access from their detail page.", "تم إنشاء المستخدم. يمكنك تعيين صلاحيات الأنظمة من صفحة التفاصيل.") });
+      // ERP access is just another toggle now - `role` (the legacy ERP permission field) is only
+      // ever sent when ERP was actually enabled, and the backend already defaults it to "user"
+      // (no real access) when absent.
+      const erpRole = rows.ERP.granted ? rows.ERP.role : undefined;
+      const created = await privateRequest({ url: "admin/platform/users", method: "POST", data: { name, email, phone, password, role: erpRole }, language });
+      const newUserId = (created.data as { _id: string })._id;
+
+      if (grantedIds.length) {
+        const systemMemberships = grantedIds.map(id => ({ system: id, role: rows[id].role, isActive: true }));
+        await privateRequest({ url: `admin/platform/users/${newUserId}/systems`, method: "PUT", data: { systemMemberships }, language });
+      }
+
+      notifySuccess({ language, title: translate("Success", "نجاح"), message: translate("User created.", "تم إنشاء المستخدم.") });
       reset();
       close();
       onCreated();
@@ -190,17 +225,39 @@ function CreateUserModal({ opened, close, onCreated }: { opened: boolean; close:
         <TextInput required type="email" label={translate("Email", "البريد الإلكتروني")} value={email} onChange={e => setEmail(e.currentTarget.value)} />
         <TextInput label={translate("Phone", "الهاتف")} value={phone} onChange={e => setPhone(e.currentTarget.value)} />
         <PasswordInput required label={translate("Password", "كلمة المرور")} value={password} onChange={e => setPassword(e.currentTarget.value)} />
-        <Select
-          label={translate("ERP Role", "الدور في ERP")}
-          data={rolesArray.filter(r => r.value !== "user").map(r => ({ value: r.value, label: translate(r.label.en, r.label.ar) }))}
-          value={role}
-          onChange={v => setRole(v || "user")}
-          allowDeselect={false}
-        />
-        <p className="text-xs text-gray-400">
-          {translate("No system access is granted on creation - assign it from the user's detail page.", "لا يتم منح صلاحية أي نظام عند الإنشاء - يمكنك تعيينها من صفحة تفاصيل المستخدم.")}
-        </p>
-        <Button type="submit" loading={loading} fullWidth>
+
+        <div>
+          <p className="mb-2 text-sm font-medium">{translate("System access (all optional)", "صلاحيات الأنظمة (كلها اختيارية)")}</p>
+          <div className="flex flex-col gap-2">
+            {systems.map(s => (
+              <div key={s.id} className="flex items-center gap-3">
+                <Switch
+                  label={translate(s.name.en, s.name.ar)}
+                  checked={rows[s.id].granted}
+                  onChange={e => {
+                    const granted = e.currentTarget.checked;
+                    setRows(r => ({ ...r, [s.id]: { granted, role: r[s.id].role || (granted ? roleOptionsFor(s.id, registry)[0] || "" : "") } }));
+                  }}
+                />
+                {rows[s.id].granted && (
+                  <Select
+                    size="xs"
+                    data={roleOptionsFor(s.id, registry)}
+                    value={rows[s.id].role || null}
+                    placeholder={translate("Choose a role", "اختر دوراً")}
+                    onChange={v => setRows(r => ({ ...r, [s.id]: { ...r[s.id], role: v || "" } }))}
+                    allowDeselect={false}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-gray-400">
+            {translate("Leave every system off to create a Central Portal-only account.", "اترك كل الأنظمة معطّلة لإنشاء حساب خاص بالبوابة المركزية فقط.")}
+          </p>
+        </div>
+
+        <Button type="submit" loading={loading} fullWidth disabled={missingRole.length > 0}>
           {translate("Create", "إنشاء")}
         </Button>
       </form>

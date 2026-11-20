@@ -69,6 +69,15 @@ const systems: {
 
 export default systems;
 
+// Shared by the Central Portal's Create User modal and the user detail page's System Access
+// grid - both need "what roles does this system accept" from the live backend registry
+// (GET admin/platform/systems), with the same offline fallback if that call hasn't resolved yet.
+export type RegistrySystem = { id: SystemId; roles: string[]; implemented: boolean };
+const FALLBACK_ROLES: Partial<Record<SystemId, string[]>> = { ERP: ["admin", "moderator", "operator"] };
+export function roleOptionsFor(systemId: SystemId, registry: RegistrySystem[]): string[] {
+  return registry.find(r => r.id === systemId)?.roles || FALLBACK_ROLES[systemId] || [];
+}
+
 // The real, public, unauthenticated Reservia website - always reachable regardless of membership
 // (docs section "Website and Future Module Architecture" - "The central portal must not become a
 // mandatory login page for ordinary public website visitors"). Set via env so each deployment can

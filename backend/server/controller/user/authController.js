@@ -183,7 +183,7 @@ exports.verifyPassResetCode = asyncHandler(async (req, res, next) => {
 
 /**
  *  @description  Reset password
- *  @route        PUT /api/v1/auth/resetNewPassword
+ *  @route        PUT /api/v1/auth/resetPassword
  *  @access       Public
  */
 exports.resetPassword = asyncHandler(async (req, res, next) => {
@@ -197,7 +197,10 @@ exports.resetPassword = asyncHandler(async (req, res, next) => {
     return next(new ApiError('Reset code not verified', 400));
   }
 
-  user.password = await bcrypt.hash(req.body.newPassword, 5);
+  // Pre-launch audit finding: do not pre-hash - user.save() below runs userModel.js's pre('save')
+  // hook, which already hashes `password` whenever it's modified. Pre-hashing here double-hashed
+  // every password reset, so a user who reset their password could never log in with the new one.
+  user.password = req.body.newPassword;
   user.passwordResetCode = undefined;
   user.passwordResetVerified = undefined;
   user.passwordResetCodeExpires = undefined;
@@ -263,60 +266,3 @@ exports.refreshToken = asyncHandler(async (req, res, next) => {
   res.status(200).json({ token: newToken, data: user });
 });
 
-exports.googleLogin = asyncHandler(async (req, res) => {
-  const { credential } = req.body;
-  if (!credential) {
-    res.status(400).json({
-      data: null,
-      success: false,
-      message: 'invalid_credentials',
-    });
-    return;
-  }
-  const decoded = jwt.decode(credential);
-  if (!decoded) {
-    res.status(400).json({
-      success: false,
-      message: 'invalid_credentials',
-    });
-    return;
-  }
-  let user = await User.findOne({ email: decoded.email });
-
-  let accessToken;
-  let refreshToken;
-
-  if (user) {
-    accessToken = createToken(user._id);
-    refreshToken = createRefreshToken(user._id);
-
-    res.cookie('access_token', accessToken, accessTokenCookieOptions);
-    res.cookie('refresh_token', refreshToken, refreshTokenCookieOptions);
-
-    res.status(200).json({
-      data: user,
-      success: true,
-      accessToken,
-    });
-    return;
-  }
-
-  // Create new user
-  user = await User.create({
-    name: decoded.given_name,
-    email: decoded.email,
-    // password: decoded.sub,
-  });
-
-  accessToken = createToken(user._id);
-  refreshToken = createRefreshToken(user._id);
-
-  res.cookie('access_token', accessToken, accessTokenCookieOptions);
-  res.cookie('refresh_token', refreshToken, refreshTokenCookieOptions);
-
-  res.status(201).json({
-    data: user,
-    success: true,
-    accessToken,
-  });
-});

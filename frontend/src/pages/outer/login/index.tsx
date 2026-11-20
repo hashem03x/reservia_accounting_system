@@ -56,7 +56,6 @@ export default function Login() {
             remember && rememberUser();
           });
         }}
-        withOAuth
       >
         <TextInput
           required

@@ -1,10 +1,9 @@
 const asyncHandler = require('express-async-handler');
-const bcrypt = require('bcryptjs');
 const User = require('../../models/userModel');
 const PlatformAuditLog = require('../../models/platformAuditLogModel');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
-const { forgotPassword } = require('../user/authController');
+const { generateStrongPassword } = require('../../utils/generatePassword');
 const { SYSTEMS, isValidSystemId, isValidRoleForSystem, SYSTEM_OWNER_ROLES } = require('../../utils/systemsRegistry');
 
 // Central Business Portal - platform-wide administration (docs section "Central System and Role
@@ -104,13 +103,28 @@ exports.getUserDetail = asyncHandler(async (req, res, next) => {
  * @access       Private/PlatformAdmin
  */
 exports.createUser = asyncHandler(async (req, res, next) => {
-  const { name, email, phone, password, role } = req.body;
+  const { name, email, password, role } = req.body;
+  // Pre-launch audit finding: phone is optional here (unlike the ERP's own createUser, whose
+  // validator requires it) but User.phone is a `sparse: true` unique index - sparse only skips a
+  // document where the field is truly ABSENT, not one where it's present-but-"". Passing through
+  // an empty string from the create form stored a real "" value, so the SECOND user created with
+  // no phone hit a raw E11000 duplicate-key crash (reproduced live against production while
+  // testing this feature). Coerced to undefined so the field is genuinely absent for every
+  // phone-less user, exactly like the sparse index already assumes.
+  const phone = req.body.phone || undefined;
   if (!name || !email || !password) return next(new ApiError('name, email and password are required.', 400));
 
   const existing = await User.findOne({ $or: [{ email }, ...(phone ? [{ phone }] : [])] });
   if (existing) return next(new ApiError('A user with this email or phone already exists.', 400));
 
-  const user = await User.create({ name, email, phone, role: role || 'user', password: await bcrypt.hash(password, 5) });
+  // Pre-launch audit finding: do NOT pre-hash here. userModel.js's own pre('save') hook already
+  // hashes `password` whenever it's modified - pre-hashing here too meant admin-created users got
+  // a bcrypt hash OF a bcrypt hash, and could never log in (bcrypt.compare in authController.js
+  // only ever checks against ONE round of hashing). Verified by reproducing it against a throwaway
+  // local DB before this fix, and again after to confirm login now succeeds. See the same fix in
+  // controller/user/userController.js#createUser, authController.js#resetPassword and
+  // scripts/createAdminUser.js - every other `.create()`/`.save()` path had the identical bug.
+  const user = await User.create({ name, email, phone, role: role || 'user', password });
   await user.savePermissions();
   await user.save();
 
@@ -236,21 +250,37 @@ exports.updatePlatformAdmin = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * @description  Initiate a password reset for a target user - reuses the existing
- *               forgotPassword flow verbatim (same reset-code/email mechanism a user would
- *               trigger themself), never a second reset implementation.
+ * @description  Directly sets a new password for a target user - no email involved (pre-launch
+ *               audit: SMTP is not configured in production, so the former email-code flow this
+ *               replaced could never actually be delivered). Pass `newPassword` to set a specific
+ *               value (>= 6 characters, same minimum as every other password field - userValidator.js),
+ *               or omit it to have the server generate a strong random one, returned ONCE in the
+ *               response body for the admin to hand to the user - never logged, never stored
+ *               anywhere else. Mirrors scripts/createAdminUser.js's own "generate if not given,
+ *               show once" convention.
  * @route        POST /api/v1/admin/platform/users/:id/reset-password
  * @access       Private/PlatformAdmin
  */
 exports.resetUserPassword = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.params.id);
   if (!user) return next(new ApiError('No user found with that id.', 404));
-  if (!user.email) return next(new ApiError('This user has no email on file to send a reset code to.', 400));
+
+  const { newPassword } = req.body;
+  if (newPassword !== undefined && (typeof newPassword !== 'string' || newPassword.length < 6)) {
+    return next(new ApiError('newPassword must be at least 6 characters.', 400));
+  }
+  const passwordToSet = newPassword || generateStrongPassword();
+
+  // userModel.js's pre('save') hook hashes `password` whenever it's modified - set the plain
+  // value here, never pre-hash (see the fix note on createUser above for why pre-hashing here
+  // would double-hash it and lock the user out exactly like the original bug).
+  user.password = passwordToSet;
+  user.passwordChangedAt = Date.now();
+  await user.save();
 
   await logAudit({ actor: req.user, action: 'user.password.reset', targetUser: user, before: null, after: null });
 
-  req.body.email = user.email;
-  return forgotPassword(req, res, next);
+  res.status(200).json(apiResponse('Password reset successfully.', true, { generated: !newPassword, password: newPassword ? undefined : passwordToSet }));
 });
 
 /**

@@ -1,8 +1,6 @@
 import ReactDOM from "react-dom/client";
 import App from "./App.tsx";
 
-import { GoogleOAuthProvider } from "@react-oauth/google";
-
 import "@/index.css";
 import "@mantine/core/styles.css";
 import "@mantine/dates/styles.css";
@@ -30,27 +28,25 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver} colorSchemeManager={colorSchemeManager} defaultColorScheme="auto">
     <Notifications />
     <LanguageProvider>
-      <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
-        <UserProvider>
-          <RememberUser>
-            <SystemAccessProvider>
-              <MainCategoriesProvider>
-                <SubCategoriesProvider>
-                  <BrandsProvider>
-                    <GovernorateProvider>
-                      <AboutProvider>
-                        <WarehousesProvider>
-                          <App />
-                        </WarehousesProvider>
-                      </AboutProvider>
-                    </GovernorateProvider>
-                  </BrandsProvider>
-                </SubCategoriesProvider>
-              </MainCategoriesProvider>
-            </SystemAccessProvider>
-          </RememberUser>
-        </UserProvider>
-      </GoogleOAuthProvider>
+      <UserProvider>
+        <RememberUser>
+          <SystemAccessProvider>
+            <MainCategoriesProvider>
+              <SubCategoriesProvider>
+                <BrandsProvider>
+                  <GovernorateProvider>
+                    <AboutProvider>
+                      <WarehousesProvider>
+                        <App />
+                      </WarehousesProvider>
+                    </AboutProvider>
+                  </GovernorateProvider>
+                </BrandsProvider>
+              </SubCategoriesProvider>
+            </MainCategoriesProvider>
+          </SystemAccessProvider>
+        </RememberUser>
+      </UserProvider>
     </LanguageProvider>
   </MantineProvider>,
 );

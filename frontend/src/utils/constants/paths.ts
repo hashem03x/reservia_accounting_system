@@ -4,7 +4,13 @@ const paths = {
   verifyCode: "verify-code",
   resetPassword: "reset-password",
   profile: "profile",
-  admin: "admin",
+  // Pre-launch audit (22 Nov 2026): renamed from "admin" to "erp" for consistency with the other
+  // portal apps (`/crm`, `/dealengine`) - this is the ONE constant every ERP route/link/redirect
+  // in the app builds from (confirmed: no file hardcodes the "admin" segment as a literal string),
+  // so changing it here retargets the whole app. `legacyAdmin` below is only for the one
+  // backward-compatible redirect route - never use it to build a new link.
+  admin: "erp",
+  legacyAdmin: "admin",
   home: "home",
   vendors: "vendors",
   customers: "customers",
@@ -78,8 +84,11 @@ const paths = {
   websiteActivity: "activity",
   websiteVisualEditor: "visual-editor",
   websiteCode: "code",
-  // Reservia Commercial
-  commercial: "commercial",
+  // Reservia Commercial ("Deal Engine" to users - client request, 12 Nov 2026). Pre-launch audit
+  // (22 Nov 2026): route renamed from "commercial" to "dealengine" for the same reason as
+  // admin -> erp above; `legacyCommercial` is only for the backward-compatible redirect.
+  commercial: "dealengine",
+  legacyCommercial: "commercial",
   commercialProjects: "projects",
   commercialMaterials: "materials",
   commercialSuppliers: "suppliers",

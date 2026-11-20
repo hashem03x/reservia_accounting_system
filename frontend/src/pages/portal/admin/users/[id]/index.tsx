@@ -7,9 +7,9 @@ import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { notifySuccess } from "@/utils/helpers/notifiers";
 import paths from "@/utils/constants/paths";
-import systems from "@/utils/constants/systems";
+import systems, { RegistrySystem, roleOptionsFor } from "@/utils/constants/systems";
 import { SystemId } from "@/types/systems";
-import { Badge, Button, Switch, Select, TextInput, Table } from "@mantine/core";
+import { Badge, Button, Switch, Select, TextInput, PasswordInput, Table, Alert, CopyButton } from "@mantine/core";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import DeleteModal from "@/components/ui/delete-modal";
 import ErrorAlert from "@/components/ui/error-alert";
@@ -42,12 +42,6 @@ type AuditEntry = { _id: string; action: string; createdAt: string; actorName: s
 //      rejection is exactly what pushed the 8 Nov save into removing CRM/Commercial;
 //   3. a save that would remove or deactivate any existing access must be confirmed explicitly,
 //      naming exactly what will be lost (and the server refuses to remove the last CRM/Commercial MD).
-type RegistrySystem = { id: SystemId; roles: string[]; implemented: boolean };
-const FALLBACK_ROLES: Partial<Record<SystemId, string[]>> = { ERP: ["admin", "moderator", "operator"] };
-function roleOptionsFor(systemId: SystemId, registry: RegistrySystem[]): string[] {
-  return registry.find(r => r.id === systemId)?.roles || FALLBACK_ROLES[systemId] || [];
-}
-
 // Central Business Portal - a single user's cross-system access: basic details, activation,
 // per-system membership/role, platform-admin grant/revoke (with last-admin protection enforced
 // server-side), password reset, and this user's own audit history.
@@ -336,30 +330,67 @@ function PlatformAdminToggle({ user, onUpdated }: { user: PlatformUser; onUpdate
 
 // =============================================================
 
+// Pre-launch audit (22 Nov 2026): replaces the former "send a reset-code email" action - SMTP is
+// not configured in production, so that email could never actually be delivered. The admin now
+// sets the new password directly (typed, or auto-generated and shown once here) - no email, no
+// Gmail, no dependency on the user's inbox being reachable.
 function ResetPassword({ user }: { user: PlatformUser }) {
   const { language, translate } = useLanguage();
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
-  const [sent, setSent] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [generated, setGenerated] = useState<string | null>(null);
 
-  function send() {
+  function submit() {
     handleRequest(language, setLoading, setError, async () => {
-      await privateRequest({ url: `admin/platform/users/${user._id}/reset-password`, method: "POST", language });
-      setSent(true);
+      const res = await privateRequest({
+        url: `admin/platform/users/${user._id}/reset-password`,
+        method: "POST",
+        data: newPassword ? { newPassword } : {},
+        language,
+      });
+      const data = res.data as { generated: boolean; password?: string };
+      setNewPassword("");
+      if (data.generated && data.password) {
+        setGenerated(data.password);
+      } else {
+        setGenerated(null);
+        notifySuccess({ message: translate("Password updated.", "تم تحديث كلمة المرور."), language });
+      }
     });
   }
-
-  if (!user.email) return null;
 
   return (
     <div className="flex flex-col gap-3">
       <h3>{translate("Password", "كلمة المرور")}</h3>
       {error && <ErrorAlert error={error} fade />}
-      <div>
-        <Button variant="light" onClick={send} loading={loading}>
-          {translate("Send Password Reset Code", "إرسال رمز إعادة تعيين كلمة المرور")}
+      {generated && (
+        <Alert variant="light" color="teal">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="mb-1">{translate("New password (shown once - copy it now):", "كلمة المرور الجديدة (تظهر مرة واحدة فقط - انسخها الآن):")}</p>
+              <code>{generated}</code>
+            </div>
+            <CopyButton value={generated}>{({ copied, copy }) => <Button size="xs" variant="light" onClick={copy}>{copied ? translate("Copied", "تم النسخ") : translate("Copy", "نسخ")}</Button>}</CopyButton>
+          </div>
+        </Alert>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <PasswordInput
+          label={translate("Set a specific password (optional)", "تحديد كلمة مرور معينة (اختياري)")}
+          placeholder={translate("Leave blank to auto-generate one", "اتركه فارغًا لإنشاء كلمة مرور تلقائيًا")}
+          value={newPassword}
+          onChange={e => setNewPassword(e.currentTarget.value)}
+        />
+        <Button variant="light" onClick={submit} loading={loading}>
+          {newPassword ? translate("Set password", "تعيين كلمة المرور") : translate("Generate new password", "إنشاء كلمة مرور جديدة")}
         </Button>
-        {sent && <p className="mt-2 text-sm text-teal-600">{translate("Reset code sent to the user's email.", "تم إرسال رمز إعادة التعيين إلى بريد المستخدم.")}</p>}
       </div>
+      <p className="text-sm text-gray-500">
+        {translate(
+          "Takes effect immediately. Give the new password to the user directly - it is never emailed.",
+          "يُطبَّق فورًا. أعطِ كلمة المرور الجديدة للمستخدم مباشرة - لا تُرسَل بالبريد الإلكتروني أبدًا."
+        )}
+      </p>
     </div>
   );
 }

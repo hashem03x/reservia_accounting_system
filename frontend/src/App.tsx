@@ -20,6 +20,8 @@ import RoleGuard from "@/pages/routes/role-guard";
 import ResourceGuard from "@/pages/routes/resource-guard";
 import SystemGuard from "@/pages/routes/system-guard";
 import PlatformAdminGuard from "@/pages/routes/platform-admin-guard";
+import PortalAccessGuard from "@/pages/routes/portal-access-guard";
+import LegacyPrefixRedirect from "@/pages/routes/legacy-prefix-redirect";
 
 // Auth Pages
 const Login = lazy(() => import("@/pages/outer/login"));
@@ -177,10 +179,12 @@ export default function App() {
           </Route>
 
           {/* Central Business Portal (docs section "Central Business Portal") - the common entry
-              point for staff after login. Customers (role: user) are out of scope - same
-              RoleGuard allowlist the ERP admin tree already uses. */}
+              point for staff after login. Customers (role: user, no system access) are out of
+              scope - gated by PortalAccessGuard (platform admin, a legacy ERP role, or ANY active
+              system membership), not by the ERP role enum alone (pre-launch audit, 22 Nov 2026 -
+              that excluded a CRM/Deal-Engine-only staff member, who also has role: 'user'). */}
           <Route element={<AuthGaurd requireLoggedIn={true} />}>
-            <Route element={<RoleGuard allowedRoles={[roles.admin.value, roles.moderator.value, roles.operator.value]} />}>
+            <Route element={<PortalAccessGuard />}>
               <Route path={paths.portal} element={<Portal />} />
               <Route element={<PlatformAdminGuard />}>
                 <Route path={`${paths.portal}/${paths.platformAdmin}/${paths.users}`} element={<PlatformAdminUsers />} />
@@ -356,106 +360,109 @@ export default function App() {
             </Route>
           </Route>
 
-          {/* Reservia CRM (Developer Brief) - a separate system from ERP, gated the same way
-              (staff-only RoleGuard, then SystemGuard on the "CRM" system id/active membership) but
-              with its own layout/nav (layout-crm.tsx) since the CRM's role vocabulary
-              (md/admin/sales/technical) and section count have nothing to do with the ERP's
-              resource:action permission matrix. */}
+          {/* Reservia CRM (Developer Brief) - a separate system from ERP, gated by SystemGuard on
+              the "CRM" system id/active membership, with its own layout/nav (layout-crm.tsx)
+              since the CRM's role vocabulary (md/admin/sales/technical) and section count have
+              nothing to do with the ERP's resource:action permission matrix. Pre-launch audit
+              (22 Nov 2026): this used to ALSO require the legacy ERP role enum (admin/moderator/
+              operator) before SystemGuard even ran - wrong now that ERP access is optional, since
+              a CRM-only staff member has no ERP role at all. SystemGuard's own active-membership
+              check (backed by the real GET /me/systems authority) is already sufficient on its
+              own; the ERP-role pre-check added nothing except this bug. */}
           <Route element={<AuthGaurd requireLoggedIn={true} />}>
-            <Route element={<RoleGuard allowedRoles={[roles.admin.value, roles.moderator.value, roles.operator.value]} />}>
-              <Route element={<SystemGuard systemId="CRM" />}>
-                <Route element={<CrmLayout />}>
-                  <Route path={paths.crm} element={<Crm />}>
-                    <Route path={paths.dashboard} element={<CRM_Dashboard />} />
-                    <Route path={paths.pipeline} element={<CRM_Pipeline />} />
-                    <Route path={paths.leads} element={<CRM_Leads />} />
-                    <Route path={paths.leads + "/:id"} element={<CRM_Lead />} />
-                    <Route path={paths.performance} element={<CRM_Performance />} />
-                    {/* Change Request 2, section 4: lead integrations - MD/Admin only (the API
-                        enforces the same, and key creation/revocation is MD-only server-side). */}
-                    <Route element={<CrmRoleGuard allowedRoles={["md", "admin"]} />}>
-                      <Route path={paths.integrations} element={<CRM_Integrations />} />
-                    </Route>
+            <Route element={<SystemGuard systemId="CRM" />}>
+              <Route element={<CrmLayout />}>
+                <Route path={paths.crm} element={<Crm />}>
+                  <Route path={paths.dashboard} element={<CRM_Dashboard />} />
+                  <Route path={paths.pipeline} element={<CRM_Pipeline />} />
+                  <Route path={paths.leads} element={<CRM_Leads />} />
+                  <Route path={paths.leads + "/:id"} element={<CRM_Lead />} />
+                  <Route path={paths.performance} element={<CRM_Performance />} />
+                  {/* Change Request 2, section 4: lead integrations - MD/Admin only (the API
+                      enforces the same, and key creation/revocation is MD-only server-side). */}
+                  <Route element={<CrmRoleGuard allowedRoles={["md", "admin"]} />}>
+                    <Route path={paths.integrations} element={<CRM_Integrations />} />
                   </Route>
-                  <Route path={paths.crm + "/*"} element={<NotFound />} />
                 </Route>
+                <Route path={paths.crm + "/*"} element={<NotFound />} />
               </Route>
             </Route>
           </Route>
 
-          {/* Reservia Commercial - engineering estimation, BOQ, pricing and quotation workflow
-              (On-Grid/Off-Grid/Agriculture Pumping/Utility Scale, calculation logic sourced from
-              the three Excel reference workbooks - see services/commercial/*Engine.js on the
-              backend). Gated the same way as CRM above (staff-only RoleGuard, then SystemGuard on
-              the "COMMERCIAL" system id/active membership) with its own layout/nav
+          {/* Reservia Commercial ("Deal Engine") - engineering estimation, BOQ, pricing and
+              quotation workflow (On-Grid/Off-Grid/Agriculture Pumping/Utility Scale, calculation
+              logic sourced from the three Excel reference workbooks - see
+              services/commercial/*Engine.js on the backend). Gated by SystemGuard on the
+              "COMMERCIAL" system id/active membership, with its own layout/nav
               (layout-commercial.tsx) since the Commercial role vocabulary
               (md/commercial_director/sales/technical/member) has nothing to do with the ERP's
-              resource:action permission matrix. */}
+              resource:action permission matrix. Pre-launch audit (22 Nov 2026): the legacy ERP
+              RoleGuard pre-check removed - see the identical fix and reasoning on CRM above. */}
           <Route element={<AuthGaurd requireLoggedIn={true} />}>
-            <Route element={<RoleGuard allowedRoles={[roles.admin.value, roles.moderator.value, roles.operator.value]} />}>
-              <Route element={<SystemGuard systemId="COMMERCIAL" />}>
-                <Route element={<CommercialLayout />}>
-                  <Route path={paths.commercial} element={<Commercial />}>
-                    <Route path={paths.dashboard} element={<COM_Dashboard />} />
-                    <Route path={paths.commercialProjects} element={<COM_Projects />} />
-                    <Route path={paths.commercialProjects + "/:id"} element={<COM_Project />} />
-                    <Route path={paths.commercialMaterials} element={<COM_Materials />} />
-                    <Route path={paths.commercialPricingConfig} element={<COM_PricingConfig />} />
-                    <Route path={paths.commercialSuppliers} element={<COM_Suppliers />} />
-                    <Route path={`${paths.commercialSuppliers}/:id`} element={<COM_Supplier />} />
-                  </Route>
-                  <Route path={paths.commercial + "/*"} element={<NotFound />} />
+            <Route element={<SystemGuard systemId="COMMERCIAL" />}>
+              <Route element={<CommercialLayout />}>
+                <Route path={paths.commercial} element={<Commercial />}>
+                  <Route path={paths.dashboard} element={<COM_Dashboard />} />
+                  <Route path={paths.commercialProjects} element={<COM_Projects />} />
+                  <Route path={paths.commercialProjects + "/:id"} element={<COM_Project />} />
+                  <Route path={paths.commercialMaterials} element={<COM_Materials />} />
+                  <Route path={paths.commercialPricingConfig} element={<COM_PricingConfig />} />
+                  <Route path={paths.commercialSuppliers} element={<COM_Suppliers />} />
+                  <Route path={`${paths.commercialSuppliers}/:id`} element={<COM_Supplier />} />
                 </Route>
+                <Route path={paths.commercial + "/*"} element={<NotFound />} />
               </Route>
             </Route>
           </Route>
 
-          {/* Reservia HR Portal (HR Portal Developer Spec, 11 Nov 2026) - gated like CRM and the Deal Engine
-              (staff-only RoleGuard, then SystemGuard on the "HR" membership); the prototype's own
-              layout lives inside pages/hr. The HR role (md/hr/manager/finance) is enforced by the API. */}
+          {/* Reservia HR Portal (HR Portal Developer Spec, 11 Nov 2026) - gated like CRM and the
+              Deal Engine (SystemGuard on the "HR" membership, no legacy ERP RoleGuard pre-check -
+              pre-launch audit, 22 Nov 2026, same fix and reasoning as CRM above); the prototype's
+              own layout lives inside pages/hr. The HR role (md/hr/manager/finance) is enforced by the API. */}
           <Route element={<AuthGaurd requireLoggedIn={true} />}>
-            <Route element={<RoleGuard allowedRoles={[roles.admin.value, roles.moderator.value, roles.operator.value]} />}>
-              <Route element={<SystemGuard systemId="HR" />}>
-                <Route path={paths.hr} element={<HrPortal />} />
-                <Route path={paths.hr + "/:view"} element={<HrPortal />} />
-              </Route>
+            <Route element={<SystemGuard systemId="HR" />}>
+              <Route path={paths.hr} element={<HrPortal />} />
+              <Route path={paths.hr + "/:view"} element={<HrPortal />} />
             </Route>
           </Route>
 
           {/* Website Management (CMS for the public Reservia website, Reservia_Website repo) -
-              gated the same way as CRM/Commercial above (staff-only RoleGuard, then SystemGuard on
-              the "WEBSITE" system id/active membership) with its own layout/nav
-              (layout-website.tsx), since Website Management's own admin/editor/viewer role
-              vocabulary (middleware/websiteAccess.js) has nothing to do with the ERP's
-              resource:action permission matrix. Milestone 1: only Overview exists; Pages/Media/
-              Navigation/SEO/Tracking/Custom Code/Settings/Publishing/Activity Logs are added as
-              their own milestones ship real data behind them. */}
+              gated by SystemGuard on the "WEBSITE" system id/active membership, with its own
+              layout/nav (layout-website.tsx), since Website Management's own admin/editor/viewer
+              role vocabulary (middleware/websiteAccess.js) has nothing to do with the ERP's
+              resource:action permission matrix. Pre-launch audit (22 Nov 2026): the legacy ERP
+              RoleGuard pre-check removed - see the identical fix and reasoning on CRM above.
+              Milestone 1: only Overview exists; Pages/Media/Navigation/SEO/Tracking/Custom Code/
+              Settings/Publishing/Activity Logs are added as their own milestones ship real data
+              behind them. */}
           <Route element={<AuthGaurd requireLoggedIn={true} />}>
-            <Route element={<RoleGuard allowedRoles={[roles.admin.value, roles.moderator.value, roles.operator.value]} />}>
-              <Route element={<SystemGuard systemId="WEBSITE" />}>
-                <Route element={<WebsiteLayout />}>
-                  <Route path={paths.website} element={<WebsiteOverview />} />
-                  <Route path={paths.website + "/" + paths.websitePages} element={<WebsitePages />} />
-                  <Route path={paths.website + "/" + paths.websitePages + "/:id"} element={<WebsitePageEditor />} />
-                  <Route path={paths.website + "/" + paths.websiteBlog} element={<WebsiteBlogPosts />} />
-                  <Route path={paths.website + "/" + paths.websiteBlog + "/:id"} element={<WebsiteBlogPostEditor />} />
-                  <Route path={paths.website + "/" + paths.websiteMedia} element={<WebsiteMediaLibrary />} />
-                  <Route path={paths.website + "/" + paths.websiteNavigation} element={<WebsiteNavigationPage />} />
-                  <Route path={paths.website + "/" + paths.websiteActivity} element={<WebsiteActivityPage />} />
-                  <Route path={paths.website + "/" + paths.websiteVisualEditor} element={<WebsiteVisualEditor />} />
-                  {/* Site settings: website admins only (backend: settings.manage). */}
-                  <Route element={<WebsiteRoleGuard allowedRoles={["admin"]} />}>
-                    <Route path={paths.website + "/" + paths.websiteSettings} element={<WebsiteSettingsPage />} />
-                    {/* Tracking and executable code: administrators only (backend: integrations.manage / code.manage). */}
-                    <Route path={paths.website + "/" + paths.websiteIntegrations} element={<WebsiteIntegrationsPage />} />
-                    <Route path={paths.website + "/" + paths.websiteCustomCode} element={<WebsiteCustomCodePage />} />
-                    <Route path={paths.website + "/" + paths.websiteCode} element={<WebsiteCodeWorkspace />} />
-                  </Route>
+            <Route element={<SystemGuard systemId="WEBSITE" />}>
+              <Route element={<WebsiteLayout />}>
+                <Route path={paths.website} element={<WebsiteOverview />} />
+                <Route path={paths.website + "/" + paths.websitePages} element={<WebsitePages />} />
+                <Route path={paths.website + "/" + paths.websitePages + "/:id"} element={<WebsitePageEditor />} />
+                <Route path={paths.website + "/" + paths.websiteBlog} element={<WebsiteBlogPosts />} />
+                <Route path={paths.website + "/" + paths.websiteBlog + "/:id"} element={<WebsiteBlogPostEditor />} />
+                <Route path={paths.website + "/" + paths.websiteMedia} element={<WebsiteMediaLibrary />} />
+                <Route path={paths.website + "/" + paths.websiteNavigation} element={<WebsiteNavigationPage />} />
+                <Route path={paths.website + "/" + paths.websiteActivity} element={<WebsiteActivityPage />} />
+                <Route path={paths.website + "/" + paths.websiteVisualEditor} element={<WebsiteVisualEditor />} />
+                {/* Site settings: website admins only (backend: settings.manage). */}
+                <Route element={<WebsiteRoleGuard allowedRoles={["admin"]} />}>
+                  <Route path={paths.website + "/" + paths.websiteSettings} element={<WebsiteSettingsPage />} />
+                  {/* Tracking and executable code: administrators only (backend: integrations.manage / code.manage). */}
+                  <Route path={paths.website + "/" + paths.websiteIntegrations} element={<WebsiteIntegrationsPage />} />
+                  <Route path={paths.website + "/" + paths.websiteCustomCode} element={<WebsiteCustomCodePage />} />
+                  <Route path={paths.website + "/" + paths.websiteCode} element={<WebsiteCodeWorkspace />} />
                 </Route>
-                <Route path={paths.website + "/*"} element={<NotFound />} />
               </Route>
+              <Route path={paths.website + "/*"} element={<NotFound />} />
             </Route>
           </Route>
+
+          {/* Pre-launch audit (22 Nov 2026): /admin -> /erp and /commercial -> /dealengine backward compatibility. */}
+          <Route path={`${paths.legacyAdmin}/*`} element={<LegacyPrefixRedirect from={paths.legacyAdmin} to={paths.admin} />} />
+          <Route path={`${paths.legacyCommercial}/*`} element={<LegacyPrefixRedirect from={paths.legacyCommercial} to={paths.commercial} />} />
 
           {/* Catch All */}
           <Route path="*" element={<NotFound />} />

@@ -18,10 +18,9 @@
  * user's role to 'admin' and its password to a newly generated one - printed the same way).
  * Refuses against a Leopard database, same as db:init/db:reset.
  */
-const crypto = require('crypto');
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 const { loadEnv, SafetyError, assertDbUriConfigured, assertSafeDatabaseName, assertNotLeopardDatabase } = require('./lib/dbSafety');
+const { generateStrongPassword } = require('../utils/generatePassword');
 
 function parseArgs() {
   const args = { force: process.argv.includes('--force') };
@@ -30,12 +29,6 @@ function parseArgs() {
     if (i !== -1 && process.argv[i + 1]) args[flag.slice(2)] = process.argv[i + 1];
   }
   return args;
-}
-
-function generateStrongPassword() {
-  // 18 random bytes -> 24-char base64url string: mixed-case letters, digits, -/_ - well above
-  // the app's own minimum (userValidator.js requires >= 6), safe to hand to bcrypt as-is.
-  return crypto.randomBytes(18).toString('base64url');
 }
 
 async function createAdminUser() {
@@ -65,12 +58,17 @@ async function createAdminUser() {
   }
 
   const plaintextPassword = passwordArg || generateStrongPassword();
-  const hashedPassword = await bcrypt.hash(plaintextPassword, 5);
+  // Pre-launch audit finding: do NOT pre-hash with bcrypt here. userModel.js's own pre('save')
+  // hook already hashes `password` on every create/save that modifies it - pre-hashing here too
+  // meant the bootstrap admin account itself was created with a double-hashed password and could
+  // never log in (bcrypt.compare in authController.js only checks one round of hashing). Same root
+  // cause and fix as controller/user/userController.js#createUser, platformAdminController.js#
+  // createUser and authController.js#resetPassword.
 
   let user;
   if (existing) {
     existing.role = 'admin';
-    existing.password = hashedPassword;
+    existing.password = plaintextPassword;
     existing.name = name;
     existing.isActive = true;
     existing.isDeleted = false;
@@ -78,7 +76,7 @@ async function createAdminUser() {
     user = await existing.save();
     console.log(`\nUpdated existing user "${email}" to role "admin" and reset its password.`);
   } else {
-    user = await User.create({ name, email: email.toLowerCase(), role: 'admin', type: 'online', password: hashedPassword });
+    user = await User.create({ name, email: email.toLowerCase(), role: 'admin', type: 'online', password: plaintextPassword });
     // Cosmetic/for completeness - hasPermission.js's checkUserPermissions already grants role
     // "admin" unconditional access regardless of this array, but keep the stored document
     // consistent with what the app's own createUser controller does for a new admin.

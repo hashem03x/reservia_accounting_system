@@ -99,7 +99,6 @@ opens browser dev tools — **never put a true secret in any of these**.
 |---|---|---|---|---|
 | `VITE_API_URL` | **Required** (no fallback - requests break without it) | Public | Base URL of the backend API | `src/utils/helpers/api-request.ts` |
 | `VITE_ABOUT_ID` | Required only for Customization → About (no fallback; a fresh DB has no About document yet) | Public (it's a Mongo `_id`, not a secret) | The single "About" document's id - needed to GET/PUT the site logo + barcode-sticker settings | `src/pages/admin/customization/components/about-section/about-form.tsx` |
-| `VITE_GOOGLE_CLIENT_ID` | Optional (Google login breaks without it, rest of the app is unaffected) | **Public / safe to expose** - OAuth *client IDs* (unlike client *secrets*) are designed to be public | Google OAuth login button | `src/index.tsx` |
 | `VITE_PRODUCTS_PER_PAGE` | Optional (defaults to `DEFAULT_ITEMS_PER_PAGE = 25`) | Public | Admin Products table page size | `src/pages/admin/home/products/index.tsx` |
 | `VITE_VENDORS_PER_PAGE` | Optional (same default) | Public | Admin Vendors table page size | `src/pages/admin/home/vendors/index.tsx` |
 | `VITE_PURCHASE_ORDERS_PER_PAGE` | Optional (same default) | Public | Admin Purchase Orders table page size | `src/pages/admin/home/purchase-orders/index.tsx` |
@@ -113,9 +112,9 @@ opens browser dev tools — **never put a true secret in any of these**.
 | `VITE_USERS_PER_PAGE` | Optional (same default) | Public | Admin Users table page size | `src/pages/admin/users/index.tsx` |
 | `VITE_ITEMS_PER_PAGE` | Optional (same default) | Public | Page size for Fixed Assets, Journal Entries, Projects and Advanced Payments tables | `src/pages/admin/{fixed-assets,journal-entries,projects,advanced-payments}/index.tsx` |
 
-No frontend variable was found holding anything that should have been a server-only secret -
-`VITE_GOOGLE_CLIENT_ID` looked suspicious at a glance but is a public OAuth client identifier by
-design, not a secret. The frontend never had any Shopify-related variable.
+No frontend variable was found holding anything that should have been a server-only secret. The
+frontend never had any Shopify-related variable. Google OAuth login (and `VITE_GOOGLE_CLIENT_ID`)
+was removed from the app entirely (pre-launch audit, 22 Nov 2026) - email/password login only now.
 
 ## Config-file / non-`process.env` settings
 
@@ -168,7 +167,7 @@ produced.
 | Variable | Classification |
 |---|---|
 | `NODE_ENV`, `PORT`, `DB_URI`, `BASE_URL`, `JWT_*`, `REFRESH_TOKEN_*`, `DEFAULT_LANGUAGE`, `DEFAULT_LOCALE`, `CLOUDINARY_URL`, `IMAGE_QUALITY`, `SMTP_*`, `DEV_URL`, `PROD_URL` | **RETAIN** - required by the accounting backend as extracted |
-| `VITE_API_URL`, `VITE_ABOUT_ID`, `VITE_GOOGLE_CLIENT_ID`, all `VITE_*_PER_PAGE` | **RETAIN** - required by the accounting dashboard as extracted |
+| `VITE_API_URL`, `VITE_ABOUT_ID`, all `VITE_*_PER_PAGE` | **RETAIN** - required by the accounting dashboard as extracted |
 | `DB_URL` (health-check only) | **UNCERTAIN** - unclear original purpose, not obviously Leopard-storefront-specific, not obviously needed either; see "Potentially obsolete" |
 | all `SHOPIFY_*`, `DEFAULT_WAREHOUSE_ID` | **REMOVED** - the entire Shopify integration was deleted per explicit follow-up instruction; these variables are no longer read by any code path and were removed from `.env.example` |
 | *(previously removed in the earlier storefront-extraction pass)* `STRIPE_SECRET`, `PAYMOB_*`, `DISCORD_WEBHOOK_*`, `CLIENT_URL` | **LEOPARD-SPECIFIC** - storefront checkout/notification-bot only; their backing code was deleted, so these variables are no longer read by any code path |

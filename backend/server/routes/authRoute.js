@@ -6,7 +6,6 @@ const {
   login,
   forgotPassword,
   verifyPassResetCode,
-  googleLogin,
   resetPassword,
   logout,
   refreshToken,
@@ -20,6 +19,5 @@ router.post('/verifyResetCode', verifyPassResetCode);
 router.put('/resetPassword', resetPassword);
 router.get('/logout', logout);
 router.get('/refresh-token', refreshToken);
-router.post('/oauth2/google', googleLogin);
 
 module.exports = router;

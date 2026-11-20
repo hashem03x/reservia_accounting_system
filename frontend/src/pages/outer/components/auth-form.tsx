@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { Alert, Button } from "@mantine/core";
 import { solidIcons } from "@/components/icons";
-import OAuth from "./o-auth";
 
 type Props = {
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
@@ -12,7 +11,6 @@ type Props = {
   isValidated?: boolean;
   error: string;
   loading: boolean;
-  withOAuth?: boolean;
   children: React.ReactNode;
 };
 
@@ -25,7 +23,6 @@ export default function AuthForm({
   isValidated,
   error,
   loading,
-  withOAuth = false,
   children,
 }: Props) {
   return (
@@ -60,7 +57,6 @@ export default function AuthForm({
             </p>
           )}
         </form>
-        {withOAuth && <OAuth />}
       </div>
     </div>
   );
