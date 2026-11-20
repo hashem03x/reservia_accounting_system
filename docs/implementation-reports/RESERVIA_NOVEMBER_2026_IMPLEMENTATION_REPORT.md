@@ -18,7 +18,7 @@ Of the four documents, every requirement that was fully specified (a concrete ru
 One item (the CRM "Villa/Compound → Residential category" request) was investigated in full and **deliberately not implemented** — the source document contradicts itself (one line asks to "confirm the intended category," a few lines later the same document lists the current Villa/Compound→`On-Grid C&I` mapping under "please do not change: confirmed working," and explicitly protects two live test records that are coded under it). Implementing a new category would break what the same document says not to break. See §6.1.
 
 Headline numbers:
-- **7 phases**, **7 commits**, all pushed to `origin/main`.
+- **7 phases**, **9 commits**, all pushed to `origin/main`.
 - **Backend test suite:** see §5 for the exact before/after counts of each phase; the pre-existing baseline of 52 failing tests (all pre-dating this work, all transaction-dependent tests that need a MongoDB replica set this environment doesn't have) never grew. Every new behavior got new, real, passing tests — not assertions of intent.
 - **Frontend:** `npx tsc -b` is clean after every phase.
 - One production-safety near-miss (local dev server briefly pointed at the real Atlas cluster due to a `dotenv` override quirk) was caught before any write occurred, is documented in full in the Phase 5 commit history / this report's §7, and changed how all subsequent testing in this session was done (direct `mongoose.connect()` scripts that never load `.env`).
@@ -86,7 +86,7 @@ Legend: ✅ COMPLETED · ◐ PARTIALLY COMPLETED · ⛔ BLOCKED BY DECISION · �
 | D7 (P2): one leave-balance source; pro-rata and probation rule shown on screen | ◐ | Confirmed every screen already shares one source (the "three numbers" symptom didn't reproduce against this source); pro-rata basis already shown; probation leave rule explicitly flagged on screen as not yet decided |
 | D8 (P2): ERP post error message / Retry button | ✅ | |
 | D9 (P2): itemized journal deduction line | ✅ | Absence / late / manual-adjustment now separate lines, same account, still balanced |
-| D10 (P2): Arabic translation of the remaining ~19 views | ◐ | In progress — see §4 |
+| D10 (P2): Arabic translation of the remaining ~19 views | ✅ | See §4 |
 | D11 (P2): timesheet reopen needs a reason, stamped and shown until re-approved | ✅ | |
 | D12 (P3): bulk "mark present" for a date range and several employees | ✅ | Skips weekends/holidays/already-recorded/approved days; reports exactly what and why |
 | D13 (P3): delete the test employee and stale payroll lines | ⛔ | `deleteEmployee`'s 5-year retention safeguard correctly refuses to purge a non-`example` employee with real history — bypassing it is a compliance decision for the MD, not something to code around. The payroll-history-correction part needs no new code (the existing reopen-then-edit path already covers it) |
@@ -116,7 +116,14 @@ Nothing below was guessed. Each is built to the point of a single configuration 
 
 ## 4. D10 Arabic Translation — Status
 
-A background pass is translating the three remaining large HR view files (`views-admin.tsx`, `views-people.tsx`, `views-time.tsx`) to the same `translate(en, ar)` pattern already used in `views-pay.tsx`, reusing the Arabic vocabulary already established in the nav (`index.tsx`). This is a large, mechanical pass (on the order of several hundred strings across ~19 views) and was still running when this report was generated. **This report will be updated with the final file-by-file completion status once that pass finishes and is verified** (`npx tsc -b` clean, spot-checked against the existing Payroll screen's pattern). Numbers stay in Western digits throughout, per the document's own instruction.
+Complete. `views-admin.tsx` (Approvals, Forms, Training, Performance, Policy, Settings), `views-people.tsx` (Home, People, Org chart, Documents, Hiring, Assets) and `views-time.tsx` (Attendance, Timesheets, Leave balances, Site visits, Expenses) now use the same `translate(en, ar)` pattern already shipped on the Payroll screen, reusing the Arabic vocabulary already established in the nav (`index.tsx`). One straggler in `index.tsx` itself (the browser-tab title) was also fixed.
+
+Deliberately left untranslated, and why:
+- Backend enum **values** used as `<select>` option values, comparison keys, or API payload fields (status codes, attendance letter codes `P/V/A/L/S/U/W/H`, pipeline stage names) — verified by direct code review that every comparison and every `<option value=...>` still uses the original English string; only the *displayed* text (table cell, Pill, option label) is translated, via small per-file Arabic lookup maps.
+- Longer, server-driven catalog lists (`state.lists.LEAVE_TYPES`, `OT_KINDS`, `PURPOSES`, `EXPENSE_TYPES`, `DOCS`, `DEPTS`, required-training names) — translating these would mean inventing a parallel Arabic catalog the server doesn't define; left in English for consistency with each other.
+- Day-name constants and month labels — left English-only, matching the precedent already shipped in the Payroll screen.
+
+Numbers stay in Western digits throughout (`fmt()` still uses `toLocaleString("en-US")`; no `ar-EG` locale call was introduced). Verified: `npx tsc -b` from `frontend/` is clean (0 errors); spot-checked every `<option value=...>` and status comparison in the three files to confirm no English comparison/payload value was accidentally replaced by its Arabic translation.
 
 ---
 
@@ -186,10 +193,9 @@ While testing the Won-to-ERP handover, a locally-started server intended to conn
 
 ## 9. Final Acceptance Summary
 
-- **Implemented and verified for real, this session:** CRM quick fixes, full Deal Engine R1–R13 role/pricing enforcement, multi-inverter sizing fix, materials search fix, the Won approval gate, the complete Won-to-ERP handover (W1–W14 to the extent each is unblocked), and HR Portal D1–D9, D11, D12.
+- **Implemented and verified for real, this session:** CRM quick fixes, full Deal Engine R1–R13 role/pricing enforcement, multi-inverter sizing fix, materials search fix, the Won approval gate, the complete Won-to-ERP handover (W1–W14 to the extent each is unblocked), and HR Portal D1–D12 (D10's Arabic translation included).
 - **Verified as already correct, no code change:** CRM governorate/region mapping, HR Portal D2 (pending redeploy), the "one leave-balance source" half of D7.
 - **Explicitly not implemented, by design, pending a named decision:** the Residential category, the HR probation leave rule, the GP incentive question, bilingual PDF rendering, the test-employee force-purge capability, and every numeric default called out in §3.
-- **In progress:** D10's Arabic translation pass.
 - **Deferred for time/data, not blocked by a decision:** the Pricing Policy 4-page UI split, distribution boards above 100 kWp, DC cable Isc sizing, parallel/large cable runs.
 
 No production data was altered by this work. No destructive database operation was run. The one near-miss (§6.3) involved zero writes and is disclosed in full above.
