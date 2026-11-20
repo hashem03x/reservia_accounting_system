@@ -81,6 +81,7 @@ async function updateConfig(patch, { userId = null, userName = null } = {}) {
     salesLimits: { ...current.salesLimits },
     salesLimitsBySector: { ...current.salesLimitsBySector },
     requireMdApprovalForPolicyChange: current.requireMdApprovalForPolicyChange,
+    erpCostAccountCodes: { ...current.erpCostAccountCodes },
     engine: current.engine,
     proposal: current.proposal,
   };
@@ -169,6 +170,22 @@ async function updateConfig(patch, { userId = null, userName = null } = {}) {
   }
   if (patch.requireMdApprovalForPolicyChange !== undefined) {
     next.requireMdApprovalForPolicyChange = !!patch.requireMdApprovalForPolicyChange;
+  }
+  if (patch.erpCostAccountCodes && typeof patch.erpCostAccountCodes === 'object') {
+    const ChartOfAccount = require('../accounting/chartOfAccountModel'); // eslint-disable-line global-require
+    for (const k of ['overhead', 'contingency', 'salesBonus', 'engineeringIncentive']) {
+      if (patch.erpCostAccountCodes[k] === undefined) continue;
+      if (patch.erpCostAccountCodes[k] === null || patch.erpCostAccountCodes[k] === '') {
+        next.erpCostAccountCodes[k] = null;
+        continue;
+      }
+      const code = String(patch.erpCostAccountCodes[k]).trim();
+      // eslint-disable-next-line no-await-in-loop
+      const account = await ChartOfAccount.findOne({ code }).select('type').lean();
+      if (!account) throw new ApiError(`No Chart of Accounts entry with code "${code}".`, 400);
+      if (account.type !== 'cogs') throw new ApiError(`Account "${code}" is not a COGS account - Average Cost lines must reference a COGS account.`, 400);
+      next.erpCostAccountCodes[k] = code;
+    }
   }
 
   const before = {

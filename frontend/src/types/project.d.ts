@@ -60,6 +60,20 @@ export interface Project {
   createdBy?: { _id: string; name: string };
   createdAt: string;
   updatedAt: string;
+  // Won to ERP Handover (19 Nov 2026), W8: the deal identifier chain - present only on a project
+  // created automatically from a Won Deal Engine deal, shown ALONGSIDE projectNumber above, never
+  // replacing it. Absent on every project created the normal way.
+  dealNumber?: string | null;
+  proposalNumber?: string | null;
+  crmLeadNumber?: string | null;
+  dealProjectNumber?: string | null;
+  // W12: non-null only when the automatic handover's cost mapping didn't balance to the contract
+  // value - the project is created as `on_hold` in that case and this explains why.
+  budgetCheck?: {
+    balanced: boolean;
+    difference: number | null;
+    details?: { contractValue: number; totalAverageCost: number; profit: number; categoryAddition: number; discount: number } | null;
+  } | null;
 }
 
 export interface AverageCostLine {

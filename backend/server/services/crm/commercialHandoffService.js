@@ -11,6 +11,7 @@ const { getNextProjectCode } = require('../commercial/projectCodeService');
 const { ensureDealIdentifiers } = require('../commercial/dealNumberService');
 const { findOrCreateCustomer } = require('../customer/sharedCustomerService');
 const { regionForGovernorate } = require('../../utils/commercial/regions');
+const wonToErpService = require('./wonToErpService');
 
 // Reservia - the CRM -> Commercial handoff (QA finding B5; Developer Brief 6.1; handover section 4).
 //
@@ -18,9 +19,12 @@ const { regionForGovernorate } = require('../../utils/commercial/regions');
 //                                     (customer, segment -> sector, governorate -> region, value,
 //                                     size, source), with its Deal #, Proposal # and proposed ERP
 //                                     project #, and returns them to the lead.
-//   Lead Won                       -> the deal's outcome is Won; the cost-only ERP budget lines are
-//                                     captured for the ERP project setup (no accounting is posted,
-//                                     no ERP project is created or faked - brief 6.2).
+//   Lead Won                       -> the deal's outcome is Won; the cost-only ERP budget snapshot is
+//                                     captured (brief 6.2, no accounting posted), AND (Won to ERP
+//                                     Handover, 19 Nov 2026) a real ERP Project is created from the
+//                                     Won revision - see wonToErpService.js. Still no accounting is
+//                                     posted directly: the ERP project starts exactly like any other
+//                                     manually-created one, governed by the ERP's own normal rules.
 //   Lead Lost                      -> outcome Lost, with the lead's lost reason.
 //   Lead reopened (from Lost)      -> outcome back to Open.
 //
@@ -340,6 +344,17 @@ async function syncLeadEvent(leadId, event, { userId = null, trigger = 'stage_ch
     }
     const already = (event === 'won' && project.outcome === 'Won') || (event === 'lost' && project.outcome === 'Lost' && project.lostReason === (lead.lostReason || null)) || (event === 'reopen' && project.outcome === 'Open');
     project = await applyOutcome(project, event, lead);
+    if (event === 'won') {
+      // Won to ERP Handover (19 Nov 2026), W6-W14: the real ERP project, not just the cost-only
+      // budget snapshot above. Its own transaction already writes the lead's `commercial.
+      // erpProjectNumber` and a timeline entry (wonToErpService.js) - re-fetch so markLead/
+      // identifiersOf below reflect the real link instead of the pre-handover snapshot.
+      const { erpProject, created, warnings } = await wonToErpService.createErpProjectForWonDeal(project._id, { userId });
+      project = await CommercialProject.findById(project._id);
+      console.log(
+        `[CRM->Deal Engine] Won deal ${project.dealNumber}: ERP project ${erpProject.projectNumber} ${created ? 'created' : 'already linked'}.${warnings.length ? ` ${warnings.length} item(s) need manual follow-up.` : ''}`
+      );
+    }
     const label = event === 'won' ? 'Won' : event === 'lost' ? `Lost${lead.lostReason ? ` (${lead.lostReason})` : ''}` : 'Open (reopened)';
     await markLead(lead, project, { event, ok: true, userId, note: already ? null : `Deal Engine deal ${project.dealNumber} outcome set to ${label}.` });
     await recordEvent({ lead, project, event, status: 'synced', replay: already, trigger, userId });

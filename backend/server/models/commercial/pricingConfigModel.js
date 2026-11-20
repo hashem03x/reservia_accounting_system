@@ -59,6 +59,20 @@ const pricingConfigSchema = new Schema(
     // categoryOverrides above) - a sector with no row of its own uses this default row.
     salesLimits: { type: salesLimitsSchema, default: () => ({}) },
     salesLimitsBySector: { type: Schema.Types.Mixed, default: {} },
+    // Won to ERP Handover, Changes Required (19 Nov 2026), W11/W14: "Do not seed new account codes
+    // without Finance confirmation." Overhead/contingency/sales bonus/engineering incentive each
+    // need their OWN ERP Chart-of-Accounts code for Average Cost (section 5 of that document) -
+    // none are invented here. Each is a ChartOfAccount `code` string, or null ("not yet confirmed -
+    // skip this line rather than guess"); wonToErpService.js reads these, Raw Materials/Labour
+    // Wages/Fuel & Logistics/Engineering & Design are looked up BY NAME instead (the document's own
+    // evidence - a real existing project - is that those four already exist in the live Chart of
+    // Accounts, just not under a code this codebase has ever hardcoded).
+    erpCostAccountCodes: {
+      overhead: { type: String, trim: true, default: null },
+      contingency: { type: String, trim: true, default: null },
+      salesBonus: { type: String, trim: true, default: null },
+      engineeringIncentive: { type: String, trim: true, default: null },
+    },
     // R8: "MD approval of a policy change is optional; build it as a setting (off by default)."
     // No separate policy-change-approval queue exists in this codebase to extend, so this is
     // implemented as the minimal real version of "requires the MD": OFF (default) keeps today's

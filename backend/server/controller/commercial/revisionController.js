@@ -60,8 +60,17 @@ exports.recomputeRevision = asyncHandler(async (req, res, next) => {
   assertPricingWriteAllowed(req.commercialRoles, pricingOverrides);
   const isOverride = isPolicyLeverOverride(req.commercialRoles, pricingOverrides);
   if (isOverride) assertOverrideReasonGiven(overrideReason);
-  const current = await CommercialRevision.findById(req.params.id).populate({ path: 'project', select: 'category' });
+  const current = await CommercialRevision.findById(req.params.id).populate({ path: 'project', select: 'category outcome dealNumber' });
   if (!current) return next(new ApiError('Revision not found.', 404));
+  // Won to ERP Handover (19 Nov 2026), W4: once the deal is Won, the ERP project is created
+  // straight from this revision's BOQ/pricing - recalculating it afterwards would silently drift
+  // from what the customer signed and what the ERP already has. Locked; the way forward is a new
+  // revision (createRevisionForProject below), which goes through Stage 1/2/MD approval again
+  // before it can be issued - the existing approval machinery already covers "MD approves the
+  // variation", so no new approval step is added here.
+  if (current.project.outcome === 'Won') {
+    throw new ApiError(`Deal ${current.project.dealNumber || ''} is Won - this revision is locked and can no longer be recalculated. Create a new revision for any further change.`, 400);
+  }
   const { salesLimits, policyVersion } = await salesLimitsForProjectCategory(current.project.category);
   let revision = await revisionService.recomputeCurrentRevision(req.params.id, engineeringInput, {
     manualOverrides, pricingOverrides, applyCurrentConfig: applyCurrentConfig === true, userId: req.user._id,

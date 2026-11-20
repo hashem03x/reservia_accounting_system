@@ -31,10 +31,10 @@ function phoneVariants(phone) {
   return [...out];
 }
 
-async function findCustomerByPhone(phone) {
+async function findCustomerByPhone(phone, session) {
   const variants = phoneVariants(phone);
   if (!variants.length) return null;
-  return User.findOne({ role: 'user', isDeleted: { $ne: true }, $or: [{ phone: { $in: variants } }, { additionalPhone: { $in: variants } }] }).select('_id name email phone customerNumber').lean();
+  return User.findOne({ role: 'user', isDeleted: { $ne: true }, $or: [{ phone: { $in: variants } }, { additionalPhone: { $in: variants } }] }).select('_id name email phone customerNumber').session(session || null).lean();
 }
 
 async function searchCustomers(keyword = '', limit = 10) {
@@ -53,28 +53,28 @@ async function searchCustomers(keyword = '', limit = 10) {
  * uniqueness rule) - a different person with the same name is never merged into an existing
  * customer. Email is only stored when no other user already holds it (User.email is unique).
  */
-async function findOrCreateCustomer({ name, phone, email }, { createdBy = null } = {}) {
+async function findOrCreateCustomer({ name, phone, email }, { createdBy = null, session = null } = {}) {
   const cleanName = String(name || '').trim().slice(0, 150);
   if (!cleanName) throw new ApiError('Customer name is required.', 400);
   const cleanPhone = String(phone || '').trim();
   if (!cleanPhone || !isValidPhone(cleanPhone)) throw new ApiError('A valid customer phone number is required.', 400);
 
-  const existing = await findCustomerByPhone(cleanPhone);
+  const existing = await findCustomerByPhone(cleanPhone, session);
   if (existing) return { customer: existing, created: false };
 
   const storedPhone = normalizeEgyptianPhone(cleanPhone) ? `0${normalizeEgyptianPhone(cleanPhone).slice(3)}` : cleanPhone;
   let safeEmail;
   if (email) {
     const e = String(email).trim().toLowerCase();
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && !(await User.exists({ email: e }))) safeEmail = e;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && !(await User.exists({ email: e }).session(session || null))) safeEmail = e;
   }
   try {
-    const customer = await User.create({ name: cleanName, phone: storedPhone, email: safeEmail, role: 'user', isOffline: true, type: 'offline', createdBy: createdBy || undefined });
+    const [customer] = await User.create([{ name: cleanName, phone: storedPhone, email: safeEmail, role: 'user', isOffline: true, type: 'offline', createdBy: createdBy || undefined }], { session });
     return { customer: { _id: customer._id, name: customer.name, email: customer.email, phone: customer.phone, customerNumber: customer.customerNumber }, created: true };
   } catch (err) {
     if (err?.code === 11000) {
       // Lost a race to a concurrent creation for the same phone - use the winner.
-      const winner = await findCustomerByPhone(cleanPhone);
+      const winner = await findCustomerByPhone(cleanPhone, session);
       if (winner) return { customer: winner, created: false };
     }
     throw err;

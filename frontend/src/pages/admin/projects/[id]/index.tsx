@@ -9,7 +9,7 @@ import { formatDate } from "@/utils/helpers/date-formaters";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import resources from "@/utils/constants/resources";
 import actions from "@/utils/constants/actions";
-import { Badge, Button, Progress, Select, Table, Textarea, TextInput } from "@mantine/core";
+import { Alert, Badge, Button, Progress, Select, Table, Textarea, TextInput } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
@@ -253,6 +253,25 @@ export default function ProjectDetail() {
           }
         />
       </div>
+
+      {/* Won to ERP Handover, W8/W12: only present on a project created automatically from a Won
+          Deal Engine deal - invisible on every normal, manually-created project. */}
+      {project.dealNumber && (
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <SummaryCard label={translate("Deal Number", "رقم الصفقة")} value={project.dealNumber} />
+          <SummaryCard label={translate("Proposal Number", "رقم العرض")} value={project.proposalNumber || "-"} />
+          <SummaryCard label={translate("CRM Lead Number", "رقم العميل المحتمل")} value={project.crmLeadNumber || "-"} />
+          <SummaryCard label={translate("Deal Project Number", "رقم مشروع الصفقة")} value={project.dealProjectNumber || "-"} />
+        </div>
+      )}
+      {project.budgetCheck && !project.budgetCheck.balanced && (
+        <Alert color="red" className="mt-4" title={translate("Budget check did not balance", "عملية فحص الموازنة غير متوافقة")}>
+          {translate(
+            `Contract Value − Average Cost − Profit − Category Addition + Discount = ${project.budgetCheck.difference?.toLocaleString() ?? "?"} ${translations.currency}, not 0. The deal was created on hold - review the Average Cost lines and Pricing Policy account codes, then set the project back to active.`,
+            `قيمة العقد − متوسط التكلفة − الربح − إضافة الفئة + الخصم = ${project.budgetCheck.difference?.toLocaleString() ?? "?"} ${translations.currency}, وليس 0. تم إنشاء الصفقة معلّقة - راجع بنود متوسط التكلفة وأكواد الحسابات في سياسة التسعير، ثم أعد المشروع إلى نشط.`
+          )}
+        </Alert>
+      )}
 
       {editing ? (
         <div className="mt-4 flex flex-col gap-4 rounded-lg border border-gray-200 p-4">

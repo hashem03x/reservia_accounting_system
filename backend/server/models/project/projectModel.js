@@ -212,6 +212,29 @@ const projectSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    // Won to ERP Handover, Changes Required (19 Nov 2026), W8: the deal identifier chain, shown
+    // ALONGSIDE the existing sector-based projectNumber above - never a replacement for it.
+    // Denormalized strings (display only, same convention as CommercialProject.crmLeadRef) - the
+    // real links back to the Deal Engine/CRM live on the OTHER side (CommercialProject.erpProject/
+    // erpProjectNumber, Lead.commercial.erpProjectNumber), set by wonToErpService.js.
+    dealNumber: { type: String, trim: true, default: null },
+    proposalNumber: { type: String, trim: true, default: null },
+    crmLeadNumber: { type: String, trim: true, default: null },
+    // W8's own project-number convention (DEAL-YYYY-NNN-PRJ), kept separate from the real
+    // `projectNumber` (sector-based, e.g. AGR-0000005) - the document is explicit both are shown
+    // together, not one replacing the other.
+    dealProjectNumber: { type: String, trim: true, default: null },
+    // W12: "If it is not 0, the project is created as DRAFT and the MD is alerted." No literal
+    // DRAFT status exists in ProjectStatuses (adding one would touch every status filter/badge in
+    // the admin UI for a single automated-handover edge case) - `status: 'on_hold'` is the closest
+    // existing fit ("not yet actively progressing until someone resolves this"), paired with this
+    // explicit record of WHY, so it is never confused with an ordinary manually-held project.
+    budgetCheck: {
+      balanced: { type: Boolean, default: true },
+      // Contract Value - Total Average Cost - Profit - Category Addition + Discount - must be (near) 0.
+      difference: { type: Number, default: null },
+      details: { type: Schema.Types.Mixed, default: null },
+    },
   },
   {
     timestamps: true,
