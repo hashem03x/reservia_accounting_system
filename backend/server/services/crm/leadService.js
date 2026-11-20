@@ -451,6 +451,17 @@ async function changeStage(leadId, input, { userId = null, role } = {}) {
     throw new ApiError('Only the MD can override pipeline stage rules.', 403);
   }
 
+  // Won to ERP Handover W1-W3 / CRM Pending Fixes item 12: checked BEFORE evaluateStageTransition
+  // below, since (unlike the sync status elsewhere in this file) this must actually BLOCK the
+  // move to Won, not just get recorded as a background sync failure while the lead quietly
+  // becomes Won anyway. Not overridable - see stageRules.js's WON_GATE_NOT_READY comment.
+  let wonGateBlocker = null;
+  if (input.to === 'won') {
+    // eslint-disable-next-line global-require
+    const { wonGateBlockerFor } = require('./commercialHandoffService');
+    wonGateBlocker = await wonGateBlockerFor(lead);
+  }
+
   const ctx = {
     from: lead.stage,
     to: input.to,
@@ -467,6 +478,7 @@ async function changeStage(leadId, input, { userId = null, role } = {}) {
     // CRM Changes Required, item 1: governorate from Qualified on, and no Won without its deal.
     governorate: input.governorate ?? lead.governorate ?? null,
     dealBlocker: input.to === 'won' ? dealBlockerFor(lead, input.governorate ?? lead.governorate ?? null) : null,
+    wonGateBlocker,
   };
   if (input.governorate && !GOVERNORATE_NAMES_EN.includes(input.governorate)) throw new ApiError('Choose a governorate from the list.', 400);
   const violations = evaluateStageTransition(ctx);

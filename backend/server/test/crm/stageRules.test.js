@@ -114,3 +114,32 @@ test('Technical users may only move a lead to Site survey or Proposal sent, rega
 test('a fully valid, typical sales-rep move produces zero errors', () => {
   assert.deepEqual(validateStageTransition({ from: 'contacted', to: 'qualified', role: 'sales', valueEgp: null, lostReason: null, followUpAt: '2026-12-05', mdApproved: false }), []);
 });
+
+// ---------------------------------------------------------------- W1-W3 / Pending Fixes item 12
+
+test('wonGateBlocker: a non-null value moving to Won is rejected, not overridable even by the MD', () => {
+  const ctx = base({ from: 'negotiation', to: 'won', role: 'md', valueEgp: 500000, mdApproved: true, wonGateBlocker: 'no proposal has been issued yet for this deal.' });
+  const violations = evaluateStageTransition(ctx);
+  const v = violations.find(x => x.code === 'WON_GATE_NOT_READY');
+  assert.ok(v, 'WON_GATE_NOT_READY must be among the violations');
+  assert.equal(v.overridable, false, 'the whole point of requiring MD sign-off is that it cannot be waved past');
+  assert.equal(v.message, 'no proposal has been issued yet for this deal.');
+  assert.equal(canOverride(violations), false);
+});
+
+test('wonGateBlocker: null (deal is ready) never blocks the move on its own', () => {
+  assert.deepEqual(validateStageTransition(base({ from: 'negotiation', to: 'won', valueEgp: 500000, mdApproved: true, wonGateBlocker: null })), []);
+});
+
+test('wonGateBlocker is only consulted for a move TO Won - irrelevant (and ignored) for every other transition', () => {
+  assert.deepEqual(validateStageTransition(base({ from: 'new', to: 'contacted', wonGateBlocker: 'irrelevant here' })), []);
+});
+
+test('dealBlocker (sync failure) and wonGateBlocker can both be set, but dealBlocker is reported first - fixing the sync is the more specific, actionable first step', () => {
+  const violations = evaluateStageTransition(
+    base({ from: 'negotiation', to: 'won', valueEgp: 500000, mdApproved: true, dealBlocker: 'the last sync failed.', wonGateBlocker: 'no proposal has been issued yet.' })
+  );
+  const codes = violations.map(v => v.code);
+  assert.ok(codes.includes('DEAL_SYNC_FAILED'));
+  assert.ok(!codes.includes('WON_GATE_NOT_READY'), 'reported one problem at a time, not both at once');
+});

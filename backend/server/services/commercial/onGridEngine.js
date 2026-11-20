@@ -324,6 +324,50 @@ function selectInverterByLoading({ dcKwp, inverters, ratio }) {
 }
 
 /**
+ * Deal Engine Rev 01 Test issue 1 / Pending Fixes (19 Nov 2026) item 10: "size the inverter count
+ * from the design kWp and a DC/AC limit." The engine used to always pick exactly one inverter
+ * (On-Grid Design!D14's "manual input, default 1") and select the single best-fit MODEL for it -
+ * correct up to the Price Book's largest unit, then increasingly (and unsafely) oversized above
+ * it: 293 kWp against one 150 kW inverter is a 1.96 ratio, well outside any sane 1.10-1.30 band.
+ *
+ * Hard safety rule, never relaxed: for ANY candidate model, qty is the SMALLEST integer that keeps
+ * dcKwp / (ratedKw x qty) <= ratio.max - the array is NEVER sized to exceed the configured DC/AC
+ * ceiling, no matter how many units that takes. This is a safety/warranty limit, not a cost
+ * optimization - the function will not trade it away for a cheaper or simpler answer.
+ *
+ * Tie-break among models that land in-band at their safety-capped qty (an explicit heuristic, not
+ * a client-specified rule - flag for engineering sign-off like the rest of this file's ASSUMPTION
+ * markers): prefer the FEWEST total units (fewer AC circuits/breakers to install), then the
+ * LARGER-rated single unit on a tie (mirrors selectGridInverter's existing "fewer, bigger units"
+ * convention). When no model reaches the band even at its safety-capped qty (a genuine Price Book
+ * coverage gap, not a ratio violation), falls back to the closest candidate - same two-case
+ * distinction hasInverterInLoadingBand/dcAcCheck already draw for the single-unit path.
+ */
+function selectInverterSetByLoading({ dcKwp, inverters, ratio }) {
+  if (!inverters.length) throw new Error('Grid inverter catalog is empty');
+  const scored = inverters.map(inv => {
+    const qty = Math.max(1, ceil(dcKwp / (inv.ratedKw * ratio.max)));
+    const r = round(dcKwp / (inv.ratedKw * qty), 6);
+    const dist = r < ratio.min ? ratio.min - r : r > ratio.max ? r - ratio.max : 0;
+    return { inv, qty, r, dist, withinFlags: r >= ratio.flagBelow && r <= ratio.flagAbove };
+  });
+  const inRange = scored.filter(s => s.dist === 0).sort((a, b) => a.qty - b.qty || b.inv.ratedKw - a.inv.ratedKw);
+  if (inRange.length) return inRange[0];
+  const pool = scored.some(s => s.withinFlags) ? scored.filter(s => s.withinFlags) : scored;
+  pool.sort((a, b) => a.dist - b.dist || a.qty - b.qty || b.inv.ratedKw - a.inv.ratedKw);
+  return pool[0];
+}
+
+/** Whether ANY (model, safety-capped qty) combination lands inside the target band - the multi-unit analogue of hasInverterInLoadingBand. */
+function hasInverterSetInLoadingBand({ dcKwp, inverters, ratio }) {
+  return inverters.some(inv => {
+    const qty = Math.max(1, ceil(dcKwp / (inv.ratedKw * ratio.max)));
+    const r = dcKwp / (inv.ratedKw * qty);
+    return r >= ratio.min && r <= ratio.max;
+  });
+}
+
+/**
  * C3 Design-tab check for a DC/AC ratio: in the target band, outside it, or flagged below/above.
  * `reason` (2026 review fix) tells the frontend WHY a non-"in-range" status happened, so it never
  * has to guess from `status` alone:
@@ -415,29 +459,49 @@ function runOnGridDesign(input, catalog) {
     dcCableBrand = null, siteCosts: siteCostInput = null,
     // Deal Engine settings (dealEngineSettings.js) - absent for the legacy R74 behaviour.
     engineSettings = null, inverterModel = null,
+    // Pending Fixes item 10 / Rev 01 Test issue 1: an explicit manual quantity, same convention as
+    // modulesPerStringOverride - the engine still auto-sizes qty (safely) whenever this is absent.
+    inverterQtyOverride = null,
   } = input;
 
   const pv = sizePvModules({ kWp, module });
-  // C3: with engine settings, the inverter is chosen by loading ratio (or forced by the estimator);
-  // without them (older callers, the R74 port's own tests) the workbook's nearest-kWp rule applies.
+  // C3: with engine settings, the inverter (and now its quantity) is chosen by loading ratio, or
+  // forced by the estimator to a specific model; without engine settings (older callers, the R74
+  // port's own tests) the workbook's single-unit nearest-kWp rule applies unchanged.
   const forcedInverter = inverterModel ? inverterCandidates.find(i => i.model === inverterModel) : null;
   if (inverterModel && !forcedInverter) throw new Error(`Inverter "${inverterModel}" is not in the Price Book`);
-  const chooseInverter = () =>
-    forcedInverter ||
-    (engineSettings
-      ? selectInverterByLoading({ dcKwp: pv.selectedCapacityKwp, inverters: inverterCandidates, ratio: engineSettings.dcAcRatio })
-      : selectGridInverter({ selectedCapacityKwp: pv.selectedCapacityKwp, inverters: inverterCandidates }));
+
+  let inverter;
+  let inverterQty;
+  if (engineSettings) {
+    const ratio = engineSettings.dcAcRatio;
+    if (forcedInverter) {
+      // Forcing a MODEL is a deliberate, complete override (existing, tested semantics - "forced"
+      // means exactly this unit, not "this unit, but let the engine also decide how many") -
+      // quantity stays 1 unless the estimator ALSO gives an explicit quantity. Auto-sizing qty is
+      // for the auto-SELECTION path below, which is already deciding on the estimator's behalf.
+      inverter = forcedInverter;
+      inverterQty = inverterQtyOverride > 0 ? Math.round(inverterQtyOverride) : 1;
+    } else {
+      const picked = selectInverterSetByLoading({ dcKwp: pv.selectedCapacityKwp, inverters: inverterCandidates, ratio });
+      inverter = picked.inv;
+      inverterQty = inverterQtyOverride > 0 ? Math.round(inverterQtyOverride) : picked.qty;
+    }
+  } else {
+    // Legacy path (no engine settings configured) - unchanged single-unit behaviour.
+    inverter = forcedInverter || selectGridInverter({ selectedCapacityKwp: pv.selectedCapacityKwp, inverters: inverterCandidates });
+    inverterQty = 1; // On-Grid Design!D14 - manual input, default 1 in the reference scenario
+  }
+
   const modulesPerString = modulesPerStringOverride || suggestModulesPerString({
-    modulesRequired: pv.modulesRequired, module, inverter: chooseInverter(), minCellTempC,
+    modulesRequired: pv.modulesRequired, module, inverter, minCellTempC,
   }) || pv.modulesRequired;
   const strings = sizeStrings({ modulesRequired: pv.modulesRequired, modulesPerString, module, minCellTempC });
-  const inverter = chooseInverter();
-  const inverterQty = 1; // On-Grid Design!D14 - manual input, default 1 in the reference scenario
   const dcAcRatio = round(pv.selectedCapacityKwp / (inverter.ratedKw * inverterQty), 6); // G14
-  // Whether the Price Book actually HAS a candidate in the target band - lets dcAcCheck tell a
-  // real Price Book coverage gap apart from a genuine ratio violation (see dcAcCheck's `reason`).
+  // Whether the Price Book actually HAS a (model, safety-capped qty) candidate in the target band -
+  // lets dcAcCheck tell a real Price Book coverage gap apart from a genuine ratio violation.
   const inBandCandidateExists = engineSettings && !forcedInverter
-    ? hasInverterInLoadingBand({ dcKwp: pv.selectedCapacityKwp, inverters: inverterCandidates, ratio: engineSettings.dcAcRatio })
+    ? hasInverterSetInLoadingBand({ dcKwp: pv.selectedCapacityKwp, inverters: inverterCandidates, ratio: engineSettings.dcAcRatio })
     : null;
   const dcAc = engineSettings ? dcAcCheck(dcAcRatio, engineSettings.dcAcRatio, !!forcedInverter, inBandCandidateExists) : null;
 
@@ -449,8 +513,15 @@ function runOnGridDesign(input, catalog) {
   // installed (sizeAcCable's cable-breaker coordination check needs its rating), not just sized
   // against the raw design current in isolation.
   const breaker = selectAcBreaker({ inverterRatedKw: inverter.ratedKw, inverterQty, breakers: catalog.AC_BREAKERS });
-  const acCable = sizeAcCable({ inverterRatedKw: inverter.ratedKw, acLengthM, overridePricePerM: acPricePerMOverride, catalog, breakerRatingA: breaker.ratingA });
-  const tray = sizeCableTray({ dcCableLengthM: dcCable.lengthM, acCableLengthM: acLengthM, rolls: catalog.CABLE_TRAY_ROLLS });
+  // Each inverter gets its OWN breaker-protected AC circuit back to the distribution board - with
+  // more than one inverter (the multi-inverter fix above), that is `inverterQty` independent runs
+  // of the same site-measured length, not one. Conservative by design: never silently underbills
+  // the cable/tray a real multi-inverter installation needs (ASSUMPTION - no shared-trunking
+  // discount is modelled; flag for engineering review like this file's other ASSUMPTION markers).
+  const acCableUnit = sizeAcCable({ inverterRatedKw: inverter.ratedKw, acLengthM, overridePricePerM: acPricePerMOverride, catalog, breakerRatingA: breaker.ratingA });
+  const totalAcLengthM = acCableUnit.lengthM != null ? acCableUnit.lengthM * inverterQty : null;
+  const acCable = { ...acCableUnit, lengthM: totalAcLengthM, totalCost: acCableUnit.totalCost != null ? round(acCableUnit.totalCost * inverterQty, 2) : null };
+  const tray = sizeCableTray({ dcCableLengthM: dcCable.lengthM, acCableLengthM: totalAcLengthM ?? acLengthM, rolls: catalog.CABLE_TRAY_ROLLS });
   const mc4 = sizeMc4({
     totalStrings: strings.parallelStrings,
     modules: pv.modulesRequired,
@@ -525,6 +596,8 @@ function runOnGridDesign(input, catalog) {
 module.exports = {
   selectInverterByLoading,
   hasInverterInLoadingBand,
+  selectInverterSetByLoading,
+  hasInverterSetInLoadingBand,
   dcAcCheck,
   estimateCapacityFromArea,
   sizePvModules,

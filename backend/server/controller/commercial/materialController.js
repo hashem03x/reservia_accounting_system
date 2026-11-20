@@ -12,12 +12,15 @@ const { assertCanAccessEnginePage } = require('../../utils/commercial/dealEngine
 // Matches handlersFactory.getAll()'s own response shape ({results, paginationResult, data}),
 // which the frontend's PaginatedData<T> type expects - NOT apiResponse()'s {success, message,
 // data, pagination} shape, which uses a differently-named/shaped pagination field.
+// Rev 01 open item: the keyword search box never filtered anything - listMaterials built its own
+// filter object but never called ApiFeatures#search(), so every query returned the same unfiltered
+// first page (the category filter "worked" because it is applied separately, directly below).
 exports.listMaterials = asyncHandler(async (req, res) => {
   const filter = { archived: false, ...req.filterObject };
   if (req.query.category) filter.category = req.query.category;
   const countDocuments = await MaterialItem.countDocuments(filter);
   const mongooseQuery = MaterialItem.find(filter);
-  const { mongooseQuery: query, paginationResult } = new ApiFeatures(mongooseQuery, req.query).paginate(countDocuments).sort().filter(filter).limitFields();
+  const { mongooseQuery: query, paginationResult } = new ApiFeatures(mongooseQuery, req.query).paginate(countDocuments).sort().filter(filter).search('MaterialItem').limitFields();
   const materials = await query;
   res.status(200).json({ results: materials.length, paginationResult, data: materials });
 });

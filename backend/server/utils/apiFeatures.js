@@ -65,7 +65,19 @@ class ApiFeatures {
 
     if (this.queryString.keyword) {
       let query = {};
-      if (modelName === 'Products') {
+      if (modelName === 'MaterialItem') {
+        // Deal Engine Rev 01 open item: "Search box on Materials does not filter - every query
+        // returns the same first 50 rows." materialController.js#listMaterials never called
+        // search() at all (the category filter worked because it is applied separately, directly
+        // from req.query.category); this branch's field list matches materialItemModel.js exactly
+        // (brand/model/spec, plus the combined `key` so a search like "Jinko 670" matches too).
+        query.$or = [
+          { brand: { $regex: this.queryString.keyword, $options: 'i' } },
+          { model: { $regex: this.queryString.keyword, $options: 'i' } },
+          { spec: { $regex: this.queryString.keyword, $options: 'i' } },
+          { key: { $regex: this.queryString.keyword, $options: 'i' } },
+        ];
+      } else if (modelName === 'Products') {
         query.$or = [
           {
             [`title.${lang}`]: {

@@ -46,6 +46,14 @@ const RULES = {
   // Same item: "Block Won ... when the Commercial sync has failed. Keep the Retry button." A Won lead
   // must never be left without its Deal Engine deal. Message built per lead (the sync's own error).
   DEAL_SYNC_FAILED: { message: null, overridable: false },
+  // Won to ERP Handover, Changes Required (19 Nov 2026), W1-W3 / CRM Pending Fixes item 12: Won
+  // must not be reachable while the linked deal has no ISSUED proposal, or Stage 1/Stage 2/MD
+  // sign-off are still pending, or any BOQ line is unpriced / site costs (installation,
+  // transport) are missing. Deliberately a SEPARATE code from DEAL_SYNC_FAILED above - that one's
+  // fixed message ("press Retry on the Deal Engine card") would be actively wrong guidance here;
+  // the actual fix is to finish the deal's approvals/pricing, not retry a sync. Not overridable -
+  // the whole point of requiring MD sign-off is that the MD cannot wave past needing it.
+  WON_GATE_NOT_READY: { message: null, overridable: false },
 };
 
 const STAGE_LABELS = {
@@ -78,6 +86,10 @@ function violation(code, message) {
  *   only when the key is present (the lead service always passes it; older pure callers did not).
  * @param {string|null} [ctx.dealBlocker] - why the lead's Deal Engine deal is missing or out of
  *   sync (null when it is fine). Only consulted for a move to Won.
+ * @param {string|null} [ctx.wonGateBlocker] - W1-W3: why the deal is not ready to be marked Won
+ *   even though it IS in sync - no issued proposal, approvals pending, or the BOQ is not fully
+ *   priced (null when it is ready). Only consulted for a move to Won, and only when dealBlocker is
+ *   itself null (a sync failure is reported as that, more specific, problem first).
  * @returns {{code: string, message: string, overridable: boolean}[]} empty means allowed
  */
 function evaluateStageTransition(ctx) {
@@ -120,6 +132,8 @@ function evaluateStageTransition(ctx) {
     violations.push(
       violation('DEAL_SYNC_FAILED', `The Deal Engine deal for this lead is not in sync: ${ctx.dealBlocker} Fix it, press Retry on the Deal Engine card, then mark the lead Won.`)
     );
+  } else if (ctx.to === 'won' && ctx.wonGateBlocker) {
+    violations.push(violation('WON_GATE_NOT_READY', ctx.wonGateBlocker));
   }
 
   if (toIndex !== -1 && toIndex >= FOLLOW_UP_REQUIRED_FROM_INDEX && !ctx.followUpAt) {

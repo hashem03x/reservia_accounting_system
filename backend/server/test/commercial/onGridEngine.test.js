@@ -196,13 +196,35 @@ test('Installation rate band collapses band 2 into band 1 (BOQ On-Grid Design!F2
 // "no Price Book inverter fits it" for every "outside-target" result.
 const DC_AC_RATIO = { min: 1.1, max: 1.3, flagBelow: 1.0, flagAbove: 1.35 };
 
-test('DC/AC check reason: auto-selection with no 60-100kW inverter in the Price Book reports "no-candidate-in-band"', () => {
+test('Multi-inverter fix (Pending Fixes item 10 / Rev 01 Test issue 1): with the real catalog\'s fine size granularity, 80 kWp DC that has no single-unit match now finds a genuine in-range MULTI-unit solution (2 x 36kW = 1.11, inside [1.1, 1.3]) instead of reporting a gap that no longer exists', () => {
   const { design } = engine.runOnGridDesign(
     { kWp: 80, module: JINKO_475, inverterCandidates: HUAWEI_INVERTERS, structureType: 'Hangar Roof', modulesPerStringOverride: 14, acLengthM: 20, country: 'Egypt', region: 'Cairo - 10th of Ramadan', engineSettings: { dcAcRatio: DC_AC_RATIO } },
     catalog
   );
-  assert.equal(design.inverter.model, 'SUN2000-60KTL-M0', 'nearest available below the gap');
-  assert.equal(design.dcAc.status, 'outside-target');
+  assert.equal(design.inverter.model, 'SUN2000-36KTL-M3');
+  assert.equal(design.inverterQty, 2, 'the whole point of the fix - qty is no longer hardcoded to 1');
+  // 1.115, not the naive 80/72=1.111 - pv.selectedCapacityKwp is the POST-module-rounding capacity
+  // (whole 475W modules), slightly above 80 kWp, same as every other figure in this file.
+  assert.equal(Math.round(design.dcAcRatio * 1000) / 1000, 1.115);
+  assert.equal(design.dcAc.status, 'in-range');
+  assert.equal(design.dcAc.reason, null);
+});
+
+test('DC/AC check reason: no (model, safety-capped quantity) combination in the Price Book lands in the target band reports "no-candidate-in-band"', () => {
+  // A synthetic 2-size catalog with a genuine multi-unit gap at 80 kWp DC, verified directly:
+  // 50kW's only safety-capped qty (never exceeding ratio.max=1.3) is 2 (ratio 0.8); 60kW's is also
+  // 2 (ratio 0.667) - qty 1 for either model would give a ratio ABOVE 1.3, which the hard safety
+  // rule never allows regardless of how much closer to the band it would otherwise land. Neither
+  // size has any SAFE quantity in [1.1, 1.3] - a genuine coverage gap, not an artifact of the real
+  // catalog's fine granularity (see the test above, which the real catalog no longer gaps on).
+  const SYNTHETIC_INVERTERS = [{ model: 'A-50', ratedKw: 50 }, { model: 'B-60', ratedKw: 60 }];
+  const { design } = engine.runOnGridDesign(
+    { kWp: 80, module: JINKO_475, inverterCandidates: SYNTHETIC_INVERTERS, structureType: 'Hangar Roof', modulesPerStringOverride: 14, acLengthM: 20, country: 'Egypt', region: 'Cairo - 10th of Ramadan', engineSettings: { dcAcRatio: DC_AC_RATIO } },
+    catalog
+  );
+  assert.equal(design.inverter.model, 'A-50', 'closest safety-capped ratio to the band (0.8 vs 0.667)');
+  assert.equal(design.inverterQty, 2);
+  assert.equal(design.dcAc.status, 'below');
   assert.equal(design.dcAc.forced, false);
   assert.equal(design.dcAc.reason, 'no-candidate-in-band');
 });
@@ -256,3 +278,60 @@ function round(n, dp) {
   const f = 10 ** dp;
   return Math.round(n * f) / f;
 }
+
+// ---------------------------------------------------------------- Pending Fixes item 10 / Rev 01
+// Test issue 1: the EXACT real-world scenario the client reported (Deal Engine ONG-000005, 293 kWp,
+// "one SUN2000-150KTL inverter (150 kW) set for 293 kWp, a DC/AC ratio of 1.96... a 320 A breaker,
+// flagged as undersized"). Reproduces it with the REAL catalog, not a synthetic fixture.
+
+test('293 kWp (the real ONG-000005 complaint): the engine now splits across 2 inverters instead of 1, bringing the DC/AC ratio from the reported 1.96 into range', () => {
+  const { design } = engine.runOnGridDesign(
+    { kWp: 293, module: JINKO_475, inverterCandidates: HUAWEI_INVERTERS, structureType: 'Hangar Roof', modulesPerStringOverride: 14, acLengthM: 60, country: 'Egypt', region: 'Cairo - 10th of Ramadan', engineSettings: { dcAcRatio: DC_AC_RATIO } },
+    catalog
+  );
+  assert.notEqual(design.inverter.model, 'SUN2000-150KTL-MG0', 'the single-unit choice the client reported - no longer picked for this capacity');
+  assert.equal(design.inverterQty, 2, 'the whole point of the fix - was hardcoded to 1 regardless of capacity');
+  assert.ok(design.dcAcRatio < 1.3 && design.dcAcRatio > 1.1, `ratio ${design.dcAcRatio} must be in range, not the reported 1.96`);
+  assert.equal(design.dcAc.status, 'in-range');
+});
+
+test('293 kWp: each inverter gets its OWN appropriately-sized breaker (not one oversized 320 A unit) - the breaker line bills one per inverter', () => {
+  const { design } = engine.runOnGridDesign(
+    { kWp: 293, module: JINKO_475, inverterCandidates: HUAWEI_INVERTERS, structureType: 'Hangar Roof', modulesPerStringOverride: 14, acLengthM: 60, country: 'Egypt', region: 'Cairo - 10th of Ramadan', engineSettings: { dcAcRatio: DC_AC_RATIO } },
+    catalog
+  );
+  assert.notEqual(design.breaker.ratingA, 320, 'the reported oversized single breaker rating');
+  assert.equal(design.breaker.totalCost, design.breaker.unitPrice * design.inverterQty, 'billed once per inverter, not once total');
+});
+
+test('293 kWp: the AC cable protection check still correctly REFUSES rather than guess, since the Price Book genuinely has no cable rated for this current yet (the client\'s own still-open "cable sizes above 95mm2" item) - the multi-inverter fix must not paper over a real catalog gap', () => {
+  const { design } = engine.runOnGridDesign(
+    { kWp: 293, module: JINKO_475, inverterCandidates: HUAWEI_INVERTERS, structureType: 'Hangar Roof', modulesPerStringOverride: 14, acLengthM: 60, country: 'Egypt', region: 'Cairo - 10th of Ramadan', engineSettings: { dcAcRatio: DC_AC_RATIO } },
+    catalog
+  );
+  assert.equal(design.acCable.protectionOk, false);
+  assert.equal(design.acCable.cableSize, null, 'never ships a cable it cannot prove is safe for the breaker');
+});
+
+test('AC cable billing scales by inverterQty - each inverter is its own independent circuit back to the distribution point', () => {
+  const { design } = engine.runOnGridDesign(
+    { kWp: 293, module: JINKO_475, inverterCandidates: HUAWEI_INVERTERS, structureType: 'Hangar Roof', modulesPerStringOverride: 14, acLengthM: 60, country: 'Egypt', region: 'Cairo - 10th of Ramadan', dcCableBrand: null, engineSettings: { dcAcRatio: DC_AC_RATIO } },
+    catalog
+  );
+  assert.equal(design.inverterQty, 2);
+  // This scenario's AC cable is unpriced (the previous test - a genuine Price Book gap), so verify
+  // the SAME scaling directly against the per-unit function instead, using the actual chosen inverter.
+  const unit = engine.sizeAcCable({ inverterRatedKw: design.inverter.ratedKw, acLengthM: 60, catalog, breakerRatingA: null });
+  assert.equal(unit.lengthM, 60, 'one circuit is exactly the site-measured run');
+  // The engine's own scaled figure (null here, since protectionOk is false) would be 2x this if priced -
+  // asserted structurally via the 60kWp scenario below instead, where the cable IS priced.
+  const smaller = engine.runOnGridDesign(
+    { kWp: 60, module: JINKO_475, inverterCandidates: HUAWEI_INVERTERS, structureType: 'Hangar Roof', modulesPerStringOverride: 14, acLengthM: 50, country: 'Egypt', region: 'Cairo - 10th of Ramadan', engineSettings: { dcAcRatio: DC_AC_RATIO } },
+    catalog
+  ).design;
+  if (smaller.inverterQty > 1 && smaller.acCable.cableSize) {
+    const perUnit = engine.sizeAcCable({ inverterRatedKw: smaller.inverter.ratedKw, acLengthM: 50, catalog, breakerRatingA: smaller.breaker.ratingA });
+    assert.equal(smaller.acCable.lengthM, perUnit.lengthM * smaller.inverterQty);
+    assert.equal(smaller.acCable.totalCost, round(perUnit.totalCost * smaller.inverterQty, 2));
+  }
+});

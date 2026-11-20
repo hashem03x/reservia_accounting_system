@@ -5,6 +5,7 @@ const Lead = require('../../models/crm/leadModel');
 const Activity = require('../../models/crm/activityModel');
 const CommercialProject = require('../../models/commercial/commercialProjectModel');
 const CommercialRevision = require('../../models/commercial/commercialRevisionModel');
+const CommercialProposal = require('../../models/commercial/commercialProposalModel');
 const CommercialSyncEvent = require('../../models/commercial/commercialSyncEventModel');
 const { getNextProjectCode } = require('../commercial/projectCodeService');
 const { ensureDealIdentifiers } = require('../commercial/dealNumberService');
@@ -98,6 +99,54 @@ function projectHeaderFromLead(lead, { cityRegions = null } = {}) {
       ? `Region mapped from governorate ${lead.governorate} to the nearest Rates region (${mapped.region}) - confirm the installation and transport rates.`
       : `Region mapped from governorate ${lead.governorate}.`,
   };
+}
+
+/**
+ * Won to ERP Handover, Changes Required (19 Nov 2026), W1-W3 / CRM Pending Fixes item 12: why this
+ * deal is not ready to be marked Won, or null when it is. Checked from the CRM side (leadService.js
+ * #changeStage, via wonGateBlockerFor below) BEFORE the lead's stage actually changes - unlike the
+ * sync events elsewhere in this file, this must actually BLOCK the move, not just be recorded as a
+ * failed background sync while the lead quietly becomes Won anyway.
+ *
+ * W1: an ISSUED proposal must exist for this project.
+ * W2: that proposal's revision must be the project's CURRENT revision (not a superseded one), and
+ *     the current revision must still be RELEASED - a later recompute after the proposal was
+ *     issued resets releaseStatus to NOT RELEASED (revisionService.js#resetSignedStages), which
+ *     must re-block Won even though a proposal was issued at some point in the past.
+ * W3: every BOQ line on the current revision must be priced (no null/zero total other than a
+ *     genuinely free line), and the BOQ must include both an Installation and a Transportation
+ *     line (the sheet's own component names - onGridEngine.js#runOnGridDesign lines 13/14) - "site
+ *     costs" per the document's own wording, reusing the SAME two component names the engine
+ *     itself bills under, not a new parallel concept.
+ */
+async function wonReadiness(project) {
+  if (!project.currentRevision) return 'the deal has no revision yet - open it on the Deal Engine and calculate one.';
+  const revision = await CommercialRevision.findById(project.currentRevision);
+  if (!revision) return 'the deal has no revision yet - open it on the Deal Engine and calculate one.';
+
+  const proposal = await CommercialProposal.findOne({ project: project._id }).sort({ version: -1 });
+  if (!proposal) return 'no proposal has been issued yet for this deal. Issue a proposal on the Deal Engine, then mark the lead Won.';
+  if (String(proposal.revision) !== String(revision._id)) {
+    return 'the issued proposal is for an earlier revision of this deal. Issue a new proposal from the CURRENT revision, then mark the lead Won.';
+  }
+  if (revision.releaseStatus !== 'APPROVED FOR ISSUE') {
+    return 'the deal is NOT RELEASED - Stage 1, Stage 2 and MD sign-off (where required) must all be Approved. Something changed since the proposal was issued and reset the approvals - re-approve the revision on the Deal Engine.';
+  }
+
+  const lines = revision.boqLines || [];
+  const unpriced = lines.find(l => l.total == null);
+  if (unpriced) return `the BOQ line "${unpriced.component}" has no price yet. Price every BOQ line on the Deal Engine, then mark the lead Won.`;
+  if (!lines.some(l => /^installation/i.test(l.component))) return 'the BOQ has no Installation line (a site cost). Add it on the Deal Engine, then mark the lead Won.';
+  if (!lines.some(l => /^transportation/i.test(l.component))) return 'the BOQ has no Transportation line (a site cost). Add it on the Deal Engine, then mark the lead Won.';
+
+  return null;
+}
+
+/** Lead-side entry point for leadService.js#changeStage - null (and a no-op) when the lead has no linked deal at all, since W1-W3 only apply once a deal exists. */
+async function wonGateBlockerFor(lead) {
+  const project = await findLinkedProject(lead);
+  if (!project) return null;
+  return wonReadiness(project);
 }
 
 async function recordEvent({ lead, project, event, status, error = null, replay = false, trigger, userId }) {
@@ -346,4 +395,7 @@ async function onStageChanged(leadId, from, to, { userId = null } = {}) {
   return last;
 }
 
-module.exports = { syncLeadEvent, retrySync, onStageChanged, ensureProjectForLead, projectHeaderFromLead, erpBudgetFromRevision, eventForStage, SEGMENT_TO_SECTOR, syncProjectNameFromLead };
+module.exports = {
+  syncLeadEvent, retrySync, onStageChanged, ensureProjectForLead, projectHeaderFromLead, erpBudgetFromRevision,
+  eventForStage, SEGMENT_TO_SECTOR, syncProjectNameFromLead, wonReadiness, wonGateBlockerFor,
+};
