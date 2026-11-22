@@ -127,6 +127,20 @@ const userSchema = mongoose.Schema(
     // dedicated platform-admin endpoints (middleware/requirePlatformAdmin.js) or the explicit
     // scripts/bootstrapPlatformAdmin.js CLI script.
     platformAdmin: { type: Boolean, default: false },
+    // Test Super Administrator (distinct from platformAdmin above - deliberately NOT the same
+    // flag, so granting/removing it can never silently change what the existing, real platform
+    // admins (6 real accounts as of the pre-launch audit) are allowed to do). Bypasses system
+    // membership requirements AND specific business-workflow restrictions (CRM stage transitions,
+    // Deal Engine approval-role checks) for end-to-end testing - every such bypass is written to
+    // SuperAdminOverrideLog (models/system/superAdminOverrideLogModel.js). Never set by any
+    // user-facing path - only by scripts/bootstrapSuperAdmin.js, which refuses to run against a
+    // production-shaped DB_URI.
+    globalSuperAdmin: { type: Boolean, default: false },
+    // Set by the Super Admin bootstrap script (and available for any other forced-reset flow) -
+    // the login response still succeeds, but the frontend must route straight to a password-change
+    // screen instead of the normal destination until this clears (cleared the moment the password
+    // is actually changed, by the same code path that clears it below).
+    mustChangePassword: { type: Boolean, default: false },
     // Which of the five ecosystem systems (ERP/HR/CRM/COMMERCIAL/WEBSITE - see
     // utils/systemsRegistry.js) this user may enter at all, and under what role. For ERP, `role`
     // here is a mirror of the user's own top-level `role` field (admin/moderator/operator) - this

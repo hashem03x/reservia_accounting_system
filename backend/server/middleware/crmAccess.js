@@ -1,4 +1,5 @@
 const ApiError = require('../utils/apiError');
+const { isGlobalSuperAdmin } = require('../utils/systemAccess');
 
 // Reservia CRM access gate - mirrors middleware/hasPermission.js's ERP gate exactly in shape
 // (active-membership check, then an authorization check, both via next(new ApiError(...))), but
@@ -23,6 +24,10 @@ const hasActiveCrmMembership = user => !!crmMembership(user)?.isActive;
 
 /** Requires active CRM membership; attaches `req.crmRole` for downstream role checks. */
 exports.requireCrmAccess = (req, res, next) => {
+  if (isGlobalSuperAdmin(req.user)) {
+    req.crmRole = 'md'; // the system-owning role (utils/systemsRegistry.js#SYSTEM_OWNER_ROLES)
+    return next();
+  }
   const membership = crmMembership(req.user);
   if (!membership?.isActive) {
     return next(new ApiError('You do not have access to the CRM system. Contact your administrator.', 403));
@@ -33,6 +38,7 @@ exports.requireCrmAccess = (req, res, next) => {
 
 /** Requires active CRM membership AND one of the given CRM roles. Always run after requireCrmAccess. */
 exports.requireCrmRole = (...roles) => (req, res, next) => {
+  if (isGlobalSuperAdmin(req.user)) return next();
   if (!req.crmRole) return next(new ApiError('You do not have access to the CRM system. Contact your administrator.', 403));
   if (!roles.includes(req.crmRole)) return next(new ApiError('You are not allowed to perform this action in the CRM.', 403));
   return next();

@@ -1,6 +1,6 @@
 const User = require('../models/userModel');
 const ApiError = require('../utils/apiError');
-const { hasActiveErpMembership } = require('../utils/systemAccess');
+const { hasActiveErpMembership, isGlobalSuperAdmin } = require('../utils/systemAccess');
 
 // async function hasPermission(roleId, resource, action) {
 //     // Step 1: Populate user roles and permissions  can use it
@@ -46,6 +46,7 @@ const { hasActiveErpMembership } = require('../utils/systemAccess');
 // helper is for an ADDITIONAL business rule layered on top of an already-authorized request.
 function userHasPermission(user, resource, action) {
   if (user?.role === 'admin') return true;
+  if (isGlobalSuperAdmin(user)) return true;
   return (user?.permissions || []).some(permission => permission.resource === resource && permission.actions.includes(action));
 }
 

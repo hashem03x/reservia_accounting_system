@@ -98,7 +98,7 @@ exports.createLead = asyncHandler(async (req, res) => {
 });
 
 exports.changeStage = asyncHandler(async (req, res) => {
-  const lead = await leadService.changeStage(req.params.id, req.body, { userId: req.user._id, role: req.crmRole });
+  const lead = await leadService.changeStage(req.params.id, req.body, { userId: req.user._id, role: req.crmRole, actor: req.user });
   res.status(200).json(apiResponse('Lead stage updated successfully', true, lead));
 });
 

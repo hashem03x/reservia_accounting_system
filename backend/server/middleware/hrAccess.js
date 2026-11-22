@@ -1,4 +1,5 @@
 const ApiError = require('../utils/apiError');
+const { isGlobalSuperAdmin } = require('../utils/systemAccess');
 
 // Reservia HR Portal access gate (HR Portal Developer Spec section 2) - mirrors
 // middleware/commercialAccess.js: an active HR membership, then role checks. The four roles are the
@@ -17,6 +18,10 @@ function hrMembership(user) {
 }
 
 exports.requireHrAccess = (req, res, next) => {
+  if (isGlobalSuperAdmin(req.user)) {
+    req.hrRole = 'md'; // the system-owning role (utils/systemsRegistry.js#SYSTEM_OWNER_ROLES)
+    return next();
+  }
   const membership = hrMembership(req.user);
   if (!membership?.isActive || !HR_ROLES.includes(membership.role)) {
     return next(new ApiError('You do not have access to the HR Portal. Contact your administrator.', 403));
@@ -26,6 +31,7 @@ exports.requireHrAccess = (req, res, next) => {
 };
 
 exports.requireHrRole = (...roles) => (req, res, next) => {
+  if (isGlobalSuperAdmin(req.user)) return next();
   if (!roles.includes(req.hrRole)) return next(new ApiError('Your HR role does not allow this action.', 403));
   return next();
 };

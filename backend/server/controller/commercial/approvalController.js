@@ -12,7 +12,7 @@ exports.setStageStatus = asyncHandler(async (req, res) => {
   assertCanAccessApprovals(req.commercialRoles);
   const { status, note } = req.body;
   const revision = await approvalService.setStageStatus(req.params.id, req.params.stage.toUpperCase(), status, {
-    userId: req.user._id, userRole: req.commercialRole, note,
+    userId: req.user._id, userRole: req.commercialRole, note, actor: req.user,
   });
   res.status(200).json(apiResponse('Approval stage updated successfully', true, revision));
 });

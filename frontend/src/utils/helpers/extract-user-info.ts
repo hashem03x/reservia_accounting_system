@@ -14,6 +14,8 @@ export default function extractUserInfo(user: AuthResponse): UserState {
     addresses: user.data.addresses,
     wishlist: user.data.wishlist,
     platformAdmin: user.data.platformAdmin,
+    globalSuperAdmin: user.data.globalSuperAdmin,
+    mustChangePassword: user.data.mustChangePassword,
     isActive: user.data.isActive,
     createdAt: user.data.createdAt,
     updatedAt: user.data.updatedAt,

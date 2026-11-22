@@ -13,6 +13,12 @@ export type User = {
   // Central Business Portal (docs section "Central Business Portal") - platform-wide
   // administrator, distinct from ERP's own `role`/`isAdmin`. Only ever set by the backend.
   platformAdmin?: boolean;
+  // Feature 5 - Global Super Admin (distinct from platformAdmin - see backend userModel.js's own
+  // comment on why these are two separate flags). Only ever set by the backend bootstrap script.
+  globalSuperAdmin?: boolean;
+  // Set by the Super Admin bootstrap script (or any other forced-reset flow) - true until the
+  // user actually changes their password (PUT /users/updateMyPassword clears it).
+  mustChangePassword?: boolean;
   isActive?: boolean;
   createdAt: Date;
   updatedAt: Date;

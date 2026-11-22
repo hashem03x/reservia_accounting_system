@@ -26,11 +26,21 @@ const MD_APPROVAL_THRESHOLD_EGP = 1_000_000;
 // and subsequent applicable stages require a follow-up date."
 const FOLLOW_UP_REQUIRED_FROM_INDEX = 2;
 
+// Global Super Admin (Feature 5) - testing needs to reopen a Won deal, reopen a lost lead
+// regardless of role, and bypass the technical role's restricted destinations, none of which a
+// real MD can do today. `superAdminOverridable` marks exactly those three as ALSO overridable by
+// a globalSuperAdmin actor (utils/systemAccess.js#isGlobalSuperAdmin), still only with an explicit
+// overrideReason (same requirement as the MD path) so the audit trail is never silent. Every other
+// non-overridable rule here protects DATA the automatic Won -> ERP financial handoff depends on
+// (a real value, a real reason, a real follow-up date, the governorate the Rates region needs, a
+// deal that is actually in sync and ready) - per the explicit instruction "unrestricted business
+// permissions do NOT mean... bypassing... accounting invariants", these stay hard-blocked for
+// EVERY actor, super admin included.
 const RULES = {
   SAME_STAGE: { message: 'The lead is already in that stage.', overridable: false },
-  WON_IS_FINAL: { message: 'A won deal cannot change stage. Open a new lead for new work.', overridable: false },
+  WON_IS_FINAL: { message: 'A won deal cannot change stage. Open a new lead for new work.', overridable: false, superAdminOverridable: true },
   LOST_REOPEN_TARGET: { message: 'A lost lead can only be reopened to Contacted.', overridable: true },
-  LOST_REOPEN_ROLE: { message: 'Only Admin or the MD can reopen a lost lead.', overridable: false },
+  LOST_REOPEN_ROLE: { message: 'Only Admin or the MD can reopen a lost lead.', overridable: false, superAdminOverridable: true },
   LOST_REASON_REQUIRED: { message: 'Choose a lost reason.', overridable: false },
   WON_REQUIRES_PROPOSAL: { message: 'Only a lead with a proposal can be marked won.', overridable: true },
   WON_VALUE_REQUIRED: { message: 'Enter the contract value.', overridable: false },
@@ -38,7 +48,7 @@ const RULES = {
   STAGE_SKIP: { message: null, overridable: true }, // message built per transition, see below
   BACK_MORE_THAN_ONE: { message: 'A lead can only move back one stage at a time.', overridable: true },
   FOLLOW_UP_REQUIRED: { message: 'Set a follow-up date.', overridable: false },
-  TECHNICAL_RESTRICTED: { message: 'Technical can move leads to Site survey or Proposal sent only.', overridable: false },
+  TECHNICAL_RESTRICTED: { message: 'Technical can move leads to Site survey or Proposal sent only.', overridable: false, superAdminOverridable: true },
   // CRM Changes Required (12 Nov 2026), item 1: the Deal Engine handoff needs the governorate (it
   // decides the Rates region), so it is asked for at Qualified at the latest - never discovered as a
   // failed sync at Proposal sent. Data integrity: not overridable.
@@ -68,7 +78,7 @@ const STAGE_LABELS = {
 };
 
 function violation(code, message) {
-  return { code, message: message || RULES[code].message, overridable: RULES[code].overridable };
+  return { code, message: message || RULES[code].message, overridable: RULES[code].overridable, superAdminOverridable: !!RULES[code].superAdminOverridable };
 }
 
 /**
@@ -164,10 +174,21 @@ function canOverride(violations) {
   return violations.length > 0 && violations.every(v => v.overridable);
 }
 
+/**
+ * Global Super Admin (Feature 5) only - every violation must be EITHER MD-overridable OR one of
+ * the three testing-specific rules marked superAdminOverridable above. Still never includes a
+ * data-integrity rule (WON_VALUE_REQUIRED, GOVERNORATE_REQUIRED, DEAL_SYNC_FAILED,
+ * WON_GATE_NOT_READY, ...) - those have neither flag set, so they stay hard blocks here too.
+ */
+function canSuperAdminOverride(violations) {
+  return violations.length > 0 && violations.every(v => v.overridable || v.superAdminOverridable);
+}
+
 module.exports = {
   evaluateStageTransition,
   validateStageTransition,
   canOverride,
+  canSuperAdminOverride,
   STAGES,
   OPEN_STAGES,
   STAGE_LABELS,

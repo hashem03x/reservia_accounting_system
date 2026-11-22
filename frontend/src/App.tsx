@@ -31,6 +31,7 @@ const ResetPassword = lazy(() => import("@/pages/outer/reset-password"));
 
 // Account Page
 const Profile = lazy(() => import("@/pages/inner/profile"));
+const ForceChangePassword = lazy(() => import("@/pages/inner/force-change-password"));
 
 // Central Business Portal
 const Portal = lazy(() => import("@/pages/portal"));
@@ -176,6 +177,7 @@ export default function App() {
           {/* Account Page (require logged in) */}
           <Route element={<AuthGaurd requireLoggedIn={true} />}>
             <Route path={paths.profile} element={<Profile />} />
+            <Route path={paths.forceChangePassword} element={<ForceChangePassword />} />
           </Route>
 
           {/* Central Business Portal (docs section "Central Business Portal") - the common entry

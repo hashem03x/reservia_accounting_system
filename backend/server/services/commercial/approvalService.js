@@ -4,6 +4,7 @@ const CommercialApproval = require('../../models/commercial/commercialApprovalMo
 const CommercialProject = require('../../models/commercial/commercialProjectModel');
 const User = require('../../models/userModel');
 const { roleLabel } = require('../../utils/commercial/dealEnginePermissions');
+const { logOverride } = require('../system/superAdminAuditService');
 
 // Reservia Commercial - the two-stage-plus-MD approval workflow (Developer Brief section 4). Server-
 // enforced stage order and role (never trust a frontend-only restriction): Stage 2 cannot be set
@@ -68,11 +69,26 @@ function waitingOn(revision) {
   return null;
 }
 
-async function setStageStatus(revisionId, stage, status, { userId, userRole, note = '' } = {}) {
+async function setStageStatus(revisionId, stage, status, { userId, userRole, note = '', actor = null } = {}) {
   if (!STAGE_ROLES[stage]) throw new ApiError(`Unknown approval stage "${stage}"`, 400);
   if (!['Approved', 'Rejected'].includes(status)) throw new ApiError('Status must be Approved or Rejected.', 400);
-  if (!STAGE_ROLES[stage].includes(userRole)) {
-    throw new ApiError(`${STAGE_LABEL[stage]} can only be signed by ${stageRoleLabel(stage)}. Your Deal Engine role is "${userRole ? roleLabel(userRole) : 'none'}".`, 403);
+  const roleOk = STAGE_ROLES[stage].includes(userRole);
+  // Feature 5 - a Global Super Admin may sign ANY stage for end-to-end testing, every time this
+  // actually bypasses the real role rule (never when the role check would have passed anyway -
+  // this is an override log, not an access log). Segregation of duties below is ALSO explicitly
+  // waived for this account only (by instruction: "including consecutive approvals by the same
+  // Super Admin"), separately logged.
+  if (!roleOk) {
+    if (!actor?.globalSuperAdmin) {
+      throw new ApiError(`${STAGE_LABEL[stage]} can only be signed by ${stageRoleLabel(stage)}. Your Deal Engine role is "${userRole ? roleLabel(userRole) : 'none'}".`, 403);
+    }
+    await logOverride({
+      actor,
+      action: 'commercial.approval.role_override',
+      targetType: 'CommercialRevision',
+      targetId: revisionId,
+      details: { stage, requiredRole: stageRoleLabel(stage), actingAs: userRole || null },
+    });
   }
 
   const revision = await CommercialRevision.findById(revisionId);
@@ -87,12 +103,25 @@ async function setStageStatus(revisionId, stage, status, { userId, userRole, not
     throw new ApiError(`${STAGE_LABEL[stage]} has already been decided (${revision[field].status}). Change the pricing or inputs to reopen it.`, 400);
   }
 
-  // Segregation of duties - one person, one stage per revision.
+  // Segregation of duties - one person, one stage per revision. Explicitly waived for a Global
+  // Super Admin ONLY (Feature 5 - "including consecutive approvals by the same Super Admin"),
+  // logged every time it actually applies (i.e. only when a real second signature by the same
+  // person is involved - never for the first, ordinary signature on a revision).
   for (const [otherStage, otherField] of Object.entries(STAGE_FIELD)) {
     if (otherStage === stage) continue;
     const other = revision[otherField];
     if (other?.approver && String(other.approver) === String(userId) && other.status !== 'Pending') {
-      throw new ApiError(`You already signed ${STAGE_LABEL[otherStage]} of this revision - ${STAGE_LABEL[stage]} must be signed by a different person.`, 403);
+      if (!actor?.globalSuperAdmin) {
+        throw new ApiError(`You already signed ${STAGE_LABEL[otherStage]} of this revision - ${STAGE_LABEL[stage]} must be signed by a different person.`, 403);
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await logOverride({
+        actor,
+        action: 'commercial.approval.segregation_of_duties_override',
+        targetType: 'CommercialRevision',
+        targetId: revisionId,
+        details: { stage, alsoSigned: otherStage, note: note || null },
+      });
     }
   }
 

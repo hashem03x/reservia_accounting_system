@@ -1,4 +1,5 @@
 const ApiError = require('../utils/apiError');
+const { isGlobalSuperAdmin } = require('../utils/systemAccess');
 
 // Reservia Commercial access gate - mirrors middleware/crmAccess.js exactly (active-membership
 // check, then a role check, both via next(new ApiError(...))). Gates directly on the Commercial
@@ -34,6 +35,11 @@ const hasActiveCommercialMembership = user => commercialMemberships(user).length
 
 /** Requires active Commercial membership; attaches req.commercialRole(s) for downstream role/permission checks. */
 exports.requireCommercialAccess = (req, res, next) => {
+  if (isGlobalSuperAdmin(req.user)) {
+    req.commercialRoles = ['md']; // the system-owning role (utils/systemsRegistry.js#SYSTEM_OWNER_ROLES)
+    req.commercialRole = 'md';
+    return next();
+  }
   const memberships = commercialMemberships(req.user);
   if (!memberships.length) {
     return next(new ApiError('You do not have access to the Deal Engine. Contact your administrator.', 403));
@@ -45,6 +51,7 @@ exports.requireCommercialAccess = (req, res, next) => {
 
 /** Requires active Commercial membership AND one of the given Commercial roles. Always run after requireCommercialAccess. */
 exports.requireCommercialRole = (...roles) => (req, res, next) => {
+  if (isGlobalSuperAdmin(req.user)) return next();
   if (!req.commercialRoles?.length) {
     return next(new ApiError('You do not have access to the Deal Engine. Contact your administrator.', 403));
   }

@@ -1,4 +1,5 @@
 const ApiError = require('../utils/apiError');
+const { isGlobalSuperAdmin } = require('../utils/systemAccess');
 
 // Website Management access gate - mirrors middleware/crmAccess.js exactly in shape (active-
 // membership check, then an authorization check, both via next(new ApiError(...))). Like CRM and
@@ -30,6 +31,11 @@ const hasActiveWebsiteMembership = user => !!websiteMembership(user)?.isActive;
 
 /** Requires active WEBSITE membership; attaches req.websiteRole/req.websiteCapabilities for downstream checks. */
 exports.requireWebsiteAccess = (req, res, next) => {
+  if (isGlobalSuperAdmin(req.user)) {
+    req.websiteRole = 'admin'; // the system-owning role (utils/systemsRegistry.js#SYSTEM_OWNER_ROLES)
+    req.websiteCapabilities = CAPABILITIES_BY_ROLE.admin;
+    return next();
+  }
   const membership = websiteMembership(req.user);
   if (!membership?.isActive) {
     return next(new ApiError('You do not have access to the Website system. Contact your administrator.', 403));
@@ -41,6 +47,7 @@ exports.requireWebsiteAccess = (req, res, next) => {
 
 /** Requires every one of the given capabilities. Always run after requireWebsiteAccess. */
 exports.requireWebsiteCapability = (...caps) => (req, res, next) => {
+  if (isGlobalSuperAdmin(req.user)) return next();
   if (!req.websiteCapabilities) {
     return next(new ApiError('You do not have access to the Website system. Contact your administrator.', 403));
   }

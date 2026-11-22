@@ -27,6 +27,7 @@
     "db:migrate-subcategory-to-brand": "node server/scripts/migrateSubcategoryToBrand.js",
     "db:migrate-commercial-material-key-norm": "node server/scripts/migrateCommercialMaterialKeyNorm.js",
     "db:bootstrap-platform-admin": "node server/scripts/bootstrapPlatformAdmin.js",
+    "db:bootstrap-super-admin": "node server/scripts/bootstrapSuperAdmin.js",
     "db:repair-sub-accounts": "node server/scripts/repairUnassignedSubAccounts.js",
     "db:migrate-account-parent-groups": "node server/scripts/migrateAccountParentGroups.js",
     "db:migrate-vendor-payment-accounts": "node server/scripts/migrateVendorPaymentAccounts.js",

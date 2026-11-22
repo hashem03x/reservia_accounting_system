@@ -3,6 +3,7 @@ const paths = {
   forgotPassword: "forgot-password",
   verifyCode: "verify-code",
   resetPassword: "reset-password",
+  forceChangePassword: "change-password",
   profile: "profile",
   // Pre-launch audit (22 Nov 2026): renamed from "admin" to "erp" for consistency with the other
   // portal apps (`/crm`, `/dealengine`) - this is the ONE constant every ERP route/link/redirect

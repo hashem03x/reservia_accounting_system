@@ -10,7 +10,8 @@ const User = require('../../models/userModel');
 const { normalizeEgyptianPhone } = require('../../utils/crm/phone');
 const { addWorkingHours } = require('../../utils/crm/workingHours');
 const { generateRefCode } = require('../../utils/crm/refCode');
-const { evaluateStageTransition, canOverride, STAGES, STAGE_LABELS } = require('../../utils/crm/stageRules');
+const { evaluateStageTransition, canOverride, canSuperAdminOverride, STAGES, STAGE_LABELS } = require('../../utils/crm/stageRules');
+const { logOverride } = require('../system/superAdminAuditService');
 const { trackEvent } = require('./amplitudeService');
 const { pickAutoAssignee, notifyAssignment, notifyReassignment, notifyUnassigned, notifyReopened, assignmentStrategy, AUTO_ASSIGN_CHANNELS } = require('./leadAssignmentService');
 const { GOVERNORATE_NAMES_EN } = require('../../utils/crm/constants');
@@ -442,12 +443,15 @@ function dealBlockerFor(lead, governorate) {
  * which rules) and to the activity timeline. Anyone else sending `overrideReason` gets a 403 -
  * the reason field is not a way around the rules.
  */
-async function changeStage(leadId, input, { userId = null, role } = {}) {
+async function changeStage(leadId, input, { userId = null, role, actor = null } = {}) {
   const lead = await Lead.findById(leadId);
   if (!lead) throw new ApiError('Lead not found.', 404);
 
   const overrideReason = typeof input.overrideReason === 'string' ? input.overrideReason.trim().slice(0, OVERRIDE_REASON_MAX) : '';
-  if (overrideReason && role !== 'md') {
+  // Feature 5 - explicit, not inferred from role==='md' (middleware/commercialAccess.js-style
+  // role-spoofing is an implementation detail elsewhere; this check stands on its own).
+  const isSuperAdmin = !!actor?.globalSuperAdmin;
+  if (overrideReason && role !== 'md' && !isSuperAdmin) {
     throw new ApiError('Only the MD can override pipeline stage rules.', 403);
   }
 
@@ -483,12 +487,19 @@ async function changeStage(leadId, input, { userId = null, role } = {}) {
   if (input.governorate && !GOVERNORATE_NAMES_EN.includes(input.governorate)) throw new ApiError('Choose a governorate from the list.', 400);
   const violations = evaluateStageTransition(ctx);
   let overridden = [];
+  // Feature 5 - a Global Super Admin can override every rule an MD can (canOverride), PLUS the
+  // three testing-specific ones stageRules.js marks superAdminOverridable (reopening a Won deal,
+  // reopening a Lost lead regardless of role, Technical's restricted destinations). Rules with
+  // NEITHER flag (a real value, a real reason, the governorate, a deal actually ready to be Won)
+  // stay hard blocks for this account too - "unrestricted business permissions" was explicitly
+  // never meant to include bypassing the data the Won -> ERP financial handoff depends on.
+  const overridableCheck = isSuperAdmin ? canSuperAdminOverride : canOverride;
   if (violations.length) {
-    const overridable = canOverride(violations) && role === 'md';
+    const overridable = overridableCheck(violations) && (role === 'md' || isSuperAdmin);
     if (!overridable || !overrideReason) {
       const message = violations.map(v => v.message).join(' ');
       if (overridable) {
-        throw new ApiError(`${message} As MD you can override this - give a reason for the override.`, 400, {
+        throw new ApiError(`${message} ${isSuperAdmin ? 'As Super Admin' : 'As MD'} you can override this - give a reason for the override.`, 400, {
           overridable: true,
           rules: violations.map(v => v.code),
         });
@@ -498,6 +509,18 @@ async function changeStage(leadId, input, { userId = null, role } = {}) {
     overridden = violations;
   }
   const isOverride = overridden.length > 0;
+  // Feature 5 audit trail: a Super Admin override that an ordinary MD could NOT have made (i.e.
+  // it used one of the superAdminOverridable-only rules) is logged separately, in addition to the
+  // lead's own stageHistory record (which captures it for everyone, MD included) a few lines down.
+  if (isOverride && isSuperAdmin && overridden.some(v => v.superAdminOverridable && !v.overridable)) {
+    await logOverride({
+      actor,
+      action: 'crm.stage.super_admin_only_override',
+      targetType: 'CrmLead',
+      targetId: lead._id,
+      details: { from: lead.stage, to: input.to, rules: overridden.map(v => v.code), reason: overrideReason },
+    });
+  }
 
   const from = lead.stage;
   const changedAt = new Date();

@@ -328,6 +328,9 @@ exports.updateLoggedUserPassword = asyncHandler(async (req, res, next) => {
     {
       password: await bcrypt.hash(req.body.password, 5),
       passwordChangedAt: Date.now(),
+      // Feature 5 - clears the Super Admin bootstrap's forced-change flag the moment the password
+      // actually changes, whoever the user is (harmless no-op for anyone who never had it set).
+      mustChangePassword: false,
     },
     { new: true }
   );
