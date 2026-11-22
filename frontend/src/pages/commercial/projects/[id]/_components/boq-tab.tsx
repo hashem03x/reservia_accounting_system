@@ -8,9 +8,11 @@ import { formatAmount } from "@/utils/helpers/format-amount";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
 import { solidIcons } from "@/components/icons";
 import { notifyError } from "@/utils/helpers/notifiers";
-import { CommercialProject, CommercialRevision } from "@/types/commercial";
+import { BoqLine, CommercialProject, CommercialRevision } from "@/types/commercial";
+import CreatePrModal from "./create-pr-modal";
 
-// Feature 2 - who may select/change a BOQ line's vendor (mirrors backend revisionService.js#BOQ_VENDOR_ROLES exactly).
+// Feature 2/3 - who may select/change a BOQ line's vendor AND who may Create PR (mirrors backend
+// revisionService.js#BOQ_VENDOR_ROLES / createPrService.js#BOQ_VENDOR_ROLES - same list, same reasoning).
 const BOQ_VENDOR_ROLES = ["md", "commercial_director", "procurement"];
 
 // Every BOQ line distinguishes automatic vs. manually-overridden values (source badge) - an
@@ -28,6 +30,7 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
   // keyword-search endpoint exists for Suppliers, same as requisition-select's own precedent).
   const [suppliers, setSuppliers] = useState<{ _id: string; code: string; legalName: string; status: string }[]>([]);
   const [vendorBusy, setVendorBusy] = useState<string | null>(null);
+  const [prLine, setPrLine] = useState<BoqLine | null>(null);
   useEffect(() => {
     if (!canSetVendor) return;
     privateRequest({ url: "commercial/suppliers", language })
@@ -87,6 +90,7 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
               <Table.Th className="text-right">{translate("Total", "الإجمالي")}</Table.Th>
               <Table.Th>{translate("Source", "المصدر")}</Table.Th>
               <Table.Th>{translate("Vendor", "المورد")}</Table.Th>
+              <Table.Th>{translate("Procurement", "التوريد")}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -161,11 +165,24 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                     <span className="text-xs text-gray-400">{translate("No vendor selected", "لم يتم اختيار مورد")}</span>
                   )}
                 </Table.Td>
+                <Table.Td data-testid="boq-line-procurement">
+                  <div className="flex items-center gap-1.5">
+                    <Badge size="sm" variant="light" color={!line.orderedQty ? "gray" : line.orderedQty >= (line.qty || 0) ? "green" : "yellow"}>
+                      {!line.orderedQty ? translate("Not requested", "لم يُطلب") : line.orderedQty >= (line.qty || 0) ? translate("Fully ordered", "تم طلبه بالكامل") : translate("Partially ordered", "طُلب جزئياً")}
+                    </Badge>
+                    {canSetVendor && (line.qty || 0) > 0 && (
+                      <Button size="compact-xs" variant="subtle" onClick={() => setPrLine(line)}>
+                        {translate("Create PR", "إنشاء أمر شراء")}
+                      </Button>
+                    )}
+                  </div>
+                </Table.Td>
               </Table.Tr>
             ))}
             <Table.Tr className="font-semibold">
               <Table.Td colSpan={5} className="text-right">{translate("BOQ Total", "إجمالي جدول الكميات")}</Table.Td>
               <Table.Td className="text-right">{formatAmount(revision.boqTotal, project.currency)}</Table.Td>
+              <Table.Td />
               <Table.Td />
               <Table.Td />
             </Table.Tr>
@@ -177,6 +194,8 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
       <Button onClick={handleSave} loading={loading} color="teal" disabled={!Object.keys(overrides).length} className="self-start">
         {translate("Save Overrides", "حفظ التعديلات")}
       </Button>
+
+      <CreatePrModal opened={!!prLine} onClose={() => setPrLine(null)} revisionId={revision._id} line={prLine} suppliers={suppliers} onCreated={onChanged} />
     </div>
   );
 }

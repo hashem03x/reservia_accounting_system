@@ -28,18 +28,26 @@ function storedLevers(revision) {
 }
 
 /**
- * Feature 2/B3 - a BOQ line's selected vendor (CommercialSupplier) must survive editing,
+ * Feature 2/3/B3/B4 - a BOQ line's selected vendor AND its already-procured quantity
+ * (orderedQty - Create PR's atomic guard against overspending the line) must survive editing,
  * recalculation, and a brand-new revision, even though boqLines is a COMPLETE rebuild from the
- * engine every time (built.lines above is plain objects with no vendor field and no `_id` that
+ * engine every time (built.lines above is plain objects with neither field, and no `_id` that
  * would match the old array's). Carried forward by `component` - the SAME key boqService.js
  * itself already uses for manual-override carry-forward (overridesByComponent), so a line is
- * matched identically whether the carried-forward value is a price override or a vendor.
+ * matched identically whether the carried-forward value is a price override, a vendor, or an
+ * ordered quantity. Losing orderedQty on a recalculation would silently let a line be
+ * over-procured (Create PR would think the full BOQ quantity was still available) - exactly the
+ * invariant this function exists to protect.
  */
 function carryForwardVendors(newLines, oldLines) {
   if (!oldLines?.length) return newLines;
-  const vendorByComponent = new Map(oldLines.filter(l => l.vendor).map(l => [l.component, l.vendor]));
-  if (!vendorByComponent.size) return newLines;
-  return newLines.map(line => (vendorByComponent.has(line.component) ? { ...line, vendor: vendorByComponent.get(line.component) } : line));
+  const byComponent = new Map(oldLines.filter(l => l.vendor || l.orderedQty).map(l => [l.component, { vendor: l.vendor, orderedQty: l.orderedQty || 0 }]));
+  if (!byComponent.size) return newLines;
+  return newLines.map(line => {
+    const carried = byComponent.get(line.component);
+    if (!carried) return line;
+    return { ...line, ...(carried.vendor ? { vendor: carried.vendor } : {}), ...(carried.orderedQty ? { orderedQty: carried.orderedQty } : {}) };
+  });
 }
 
 /** VAT fraction for a project: an explicit override, else the revision's own, else the configured rate for the country. */

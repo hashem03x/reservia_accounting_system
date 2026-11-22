@@ -4,6 +4,7 @@ const CommercialProject = require('../../models/commercial/commercialProjectMode
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const revisionService = require('../../services/commercial/revisionService');
+const createPrService = require('../../services/commercial/createPrService');
 const pricingConfigService = require('../../services/commercial/pricingConfigService');
 const { waitingOn } = require('../../services/commercial/approvalService');
 const {
@@ -45,6 +46,16 @@ exports.getRevision = asyncHandler(async (req, res, next) => {
 exports.setBoqLineVendor = asyncHandler(async (req, res) => {
   const revision = await revisionService.setBoqLineVendor(req.params.id, decodeURIComponent(req.params.component), req.body?.supplierId, { role: req.commercialRole });
   res.status(200).json(apiResponse('BOQ line vendor updated', true, shapeRevisionForRole(withWaitingOn(revision), req.commercialRoles)));
+});
+
+// Feature 3/B4 - Create PR (a real ERP Purchase Order) from a BOQ line.
+exports.getBoqLineProcurementStatus = asyncHandler(async (req, res) => {
+  const status = await createPrService.getBoqLineProcurementStatus(req.params.id, decodeURIComponent(req.params.component));
+  res.status(200).json(apiResponse('BOQ line procurement status', true, status));
+});
+exports.createPr = asyncHandler(async (req, res) => {
+  const requisition = await createPrService.createPrFromBoqLine(req.params.id, decodeURIComponent(req.params.component), { supplierId: req.body?.supplierId, quantity: req.body?.quantity }, { role: req.commercialRole });
+  res.status(201).json(apiResponse('Purchase Order created', true, requisition));
 });
 
 /**

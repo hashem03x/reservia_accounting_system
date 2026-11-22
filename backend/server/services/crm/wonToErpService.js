@@ -9,7 +9,7 @@ const Lead = require('../../models/crm/leadModel');
 const Activity = require('../../models/crm/activityModel');
 const Project = require('../../models/project/projectModel');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
-const Product = require('../../models/inventory/productModel');
+const { loadMatchingContext, matchLineToProduct } = require('../commercial/boqProductMatchingService');
 const { findOrCreateCustomer } = require('../customer/sharedCustomerService');
 const { getNextProjectNumber } = require('../project/projectNumberService');
 const { resolveProjectSector } = require('../project/sectorService');
@@ -132,29 +132,40 @@ async function buildAverageCostLines(revision, config, session) {
 /**
  * W13: copies BOQ lines into Project.boqLines - which requires a REAL Product reference
  * (projectModel.js#boqLineSchema), unlike the Commercial revision's free-text component/
- * description. `component` is only a generic category label ("PV Modules", "Solar Inverters" -
- * see onGridEngine.js); the actual brand/model (what a catalog Product title would realistically
- * match) is in `description` (e.g. the module/inverter model code, the cable brand + size) - so
- * matching tries `description` first and only falls back to `component` when there is no
- * description to go on. Case-insensitive substring match, either direction; a line with no match
- * is NOT written (a guessed Product would misrepresent what was actually quoted) - reported as a
- * warning instead, naming exactly what did not transfer.
- * projectModel.js enforces at most one line per product, so two BOQ lines that match the SAME
- * product (e.g. two cable gauges both only matching a generic "Cable" item) are merged into one
- * line (quantities summed, unit price re-derived from the combined total) rather than rejected.
+ * description. Matching itself (exact Price Book link, or a safe fuzzy fallback with ambiguity/
+ * conflicting-size detection) is services/commercial/boqProductMatchingService.js - the ONE place
+ * this happens, shared with createPrService.js (Feature 3/B4).
+ *
+ * A line that matches neither way is NOT written (a guessed Product would misrepresent what was
+ * actually quoted) - reported as a warning instead, naming exactly what did not transfer and why.
+ * projectModel.js enforces at most one line per product, so two BOQ lines that resolve to the SAME
+ * product (e.g. two cable runs of the same confirmed gauge) are merged into one line (quantities
+ * summed, unit price re-derived from the combined total) rather than rejected.
  */
 async function buildErpBoqLines(boqLines, session) {
   const warnings = [];
   const byProduct = new Map();
-  const products = await Product.find({ isDeleted: { $ne: true }, type: 'product' }).select('title').session(session || null).lean();
-  const findMatch = needle => (needle ? products.find(p => String(p.title?.en || '').toLowerCase().includes(needle) || needle.includes(String(p.title?.en || '').toLowerCase())) : null);
+
+  const context = await loadMatchingContext(boqLines, session);
+
   for (const l of boqLines || []) {
     if (!(l.total > 0) || !(l.qty > 0)) continue; // unpriced/zero-qty lines have nothing to compare
-    const match = findMatch(String(l.description || '').toLowerCase().trim()) || findMatch(String(l.component || '').toLowerCase().trim());
-    if (!match) {
-      warnings.push(`BOQ line "${l.component}" has no matching product in the ERP catalog - it was not added to "Raw Materials, BOQ Price vs Purchase Cost". Add a matching product, or add the line manually.`);
+
+    const { product: match, ambiguous, reason } = matchLineToProduct(l, context);
+
+    if (reason === 'unlinked') {
+      warnings.push(`BOQ line "${l.component}" is linked (via its Price Book item) to an ERP product that no longer exists - it was not added to "Raw Materials, BOQ Price vs Purchase Cost". Re-link the Price Book item to a real product.`);
       continue;
     }
+    if (reason === 'ambiguous') {
+      warnings.push(`BOQ line "${l.component}" (${l.description || 'no description'}) matches ${ambiguous.length} catalog products ambiguously (${ambiguous.map(c => c.title.en).join(', ')}) - it was not added automatically. Link the Price Book item to the correct product (Materials page), or rename the catalog entries so only one matches.`);
+      continue;
+    }
+    if (reason === 'unmatched') {
+      warnings.push(`BOQ line "${l.component}" (${l.description || 'no description'}) has no matching product in the ERP catalog - it was not added to "Raw Materials, BOQ Price vs Purchase Cost". Purchasing must create the real product, or link the Price Book item to an existing one.`);
+      continue;
+    }
+
     const id = String(match._id);
     const existing = byProduct.get(id);
     if (existing) {

@@ -135,6 +135,30 @@ export type BoqLine = {
   // Feature 2 - the selected supplier for this line (populated by the backend), or null/undefined
   // if none chosen yet. Set via PATCH commercial/revisions/:id/boq-lines/:component/vendor.
   vendor?: { _id: string; code: string; legalName: string; status: string } | null;
+  // Feature 3/B4 - cumulative quantity already placed on a (non-cancelled) real ERP Purchase Order
+  // via "Create PR". Comes straight back with the revision (no extra round trip needed just to
+  // show the "Not requested / Partially ordered / Fully ordered" summary on this row); the
+  // individual linked Purchase Orders themselves are fetched on demand (see
+  // BoqLineProcurementStatus) only when the Create PR modal is opened for a line.
+  orderedQty?: number;
+};
+
+// GET commercial/revisions/:id/boq-lines/:component/procurement-status - fetched when the Create
+// PR modal opens for a line, never for every row (would be N+1).
+export type BoqLineProcurementStatus = {
+  boqQty: number;
+  orderedQty: number;
+  remainingQty: number;
+  requisitions: {
+    _id: string;
+    code: string;
+    status: "draft" | "open" | "cancelled";
+    effectiveStatus: "draft" | "open" | "partially_invoiced" | "fully_invoiced" | "cancelled";
+    vendorId: string | null;
+    quantity: number;
+    amount: number;
+    createdAt: string;
+  }[];
 };
 
 export type CommercialPricing = {

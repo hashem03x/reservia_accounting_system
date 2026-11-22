@@ -142,6 +142,18 @@ const cancelRequisition = asyncHandler(async (req, res, next) => {
 
   requisition.status = 'cancelled';
   await requisition.save();
+
+  // Feature 3/B4 - a Purchase Order that "Create PR" raised against a Deal Engine BOQ line
+  // reserved its quantity there (commercialRevisionModel.js#boqLines.orderedQty, the atomic guard
+  // createPrService.js enforces). Cancelling it must release that reservation, or the line would
+  // show less remaining than is actually true, blocking a legitimate re-procurement for no reason.
+  if (requisition.dealEngineSource?.revision && requisition.dealEngineSource?.boqComponent) {
+    const { releaseOrderedQty } = require('../../services/commercial/createPrService'); // eslint-disable-line global-require
+    const qty = requisition.items.reduce((s, i) => s + (i.quantity || 0), 0);
+    // The cancellation itself already succeeded and must not be rolled back by this housekeeping step failing.
+    await releaseOrderedQty(requisition.dealEngineSource.revision, requisition.dealEngineSource.boqComponent, qty).catch(() => {});
+  }
+
   res.status(200).json(apiResponse('Purchase Order cancelled successfully', true, requisition));
 });
 

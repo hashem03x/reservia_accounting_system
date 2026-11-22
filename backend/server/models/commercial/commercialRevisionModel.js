@@ -33,6 +33,16 @@ const boqLineSchema = new Schema(
     // narrow mutation that never touches pricing/engineering, so selecting a vendor can never
     // itself trigger a recalculation or reset a signed approval stage.
     vendor: { type: Schema.Types.ObjectId, ref: 'CommercialSupplier' },
+    // Feature 3/B4 - cumulative quantity already placed on a (non-cancelled) real ERP Purchase
+    // Order via "Create PR" (createPrService.js). The SOURCE OF TRUTH for the "never exceed the
+    // BOQ quantity" guard, updated by exactly ONE atomic findOneAndUpdate per create/cancel (the
+    // SAME "guarded atomic increment" pattern requisitionModel.js#invoicedAmount already uses one
+    // level down the chain) - never derived by re-summing linked Purchase Orders at guard time,
+    // which cannot be made race-safe against two concurrent requests without a real multi-
+    // document transaction (and even then, two concurrent inserts of two DIFFERENT new documents
+    // do not conflict under MongoDB's transaction isolation - only a single counter field on one
+    // document, incremented atomically, actually prevents the race).
+    orderedQty: { type: Number, default: 0, min: 0 },
     unit: { type: String, required: true },
     qty: { type: Number, default: null },
     unitPrice: { type: Number, default: null },

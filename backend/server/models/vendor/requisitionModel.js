@@ -65,6 +65,18 @@ const requisitionSchema = new Schema(
     // Orders created before this field existed.
     paymentTerms: { type: documentPaymentTermsSchema, default: null },
     notes: { type: String, trim: true },
+    // Feature 3/B4 - set ONLY when this Purchase Order was created via Deal Engine's "Create PR"
+    // action on a BOQ line; absent for every manually-created Purchase Order (the normal create
+    // form never sets this). `boqComponent` is the SAME free-text key the Commercial revision's
+    // own carry-forward/override logic already uses to identify "this line" (there is no
+    // persistent per-line id - commercialRevisionModel.js's boqLineSchema is `{ _id: false }`).
+    // Used by createPrService.js to track how much of a BOQ line has already been put into a
+    // Purchase Order, so a second "Create PR" click can never silently exceed the BOQ quantity.
+    dealEngineSource: {
+      commercialProject: { type: Schema.Types.ObjectId, ref: 'CommercialProject', default: null },
+      revision: { type: Schema.Types.ObjectId, ref: 'CommercialRevision', default: null },
+      boqComponent: { type: String, default: null },
+    },
     // 'draft' - still being edited, not yet eligible for invoicing.
     // 'open' - finalized; eligible for Purchase Invoices to reference, until fully invoiced.
     // 'cancelled' - permanently closed; never eligible, blocked once invoicedAmount > 0 (see

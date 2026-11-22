@@ -12,5 +12,7 @@ router.get('/:id', revisionController.getRevision);
 router.patch('/:id', revisionController.recomputeRevision);
 router.post('/project/:projectId', revisionController.createRevisionForProject);
 router.patch('/:id/boq-lines/:component/vendor', revisionController.setBoqLineVendor);
+router.get('/:id/boq-lines/:component/procurement-status', revisionController.getBoqLineProcurementStatus);
+router.post('/:id/boq-lines/:component/create-pr', revisionController.createPr);
 
 module.exports = router;
