@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import { Alert, Badge, Button, Textarea } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import { useSystemAccess } from "@/context/SystemAccessContext";
+import { useUser } from "@/context/UserContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import SectionCard from "@/components/ui/section-card";
@@ -15,7 +16,14 @@ import { STAGE_META, approverName, statusColor } from "../../../_shared/approval
 export default function ApprovalsTab({ revision, onChanged }: { revision: CommercialRevision; onChanged: () => void }) {
   const { translate, language } = useLanguage();
   const { systems } = useSystemAccess();
+  const { user } = useUser();
   const role = systems?.COMMERCIAL?.role;
+  // Feature 5 - a Global Super Admin is assigned only ONE effective Commercial role (the highest,
+  // "md" - utils/systemAccess.js#getEffectiveSystemAccess), so a plain `s.roles.includes(role)`
+  // check hides Stage 1/Stage 2's buttons for them even though the backend already lets them sign
+  // ANY stage (approvalService.js#setStageStatus's own explicit bypass) - this mirrors that bypass
+  // here so the UI actually offers what the backend already allows.
+  const isSuperAdmin = !!user?.globalSuperAdmin;
   const [notes, setNotes] = useState<Record<string, string>>({});
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler<null>({ initialData: null });
   const isDraft = revision.status === "Draft";
@@ -44,7 +52,7 @@ export default function ApprovalsTab({ revision, onChanged }: { revision: Commer
 
       {STAGE_META.filter((s) => s.key !== "md" || revision.mdRequired).map((s) => {
         const stage = revision[s.key] as ApprovalStage;
-        const canDecide = !!role && s.roles.includes(role);
+        const canDecide = isSuperAdmin || (!!role && s.roles.includes(role));
         const blocked = isDraft || (s.key === "stage2" ? revision.stage1.status !== "Approved" : s.key === "md" ? revision.stage2.status !== "Approved" : false);
         const name = approverName(stage);
         return (
