@@ -14,13 +14,16 @@ const { CATEGORIES, SCOPES } = require('../../utils/commercial/constants');
 const { resolveProjectRegion, EGYPT_REGIONS, RATES_MATRIX_COUNTRIES } = require('../../utils/commercial/regions');
 const sharedCustomers = require('../../services/customer/sharedCustomerService');
 const { shapeProjectForRole } = require('../../utils/commercial/dealEnginePermissions');
+const { assertSelectableProjectManager } = require('../../services/project/projectManagerService');
+const { syncProjectManagerToErp } = require('../../services/commercial/projectService');
+const ProjectManager = require('../../models/project/projectManagerModel');
 
 const STAGE_POPULATE = ['stage1.approver', 'stage2.approver', 'md.approver'].map(path => ({ path, select: 'name' }));
 
 // Fields a project edit may change (QA B1: "Name, customer, country, region and scope"), plus the
 // optional header details the New Project form also sets. Identifiers, rollups, CRM linkage and
 // outcome are never writable through this endpoint.
-const EDITABLE_FIELDS = ['name', 'customer', 'country', 'region', 'category', 'subCategory', 'scope', 'currency', 'fxRate', 'designerUser', 'tariffBand', 'voltageLevel'];
+const EDITABLE_FIELDS = ['name', 'customer', 'country', 'region', 'category', 'subCategory', 'scope', 'currency', 'fxRate', 'designerUser', 'tariffBand', 'voltageLevel', 'projectManager'];
 // A change to any of these alters the figures of the current revision (rates, VAT, engine).
 const RECALC_FIELDS = ['country', 'region', 'category'];
 
@@ -89,6 +92,23 @@ async function validateHeader(body, { existing = null } = {}) {
     if (!body.designerUser) values.designerUser = null;
     else if (!mongoose.isValidObjectId(body.designerUser)) errors.push('Designer is not valid.');
     else values.designerUser = body.designerUser;
+  }
+  // B5 - same "existing, active Project Manager" rule as the real ERP Project
+  // (projectValidators.js#updateProjectValidators), including the "keeping the current one is
+  // always allowed even if deactivated since" exception.
+  if (has('projectManager')) {
+    const id = body.projectManager?._id || body.projectManager;
+    if (!id) values.projectManager = null;
+    else if (!mongoose.isValidObjectId(id)) errors.push('Project manager is not valid.');
+    else {
+      try {
+        const currentValue = existing?.projectManager?._id || existing?.projectManager || null;
+        await assertSelectableProjectManager(id, { currentValue });
+        values.projectManager = id;
+      } catch (err) {
+        errors.push(err.message || 'Project manager is not valid.');
+      }
+    }
   }
   return { values, errors };
 }
@@ -178,6 +198,8 @@ exports.updateProject = asyncHandler(async (req, res, next) => {
     project.editHistory.push({ at: new Date(), by: req.user._id, byName: req.user.name || null, changes, revisionReset: !!invalidated });
   }
   await project.save();
+  // B5 - keep an already-created ERP project's manager in step with a later Deal Engine change.
+  if (changes.some(c => c.field === 'projectManager')) await syncProjectManagerToErp(project);
 
   const fresh = await CommercialProject.findById(project._id).populate({ path: 'currentRevision', populate: STAGE_POPULATE });
   res.status(200).json(
@@ -220,6 +242,15 @@ exports.listRevisions = asyncHandler(async (req, res) => {
 /** The controlled vocabularies the New/Edit Project form offers (QA B2: region is a dropdown). */
 exports.getFormOptions = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Form options', true, { categories: CATEGORIES, scopes: SCOPES, regionsByCountry: { Egypt: EGYPT_REGIONS }, regionRequiredCountries: RATES_MATRIX_COUNTRIES }));
+});
+
+// B5 - the SAME admin-managed Project Manager list the ERP Project form uses (the real list
+// endpoint, GET /project-managers, is gated by the ERP Projects read permission - a Commercial-
+// only user may not hold it, so this is a small read-only lookup under Commercial's own access
+// gate instead, same reasoning as this file's own searchCustomers).
+exports.listProjectManagers = asyncHandler(async (req, res) => {
+  const managers = await ProjectManager.find({}).select('name email isActive').sort({ name: 1 }).lean();
+  res.status(200).json(apiResponse('Project managers', true, managers));
 });
 
 /** QA U1 - customer lookup against the SHARED customer list, for any Commercial user. */

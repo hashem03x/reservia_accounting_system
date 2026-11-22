@@ -152,6 +152,37 @@ test('W4: recomputeRevision refuses to recalculate the current revision once the
   await sector.deleteOne();
 });
 
+// ---------------------------------------------------------------- B5: Project Manager sync
+// A single-document `updateOne`, unlike createErpProjectForWonDeal's own multi-document
+// transaction below - runs for real on this environment's standalone Mongo, so it is NOT gated
+// behind maybeTest/TEST_DB_URI.
+
+test('B5: syncProjectManagerToErp pushes the Deal Engine project\'s manager onto its linked ERP project', async () => {
+  const projectService = require('../../services/commercial/projectService');
+  const ProjectManager = require('../../models/project/projectManagerModel');
+  const sector = await Sector.create({ name: 'B5 Sync Unit Sector', isActive: true });
+  const manager = await ProjectManager.create({ name: 'B5 Sync Unit Manager' });
+  const erpProject = await Project.create({ projectNumber: 'B5-SYNC-0001', name: 'B5 sync target', sector: sector.name });
+
+  await projectService.syncProjectManagerToErp({ erpProject: erpProject._id, projectManager: manager._id });
+  // Project.js's own find hook auto-populates projectManager - compare by id, not the whole object.
+  let fresh = await Project.findById(erpProject._id).select('projectManager').lean();
+  assert.equal(String(fresh.projectManager._id), String(manager._id));
+
+  // Clearing it on the Deal Engine side clears it on the ERP project too.
+  await projectService.syncProjectManagerToErp({ erpProject: erpProject._id, projectManager: null });
+  fresh = await Project.findById(erpProject._id).select('projectManager').lean();
+  assert.equal(fresh.projectManager, null);
+
+  await sector.deleteOne();
+});
+
+test('B5: syncProjectManagerToErp is a no-op for a deal with no linked ERP project yet (nothing to push to)', async () => {
+  const projectService = require('../../services/commercial/projectService');
+  // No erpProject on this plain object - must resolve without throwing and without touching anything.
+  await assert.doesNotReject(projectService.syncProjectManagerToErp({ erpProject: null, projectManager: 'irrelevant' }));
+});
+
 // ---------------------------------------------------------------- End-to-end (needs a replica set)
 
 maybeTest('W6-W10: end-to-end ERP project creation from a Won deal - idempotent, correctly mapped, write-back on both sides', async () => {
@@ -216,6 +247,70 @@ maybeTest('W6-W10: end-to-end ERP project creation from a Won deal - idempotent,
   assert.equal(retry.created, false);
   assert.equal(String(retry.erpProject._id), String(erpProject._id));
   assert.equal(await Project.countDocuments({ dealNumber: 'DEAL-E2E-0001' }), 1);
+
+  await sector.deleteOne();
+});
+
+maybeTest('B5: the Deal Engine project\'s Project Manager is carried over to the new ERP project, and a later change is pushed through to it', async () => {
+  const sector = await Sector.create({ name: 'B5 Off-Grid', isActive: true });
+  const ProjectManager = require('../../models/project/projectManagerModel');
+  const projectService = require('../../services/commercial/projectService');
+  const manager = await ProjectManager.create({ name: 'B5 Test Manager' });
+  const otherManager = await ProjectManager.create({ name: 'B5 Other Manager' });
+
+  const customer = await User.create({ name: 'B5 Customer', phone: '01200000097', role: 'user', isOffline: true, type: 'offline' });
+  const project = await CommercialProject.create({
+    projectCode: 'B5-0001', name: 'B5 Won deal', customer: customer._id, country: 'Egypt', category: 'Off-Grid', dealNumber: 'DEAL-B5-0001', outcome: 'Won', projectManager: manager._id,
+  });
+  const revision = await CommercialRevision.create({
+    project: project._id,
+    revisionNumber: 1,
+    boqLines: [{ lineNo: 1, component: 'Installation', unit: 'lump', qty: 1, unitPrice: 1000, total: 1000 }],
+    pricing: { netExclVat: 1000 },
+  });
+  project.currentRevision = revision._id;
+  await project.save();
+  await CommercialProposal.create({
+    revision: revision._id, project: project._id, version: 1, proposalNumber: 'DEAL-B5-0001-P01', validUntil: new Date(Date.now() + 86400000),
+    boqLinesSnapshot: revision.boqLines, pricingSnapshot: revision.pricing, issuedBy: customer._id,
+  });
+
+  const { erpProject } = await wonToErpService.createErpProjectForWonDeal(project._id, { userId: customer._id });
+  assert.equal(String(erpProject.projectManager), String(manager._id));
+
+  // B5: a later Deal Engine change (e.g. through projectController.js#updateProject) is pushed
+  // through to the already-created ERP project - never left to drift silently.
+  const reloadedProject = await CommercialProject.findById(project._id);
+  reloadedProject.projectManager = otherManager._id;
+  await reloadedProject.save();
+  await projectService.syncProjectManagerToErp(reloadedProject);
+  const erpAfter = await Project.findById(erpProject._id).select('projectManager');
+  assert.equal(String(erpAfter.projectManager), String(otherManager._id));
+
+  await sector.deleteOne();
+});
+
+maybeTest('B5: a deal with no Project Manager set creates the ERP project with none, still flagged "to assign"', async () => {
+  const sector = await Sector.create({ name: 'B5 No-PM Off-Grid', isActive: true });
+  const customer = await User.create({ name: 'B5 No-PM Customer', phone: '01200000096', role: 'user', isOffline: true, type: 'offline' });
+  const project = await CommercialProject.create({
+    projectCode: 'B5-0002', name: 'B5 Won deal no PM', customer: customer._id, country: 'Egypt', category: 'Off-Grid', dealNumber: 'DEAL-B5-0002', outcome: 'Won',
+  });
+  const revision = await CommercialRevision.create({
+    project: project._id,
+    revisionNumber: 1,
+    boqLines: [{ lineNo: 1, component: 'Installation', unit: 'lump', qty: 1, unitPrice: 1000, total: 1000 }],
+    pricing: { netExclVat: 1000 },
+  });
+  project.currentRevision = revision._id;
+  await project.save();
+  await CommercialProposal.create({
+    revision: revision._id, project: project._id, version: 1, proposalNumber: 'DEAL-B5-0002-P01', validUntil: new Date(Date.now() + 86400000),
+    boqLinesSnapshot: revision.boqLines, pricingSnapshot: revision.pricing, issuedBy: customer._id,
+  });
+
+  const { erpProject } = await wonToErpService.createErpProjectForWonDeal(project._id, { userId: customer._id });
+  assert.equal(erpProject.projectManager, null);
 
   await sector.deleteOne();
 });

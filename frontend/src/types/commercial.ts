@@ -232,6 +232,9 @@ export type CommercialProject = {
   currency: string;
   fxRate: number | null;
   scope: CommercialScope;
+  // B5 - the same admin-managed Project Manager the ERP Project uses; carried over to the real ERP
+  // project on Won and pushed through again on a later change (see commercialProjectModel.js).
+  projectManager?: { _id: string; name: string; email?: string | null; isActive?: boolean } | null;
   currentRevision: CommercialRevision | string | null;
   engineeringApprovalRollup: "PENDING" | "APPROVED";
   commercialApprovalRollup: "PENDING" | "APPROVED";

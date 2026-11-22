@@ -14,6 +14,7 @@ const router = express.Router();
 router.use(authController.protect, requireCommercialAccess);
 
 router.get('/form-options', projectController.getFormOptions);
+router.get('/project-managers', projectController.listProjectManagers);
 router.get('/customers', projectController.searchCustomers);
 router.post('/customers', projectController.createCustomer);
 

@@ -1,5 +1,9 @@
 const { Schema, model } = require('mongoose');
 const { CATEGORIES, SCOPES } = require('../../utils/commercial/constants');
+// Explicit require (not just the string `ref:` name) - same reasoning as supplierModel.js's own
+// import on this file: whichever caller populates `projectManager` first must never hit Mongoose's
+// MissingSchemaError depending on what else happened to load first.
+require('../project/projectManagerModel');
 
 // Reservia Commercial - the stable project header. Reuses the existing User collection for the
 // customer reference (role 'user', per userModel.js) rather than a duplicate Customer model -
@@ -20,6 +24,14 @@ const commercialProjectSchema = new Schema(
     fxRate: { type: Number, default: null, min: 0 },
     scope: { type: String, enum: SCOPES, default: 'Supply & Installation' },
     designerUser: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    // B5 - the SAME admin-managed Project Manager list the ERP Project uses (models/project/
+    // projectManagerModel.js), never a duplicate. Settable on the deal at any time; carried over to
+    // the real ERP Project when it is created on Won (services/crm/wonToErpService.js) and pushed
+    // through to it again on a later change (services/commercial/projectService.js#
+    // syncProjectManagerToErp) - the one Deal Engine field this codebase keeps live-synced after
+    // handoff, because an unassigned/wrong PM on an active ERP project is an operational gap, not
+    // just a stale decorative copy.
+    projectManager: { type: Schema.Types.ObjectId, ref: 'ProjectManager', default: null },
     currentRevision: { type: Schema.Types.ObjectId, ref: 'CommercialRevision', default: null },
     // Fast-glance rollup only - the authoritative per-stage status lives on the current revision
     // (commercialRevisionModel.js) and its append-only approval log (commercialApprovalModel.js).
@@ -104,7 +116,10 @@ commercialProjectSchema.index({ createdAt: -1 });
 commercialProjectSchema.index({ name: 'text', projectCode: 'text' });
 
 commercialProjectSchema.pre(/^find/, function (next) {
-  this.populate({ path: 'customer', select: 'name email phone customerNumber' }).populate({ path: 'createdBy', select: 'name' }).populate({ path: 'designerUser', select: 'name' });
+  this.populate({ path: 'customer', select: 'name email phone customerNumber' })
+    .populate({ path: 'createdBy', select: 'name' })
+    .populate({ path: 'designerUser', select: 'name' })
+    .populate({ path: 'projectManager', select: 'name email phone isActive' });
   next();
 });
 

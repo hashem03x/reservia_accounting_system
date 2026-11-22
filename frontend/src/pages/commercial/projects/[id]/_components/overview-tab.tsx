@@ -47,6 +47,10 @@ export default function OverviewTab({
         <Row label={translate("Region (Rates matrix)", "المنطقة (جدول الأسعار)")} value={project.region} />
         {project.regionNote && <p className="py-1 text-xs text-amber-700">{project.regionNote}</p>}
         <Row label={translate("Scope", "النطاق")} value={project.scope} />
+        <Row
+          label={translate("Project Manager", "مدير المشروع")}
+          value={project.projectManager ? `${project.projectManager.name}${project.projectManager.isActive === false ? ` (${translate("inactive", "غير نشط")})` : ""}` : translate("Not yet assigned", "لم يُحدد بعد")}
+        />
         <Row label={translate("Currency", "العملة")} value={project.currency} />
         <Row label={translate("Created By", "تم الإنشاء بواسطة")} value={project.createdBy?.name} />
         {project.editHistory && project.editHistory.length > 0 && (

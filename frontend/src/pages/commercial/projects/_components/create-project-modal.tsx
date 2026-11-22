@@ -55,6 +55,9 @@ export default function CreateProjectModal({
   // Deal Engine C8 - the customer's tariff band and voltage level.
   const [tariffBand, setTariffBand] = useState("");
   const [voltageLevel, setVoltageLevel] = useState<string>("");
+  // B5 - the same admin-managed Project Manager list the ERP Project uses.
+  const [projectManager, setProjectManager] = useState<string>("");
+  const [projectManagers, setProjectManagers] = useState<{ _id: string; name: string; isActive?: boolean }[]>([]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // (Re)load the form whenever it opens - from the project when editing, blank when creating.
@@ -73,6 +76,7 @@ export default function CreateProjectModal({
       setSubCategory(project.subCategory || "");
       setTariffBand(project.tariffBand || "");
       setVoltageLevel(project.voltageLevel || "");
+      setProjectManager(project.projectManager?._id || "");
     } else {
       setName("");
       setCustomer(null);
@@ -81,10 +85,19 @@ export default function CreateProjectModal({
       setCategory("");
       setScope("Supply & Installation");
       setSubCategory("");
+      setProjectManager("");
     }
   }, [opened, project]);
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler<null>({ initialData: null });
+
+  useEffect(() => {
+    if (!opened) return;
+    privateRequest({ url: "commercial/projects/project-managers", language })
+      .then((res) => setProjectManagers(res.data || []))
+      .catch(() => setProjectManagers([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened]);
   const regionRequired = REGION_REQUIRED_COUNTRIES.includes(country);
   const hasRevision = !!project?.currentRevision;
   const recalcWarning =
@@ -104,7 +117,7 @@ export default function CreateProjectModal({
   function handleSubmit() {
     if (!validate()) return;
     handleRequest(language, setLoading, setError, async () => {
-      const data = { name: name.trim(), customer: customer!._id, country, region: region || null, category, scope, subCategory: subCategory || null, tariffBand: tariffBand.trim() || null, voltageLevel: voltageLevel || null };
+      const data = { name: name.trim(), customer: customer!._id, country, region: region || null, category, scope, subCategory: subCategory || null, tariffBand: tariffBand.trim() || null, voltageLevel: voltageLevel || null, projectManager: projectManager || null };
       if (editing) {
         const res = await privateRequest({ url: `commercial/projects/${project!._id}`, method: "PATCH", data, language });
         onSaved?.(res.data as CommercialProject);
@@ -205,6 +218,16 @@ export default function CreateProjectModal({
             clearable
           />
         </div>
+        <Select
+          label={translate("Project Manager (optional)", "مدير المشروع (اختياري)")}
+          description={translate("Carried over to the ERP project when this deal is Won.", "يُنقل إلى مشروع النظام عند ربح الصفقة.")}
+          placeholder={translate("Not yet assigned", "لم يُحدد بعد")}
+          data={projectManagers.filter((m) => m.isActive !== false || m._id === projectManager).map((m) => ({ value: m._id, label: m.name }))}
+          value={projectManager || null}
+          onChange={(v) => setProjectManager(v || "")}
+          searchable
+          clearable
+        />
         {recalcWarning && (
           <Alert color="orange" variant="light" title={translate("The current revision will be reset to Draft", "سيتم إعادة النسخة الحالية إلى مسودة")}>
             {translate(

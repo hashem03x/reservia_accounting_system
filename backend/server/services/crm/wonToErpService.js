@@ -292,6 +292,10 @@ async function createErpProjectForWonDeal(commercialProjectId, { userId = null }
 
       const projectNumber = await getNextProjectNumber(sector, session);
       const dealProjectNumber = project.dealNumber ? `${project.dealNumber}-PRJ` : null;
+      // B5 - the Deal Engine's own Project Manager (set any time before Won via the project edit
+      // form), carried over instead of always leaving it for the ERP side to assign. Still left
+      // null (flagged below) when the deal never had one set - never guessed.
+      const projectManagerId = project.projectManager?._id || project.projectManager || null;
 
       const created = await Project.create(
         [
@@ -302,7 +306,7 @@ async function createErpProjectForWonDeal(commercialProjectId, { userId = null }
             description: `${project.dealNumber || ''} / ${proposal.proposalNumber} - ${revision.pricing?.designKwp ? `${revision.pricing.designKwp} kWp - ` : ''}${project.scope || 'Supply & Installation'}`.trim(),
             contractValue,
             remainingMoney: contractValue,
-            projectManager: null, // W7: left empty, flagged "to assign" via the note below
+            projectManager: projectManagerId,
             startDate,
             deliveryDate,
             customer: customer._id,
@@ -338,7 +342,7 @@ async function createErpProjectForWonDeal(commercialProjectId, { userId = null }
             {
               lead: project.crmLead,
               type: 'system',
-              body: `ERP project ${erpProject.projectNumber} (${dealProjectNumber || 'no deal number'}) created automatically from the Won deal.${warnings.length ? ` ${warnings.length} item(s) need manual follow-up - see the ERP project.` : ''} Project Manager still needs to be assigned.`,
+              body: `ERP project ${erpProject.projectNumber} (${dealProjectNumber || 'no deal number'}) created automatically from the Won deal.${warnings.length ? ` ${warnings.length} item(s) need manual follow-up - see the ERP project.` : ''}${projectManagerId ? '' : ' Project Manager still needs to be assigned.'}`,
               author: userId,
             },
           ],
