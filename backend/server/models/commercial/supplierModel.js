@@ -1,4 +1,8 @@
 const { Schema, model } = require('mongoose');
+// Explicit require (not just the string `ref:` name) - mirrors productModel.js's own identical
+// comment for its `pucAccount` populate. Without this, any caller that queries CommercialSupplier
+// without having separately loaded the Vendor model first hits Mongoose's MissingSchemaError.
+require('../vendor/vendor');
 
 // Deal Engine C18 / Spec Part 2 section 4 - the approved supplier list (ASL). The anchor for every
 // supplier price in the Price Book (C19) and for the price list upload (C21-C24).
@@ -37,7 +41,7 @@ const noteSchema = new Schema(
     at: { type: Date, default: Date.now },
     by: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     byName: { type: String, default: null },
-    kind: { type: String, enum: ['note', 'status', 'scorecard', 'upload', 'edit', 'document'], default: 'note' },
+    kind: { type: String, enum: ['note', 'status', 'scorecard', 'upload', 'edit', 'document', 'vendor_sync'], default: 'note' },
     text: { type: String, trim: true, maxlength: 2000, required: true },
   },
   { _id: false }
@@ -78,12 +82,34 @@ const supplierSchema = new Schema(
     // C21: the column mapping of this supplier's last price list, reused on the next upload.
     columnMapping: { type: Schema.Types.Mixed, default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    // Feature 1.3 (Deal Engine as the source of truth for shared vendors) - the stable
+    // cross-system reference to the real ERP procurement/accounting entity (models/vendor/
+    // vendor.js), which this CommercialSupplier is deliberately NEVER merged into: CommercialSupplier
+    // owns approval status, categories/brands, scorecard and Price Book pricing; the ERP Vendor
+    // keeps owning banking/payment info, vendorNumber, balance and transaction history - this field
+    // is only the link between the two, set by supplierService.js's vendor-sync functions (link an
+    // existing Vendor, or create one from this supplier's own data), never inferred or auto-matched
+    // silently. Deliberately NO `default: null` - mirrors requisitionModel.js#importReference's own
+    // comment: Mongoose would then set this to `null` on EVERY document (never actually absent),
+    // which defeats the sparse unique index below (a sparse index only skips a field that is
+    // genuinely MISSING, not one present with value `null`).
+    erpVendor: { type: Schema.Types.ObjectId, ref: 'Vendor' },
   },
   { timestamps: true }
 );
 
 supplierSchema.index({ status: 1 });
 supplierSchema.index({ legalName: 'text', tradeName: 'text', brands: 'text' });
+// A real ERP Vendor must never be the sync target of more than one Supplier at a time (sparse so
+// suppliers with no link yet don't collide on `null`).
+supplierSchema.index({ erpVendor: 1 }, { unique: true, sparse: true });
+
+// So every list/detail view can show the linked ERP Vendor's identity without a second round trip
+// - mirrors materialItemModel.js's identical erpProduct populate.
+supplierSchema.pre(/^find/, function (next) {
+  this.populate({ path: 'erpVendor', select: 'name vendorNumber contact.phone' });
+  next();
+});
 
 module.exports = model('CommercialSupplier', supplierSchema);
 module.exports.SUPPLIER_STATUSES = SUPPLIER_STATUSES;

@@ -132,6 +132,9 @@ export type BoqLine = {
   priceCheckedAt?: string | null;
   priceValidUntil?: string | null;
   priceStaleReason?: string | null;
+  // Feature 2 - the selected supplier for this line (populated by the backend), or null/undefined
+  // if none chosen yet. Set via PATCH commercial/revisions/:id/boq-lines/:component/vendor.
+  vendor?: { _id: string; code: string; legalName: string; status: string } | null;
 };
 
 export type CommercialPricing = {

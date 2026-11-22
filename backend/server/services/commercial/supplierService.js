@@ -4,6 +4,8 @@ const mongoose = require('mongoose');
 const ApiError = require('../../utils/apiError');
 const Supplier = require('../../models/commercial/supplierModel');
 const Counter = require('../../models/config/counterModel');
+const Vendor = require('../../models/vendor/vendor');
+const { normalizeEgyptianPhone } = require('../../utils/crm/phone');
 
 const { SUPPLIER_STATUSES, DOCUMENT_KINDS } = Supplier;
 
@@ -202,4 +204,107 @@ async function upsertDocument(id, body, { user, role }) {
   return shape(supplier);
 }
 
-module.exports = { listSuppliers, getSupplier, createSupplier, updateSupplier, setStatus, addNote, setScorecard, upsertDocument, reviewFlags, shape, EDIT_ROLES, STATUS_ROLES, DOCUMENT_KINDS, SUPPLIER_STATUSES };
+// ---------------------------------------------------------------- Feature 1.3: ERP Vendor sync
+//
+// CommercialSupplier (Deal Engine's approved-supplier master) and Vendor (the ERP procurement/
+// accounting entity) are deliberately NEVER merged - see supplierModel.js#erpVendor's own comment.
+// This section only manages the stable link between them: finding a real candidate to review (never
+// auto-linking), linking an existing Vendor, or creating a new one from this supplier's own data.
+
+/** Every stored spelling an Egyptian number may appear under - mirrors sharedCustomerService.js's identical helper for the same reason (a vendor's phone may be saved in any of them). */
+function phoneVariants(phone) {
+  const raw = String(phone || '').trim();
+  if (!raw) return [];
+  const out = new Set([raw]);
+  const e164 = normalizeEgyptianPhone(raw);
+  if (e164) {
+    out.add(e164);
+    out.add(e164.slice(1)); // 201211892995
+    out.add(`0${e164.slice(3)}`); // 01211892995
+  }
+  return [...out];
+}
+
+/**
+ * Real ERP Vendor candidates for this supplier, for a human to review and confirm - NEVER
+ * auto-linked. Matches by phone (any contact, any stored spelling) first (strongest signal, since
+ * Vendor.contact.phone is unique), then by legal/trade name (case-insensitive, either direction),
+ * excluding any Vendor already linked to a DIFFERENT supplier (the unique index would refuse it
+ * anyway; this just keeps it out of the candidate list in the first place).
+ */
+async function findVendorCandidates(id) {
+  const supplier = await getSupplier(id);
+  const linkedElsewhere = await Supplier.find({ erpVendor: { $ne: null }, _id: { $ne: supplier._id } }).select('erpVendor').lean();
+  const excludeIds = linkedElsewhere.map(s => s.erpVendor);
+
+  const phones = (supplier.contacts || []).flatMap(c => phoneVariants(c.phone));
+  const byPhone = phones.length ? await Vendor.find({ _id: { $nin: excludeIds }, 'contact.phone': { $in: phones } }).select('name vendorNumber contact.phone').lean() : [];
+
+  const names = [supplier.legalName, supplier.tradeName].filter(Boolean).map(n => n.trim()).filter(Boolean);
+  const nameRegexes = names.map(n => new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+  const byName = nameRegexes.length ? await Vendor.find({ _id: { $nin: excludeIds }, name: { $in: nameRegexes } }).select('name vendorNumber contact.phone').lean() : [];
+
+  const seen = new Map();
+  for (const v of [...byPhone, ...byName]) seen.set(String(v._id), v);
+  return [...seen.values()];
+}
+
+/** Links this supplier to an EXISTING ERP Vendor - never creates one. Refuses a Vendor already linked elsewhere (the unique index is the real backstop; this gives a clean message instead of a raw E11000). */
+async function linkVendor(id, vendorId, { user, role }) {
+  assertRole(role, EDIT_ROLES, 'Linking an ERP vendor');
+  if (!mongoose.isValidObjectId(vendorId)) throw new ApiError('Invalid vendor id.', 400);
+  const vendor = await Vendor.findById(vendorId).select('name vendorNumber').lean();
+  if (!vendor) throw new ApiError('ERP vendor not found.', 404);
+  const supplier = await getSupplier(id);
+  const already = await Supplier.findOne({ erpVendor: vendorId, _id: { $ne: supplier._id } }).select('code legalName').lean();
+  if (already) throw new ApiError(`Vendor "${vendor.name}" is already linked to supplier ${already.code} (${already.legalName}).`, 400);
+
+  supplier.erpVendor = vendorId;
+  supplier.notes.push({ by: user._id, byName: user.name || null, kind: 'vendor_sync', text: `Linked to existing ERP vendor #${vendor.vendorNumber} "${vendor.name}".` });
+  await supplier.save();
+  return shape(supplier);
+}
+
+/** Clears the link - never deletes the ERP Vendor itself, never touches its data. For correcting a mistaken link. */
+async function unlinkVendor(id, { user, role }) {
+  assertRole(role, EDIT_ROLES, 'Unlinking an ERP vendor');
+  const supplier = await getSupplier(id);
+  if (!supplier.erpVendor) throw new ApiError('This supplier has no linked ERP vendor.', 400);
+  const was = supplier.erpVendor;
+  // undefined (not null) - the sparse unique index only skips a field that is genuinely MISSING,
+  // see erpVendor's own schema comment.
+  supplier.erpVendor = undefined;
+  supplier.notes.push({ by: user._id, byName: user.name || null, kind: 'vendor_sync', text: `Unlinked from ERP vendor ${was._id || was}.` });
+  await supplier.save();
+  return shape(supplier);
+}
+
+/**
+ * Creates a NEW ERP Vendor from explicit fields the caller confirms (never silently copied from
+ * the supplier - legalName often has characters/length Vendor.name's stricter validation rejects,
+ * see vendor.js's own pattern; the frontend prefills, the user can edit, before this ever runs).
+ * Vendor.contact.phone is required and unique - fails cleanly (via the schema's own validation)
+ * rather than guessing one when the supplier's own contacts list is empty.
+ */
+async function createVendorFromSupplier(id, body, { user, role }) {
+  assertRole(role, EDIT_ROLES, 'Creating an ERP vendor');
+  const supplier = await getSupplier(id);
+  if (supplier.erpVendor) throw new ApiError('This supplier is already linked to an ERP vendor - unlink it first if you need a different one.', 400);
+  const name = text(body.name, 50);
+  if (!name) throw new ApiError('Vendor name is required.', 400);
+  const phone = text(body.phone, 40);
+  if (!phone) throw new ApiError('Vendor phone is required.', 400);
+  const email = text(body.email, 160).toLowerCase();
+
+  const vendor = await Vendor.create({ name, contact: { phone, ...(email ? { email } : {}) } });
+  supplier.erpVendor = vendor._id;
+  supplier.notes.push({ by: user._id, byName: user.name || null, kind: 'vendor_sync', text: `Created and linked new ERP vendor #${vendor.vendorNumber} "${vendor.name}".` });
+  await supplier.save();
+  return shape(supplier);
+}
+
+module.exports = {
+  listSuppliers, getSupplier, createSupplier, updateSupplier, setStatus, addNote, setScorecard, upsertDocument,
+  findVendorCandidates, linkVendor, unlinkVendor, createVendorFromSupplier,
+  reviewFlags, shape, EDIT_ROLES, STATUS_ROLES, DOCUMENT_KINDS, SUPPLIER_STATUSES,
+};

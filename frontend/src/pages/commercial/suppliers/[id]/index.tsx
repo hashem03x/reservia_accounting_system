@@ -13,7 +13,7 @@ import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import SectionCard from "@/components/ui/section-card";
 import paths from "@/utils/constants/paths";
-import { DOCUMENT_KINDS, EDIT_ROLES, PRICE_BOOK_CATEGORIES, STATUS_COLOR, Supplier, SupplierStatus } from "../types";
+import { DOCUMENT_KINDS, EDIT_ROLES, PRICE_BOOK_CATEGORIES, STATUS_COLOR, Supplier, SupplierStatus, VendorCandidate } from "../types";
 import PriceListUpload from "../price-list-upload";
 
 // Who may set which status (backend services/commercial/supplierService.js STATUS_ROLES).
@@ -37,6 +37,9 @@ export default function SupplierPage() {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Feature 1.3 - ERP Vendor sync.
+  const [candidates, setCandidates] = useState<VendorCandidate[] | null>(null);
+  const [newVendor, setNewVendor] = useState({ name: "", phone: "", email: "" });
   useDocumentTitle(`${s?.code || translate("Supplier", "مورد")} | Reservia Deal Engine`);
 
   function load() {
@@ -46,6 +49,14 @@ export default function SupplierPage() {
       setData(sup);
       setForm(sup);
       setScore(Object.fromEntries(SCORES.map((k) => [k, sup.scorecard?.[k] ?? ""])));
+      if (!sup.erpVendor) {
+        setNewVendor({ name: sup.legalName.slice(0, 50), phone: sup.contacts[0]?.phone || "", email: sup.contacts[0]?.email || "" });
+        privateRequest({ url: `commercial/suppliers/${id}/vendor-candidates`, language })
+          .then((r) => setCandidates(r.data as VendorCandidate[]))
+          .catch(() => setCandidates([]));
+      } else {
+        setCandidates(null);
+      }
     });
   }
   useEffect(load, [id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -182,6 +193,67 @@ export default function SupplierPage() {
                   >
                     {translate("Apply", "تطبيق")}
                   </Button>
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard title={translate("ERP Vendor", "مورد النظام")}>
+              {s.erpVendor ? (
+                <div className="flex items-center justify-between">
+                  <div className="text-sm">
+                    <div className="font-medium">
+                      #{s.erpVendor.vendorNumber} - {s.erpVendor.name}
+                    </div>
+                    <div className="text-gray-500">{s.erpVendor.contact?.phone}</div>
+                  </div>
+                  {canEdit && (
+                    <Button size="xs" variant="light" color="red" loading={busy === "unlink"} onClick={() => act("unlink", () => privateRequest({ url: `commercial/suppliers/${s._id}/unlink-vendor`, method: "POST", language }))}>
+                      {translate("Unlink", "إلغاء الربط")}
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3 text-sm">
+                  <Alert color="yellow" variant="light">
+                    {translate("Not linked to an ERP vendor yet - Purchase Orders cannot reference this supplier until it is.", "لم يُربط بمورد في النظام بعد - لا يمكن إصدار أوامر شراء لهذا المورد حتى يتم الربط.")}
+                  </Alert>
+                  {candidates && candidates.length > 0 && (
+                    <div>
+                      <div className="mb-1 text-xs font-semibold text-gray-600">{translate("Possible matches (by phone or name)", "تطابقات محتملة (بالهاتف أو الاسم)")}</div>
+                      {candidates.map((c) => (
+                        <div key={c._id} className="flex items-center justify-between border-b border-gray-50 py-1">
+                          <span>
+                            #{c.vendorNumber} - {c.name} {c.contact?.phone ? `(${c.contact.phone})` : ""}
+                          </span>
+                          {canEdit && (
+                            <Button size="xs" variant="light" loading={busy === `link-${c._id}`} onClick={() => act(`link-${c._id}`, () => privateRequest({ url: `commercial/suppliers/${s._id}/link-vendor`, method: "POST", data: { vendorId: c._id }, language }))}>
+                              {translate("Link", "ربط")}
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {canEdit && (
+                    <div>
+                      <div className="mb-1 text-xs font-semibold text-gray-600">{translate("Or create a new ERP vendor", "أو إنشاء مورد جديد في النظام")}</div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <TextInput size="xs" placeholder={translate("Vendor name", "اسم المورد")} value={newVendor.name} onChange={(e) => setNewVendor({ ...newVendor, name: e.target.value })} />
+                        <TextInput size="xs" placeholder={translate("Phone", "الهاتف")} value={newVendor.phone} onChange={(e) => setNewVendor({ ...newVendor, phone: e.target.value })} />
+                        <TextInput size="xs" placeholder={translate("Email (optional)", "البريد الإلكتروني (اختياري)")} value={newVendor.email} onChange={(e) => setNewVendor({ ...newVendor, email: e.target.value })} />
+                      </div>
+                      <Button
+                        size="xs"
+                        mt="xs"
+                        color="teal"
+                        disabled={!newVendor.name.trim() || !newVendor.phone.trim()}
+                        loading={busy === "create-vendor"}
+                        onClick={() => act("create-vendor", () => privateRequest({ url: `commercial/suppliers/${s._id}/create-vendor`, method: "POST", data: newVendor, language }))}
+                      >
+                        {translate("Create and link", "إنشاء وربط")}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </SectionCard>

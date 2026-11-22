@@ -1,20 +1,53 @@
-import { useState } from "react";
-import { Alert, Badge, Button, NumberInput, Table, Tooltip } from "@mantine/core";
+import { useEffect, useState } from "react";
+import { Alert, Badge, Button, NumberInput, Select, Table, Tooltip } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
+import { useSystemAccess } from "@/context/SystemAccessContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
 import { solidIcons } from "@/components/icons";
+import { notifyError } from "@/utils/helpers/notifiers";
 import { CommercialProject, CommercialRevision } from "@/types/commercial";
+
+// Feature 2 - who may select/change a BOQ line's vendor (mirrors backend revisionService.js#BOQ_VENDOR_ROLES exactly).
+const BOQ_VENDOR_ROLES = ["md", "commercial_director", "procurement"];
 
 // Every BOQ line distinguishes automatic vs. manually-overridden values (source badge) - an
 // override is applied on top of the live recalculation without discarding the auto-calculated
 // baseline (shown via the "auto: X" tooltip), per the project's own explicit rule.
 export default function BoqTab({ project, revision, onChanged }: { project: CommercialProject; revision: CommercialRevision; onChanged: () => void }) {
   const { translate, language } = useLanguage();
+  const { systems } = useSystemAccess();
+  const role = systems?.COMMERCIAL?.role || "";
+  const canSetVendor = BOQ_VENDOR_ROLES.includes(role);
   const [overrides, setOverrides] = useState<Record<string, { qty?: number; unitPrice?: number }>>({});
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler<null>({ initialData: null });
+
+  // Feature 2 - the Approved/Conditional supplier list to pick from (small, fetched once - no
+  // keyword-search endpoint exists for Suppliers, same as requisition-select's own precedent).
+  const [suppliers, setSuppliers] = useState<{ _id: string; code: string; legalName: string; status: string }[]>([]);
+  const [vendorBusy, setVendorBusy] = useState<string | null>(null);
+  useEffect(() => {
+    if (!canSetVendor) return;
+    privateRequest({ url: "commercial/suppliers", language })
+      .then((res) => setSuppliers((res.data || []).filter((s: { status: string }) => ["Approved", "Conditional"].includes(s.status))))
+      .catch(() => setSuppliers([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSetVendor]);
+
+  function setLineVendor(component: string, supplierId: string | null) {
+    setVendorBusy(component);
+    privateRequest({
+      url: `commercial/revisions/${revision._id}/boq-lines/${encodeURIComponent(component)}/vendor`,
+      method: "PATCH",
+      data: { supplierId },
+      language,
+    })
+      .then(onChanged)
+      .catch((e: { message?: string }) => notifyError({ language, message: e?.message || translate("Could not update the vendor.", "تعذر تحديث المورد.") }))
+      .finally(() => setVendorBusy(null));
+  }
 
   function setOverride(component: string, field: "qty" | "unitPrice", value: number) {
     setOverrides((prev) => ({ ...prev, [component]: { ...prev[component], [field]: value } }));
@@ -53,6 +86,7 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
               <Table.Th className="text-right">{translate("Unit Price", "سعر الوحدة")}</Table.Th>
               <Table.Th className="text-right">{translate("Total", "الإجمالي")}</Table.Th>
               <Table.Th>{translate("Source", "المصدر")}</Table.Th>
+              <Table.Th>{translate("Vendor", "المورد")}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -106,11 +140,33 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                     </div>
                   )}
                 </Table.Td>
+                <Table.Td data-testid="boq-line-vendor">
+                  {canSetVendor ? (
+                    <Select
+                      size="xs"
+                      w={160}
+                      placeholder={translate("No vendor selected", "لم يتم اختيار مورد")}
+                      data={suppliers.map((s) => ({ value: s._id, label: `${s.code} - ${s.legalName}` }))}
+                      value={line.vendor?._id || null}
+                      onChange={(v) => setLineVendor(line.component, v)}
+                      disabled={vendorBusy === line.component}
+                      clearable
+                      searchable
+                    />
+                  ) : line.vendor ? (
+                    <span className="text-xs">
+                      {line.vendor.code} - {line.vendor.legalName}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-400">{translate("No vendor selected", "لم يتم اختيار مورد")}</span>
+                  )}
+                </Table.Td>
               </Table.Tr>
             ))}
             <Table.Tr className="font-semibold">
               <Table.Td colSpan={5} className="text-right">{translate("BOQ Total", "إجمالي جدول الكميات")}</Table.Td>
               <Table.Td className="text-right">{formatAmount(revision.boqTotal, project.currency)}</Table.Td>
+              <Table.Td />
               <Table.Td />
             </Table.Tr>
           </Table.Tbody>

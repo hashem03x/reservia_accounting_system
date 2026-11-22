@@ -32,6 +32,20 @@ exports.upsertDocument = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Document recorded', true, await supplierService.upsertDocument(req.params.id, req.body || {}, ctx(req))));
 });
 
+// Feature 1.3 - ERP Vendor sync.
+exports.getVendorCandidates = asyncHandler(async (req, res) => {
+  res.status(200).json(apiResponse('Candidate ERP vendors', true, await supplierService.findVendorCandidates(req.params.id)));
+});
+exports.linkVendor = asyncHandler(async (req, res) => {
+  res.status(200).json(apiResponse('Linked to the ERP vendor', true, await supplierService.linkVendor(req.params.id, req.body?.vendorId, ctx(req))));
+});
+exports.unlinkVendor = asyncHandler(async (req, res) => {
+  res.status(200).json(apiResponse('Unlinked from the ERP vendor', true, await supplierService.unlinkVendor(req.params.id, ctx(req))));
+});
+exports.createVendor = asyncHandler(async (req, res) => {
+  res.status(201).json(apiResponse('ERP vendor created and linked', true, await supplierService.createVendorFromSupplier(req.params.id, req.body || {}, ctx(req))));
+});
+
 exports.previewPriceList = asyncHandler(async (req, res) => {
   const upload = await uploads.previewUpload(req.params.id, { file: req.file, mapping: req.body?.mapping, validityDate: req.body?.validityDate }, ctx(req));
   res.status(201).json(apiResponse('Price list read - review the preview, then confirm', true, upload));

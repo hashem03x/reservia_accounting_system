@@ -36,9 +36,15 @@ function withWaitingOn(revision) {
 // matrix hides them from (Technical/Procurement/Member for Pricing and Feasibility; Procurement/
 // Member for BOQ costs) - see dealEnginePermissions.js#shapeRevisionForRole.
 exports.getRevision = asyncHandler(async (req, res, next) => {
-  const revision = await CommercialRevision.findById(req.params.id).populate(STAGE_POPULATE);
+  const revision = await CommercialRevision.findById(req.params.id).populate(STAGE_POPULATE).populate({ path: 'boqLines.vendor', select: 'code legalName status' });
   if (!revision) return next(new ApiError('Revision not found.', 404));
   res.status(200).json(apiResponse('Revision retrieved successfully', true, shapeRevisionForRole(withWaitingOn(revision), req.commercialRoles)));
+});
+
+// Feature 2 - BOQ line vendor selection.
+exports.setBoqLineVendor = asyncHandler(async (req, res) => {
+  const revision = await revisionService.setBoqLineVendor(req.params.id, decodeURIComponent(req.params.component), req.body?.supplierId, { role: req.commercialRole });
+  res.status(200).json(apiResponse('BOQ line vendor updated', true, shapeRevisionForRole(withWaitingOn(revision), req.commercialRoles)));
 });
 
 /**

@@ -1,5 +1,11 @@
 const { Schema, model } = require('mongoose');
 const { BOQ_LINE_SOURCES, APPROVAL_STATUSES } = require('../../utils/commercial/constants');
+// Explicit require (not just the string `ref:` name) - so any caller that populates
+// boqLines.vendor never hits Mongoose's MissingSchemaError, regardless of what else it loaded
+// first. This model does NOT auto-populate it (unlike materialItemModel.js's erpProduct) - it is
+// read in far more places, several of them performance-sensitive, so each caller that actually
+// needs the supplier's details populates it explicitly.
+require('./supplierModel');
 
 // Reservia Commercial - the versioned "deal" (mirrors models/crm/quotationModel.js's versioning:
 // `revisionNumber` increments on every re-quote, never overwrites a previous one). Only the
@@ -19,6 +25,14 @@ const boqLineSchema = new Schema(
     component: { type: String, required: true },
     description: { type: String, default: '' },
     materialItemKey: { type: String, default: null },
+    // Feature 2 (BOQ vendor display/selection) - the approved supplier (CommercialSupplier, Deal
+    // Engine's own vendor master - never the ERP Vendor directly) selected for THIS line. Carried
+    // forward across recalculation and new revisions by component (services/commercial/
+    // revisionService.js#carryForwardVendors) - never lost just because boqLines itself is a full
+    // rebuild every time pricing recalculates. Set via PATCH .../boq-lines/:lineId/vendor, a
+    // narrow mutation that never touches pricing/engineering, so selecting a vendor can never
+    // itself trigger a recalculation or reset a signed approval stage.
+    vendor: { type: Schema.Types.ObjectId, ref: 'CommercialSupplier' },
     unit: { type: String, required: true },
     qty: { type: Number, default: null },
     unitPrice: { type: Number, default: null },

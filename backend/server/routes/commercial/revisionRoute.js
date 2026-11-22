@@ -11,5 +11,6 @@ router.use(authController.protect, requireCommercialAccess);
 router.get('/:id', revisionController.getRevision);
 router.patch('/:id', revisionController.recomputeRevision);
 router.post('/project/:projectId', revisionController.createRevisionForProject);
+router.patch('/:id/boq-lines/:component/vendor', revisionController.setBoqLineVendor);
 
 module.exports = router;

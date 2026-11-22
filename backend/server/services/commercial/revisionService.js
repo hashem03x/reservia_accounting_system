@@ -2,6 +2,7 @@ const ApiError = require('../../utils/apiError');
 const CommercialProject = require('../../models/commercial/commercialProjectModel');
 const CommercialRevision = require('../../models/commercial/commercialRevisionModel');
 const CommercialApproval = require('../../models/commercial/commercialApprovalModel');
+const CommercialSupplier = require('../../models/commercial/supplierModel');
 const boqService = require('./boqService');
 const pricingConfigService = require('./pricingConfigService');
 const { pickLevers, LEVER_KEYS } = require('./commercialPricingService');
@@ -24,6 +25,21 @@ const { assertSalesPricingWithinLimits } = require('../../utils/commercial/dealE
 
 function storedLevers(revision) {
   return revision?.pricing ? pickLevers(revision.pricing) : {};
+}
+
+/**
+ * Feature 2/B3 - a BOQ line's selected vendor (CommercialSupplier) must survive editing,
+ * recalculation, and a brand-new revision, even though boqLines is a COMPLETE rebuild from the
+ * engine every time (built.lines above is plain objects with no vendor field and no `_id` that
+ * would match the old array's). Carried forward by `component` - the SAME key boqService.js
+ * itself already uses for manual-override carry-forward (overridesByComponent), so a line is
+ * matched identically whether the carried-forward value is a price override or a vendor.
+ */
+function carryForwardVendors(newLines, oldLines) {
+  if (!oldLines?.length) return newLines;
+  const vendorByComponent = new Map(oldLines.filter(l => l.vendor).map(l => [l.component, l.vendor]));
+  if (!vendorByComponent.size) return newLines;
+  return newLines.map(line => (vendorByComponent.has(line.component) ? { ...line, vendor: vendorByComponent.get(line.component) } : line));
 }
 
 /** VAT fraction for a project: an explicit override, else the revision's own, else the configured rate for the country. */
@@ -88,7 +104,7 @@ async function computeAndSave(project, engineeringInput, { manualOverrides = {},
   return {
     engineeringInput,
     engineeringResult: built.engineeringResult,
-    boqLines: built.lines,
+    boqLines: carryForwardVendors(built.lines, revision?.boqLines),
     boqTotal: built.boqTotal,
     pricing,
     mdRequired: computeMdRequired(pricing.netExclVat),
@@ -117,6 +133,12 @@ async function createRevision(projectId, engineeringInput, opts = {}) {
   const previousCount = await CommercialRevision.countDocuments({ project: project._id });
 
   if (previousCount > 0) {
+    // Feature 2/B3 - a brand NEW revision still carries forward BOQ-line vendor selections from
+    // the revision it supersedes (a fresh `computeAndSave(..., revision: null)` above deliberately
+    // does NOT do this itself - passing the old revision there would also carry forward its
+    // pricing levers/pricingConfigApplied, which a genuinely new revision must not do).
+    const previousCurrent = await CommercialRevision.findOne({ project: project._id, isCurrent: true }).select('boqLines').lean();
+    computed.boqLines = carryForwardVendors(computed.boqLines, previousCurrent?.boqLines);
     await CommercialRevision.updateMany({ project: project._id, isCurrent: true }, { $set: { isCurrent: false } });
   }
 
@@ -200,4 +222,47 @@ async function invalidateCurrentRevision(project, reason, { userId = null } = {}
   return revision;
 }
 
-module.exports = { createRevision, recomputeCurrentRevision, invalidateCurrentRevision, resetSignedStages, computeAndSave };
+// Feature 2 - who may select/change a BOQ line's vendor. Mirrors supplierService.js's own
+// EDIT_ROLES exactly: assigning a supplier to a line is the same kind of action as managing the
+// supplier record itself, not an engineering edit (PROJECT_TAB_MATRIX.boqLines, which gates
+// quantities/descriptions, is a different concern and deliberately not reused here).
+const BOQ_VENDOR_ROLES = ['md', 'commercial_director', 'procurement'];
+
+/**
+ * Sets (or clears, when supplierId is falsy) one BOQ line's selected vendor - a narrow mutation
+ * that touches ONLY that one line's `vendor` field. Deliberately never recalculates pricing,
+ * never resets a signed approval stage, and is not itself an "edit" for the re-approval rule
+ * (resetSignedStages) - picking a vendor is a sourcing/procurement decision, not a change to the
+ * commercial terms the Stage 1/2/MD sign-offs are actually approving.
+ *
+ * Addressed by `component`, not a line id - boqLineSchema is `{ _id: false }` (boqLines is a
+ * complete rebuild from the engine on every recalculation, so a persistent per-line id was never
+ * useful before this feature either), and `component` is already the SAME key this file's own
+ * carryForwardVendors (and boqService.js's manual-override matching) uses to find "the same line"
+ * again after a rebuild - reusing it here rather than introducing a second identity scheme.
+ */
+async function setBoqLineVendor(revisionId, component, supplierId, { role } = {}) {
+  if (!BOQ_VENDOR_ROLES.includes(role)) {
+    throw new ApiError(`Selecting a BOQ line's vendor is for: ${BOQ_VENDOR_ROLES.map(r => r.replace('_', ' ')).join(', ')}. Your Deal Engine role is "${role || 'none'}".`, 403);
+  }
+  const revision = await CommercialRevision.findById(revisionId);
+  if (!revision) throw new ApiError('Deal Engine revision not found.', 404);
+  if (!revision.isCurrent) throw new ApiError('This revision has been superseded and is read-only.', 400);
+  const line = revision.boqLines.find(l => l.component === component);
+  if (!line) throw new ApiError(`BOQ line "${component}" not found on this revision.`, 404);
+
+  if (supplierId) {
+    const supplier = await CommercialSupplier.findById(supplierId).select('status').lean();
+    if (!supplier) throw new ApiError('Supplier not found.', 404);
+    if (!['Approved', 'Conditional'].includes(supplier.status)) {
+      throw new ApiError(`Only an Approved or Conditional supplier can be selected (this one is ${supplier.status}).`, 400);
+    }
+    line.vendor = supplierId;
+  } else {
+    line.vendor = undefined;
+  }
+  await revision.save();
+  return revision.populate({ path: 'boqLines.vendor', select: 'code legalName status' });
+}
+
+module.exports = { createRevision, recomputeCurrentRevision, invalidateCurrentRevision, resetSignedStages, computeAndSave, setBoqLineVendor, carryForwardVendors };

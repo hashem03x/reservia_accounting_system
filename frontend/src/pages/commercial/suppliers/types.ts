@@ -39,7 +39,11 @@ export type Supplier = {
   notes?: { at: string; byName: string | null; kind: string; text: string }[];
   reviewFlags: string[];
   createdAt: string;
+  // Feature 1.3 - the linked ERP Vendor (populated by the backend), or null/undefined if not yet linked.
+  erpVendor?: { _id: string; name: string; vendorNumber: number | null; contact?: { phone?: string } } | null;
 };
+
+export type VendorCandidate = { _id: string; name: string; vendorNumber: number | null; contact?: { phone?: string } };
 
 export type PreviewRow = {
   rowNo: number;

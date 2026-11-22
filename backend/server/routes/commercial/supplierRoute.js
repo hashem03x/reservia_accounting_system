@@ -20,6 +20,11 @@ router.patch('/:id/status', controller.setStatus);
 router.post('/:id/notes', controller.addNote);
 router.patch('/:id/scorecard', controller.setScorecard);
 router.post('/:id/documents', controller.upsertDocument);
+// Feature 1.3 - ERP Vendor sync (role-checked in supplierService.js, same EDIT_ROLES as the rest of this file).
+router.get('/:id/vendor-candidates', controller.getVendorCandidates);
+router.post('/:id/link-vendor', controller.linkVendor);
+router.post('/:id/unlink-vendor', controller.unlinkVendor);
+router.post('/:id/create-vendor', controller.createVendor);
 router.get('/:id/price-lists', controller.listPriceLists);
 router.post('/:id/price-lists/preview', upload.single('file'), controller.previewPriceList);
 
