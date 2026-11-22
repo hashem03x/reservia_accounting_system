@@ -3,6 +3,12 @@ const Vendor = require('../../models/vendor/vendor');
 const Project = require('../../models/project/projectModel');
 const Product = require('../../models/inventory/productModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
+// Feature 4 ("PO VAT like Purchase Invoice VAT") - the exact same rule the Purchase Invoice uses
+// (vatPercentage optional/non-negative, 0% needs a real reason), reused rather than re-specified.
+// withholdingTaxPercentage/vatTreatment are also in this shared chain but are simply unused by this
+// purely-operational document (requisitionModel.js never defines those fields) - validated-and-
+// ignored, never a second near-identical rule.
+const { vatAndWithholdingTaxValidators } = require('./taxValidators');
 
 // A line's `product` reference is optional (the description stays the canonical, required field -
 // see docs section "Purchase Orders - Select Products From the Catalog": "the user enters the
@@ -63,6 +69,7 @@ const createRequisitionValidators = [
 
   ...itemsValidators,
   ...termsValidators,
+  ...vatAndWithholdingTaxValidators,
 
   body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 2000 }),
 
@@ -96,6 +103,7 @@ const updateRequisitionValidators = [
   body('items.*.unitPrice').if(body('items').exists()).isFloat({ min: 0 }).withMessage('Unit price cannot be negative'),
   productRefValidator,
   ...termsValidators,
+  ...vatAndWithholdingTaxValidators,
 
   body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 2000 }),
 

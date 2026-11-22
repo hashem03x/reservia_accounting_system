@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useDebounce } from "use-debounce";
 import { useDisclosure } from "@mantine/hooks";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useLanguage } from "@/context/LanguageContext";
@@ -39,6 +40,7 @@ export default function CrmLeads() {
   const [stage, setStage] = useState((searchParams.get("stage") as CrmStage) || "");
   const [segment, setSegment] = useState((searchParams.get("segment") as CrmSegment) || "");
   const [q, setQ] = useState(searchParams.get("q") || "");
+  const [debouncedQ] = useDebounce(q, 350);
   // MD only (acceptance report finding 7) - everyone else never even sees archived leads exist.
   const [includeArchived, setIncludeArchived] = useState(false);
 
@@ -46,7 +48,7 @@ export default function CrmLeads() {
     page: activePage.toString(),
     ...(stage ? { stage } : {}),
     ...(segment ? { segment } : {}),
-    ...(q ? { q } : {}),
+    ...(debouncedQ ? { q: debouncedQ } : {}),
     ...(includeArchived && role === "md" ? { includeArchived: "1" } : {}),
   };
 
@@ -78,7 +80,7 @@ export default function CrmLeads() {
     setSearchParams(params, { replace: true });
     const cancelRequest = handleLoadLeads();
     return cancelRequest;
-  }, [activePage, stage, segment, q, includeArchived]);
+  }, [activePage, stage, segment, debouncedQ, includeArchived]);
 
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
   const [importOpened, { open: openImport, close: closeImport }] = useDisclosure(false);

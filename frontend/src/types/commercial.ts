@@ -83,7 +83,20 @@ export type PricingConfig = {
   canManage?: boolean;
   engine?: DealEngineSettings;
   proposal?: Record<string, unknown>;
+  erpCostAccountCodes: ErpCostAccountCodes;
 };
+
+// W11/W14 (Won to ERP Handover) - each lever's OWN ChartOfAccount `code`, or null when Finance has
+// not yet confirmed one. wonToErpService.js skips that Average Cost line (with a clear warning)
+// rather than guessing, for as long as a code here is null.
+export type ErpCostAccountCodes = {
+  overhead: string | null;
+  contingency: string | null;
+  salesBonus: string | null;
+  engineeringIncentive: string | null;
+};
+
+export type CogsAccountOption = { _id: string; code: string; name: string; nameAr: string };
 
 // Deal Engine settings (backend services/commercial/dealEngineSettings.js ENGINE_DEFAULTS).
 export type DealEngineSettings = {
@@ -296,6 +309,9 @@ export type MaterialItem = {
   effectiveDate: string;
   key: string;
   archived: boolean;
+  // ERP BOQ mapping fix - the real catalog Product this Price Book item corresponds to (set by
+  // Purchasing), or null if not yet linked. See wonToErpService.js#buildErpBoqLines.
+  erpProduct: { _id: string; title: { en: string; ar: string }; sku: string | null; model: string | null } | null;
 };
 
 export type CommercialDashboard = {

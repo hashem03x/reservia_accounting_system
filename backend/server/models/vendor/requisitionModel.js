@@ -2,6 +2,7 @@ const { Schema, model } = require('mongoose');
 const { getNextRequisitionCode } = require('../../services/shared/orderNumberService');
 const { documentPaymentTermsSchema } = require('../shared/paymentTermsSchema');
 const { validateDocumentPaymentTerms, computeDocumentPaymentSchedule } = require('../../utils/documentPaymentTerms');
+const { computeOrderTotals } = require('../../utils/orderTotals');
 
 // "Purchase Order" (user-facing name) - internally named Requisition because the Mongoose model
 // name `PurchaseOrder` is already taken by the EXISTING vendor/purchaseOrder.js model, which a
@@ -87,6 +88,17 @@ const requisitionSchema = new Schema(
     // drift out of sync with the real invoiced total.
     status: { type: String, enum: ['draft', 'open', 'cancelled'], default: 'draft' },
     invoicedAmount: { type: Number, default: 0, min: 0 },
+    // ESTIMATE ONLY - Feature 4 ("PO VAT like Purchase Invoice VAT"). The real, accounting-affecting
+    // VAT belongs exclusively to the Purchase Invoice (vendor/purchaseOrder.js) created against this
+    // Purchase Order, exactly as before - this field never feeds a journal entry, never changes
+    // `amount`/`invoicedAmount` (both stay pre-tax, so the remaining-quantity/amount guard against
+    // the Invoice keeps comparing like with like), and is never required. Its only two jobs: (1) let
+    // this Purchase Order's own screen show a realistic subtotal/VAT/total estimate to whoever is
+    // raising it, and (2) pre-fill (never force) the VAT rate when a Purchase Invoice is later
+    // created against this Purchase Order (requisitionController.js#getRequisition exposes it; the
+    // Invoice "new" page reads it as a default, same as it already defaults from the company rate).
+    vatPercentage: { type: Number, default: 0, min: [0, 'VAT percentage cannot be negative'] },
+    vatExemptReason: { type: String, trim: true, maxlength: 300, default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     // The CSV's own grouping identifier for a Purchase Order imported via the CSV Import System
     // (docs section "Purchase Order CSV Import") - absent for every manually-created Purchase
@@ -115,6 +127,11 @@ const requisitionSchema = new Schema(
         // The concrete schedule (amounts, due dates, allocated / unallocated) is derived from the
         // CURRENT value and issue date on every read, so it can never drift from them.
         ret.paymentSchedule = ret.paymentTerms ? computeDocumentPaymentSchedule(ret.paymentTerms, { total: amount, issueDate: ret.issueDate || ret.createdAt }) : null;
+        // Estimate only (see vatPercentage's own comment above) - computed the same way the real
+        // Purchase Invoice computes its own vatAmount/grandTotal, never stored, never posted.
+        const vatTotals = computeOrderTotals({ subtotal: amount, vatPercentage: ret.vatPercentage });
+        ret.vatAmountEstimate = vatTotals.vatAmount;
+        ret.grandTotalEstimate = vatTotals.total;
         return ret;
       },
     },

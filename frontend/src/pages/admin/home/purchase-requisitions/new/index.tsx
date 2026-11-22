@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import useInvoiceVat from "@/hooks/useInvoiceVat";
 import { useLanguage } from "@/context/LanguageContext";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
@@ -13,6 +14,7 @@ import ErrorAlert from "@/components/ui/error-alert";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import VendorSearch from "@/components/global/vendor-search";
 import PaymentTermsEditor from "@/components/global/payment-terms-editor";
+import OrderTaxSection from "@/components/global/order-tax-section";
 import { DocumentPaymentTerms, toPaymentTermsPayload, validateDocumentPaymentTerms } from "@/utils/helpers/document-payment-terms";
 import RequisitionItemsEditor, { EditableRequisitionItem, emptyRequisitionItem, itemIsComplete, itemPayload } from "../_components/items-editor";
 
@@ -32,6 +34,10 @@ export default function NewPurchaseRequisition() {
   // null = the vendor's default terms are applied on save (backend termsFromVendorConfig).
   const [paymentTerms, setPaymentTerms] = useState<DocumentPaymentTerms | null>(null);
   const [notes, setNotes] = useState("");
+  // Feature 4: an ESTIMATE only (requisitionModel.js#vatPercentage) - pre-fills the real Purchase
+  // Invoice's own VAT fields when one is later raised against this Purchase Order, nothing more.
+  const { vatPercentage, setVatPercentage, vatExemptReason, setVatExemptReason, reasonMissing, vatPayload } = useInvoiceVat();
+  const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
 
   const {
     privateRequest: fetchProjectsRequest,
@@ -46,7 +52,7 @@ export default function NewPurchaseRequisition() {
 
   const amount = items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), 0);
   const termsError = validateDocumentPaymentTerms(paymentTerms, { total: amount, issueDate });
-  const canSubmit = !!vendor && !!project && !!issueDate && items.length > 0 && items.every(itemIsComplete) && !termsError;
+  const canSubmit = !!vendor && !!project && !!issueDate && items.length > 0 && items.every(itemIsComplete) && !termsError && !reasonMissing;
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({ initialData: null });
 
@@ -65,6 +71,7 @@ export default function NewPurchaseRequisition() {
           items: items.map(itemPayload),
           ...(paymentTerms ? { paymentTerms: toPaymentTermsPayload(paymentTerms) } : {}),
           notes: notes || undefined,
+          ...vatPayload(),
         },
       });
       navigate(`/${paths.admin}/${paths.home}/${paths.purchaseRequisitions}/${response.data._id}`);
@@ -136,6 +143,25 @@ export default function NewPurchaseRequisition() {
       <hr />
 
       <RequisitionItemsEditor items={items} setItems={setItems} />
+
+      <hr />
+
+      <h4>{translate("VAT Estimate", "تقدير ضريبة القيمة المضافة")}</h4>
+      <p className="text-xs text-gray-500">
+        {translate(
+          "An estimate only - it pre-fills the Purchase Invoice's own VAT when one is raised against this Purchase Order, but is never itself posted to accounting.",
+          "تقدير فقط - يُستخدم لتعبئة ضريبة فاتورة المشتريات تلقائيًا عند إصدارها لهذا أمر الشراء، ولا يُرحَّل بنفسه إلى الحسابات."
+        )}
+      </p>
+      <OrderTaxSection
+        amount={amount}
+        vatPercentage={vatPercentage}
+        setVatPercentage={setVatPercentage}
+        vatExemptReason={vatExemptReason}
+        setVatExemptReason={setVatExemptReason}
+        withholdingTaxPercentage={withholdingTaxPercentage}
+        setWithholdingTaxPercentage={setWithholdingTaxPercentage}
+      />
 
       <hr />
 

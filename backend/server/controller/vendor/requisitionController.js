@@ -54,7 +54,7 @@ const itemsTotal = items => round2(items.reduce((s, i) => s + round2((Number(i.q
 // convention.
 
 const createRequisition = asyncHandler(async (req, res) => {
-  const { vendorId, project, items, notes, issueDate, paymentTerms } = req.body;
+  const { vendorId, project, items, notes, issueDate, paymentTerms, vatPercentage, vatExemptReason } = req.body;
 
   const lines = await buildItems(items || []);
   const issuedOn = issueDate ? new Date(issueDate) : new Date();
@@ -77,6 +77,9 @@ const createRequisition = asyncHandler(async (req, res) => {
     notes,
     status: 'draft',
     createdBy: req.user._id,
+    // Estimate only - see requisitionModel.js#vatPercentage's own comment.
+    vatPercentage: vatPercentage !== undefined ? Number(vatPercentage) || 0 : 0,
+    vatExemptReason: Number(vatPercentage) === 0 && vatExemptReason ? String(vatExemptReason).trim() : null,
   });
 
   res.status(201).json(apiResponse('Purchase Order created successfully', true, requisition));
@@ -97,7 +100,7 @@ const updateRequisition = asyncHandler(async (req, res, next) => {
     return next(new ApiError('Only a draft Purchase Order can be edited. Open or cancelled Purchase Orders are frozen.', 400));
   }
 
-  const { vendorId, project, items, notes, issueDate, paymentTerms } = req.body;
+  const { vendorId, project, items, notes, issueDate, paymentTerms, vatPercentage, vatExemptReason } = req.body;
   if (vendorId !== undefined) requisition.vendorId = vendorId;
   if (project !== undefined) requisition.project = project;
   if (items !== undefined) {
@@ -108,6 +111,11 @@ const updateRequisition = asyncHandler(async (req, res, next) => {
     requisition.paymentTerms = paymentTerms === null ? null : checkedTerms(paymentTerms, { total: itemsTotal(requisition.items), issueDate: requisition.issueDate || requisition.createdAt });
   }
   if (notes !== undefined) requisition.notes = notes;
+  // Estimate only - see requisitionModel.js#vatPercentage's own comment.
+  if (vatPercentage !== undefined) {
+    requisition.vatPercentage = Number(vatPercentage) || 0;
+    requisition.vatExemptReason = Number(vatPercentage) === 0 && vatExemptReason ? String(vatExemptReason).trim() : null;
+  }
 
   await requisition.save();
   res.status(200).json(apiResponse('Purchase Order updated successfully', true, requisition));

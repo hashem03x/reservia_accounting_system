@@ -1,5 +1,10 @@
 const { Schema, model } = require('mongoose');
 const { canonicalMaterialKey } = require('../../utils/commercial/materialKey');
+// Explicit require (not just the string `ref:` name) - mirrors productModel.js's own identical
+// comment for its `pucAccount` populate. Without this, any caller that queries MaterialItem
+// without having separately loaded the Product model first (most of them - this schema's own
+// erpProduct populate below is a recent addition) hits Mongoose's MissingSchemaError.
+require('../inventory/productModel');
 
 // Reservia Commercial - the Price Book / material catalog. Stores each of the three source
 // workbooks' own price-list sheets (On_Grid.xlsx's Material Price List, Off_Grid.xlsx's inline
@@ -86,6 +91,13 @@ const materialItemSchema = new Schema(
     archivedAt: { type: Date, default: null },
     archivedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    // ERP BOQ mapping fix: the real, Purchasing-confirmed ERP catalog Product this Price Book item
+    // corresponds to. Never inferred/guessed - wonToErpService.js#buildErpBoqLines uses this exact
+    // link (via a BOQ line's materialItemKey -> this MaterialItem -> this Product) as its ONLY
+    // trustworthy match; a line whose material has no erpProduct set falls back to a stricter,
+    // flagged-as-uncertain text match, or is reported as unmatched - never guessed from this field
+    // being absent. Null means "Purchasing has not linked a real Product yet".
+    erpProduct: { type: Schema.Types.ObjectId, ref: 'Product', default: null },
   },
   { timestamps: true }
 );
@@ -100,6 +112,28 @@ materialItemSchema.pre('save', function (next) {
   if (this.isModified('brand') || this.isModified('model') || this.isModified('spec') || this.isNew) {
     this.keyNorm = canonicalMaterialKey({ brand: this.brand, model: this.model, spec: this.spec });
   }
+  next();
+});
+
+// Backstop (the request validator/controller is only the fast pre-check): erpProduct must point at
+// a real, non-deleted, physical (type:'product', not 'service') catalog item - the same shape
+// buildErpBoqLines() itself requires, checked again here so a raw script or a future caller can
+// never leave a dangling/wrong-type reference behind.
+materialItemSchema.pre('save', async function (next) {
+  try {
+    if (!this.isModified('erpProduct') || !this.erpProduct) return next();
+    const Product = require('../inventory/productModel'); // eslint-disable-line global-require
+    const product = await Product.findOne({ _id: this.erpProduct, isDeleted: { $ne: true } }).select('type').session(this.$session());
+    if (!product) throw new Error('The selected ERP product does not exist (or is deleted).');
+    if (product.type !== 'product') throw new Error('Only a physical catalog product (not a service) can be linked here.');
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+materialItemSchema.pre(/^find/, function (next) {
+  this.populate({ path: 'erpProduct', select: 'title sku model' });
   next();
 });
 

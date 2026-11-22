@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import errorMessage from "@/utils/helpers/error-message";
-import { Alert, Button, NumberInput, Switch, Table, Textarea } from "@mantine/core";
+import { Alert, Button, NumberInput, Select, Switch, Table, Textarea } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
@@ -10,7 +10,7 @@ import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import SectionCard from "@/components/ui/section-card";
-import { PricingConfig, PricingLevers } from "@/types/commercial";
+import { CogsAccountOption, ErpCostAccountCodes, PricingConfig, PricingLevers } from "@/types/commercial";
 import PctInput, { toPct } from "../_shared/PctInput";
 
 // Nullable Sales-limits fields (R6/R7) - "" means "not set" (never 0, which is a real, different
@@ -20,6 +20,13 @@ const toPctOrUnset = (fraction: number | null | undefined): NullablePct => (frac
 const fromPctOrUnset = (pct: NullablePct): number | null => (pct === "" ? null : pct / 100);
 import EngineSettingsCard from "./engine-settings-card";
 import ProposalTextCard, { ProposalSettings } from "./proposal-text-card";
+
+const ERP_COST_LEVERS: { key: keyof ErpCostAccountCodes; en: string; ar: string }[] = [
+  { key: "overhead", en: "Overhead", ar: "المصروفات العامة" },
+  { key: "contingency", en: "Contingency", ar: "الاحتياطي" },
+  { key: "salesBonus", en: "Sales bonus", ar: "مكافأة المبيعات" },
+  { key: "engineeringIncentive", en: "Engineering incentive", ar: "حافز الهندسة" },
+];
 
 const LEVERS: { key: keyof PricingLevers; en: string; ar: string; hint: string }[] = [
   { key: "overheadPct", en: "Overhead", ar: "المصروفات العامة", hint: "% of COGS" },
@@ -52,6 +59,8 @@ export default function PricingConfigPage() {
   const [concessionCeiling, setConcessionCeiling] = useState<NullablePct>("");
   const [gpFloor, setGpFloor] = useState(15);
   const [requireMdApproval, setRequireMdApproval] = useState(false);
+  const [erpCostAccountCodes, setErpCostAccountCodes] = useState<ErpCostAccountCodes>({ overhead: null, contingency: null, salesBonus: null, engineeringIncentive: null });
+  const [cogsAccounts, setCogsAccounts] = useState<CogsAccountOption[]>([]);
   const [note, setNote] = useState("");
   const [history, setHistory] = useState<AuditRow[]>([]);
   const [saving, setSaving] = useState(false);
@@ -77,7 +86,14 @@ export default function PricingConfigPage() {
       setConcessionCeiling(toPctOrUnset(c.salesLimits?.concessionCeilingPct));
       setGpFloor(toPct(c.salesLimits?.gpFloorPct ?? 0.15));
       setRequireMdApproval(!!c.requireMdApprovalForPolicyChange);
+      setErpCostAccountCodes(c.erpCostAccountCodes || { overhead: null, contingency: null, salesBonus: null, engineeringIncentive: null });
       setHistory(hist.data as AuditRow[]);
+      // Only a configuration manager may even call this (same gate as the Save button below) - a
+      // read-only viewer never needs the picker, so this is skipped rather than failing with a 403.
+      if (c.canManage) {
+        const cogs = await privateRequest({ url: "commercial/pricing-config/cogs-accounts", language });
+        setCogsAccounts(cogs.data as CogsAccountOption[]);
+      }
     });
   }
 
@@ -108,6 +124,7 @@ export default function PricingConfigPage() {
             gpFloorPct: gpFloor / 100,
           },
           requireMdApprovalForPolicyChange: requireMdApproval,
+          erpCostAccountCodes,
           note,
         },
         language,
@@ -217,6 +234,40 @@ export default function PricingConfigPage() {
             onChange={(e) => setRequireMdApproval(e.currentTarget.checked)}
             disabled={!canManage}
           />
+        </SectionCard>
+      </div>
+
+      <div className="mt-4">
+        <SectionCard title={translate("ERP cost-account mapping (Won to ERP handover)", "ربط حسابات التكلفة في النظام (تسليم الصفقة الرابحة للنظام)")}>
+          <p className="mb-3 text-xs text-gray-500">
+            {translate(
+              "Each lever below needs its own real COGS account before a Won deal's Average Cost can include it - unmapped levers are skipped (with a clear warning on the ERP project) rather than guessed. Raw Materials, Labour Wages, Fuel & Logistics and Engineering & Design are matched by name automatically and need no mapping here.",
+              "يحتاج كل عامل أدناه إلى حساب تكلفة فعلي قبل أن تتضمنه التكلفة المتوسطة للصفقة الرابحة - يتم تجاوز أي عامل غير مربوط (مع تحذير واضح في مشروع النظام) دون تخمين. تُطابق المواد الخام والأجور والوقود واللوجستيات والهندسة والتصميم تلقائيًا بالاسم ولا تحتاج ربطًا هنا."
+            )}
+          </p>
+          {canManage && cogsAccounts.length === 0 && (
+            <Alert color="yellow" variant="light" mb="sm">
+              {translate(
+                "No active COGS accounts exist yet. Create them on the Chart of Accounts page first (type: COGS), then come back here to map them.",
+                "لا توجد حسابات تكلفة تشغيل نشطة بعد. أنشئها أولاً من صفحة دليل الحسابات (النوع: تكاليف تشغيل)، ثم عد هنا لربطها."
+              )}
+            </Alert>
+          )}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {ERP_COST_LEVERS.map((l) => (
+              <Select
+                key={l.key}
+                label={translate(l.en, l.ar)}
+                placeholder={translate("Not mapped", "غير مربوط")}
+                data={cogsAccounts.map((a) => ({ value: a.code, label: `${a.code} - ${translate(a.name, a.nameAr)}` }))}
+                value={erpCostAccountCodes[l.key]}
+                onChange={(v) => setErpCostAccountCodes((prev) => ({ ...prev, [l.key]: v }))}
+                searchable
+                clearable
+                disabled={!canManage}
+              />
+            ))}
+          </div>
         </SectionCard>
       </div>
 

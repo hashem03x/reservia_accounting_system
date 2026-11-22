@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useDebounce } from "use-debounce";
 import { useDisclosure } from "@mantine/hooks";
 import { Badge, Button, Select, Table, TextInput } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
@@ -32,6 +33,7 @@ export default function CommercialMaterials() {
   const [activePage, setActivePage] = useState(1);
   const [category, setCategory] = useState("");
   const [q, setQ] = useState("");
+  const [debouncedQ] = useDebounce(q, 350);
   const [editing, setEditing] = useState<MaterialItem | null>(null);
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
 
@@ -41,16 +43,29 @@ export default function CommercialMaterials() {
   });
 
   function reload() {
-    handleRequest(language, setLoading, setError, async () => {
-      const res = await privateRequest({ url: "commercial/materials", params: { page: activePage.toString(), ...(category ? { category } : {}), ...(q ? { keyword: q } : {}) }, language });
-      setPaginated(res as PaginatedData<MaterialItem>);
-    });
+    const controller = new AbortController();
+    const canceled = { current: false };
+    const executeFetch = async () => {
+      const res = await privateRequest({
+        url: "commercial/materials",
+        params: { page: activePage.toString(), ...(category ? { category } : {}), ...(debouncedQ ? { keyword: debouncedQ } : {}) },
+        signal: controller.signal,
+        language,
+      });
+      if (!canceled.current) setPaginated(res as PaginatedData<MaterialItem>);
+    };
+    handleRequest(language, setLoading, setError, executeFetch, canceled);
+    return () => {
+      controller.abort();
+      canceled.current = true;
+    };
   }
 
   useEffect(() => {
-    reload();
+    const cancelRequest = reload();
+    return cancelRequest;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePage, category, q]);
+  }, [activePage, category, debouncedQ]);
 
   return (
     <AdminLayoutBox header={{ title: translate("Material Price List", "قائمة أسعار المواد") }}>

@@ -21,6 +21,7 @@ import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
 import ErrorAlert from "@/components/ui/error-alert";
 import VendorSearch from "@/components/global/vendor-search";
+import OrderTaxSection from "@/components/global/order-tax-section";
 import PaymentTermsEditor, { PaymentScheduleView } from "@/components/global/payment-terms-editor";
 import {
   DocumentPaymentTerms,
@@ -168,6 +169,12 @@ export default function PurchaseRequisitionDetail() {
         <InfoCard label={translate("Invoiced Amount", "المفوتر")} value={requisition.invoicedAmount.toLocaleString()} />
         <InfoCard label={translate("Remaining Amount", "المتبقي")} value={requisition.remainingAmount.toLocaleString()} />
         <InfoCard label={translate("Executed %", "نسبة التنفيذ")} value={`${requisition.executedPercentage.toFixed(2)}%`} />
+        {!!requisition.vatPercentage && (
+          <>
+            <InfoCard label={translate("VAT Estimate", "تقدير الضريبة")} value={`${requisition.vatPercentage}% (${(requisition.vatAmountEstimate || 0).toLocaleString()})`} />
+            <InfoCard label={translate("Estimated Total", "الإجمالي المقدر")} value={(requisition.grandTotalEstimate || requisition.amount).toLocaleString()} />
+          </>
+        )}
       </div>
 
       <div className="mt-2 flex flex-col gap-1">
@@ -296,6 +303,11 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
   const [items, setItems] = useState<EditableRequisitionItem[]>(() => editableItemsOf(requisition.items, translate));
   const [paymentTerms, setPaymentTerms] = useState<DocumentPaymentTerms | null>(requisition.paymentTerms || null);
   const [notes, setNotes] = useState(requisition.notes || "");
+  // Estimate only (Feature 4) - see requisitionModel.js#vatPercentage's own comment.
+  const [vatPercentage, setVatPercentage] = useState<string | number>(requisition.vatPercentage || 0);
+  const [vatExemptReason, setVatExemptReason] = useState(requisition.vatExemptReason || "");
+  const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
+  const reasonMissing = Number(vatPercentage) === 0 && vatExemptReason.trim().length < 3;
 
   const {
     privateRequest: fetchProjectsRequest,
@@ -315,7 +327,7 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
 
   const amount = items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), 0);
   const termsError = validateDocumentPaymentTerms(paymentTerms, { total: amount, issueDate });
-  const canSave = !!vendor && !!project && !!issueDate && items.length > 0 && items.every(itemIsComplete) && !termsError;
+  const canSave = !!vendor && !!project && !!issueDate && items.length > 0 && items.every(itemIsComplete) && !termsError && !reasonMissing;
 
   async function handleSave() {
     if (!canSave) return;
@@ -331,6 +343,8 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
           items: items.map(itemPayload),
           paymentTerms: paymentTerms ? toPaymentTermsPayload(paymentTerms) : null,
           notes: notes || undefined,
+          vatPercentage: Number(vatPercentage) || 0,
+          ...(Number(vatPercentage) === 0 ? { vatExemptReason: vatExemptReason.trim() } : {}),
         },
       });
       onSaved(res.data);
@@ -382,6 +396,17 @@ function EditToggle({ requisition, onSaved }: { requisition: Requisition; onSave
       </div>
 
       <RequisitionItemsEditor items={items} setItems={setItems} excludeId={requisition._id} />
+
+      <h5>{translate("VAT Estimate", "تقدير ضريبة القيمة المضافة")}</h5>
+      <OrderTaxSection
+        amount={amount}
+        vatPercentage={vatPercentage}
+        setVatPercentage={setVatPercentage}
+        vatExemptReason={vatExemptReason}
+        setVatExemptReason={setVatExemptReason}
+        withholdingTaxPercentage={withholdingTaxPercentage}
+        setWithholdingTaxPercentage={setWithholdingTaxPercentage}
+      />
 
       <h5>{translate("Vendor Payment Terms", "شروط سداد المورد")}</h5>
       <PaymentTermsEditor

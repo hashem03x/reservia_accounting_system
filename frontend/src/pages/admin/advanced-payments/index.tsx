@@ -1,6 +1,7 @@
 import { AdvancedPayment } from "@/types/advanced-payment";
 import { PaginatedData } from "@/types/global";
 import { useEffect, useState } from "react";
+import { useDebounce } from "use-debounce";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useDisclosure } from "@mantine/hooks";
 import { useLanguage } from "@/context/LanguageContext";
@@ -44,6 +45,7 @@ export default function AdvancedPayments() {
   const [typeFilter, setTypeFilter] = useState(searchParams.get("type") || "");
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "");
   const [keyword, setKeyword] = useState("");
+  const [debouncedKeyword] = useDebounce(keyword, 350);
   // Pre-filtered when arriving from the Project detail page's "View Advanced Payments" link (see
   // docs section "Project Advanced Payment Display") - the project filter itself isn't user-facing
   // here, just carried through from the URL.
@@ -53,7 +55,7 @@ export default function AdvancedPayments() {
   if (typeFilter) params.type = typeFilter;
   if (statusFilter) params.status = statusFilter;
   if (projectFilter) params.project = projectFilter;
-  if (keyword) params.keyword = keyword;
+  if (debouncedKeyword) params.keyword = debouncedKeyword;
 
   const {
     privateRequest,
@@ -100,7 +102,7 @@ export default function AdvancedPayments() {
     window.scrollTo({ top: 0, behavior: "instant" });
     const cancelRequest = load();
     return cancelRequest;
-  }, [activePage, typeFilter, statusFilter, keyword]);
+  }, [activePage, typeFilter, statusFilter, debouncedKeyword]);
 
   const [createModalOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure();
 

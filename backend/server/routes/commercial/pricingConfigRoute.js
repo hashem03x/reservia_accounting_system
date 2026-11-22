@@ -10,5 +10,6 @@ router.use(authController.protect);
 router.get('/', controller.requireReadAccess, controller.getConfig);
 router.put('/', controller.requireManageAccess, controller.updateConfig);
 router.get('/history', controller.requireReadAccess, controller.getHistory);
+router.get('/cogs-accounts', controller.requireManageAccess, controller.getCogsAccounts);
 
 module.exports = router;

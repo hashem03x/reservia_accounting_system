@@ -53,11 +53,17 @@ export default function NewPurchaseOrder() {
   const [poLines, setPoLines] = useState<PurchaseOrderLines | null>(null);
   const linesRequest = usePrivateRequest();
 
+  // ERP CHG-06: VAT starts from the company rate; 0% needs a reason.
+  const { vatPercentage, setVatPercentage, vatExemptReason, setVatExemptReason, vatTreatment, setVatTreatment, reasonMissing, vatPayload } = useInvoiceVat();
+
   // Selecting a Purchase Order sets and locks its vendor and project (docs section "Link Purchase
   // Invoices to Purchase Orders") - the backend rejects a mismatch, so the UI never offers one.
   // Clearing the selection resets both back - otherwise they'd keep showing the previous Purchase
   // Order's vendor/project, unlocked, with no selection backing them.
   // Items are priced and limited by their Purchase Order, so changing it starts the items over.
+  // Feature 4: the Purchase Order's own VAT estimate (requisitionModel.js#vatPercentage) is just as
+  // much a "starting point" as the vendor/project - it pre-fills the invoice's real VAT fields,
+  // same as it already pre-fills from the company rate, but stays fully editable afterward.
   useEffect(() => {
     setItems([emptyOrderItem]);
     setPoLines(null);
@@ -68,13 +74,14 @@ export default function NewPurchaseOrder() {
     }
     setVendor((requisition.vendorId as unknown as Vendor) || null);
     setProject(requisition.project?._id || "");
+    setVatPercentage(requisition.vatPercentage ?? 0);
+    setVatExemptReason(requisition.vatExemptReason || "");
     const hasUnmatchableLines = (requisition.items || []).some((item) => !item.product);
     linesRequest({ url: `requisitions/${requisition._id}/remaining-quantities`, language })
       .then((res) => setPoLines({ lines: res.data || [], hasUnmatchableLines }))
       .catch((err) => notifyError({ language, message: (err as { message?: string })?.message || translate("Could not load the Purchase Order lines.", "تعذر تحميل بنود أمر الشراء.") }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requisition]);
-  // ERP CHG-06: VAT starts from the company rate; 0% needs a reason.
-  const { vatPercentage, setVatPercentage, vatExemptReason, setVatExemptReason, vatTreatment, setVatTreatment, reasonMissing, vatPayload } = useInvoiceVat();
   const [withholdingTaxPercentage, setWithholdingTaxPercentage] = useState<string | number>(0);
   // Optional PDFs, uploaded right after the order is created.
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);

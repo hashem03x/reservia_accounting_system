@@ -3,6 +3,8 @@ const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const pricingConfigService = require('../../services/commercial/pricingConfigService');
 const { hasActiveCommercialMembership } = require('../../middleware/commercialAccess');
+const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
+const { ACCOUNT_CODE_SORT, ACCOUNT_CODE_COLLATION } = require('../../utils/accountCodeSort');
 
 // QA finding B3 - the Finance-managed pricing configuration. Read: any Commercial user (the Pricing
 // tab shows the defaults) or a configuration manager. Write: configuration managers only
@@ -37,4 +39,18 @@ exports.updateConfig = asyncHandler(async (req, res) => {
 
 exports.getHistory = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Pricing configuration history', true, await pricingConfigService.getHistory(Number(req.query.limit) || 50)));
+});
+
+// The erpCostAccountCodes picker needs the real, active COGS accounts to choose from - same query
+// as accounting/chartOfAccountController.js#getCogsEligibleAccounts, but reachable by whoever can
+// actually set this field (Commercial MD/Director or ERP admin - requireManageAccess above), not
+// gated behind ERP system membership + the accounts:read RBAC permission the way the ERP-side
+// /accounts/cogs-eligible route is. A Commercial MD with no ERP membership at all must still be
+// able to see and pick a COGS account here.
+exports.getCogsAccounts = asyncHandler(async (req, res) => {
+  const accounts = await ChartOfAccount.find({ type: 'cogs', isActive: true })
+    .select('code name nameAr')
+    .sort(ACCOUNT_CODE_SORT)
+    .collation(ACCOUNT_CODE_COLLATION);
+  res.status(200).json(apiResponse('Eligible COGS accounts retrieved successfully', true, accounts));
 });

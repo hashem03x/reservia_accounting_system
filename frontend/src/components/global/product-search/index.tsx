@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useDebounce } from "use-debounce";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
@@ -38,6 +39,7 @@ export default function ProductSearch({
   const { language, translate, translations } = useLanguage();
 
   const [keyword, setKeyword] = useState("");
+  const [debouncedKeyword] = useDebounce(keyword, 350);
 
   const {
     privateRequest,
@@ -56,7 +58,7 @@ export default function ProductSearch({
     const executeFetch = async () => {
       const response = await privateRequest({
         url: "products",
-        params: { isDeleted: false, keyword },
+        params: { isDeleted: false, keyword: debouncedKeyword },
         signal: controller.signal,
         language,
       });
@@ -69,7 +71,7 @@ export default function ProductSearch({
       controller.abort();
       canceled.current = true;
     };
-  }, [keyword]);
+  }, [debouncedKeyword]);
 
   const combobox = useCombobox({
     onDropdownClose: () => combobox.resetSelectedOption(),

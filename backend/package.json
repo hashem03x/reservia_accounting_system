@@ -57,6 +57,8 @@
     "pm2:unstartup": "pm2 unstartup",
     "db:seed-commercial-offgrid": "node server/scripts/seedCommercialOffGridItems.js",
     "db:commercial-qa-cleanup": "node server/scripts/commercialQaCleanup.js",
+    "db:prelaunch-test-cleanup": "node server/scripts/prelaunchTestCleanup.js",
+    "smoke-test:prelaunch": "node server/scripts/prelaunchSmokeTest.js",
     "db:normalize-commercial-regions": "node server/scripts/normalizeCommercialRegions.js",
     "db:inventory-and-backup": "node server/scripts/productionDbInventoryAndBackup.js"
   },

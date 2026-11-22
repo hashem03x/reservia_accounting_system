@@ -1,7 +1,9 @@
 // The "Purchase Order" document (docs section "Implement Purchase Orders Before Purchase
 // Invoices") - internally named Requisition on the backend because the model name `PurchaseOrder`
 // is already taken by the existing Purchase Invoice (see backend requisitionModel.js's header
-// comment). Purely operational: no tax/payment fields, never posts accounting.
+// comment). Purely operational: no payment fields, never posts accounting. vatPercentage is the
+// one exception (Feature 4) - an ESTIMATE only, never computed into amount/invoicedAmount, never
+// posted; it only pre-fills the real Purchase Invoice's own VAT fields when raised against this PO.
 import type { DocumentPaymentTerms, PaymentSchedule } from "@/utils/helpers/document-payment-terms";
 
 export type RequisitionStatus = "draft" | "open" | "cancelled";
@@ -47,6 +49,11 @@ export interface Requisition {
   remainingAmount: number;
   executedPercentage: number;
   effectiveStatus: RequisitionEffectiveStatus;
+  // Estimate only (Feature 4) - see this file's header comment.
+  vatPercentage?: number;
+  vatExemptReason?: string | null;
+  vatAmountEstimate?: number;
+  grandTotalEstimate?: number;
   createdBy?: { _id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
