@@ -64,3 +64,7 @@ exports.rollbackPriceList = asyncHandler(async (req, res) => {
   const upload = await uploads.rollbackUpload(req.params.uploadId, ctx(req));
   res.status(200).json(apiResponse(`Rolled back: ${upload.changes.length} price(s) restored`, true, upload));
 });
+exports.applyDiscount = asyncHandler(async (req, res) => {
+  const upload = await uploads.applyPercentageDiscount(req.params.id, { pct: req.body?.pct, note: req.body?.note }, ctx(req));
+  res.status(201).json(apiResponse(`Applied: ${upload.changes.length} price(s) discounted by ${upload.discountPct}%`, true, upload));
+});

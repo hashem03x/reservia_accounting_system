@@ -27,5 +27,6 @@ router.post('/:id/unlink-vendor', controller.unlinkVendor);
 router.post('/:id/create-vendor', controller.createVendor);
 router.get('/:id/price-lists', controller.listPriceLists);
 router.post('/:id/price-lists/preview', upload.single('file'), controller.previewPriceList);
+router.post('/:id/price-lists/discount', controller.applyDiscount);
 
 module.exports = router;

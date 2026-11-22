@@ -18,6 +18,12 @@ const priceListUploadSchema = new Schema(
   {
     supplier: { type: Schema.Types.ObjectId, ref: 'CommercialSupplier', required: true },
     supplierCode: { type: String, required: true },
+    // A blanket percentage discount applied across this supplier's current prices
+    // (priceListUploadService.js#applyPercentageDiscount), without re-uploading a whole list -
+    // uses this SAME record shape (changes/rollback/C24 open-revision flagging) so the existing
+    // history and rollback already work for it, never a second bookkeeping path.
+    kind: { type: String, enum: ['file', 'discount'], default: 'file' },
+    discountPct: { type: Number, default: null },
     fileName: { type: String, required: true },
     validityDate: { type: Date, default: null }, // the quote validity typed in by Procurement
     mapping: { type: Schema.Types.Mixed, required: true }, // Price Book field -> file header

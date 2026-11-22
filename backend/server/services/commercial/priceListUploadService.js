@@ -340,6 +340,61 @@ async function rollbackUpload(uploadId, { user, role }) {
   return upload;
 }
 
+/**
+ * A blanket percentage discount (or markup, if `pct` is negative) across every Price Book item
+ * this supplier currently prices - no file to prepare/upload for a quick "everything 5% off this
+ * month" from the supplier. Written through the SAME upload/change record the file flow uses
+ * (confirmUpload's own shape), so the existing rollback, price history and C24 "flag open
+ * revisions using a changed item" all apply to it unchanged - this is not a second price-change
+ * mechanism, just a second way to produce one.
+ */
+async function applyPercentageDiscount(supplierId, { pct, note } = {}, { user, role }) {
+  assertEditor(role);
+  const supplier = await Supplier.findById(supplierId);
+  if (!supplier) throw new ApiError('Supplier not found.', 404);
+  if (['Suspended', 'Removed'].includes(supplier.status)) throw new ApiError(`${supplier.code} is ${supplier.status} - its prices would never be used. Change its status first.`, 400);
+  const p = Number(pct);
+  if (!Number.isFinite(p) || p <= 0 || p > 100) throw new ApiError('Enter a discount percentage greater than 0 and up to 100.', 400);
+
+  const items = await MaterialItem.find({ archived: false, 'supplierPrices.supplier': supplier._id }).select('key model supplierPrices priceHistory');
+  if (!items.length) throw new ApiError(`${supplier.code} has no current prices in the Price Book to discount - upload a price list first.`, 400);
+
+  const checkedAt = new Date();
+  const changes = [];
+  const changedItems = [];
+  const factor = 1 - p / 100;
+  for (const item of items) {
+    const idx = item.supplierPrices.findIndex(sp => String(sp.supplier) === String(supplier._id));
+    if (idx < 0) continue; // guard only - the query above already requires this
+    const before = item.supplierPrices[idx].toObject();
+    const unitPrice = Math.round(before.unitPrice * factor * 100) / 100;
+    const foreignPrice = before.foreignPrice != null ? Math.round(before.foreignPrice * factor * 100) / 100 : null;
+    const entry = { ...before, unitPrice, foreignPrice, checkedAt, sourceFile: `Percentage discount (-${p}%)`, upload: null };
+    item.supplierPrices.splice(idx, 1);
+    item.supplierPrices.push(entry);
+    item.priceHistory.push({ price: unitPrice, currency: 'EGP', effectiveDate: checkedAt, changedBy: user._id });
+    // eslint-disable-next-line no-await-in-loop
+    await item.save();
+    changes.push({ item: item._id, itemKey: item.key, created: false, before, after: entry });
+    changedItems.push({ key: item.key, model: item.model });
+  }
+
+  const upload = await Upload.create({
+    // `mapping` is a genuinely empty `{}` for a discount (there is no file/column mapping) - but
+    // Mongoose's Mixed `required` check sees an empty object read back from storage as unset, so
+    // this uses a one-key marker instead of a bare `{}` to stay truthy across a save-after-fetch
+    // (exactly what rollbackUpload below does).
+    supplier: supplier._id, supplierCode: supplier.code, kind: 'discount', discountPct: p,
+    fileName: `Percentage discount (-${p}%)`, mapping: { discount: true }, headers: [], rows: [], summary: { total: changes.length, Update: changes.length },
+    status: 'confirmed', uploadedBy: user._id, uploadedByName: user.name || null, confirmedBy: user._id, confirmedAt: checkedAt, changes,
+  });
+  upload.flaggedRevisions = await flagOpenRevisions(changedItems);
+  await upload.save();
+  supplier.notes.push({ by: user._id, byName: user.name || null, kind: 'upload', text: `Percentage discount of ${p}% applied to ${changes.length} price(s)${note ? ` - ${String(note).trim().slice(0, 300)}` : ''}.` });
+  await supplier.save();
+  return upload;
+}
+
 async function listUploads(supplierId) {
   return Upload.find({ supplier: supplierId }).select('-rows').sort({ createdAt: -1 }).limit(50).lean();
 }
@@ -351,4 +406,4 @@ async function getUpload(uploadId) {
   return u;
 }
 
-module.exports = { previewUpload, confirmUpload, rollbackUpload, listUploads, getUpload, readFile, proposeMapping, buildPreview, flagOpenRevisions, FIELDS, RATED };
+module.exports = { previewUpload, confirmUpload, rollbackUpload, applyPercentageDiscount, listUploads, getUpload, readFile, proposeMapping, buildPreview, flagOpenRevisions, FIELDS, RATED };

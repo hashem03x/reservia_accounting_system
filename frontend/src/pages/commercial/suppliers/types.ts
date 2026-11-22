@@ -72,6 +72,11 @@ export type PreviewRow = {
 export type PriceListUpload = {
   _id: string;
   supplierCode: string;
+  // A blanket percentage discount (priceListUploadService.js#applyPercentageDiscount) shows up in
+  // this SAME history list, distinguished only by `kind` - everything else (status/changes/
+  // flaggedRevisions/rollback) already works unchanged for it.
+  kind?: "file" | "discount";
+  discountPct?: number | null;
   fileName: string;
   validityDate: string | null;
   mapping: Record<string, string | null>;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
-import { Alert, Badge, Button, Checkbox, FileInput, Select, Table, TextInput } from "@mantine/core";
+import { Alert, Badge, Button, Checkbox, FileInput, NumberInput, Select, Table, TextInput } from "@mantine/core";
 import errorMessage from "@/utils/helpers/error-message";
 import { useLanguage } from "@/context/LanguageContext";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
@@ -27,6 +27,7 @@ export default function PriceListUpload({ supplierId, canEdit, onChanged }: { su
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [history, setHistory] = useState<Upload[]>([]);
+  const [discountPct, setDiscountPct] = useState<number | "">("");
 
   async function loadHistory() {
     try {
@@ -70,6 +71,23 @@ export default function PriceListUpload({ supplierId, canEdit, onChanged }: { su
       setMessage({ ok: true, text: res.message });
       setPreview(null);
       setFile(null);
+      loadHistory();
+      onChanged();
+    } catch (e) {
+      setMessage({ ok: false, text: errorMessage(e) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function applyDiscount() {
+    if (!discountPct) return;
+    setBusy("discount");
+    setMessage(null);
+    try {
+      const res = await privateRequest({ url: `commercial/suppliers/${supplierId}/price-lists/discount`, method: "POST", data: { pct: discountPct }, language });
+      setMessage({ ok: true, text: res.message });
+      setDiscountPct("");
       loadHistory();
       onChanged();
     } catch (e) {
@@ -124,6 +142,26 @@ export default function PriceListUpload({ supplierId, canEdit, onChanged }: { su
             {translate("supplier price list template (XLSX)", "نموذج قائمة أسعار المورد (XLSX)")}
           </a>
         </p>
+
+        {canEdit && (
+          <div className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-100 p-3">
+            <NumberInput
+              label={translate("Quick discount (%)", "خصم سريع (%)")}
+              description={translate("Reduces every current price for this supplier by this % - no file needed.", "يخفض كل أسعار هذا المورد الحالية بهذه النسبة - دون حاجة لملف.")}
+              placeholder="5"
+              min={0.01}
+              max={100}
+              value={discountPct}
+              onChange={(v) => setDiscountPct(v as number | "")}
+              w={220}
+              suffix="%"
+              data-testid="price-list-discount-pct"
+            />
+            <Button variant="light" onClick={applyDiscount} loading={busy === "discount"} disabled={!discountPct} data-testid="price-list-apply-discount">
+              {translate("Apply discount", "تطبيق الخصم")}
+            </Button>
+          </div>
+        )}
         {message && (
           <Alert color={message.ok ? "teal" : "red"} variant="light" data-testid="price-list-message">
             {message.text}
