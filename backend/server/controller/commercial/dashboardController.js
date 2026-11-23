@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const CommercialProject = require('../../models/commercial/commercialProjectModel');
 const CommercialRevision = require('../../models/commercial/commercialRevisionModel');
 const apiResponse = require('../../utils/apiResponse');
+const { widestLevel, canView, PROJECT_TAB_MATRIX } = require('../../utils/commercial/dealEnginePermissions');
 
 // Reservia Commercial dashboard - every KPI here is computed from persisted CommercialProject/
 // CommercialRevision documents at request time; nothing is hardcoded or sampled (the project's
@@ -29,7 +30,7 @@ exports.getDashboard = asyncHandler(async (req, res) => {
     { estimatedProjectValue: 0, estimatedMaterialCost: 0, expectedGrossProfit: 0, marginSum: 0, marginCount: 0 }
   );
 
-  res.status(200).json(apiResponse('Dashboard retrieved successfully', true, {
+  const data = {
     totalProjects,
     draftProjects, // no revision yet, i.e. engineering inputs not entered
     pendingEngineeringApproval: pendingEngineering,
@@ -41,5 +42,16 @@ exports.getDashboard = asyncHandler(async (req, res) => {
     averageMarginPct: totals.marginCount ? totals.marginSum / totals.marginCount : null,
     projectsByCategory: byCategory.map(c => ({ category: c._id, count: c.count })),
     recentProjects,
-  }));
+  };
+
+  // Go-live Developer Pack section 5.4: Technical Engineer "must never... see gross profit" -
+  // this endpoint had no redaction at all, leaking net value/GP/margin to every Commercial-access
+  // role (technical, procurement, member). Same gate as the Overview tab's price section.
+  if (!canView(widestLevel(PROJECT_TAB_MATRIX.overviewPricing, req.commercialRoles))) {
+    delete data.totalEstimatedProjectValue;
+    delete data.expectedGrossProfit;
+    delete data.averageMarginPct;
+  }
+
+  res.status(200).json(apiResponse('Dashboard retrieved successfully', true, data));
 });

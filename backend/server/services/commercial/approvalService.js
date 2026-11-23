@@ -16,8 +16,11 @@ const { roleLabel } = require('../../utils/commercial/dealEnginePermissions');
 //   MD       Managing Director            -> 'md'
 // On top of the role check, segregation of duties: a person who has already decided one stage of a
 // revision can never decide another stage of the SAME revision, even if their role later changes.
+// Go-live Developer Pack section 5.4/5.8: BDM may also sign Stage 1 ("BDM: Sign"), alongside the
+// existing Sales/Technical roles - a Sales Engineer may still only sign a deal they OWN (checked
+// separately in setStageStatus below via the project's `owner` field, not here).
 const STAGE_ROLES = {
-  STAGE1: ['sales', 'technical'],
+  STAGE1: ['sales', 'technical', 'bdm'],
   STAGE2: ['commercial_director'],
   MD: ['md'],
 };
@@ -87,6 +90,17 @@ async function setStageStatus(revisionId, stage, status, { userId, userRole, not
   if (!revision.isCurrent) throw new ApiError('This revision has been superseded and is read-only.', 400);
   if (revision.status === 'Draft') {
     throw new ApiError(`This revision is in Draft (${revision.invalidationReason || 'its inputs changed'}). Recalculate it on the Engineering Input tab before signing.`, 400);
+  }
+
+  // Go-live Developer Pack section 5.4/5.8: "Sales Engineer who owns the deal" - a Sales Engineer
+  // (role 'sales') may sign Stage 1 only on a deal they own (commercialProjectModel.js#owner,
+  // copied from the CRM lead at handoff). BDM/Technical signing Stage 1 are NOT owner-scoped - the
+  // matrix gives them unconditional Stage 1 rights.
+  if (stage === 'STAGE1' && userRole === 'sales') {
+    const project = await CommercialProject.findById(revision.project).select('owner').lean();
+    if (!project?.owner || String(project.owner) !== String(userId)) {
+      throw new ApiError('You can only sign Stage 1 on a deal you own. This deal has a different owner (or none set).', 403);
+    }
   }
 
   const field = STAGE_FIELD[stage];

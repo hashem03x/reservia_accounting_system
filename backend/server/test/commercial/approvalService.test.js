@@ -20,8 +20,10 @@ test('Release status: GP below the floor blocks release even if every stage says
   assert.equal(approval.computeReleaseStatus(r), 'NOT RELEASED');
 });
 
-test('Stage role mapping follows Developer Brief 4.1 (QA U6): Stage 1 Sales & Technical, Stage 2 Commercial Director, MD only', () => {
-  assert.deepEqual(approval.STAGE_ROLES.STAGE1, ['sales', 'technical']);
+// Go-live Developer Pack section 5.4/5.8: BDM may also sign Stage 1 ("BDM: Sign"), alongside the
+// original Sales & Technical roles from Developer Brief 4.1 (QA U6).
+test('Stage role mapping follows the go-live matrix: Stage 1 Sales/Technical/BDM, Stage 2 Commercial Director, MD only', () => {
+  assert.deepEqual(approval.STAGE_ROLES.STAGE1, ['sales', 'technical', 'bdm']);
   assert.deepEqual(approval.STAGE_ROLES.STAGE2, ['commercial_director']);
   assert.deepEqual(approval.STAGE_ROLES.MD, ['md']);
   // no role may sign two different stages

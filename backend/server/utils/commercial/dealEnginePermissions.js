@@ -21,10 +21,13 @@ const { priceCommercialRevision } = require('../../services/commercial/commercia
 const ROLE_LABELS = {
   md: 'Managing Director',
   commercial_director: 'Sales and Commercial Director',
-  sales: 'Sales / BDM',
-  technical: 'Technical',
+  sales: 'Sales Engineer',
+  technical: 'Technical Engineer',
   procurement: 'Procurement',
   member: 'Member',
+  // Go-live Developer Pack section 5.2/5.4 - the two Deal Engine roles that did not exist before.
+  bdm: 'Business Development Manager',
+  marketing: 'Marketing Coordinator',
 };
 function roleLabel(role) {
   return ROLE_LABELS[role] || role;
@@ -32,7 +35,7 @@ function roleLabel(role) {
 
 // Access levels, ordered low to high - "widest" picks the highest-ranked level across a user's roles.
 const LEVEL_RANK = { hidden: 0, view: 1, limited: 2, edit: 3 };
-const ALL_ROLES = ['md', 'commercial_director', 'sales', 'technical', 'procurement', 'member'];
+const ALL_ROLES = ['md', 'commercial_director', 'sales', 'technical', 'procurement', 'member', 'bdm', 'marketing'];
 
 /**
  * One matrix row: { md, commercial_director, sales, technical, procurement, member } -> access level.
@@ -43,42 +46,59 @@ const ALL_ROLES = ['md', 'commercial_director', 'sales', 'technical', 'procureme
  * they conflict with a garbled table cell. Every such judgment call is called out below so the MD
  * can correct it directly against the PDF rather than it staying a silent guess.
  */
+// Go-live Developer Pack, section 5.4 (23 Nov 2026, MD-approved - supersedes the Rev 02 judgment
+// calls below wherever the two actually conflict): adds `bdm` and `marketing`, and reconciles
+// `sales`/`commercial_director` against the new, authoritative access matrix. Reconciliation
+// notes (every deviation from the OLD Rev02 values is deliberate, not an oversight):
+//   - `sales` (the real Sales Engineer's Deal Engine role) moves from edit/limited down to VIEW
+//     on Overview, Engineering Input, BOQ items and Pricing - section 5.4's table gives Sales
+//     Engineer "View" across all of these; only Stage 1 approval (on deals they own - see
+//     services/commercial/approvalService.js) and Proposal issuance stay theirs to act on.
+//   - `commercial_director` (S&C Director) GAINS BOQ items/costs access (edit) - this is the
+//     explicit F6 fix ("today the commercial_director role has no BOQ tab and cannot raise POs"),
+//     and gains Materials edit access.
+//   - The table has ONE "Engineering Input" row where Rev 02 had two (design vs. customer-facing
+//     sub-sections) - both engineeringInputDesign/Customer below take the SAME value per role for
+//     md/commercial_director/sales/technical/bdm/marketing, since the new table does not draw that
+//     finer distinction; procurement/member (not part of the new matrix) keep their Rev 02 values.
+//   - `marketing` gets Feasibility + Proposal preview as VIEW ONLY (explicit in the matrix) - never
+//     edit, never issue, never Pricing.
+//   - `bdm` never gets Pricing Config (pricingPolicy) - explicit "BDM: full Deal Engine admin
+//     EXCEPT Pricing Config" in the task brief.
 const PROJECT_TAB_MATRIX = {
   // Section 4.1. "Hidden" here means the API omits the field/section entirely (R12) - not just an
   // empty value.
-  overview: { md: 'edit', commercial_director: 'edit', sales: 'edit', technical: 'view', procurement: 'view', member: 'view' },
-  // Price, GP, release status sub-section of Overview (A1/A12/A13: technical/procurement/member see
-  // Overview "without prices").
-  overviewPricing: { md: 'edit', commercial_director: 'edit', sales: 'edit', technical: 'hidden', procurement: 'hidden', member: 'hidden' },
-  // R3: design inputs (module, kWp, inverter, structure, area...) stay Technical's. MD keeps full
-  // edit access everywhere (A14) - only S&C/sales are view-only here, not MD.
-  engineeringInputDesign: { md: 'edit', commercial_director: 'view', sales: 'view', technical: 'edit', procurement: 'hidden', member: 'hidden' },
-  // R3: customer-facing inputs (bills, consumption, tariff, escalation, discount rate) move into
-  // their own section Sales can edit (A9: "sales edit bills and consumption... design inputs stay
-  // read-only"). Technical keeps VIEW (needs them for context, never edits them); MD full access.
-  engineeringInputCustomer: { md: 'edit', commercial_director: 'view', sales: 'edit', technical: 'view', procurement: 'hidden', member: 'hidden' },
+  overview: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'view', procurement: 'view', member: 'view', bdm: 'edit', marketing: 'view' },
+  // Price, GP, release status sub-section of Overview - derived from each role's Pricing-tab level
+  // below (view-or-higher on Pricing => view here; hidden on Pricing => hidden here), since the
+  // go-live matrix does not split this out as its own row.
+  overviewPricing: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'hidden', procurement: 'hidden', member: 'hidden', bdm: 'view', marketing: 'hidden' },
+  // R3: design inputs (module, kWp, inverter, structure, area...) - go-live section 5.4's single
+  // "Engineering Input" row, applied uniformly (see header note above).
+  engineeringInputDesign: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'edit', procurement: 'hidden', member: 'hidden', bdm: 'edit', marketing: 'hidden' },
+  engineeringInputCustomer: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'edit', procurement: 'hidden', member: 'hidden', bdm: 'edit', marketing: 'hidden' },
   // Judgment call (table cell garbled, no direct acceptance test): a pass/fail engineering QA
   // checklist, not needed by Sales/S&C for their commercial work. MD keeps full access everywhere.
-  designChecks: { md: 'edit', commercial_director: 'hidden', sales: 'hidden', technical: 'edit', procurement: 'hidden', member: 'hidden' },
-  // A12: procurement "can see... BOQ without prices on the Overview" - read as BOQ quantities/
-  // components visible, costs hidden (boqCosts row below). Sales/S&C work the Pricing tab's
-  // COGS-derived totals instead, not raw BOQ lines (role definitions, section 3) - judgment call.
-  boqLines: { md: 'edit', commercial_director: 'hidden', sales: 'hidden', technical: 'edit', procurement: 'view', member: 'hidden' },
-  boqCosts: { md: 'edit', commercial_director: 'hidden', sales: 'hidden', technical: 'view', procurement: 'hidden', member: 'hidden' },
-  // The Pricing tab itself (five levers + category addition + discount + price corridor).
-  // "limited" for Sales = category addition + discount only (section 5.2), enforced field-by-field
-  // below, not a blanket edit. A4/A8: Sales sees it Limited; a direct API overhead change is 403.
-  pricing: { md: 'edit', commercial_director: 'edit', sales: 'limited', technical: 'hidden', procurement: 'hidden', member: 'hidden' },
-  // A1/A9/A13: Hidden to technical/procurement/member; A14: full (Sign) for MD.
-  feasibility: { md: 'edit', commercial_director: 'view', sales: 'edit', technical: 'hidden', procurement: 'hidden', member: 'hidden' },
-  // Stage 1 (today: EITHER sales or technical may sign - approvalService.js STAGE1 role list; R4's
-  // split into two separate signatures is explicitly NOT built here, pending MD confirmation - see
-  // the implementation report). Both see it; S&C/MD view only until it's their stage.
-  approvalsStage1: { md: 'edit', commercial_director: 'view', sales: 'edit', technical: 'edit', procurement: 'hidden', member: 'view' },
-  // Stage 2 (commercial_director only, per approvalService.js STAGE2) + MD final sign-off.
-  approvalsStage2: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'hidden', procurement: 'hidden', member: 'view' },
-  // A1/A12: Hidden to technical/procurement. Sales/S&C/MD can preview and issue.
-  proposal: { md: 'edit', commercial_director: 'edit', sales: 'edit', technical: 'hidden', procurement: 'hidden', member: 'hidden' },
+  designChecks: { md: 'edit', commercial_director: 'hidden', sales: 'hidden', technical: 'edit', procurement: 'hidden', member: 'hidden', bdm: 'hidden', marketing: 'hidden' },
+  // Go-live F6: commercial_director GAINS BOQ access (edit) - was hidden under Rev 02.
+  boqLines: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'edit', procurement: 'view', member: 'hidden', bdm: 'edit', marketing: 'hidden' },
+  boqCosts: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'view', procurement: 'hidden', member: 'hidden', bdm: 'edit', marketing: 'hidden' },
+  // The Pricing tab itself (five levers + category addition + discount + price corridor). "limited"
+  // for bdm = category addition + discount only, same enforcement as the old Sales row (section
+  // 5.2's "BDM Pricing 'Limited'" note) - `sales` moves to plain VIEW per the new matrix (Sales
+  // Engineer no longer touches pricing levers at all, only sees the numbers).
+  pricing: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'hidden', procurement: 'hidden', member: 'hidden', bdm: 'limited', marketing: 'hidden' },
+  // Go-live: Sales Engineer moves to View (was edit); Marketing gets explicit View (new).
+  feasibility: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'hidden', procurement: 'hidden', member: 'hidden', bdm: 'edit', marketing: 'view' },
+  // Stage 1 (sales/technical/bdm may sign - approvalService.js STAGE1 role list; a Sales Engineer
+  // may only sign a deal they OWN - see commercialProjectModel.js#owner and approvalService.js's
+  // own ownership check, not this tab-visibility matrix). S&C/MD view only until it's their stage.
+  approvalsStage1: { md: 'edit', commercial_director: 'view', sales: 'edit', technical: 'edit', procurement: 'hidden', member: 'view', bdm: 'edit', marketing: 'hidden' },
+  // Stage 2 (commercial_director only, per approvalService.js STAGE2) + MD final sign-off view.
+  approvalsStage2: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'hidden', procurement: 'hidden', member: 'view', bdm: 'view', marketing: 'hidden' },
+  // Go-live: Marketing gets explicit View (preview/download only, never issue - see
+  // assertCanIssueProposal below); Sales Engineer keeps edit (may issue on deals they own).
+  proposal: { md: 'edit', commercial_director: 'edit', sales: 'edit', technical: 'hidden', procurement: 'hidden', member: 'hidden', bdm: 'edit', marketing: 'view' },
 };
 
 const ENGINE_PAGE_MATRIX = {
@@ -88,20 +108,22 @@ const ENGINE_PAGE_MATRIX = {
   // regress: BOQ lines reference both a materialItemKey and a supplierCode
   // (commercialRevisionModel.js#boqLineSchema), so even Technical reading a BOQ needs to resolve
   // what they mean (supplierRoute.js's own comment: "Every Deal Engine user can read the supplier
-  // list - the BOQ shows supplier codes"). Only WRITE access is role-restricted below.
-  materials: { md: 'edit', commercial_director: 'view', sales: 'view', technical: 'view', procurement: 'edit', member: 'view' },
+  // list - the BOQ shows supplier codes"). Only WRITE access is role-restricted below. Go-live:
+  // commercial_director gains edit (Materials/Price Book = Edit); bdm gets view.
+  materials: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'view', procurement: 'edit', member: 'view', bdm: 'view', marketing: 'hidden' },
   // Suppliers' write gate already exists and is correct (services/commercial/supplierService.js
-  // EDIT_ROLES = md/commercial_director/procurement, plus a narrow sales 'add a note' exception
-  // that pre-dates this matrix and is deliberately left untouched) - this row is for reference/the
-  // frontend's tab visibility only; the API gate is NOT re-applied here to avoid a second,
-  // possibly-diverging source of truth for a route that already enforces this correctly.
-  suppliers: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'view', procurement: 'edit', member: 'view' },
+  // EDIT_ROLES = md/commercial_director/procurement/bdm - go-live adds bdm, "Propose suppliers:
+  // Edit") - this row is for reference/the frontend's tab visibility only; the API gate is NOT
+  // re-applied here to avoid a second, possibly-diverging source of truth for a route that already
+  // enforces this correctly.
+  suppliers: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'view', procurement: 'edit', member: 'view', bdm: 'edit', marketing: 'hidden' },
   // Pricing Policy / Engineering Settings / Exchange Rates / Proposal Text do not exist as separate
   // pages yet (R5 - today's single combined Pricing Config page; see Phase 3). Listed here for the
   // page split's own future reference; pricingConfigController.js already enforces exactly this
   // read/write split today via canManagePricingConfig (md/commercial_director), independently of
-  // this matrix.
-  pricingPolicy: { md: 'edit', commercial_director: 'edit', sales: 'view', technical: 'hidden', procurement: 'hidden', member: 'hidden' },
+  // this matrix. Go-live: BDM and every other non-md/commercial_director role is explicitly NEVER
+  // given Pricing Config - "BDM: full Deal Engine admin EXCEPT Pricing Config."
+  pricingPolicy: { md: 'edit', commercial_director: 'edit', sales: 'hidden', technical: 'hidden', procurement: 'hidden', member: 'hidden', bdm: 'hidden', marketing: 'hidden' },
 };
 
 /** Highest access level across all the user's Commercial roles for one matrix row. R13. */
@@ -161,14 +183,20 @@ function assertPricingWriteAllowed(roles, pricingOverrides) {
   if (!canView(level)) {
     throw new ApiError('You do not have access to Pricing on this deal.', 403);
   }
-  const keys = Object.keys(pricingOverrides);
   if (level === 'edit') return; // S&C / MD: no restriction here (R5.2 "editable without limit").
-  // level === 'limited' (Sales) - only the two Sales-owned fields.
+  // Go-live section 5.4: plain VIEW (the real Sales Engineer's role today) means read-only - not
+  // even the two Sales-owned fields below, which is 'limited' specifically (BDM: category
+  // addition + discount within Sales limits).
+  if (level === 'view') {
+    throw new ApiError('Pricing is read-only for this role - ask the Sales and Commercial Director or BDM to change it.', 403);
+  }
+  // level === 'limited' (BDM) - only the two Sales-limits-owned fields.
+  const keys = Object.keys(pricingOverrides);
   const disallowed = keys.filter(k => !SALES_LIMITED_PRICING_KEYS.includes(k));
   if (disallowed.length) {
     const policyField = disallowed.find(k => POLICY_LEVER_KEYS.includes(k)) || disallowed[0];
     throw new ApiError(
-      `${policyField} is a pricing policy lever - read-only for Sales. Ask the Sales and Commercial Director to change it.`,
+      `${policyField} is a pricing policy lever - read-only for this role. Ask the Sales and Commercial Director to change it.`,
       403
     );
   }
@@ -204,6 +232,18 @@ function assertCanViewPricing(roles) {
 function assertCanAccessProposal(roles) {
   if (!canView(widestLevel(PROJECT_TAB_MATRIX.proposal, roles))) {
     throw new ApiError('You do not have access to the Proposal for this deal.', 403);
+  }
+}
+
+/**
+ * Go-live Developer Pack section 5.4: issuing a proposal needs EDIT-level Proposal access, not
+ * just view - Marketing Coordinator (and anyone else at 'view' on this row) can preview/download
+ * but never issue. Stricter than assertCanAccessProposal on purpose; always check this before
+ * actually issuing, never the view-level check alone.
+ */
+function assertCanIssueProposal(roles) {
+  if (!canEditFully(widestLevel(PROJECT_TAB_MATRIX.proposal, roles))) {
+    throw new ApiError('You do not have access to issue a proposal for this deal.', 403);
   }
 }
 
@@ -362,6 +402,7 @@ module.exports = {
   assertCanViewPricing,
   assertCanAccessEnginePage,
   assertCanAccessProposal,
+  assertCanIssueProposal,
   assertCanAccessApprovals,
   shapeProjectForRole,
   shapeRevisionForRole,

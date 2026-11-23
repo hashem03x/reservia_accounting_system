@@ -18,7 +18,11 @@ const { loadMatchingContext, matchLineToProduct } = require('./boqProductMatchin
 // Only reachable once the deal is Won (CommercialProject.erpProject exists) - before that there
 // is no real ERP Project to attach a Purchase Order to, and fabricating one would misrepresent an
 // unapproved deal as a real procurement commitment.
-const BOQ_VENDOR_ROLES = ['md', 'commercial_director', 'procurement'];
+// Go-live Developer Pack section 5.4: "Create PR / PO" = Draft for S&C Director, BDM AND Sales
+// Engineer too (md/commercial_director/procurement already had it). Drafting only - opening/
+// approving the resulting Purchase Order is a separate, MD-only permission regardless of who
+// drafted it (routes/vendor/requisitionRoute.js's Actions.approve, F8/D1).
+const BOQ_VENDOR_ROLES = ['md', 'commercial_director', 'procurement', 'bdm', 'sales'];
 const ELIGIBLE_SUPPLIER_STATUSES = ['Approved', 'Conditional'];
 
 function round2(n) {
