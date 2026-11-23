@@ -56,11 +56,24 @@ exports.listUsers = asyncHandler(async (req, res) => {
   const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
   const skip = (page - 1) * limit;
 
-  const filter = {};
+  // Go-live Developer Pack F26/section 14: "Keep customers out of User Management." role:'user'
+  // alone is NOT a safe "this is a customer" test - it is also the ERP's "no elevated ERP role"
+  // value for a real staff member whose ERP access is intentionally None (createUser's own
+  // comment above). What genuinely distinguishes a pure customer is that they NEVER hold a
+  // platform-admin flag or a membership in any OTHER system either - a lead that reached Proposal
+  // Sent (services/customer/sharedCustomerService.js#findOrCreateCustomer) gets role:'user' and
+  // nothing else, ever. So: show a role:'user' account only if it is platformAdmin, or holds at
+  // least one active system membership (any system) - exactly the two ways a real staff member
+  // becomes reachable at all. A brand-new staff login not yet granted its first membership is the
+  // one edge case this still misses, same window createUser's own doc already describes.
+  // $and, not two separate $or assignments - a plain second `filter.$or = ...` would silently
+  // overwrite this entity filter the moment a keyword search was also in play.
+  const and = [{ $or: [{ role: { $ne: 'user' } }, { platformAdmin: true }, { systemMemberships: { $elemMatch: { isActive: true } } }] }];
   const keyword = (req.query.keyword || '').trim();
   if (keyword) {
-    filter.$or = [{ name: { $regex: keyword, $options: 'i' } }, { email: { $regex: keyword, $options: 'i' } }, { phone: { $regex: keyword, $options: 'i' } }];
+    and.push({ $or: [{ name: { $regex: keyword, $options: 'i' } }, { email: { $regex: keyword, $options: 'i' } }, { phone: { $regex: keyword, $options: 'i' } }] });
   }
+  const filter = { $and: and };
   if (req.query.system && isValidSystemId(req.query.system)) {
     filter['systemMemberships.system'] = req.query.system;
     filter['systemMemberships.isActive'] = true;
@@ -113,6 +126,13 @@ exports.createUser = asyncHandler(async (req, res, next) => {
   // phone-less user, exactly like the sparse index already assumes.
   const phone = req.body.phone || undefined;
   if (!name || !email || !password) return next(new ApiError('name, email and password are required.', 400));
+  // NOTE: role:'user' is NOT exclusively "customer" in this schema - it is also the ERP's own
+  // "no elevated ERP role" default for a staff member whose ERP access is intentionally None
+  // (go-live Developer Pack section 5.2, e.g. the Technical Engineer). A real, tested flow creates
+  // exactly such a login here, with CRM/HR/Commercial access granted afterward via PUT
+  // /:id/systems and no ERP role at all - see test/portal/userCreationLogin.test.js. Rejecting
+  // role:'user' here would break that legitimate case, so this endpoint cannot reliably refuse
+  // "customers" by role alone; see listUsers below for how display-side filtering is actually done.
 
   const existing = await User.findOne({ $or: [{ email }, ...(phone ? [{ phone }] : [])] });
   if (existing) return next(new ApiError('A user with this email or phone already exists.', 400));
@@ -183,6 +203,10 @@ exports.updateUserSystems = asyncHandler(async (req, res, next) => {
 
   const user = await User.findById(req.params.id);
   if (!user) return next(new ApiError('No user found with that id.', 404));
+  // NOTE: role:'user' alone cannot distinguish "a customer" from "a staff member with no elevated
+  // ERP role" in this schema (see createUser's own comment above) - granting a CRM/HR/Commercial/
+  // Website membership to a role:'user' account is the normal, tested way such a staff member
+  // gets their first access. No guard here can be based on `role` without breaking that flow.
 
   const next_ = systemMemberships.map(({ system, role, isActive }) => ({ system, role, isActive: isActive !== false }));
 

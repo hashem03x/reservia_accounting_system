@@ -19,8 +19,17 @@ const { SUPPLIER_STATUSES, DOCUMENT_KINDS } = Supplier;
 //   - back to Candidate: the MD.
 // Every status change, scorecard update and document change is appended to the notes log.
 
-const EDIT_ROLES = ['md', 'commercial_director', 'procurement'];
-const STATUS_ROLES = { Approved: ['md'], Conditional: ['md'], Suspended: ['md', 'commercial_director'], Removed: ['md', 'commercial_director'], Candidate: ['md'] };
+// Go-live Developer Pack section 5.4/5.8/D9: "Propose suppliers" gains bdm (Edit). Approval moves
+// to the S&C Director as the PRIMARY approver (D9: "Supplier approval by the S&C Director, never
+// by the person who proposed it"), with md kept for the explicit MD override the brief allows.
+const EDIT_ROLES = ['md', 'commercial_director', 'procurement', 'bdm'];
+const STATUS_ROLES = {
+  Approved: ['md', 'commercial_director'],
+  Conditional: ['md', 'commercial_director'],
+  Suspended: ['md', 'commercial_director'],
+  Removed: ['md', 'commercial_director'],
+  Candidate: ['md', 'commercial_director'],
+};
 const REVIEW_WINDOW_DAYS = 30;
 
 const text = (v, max) => String(v ?? '').trim().slice(0, max);
@@ -142,6 +151,21 @@ async function setStatus(id, { status, note, reviewDate }, { user, role }) {
   const supplier = await getSupplier(id);
   if (supplier.status === status) throw new ApiError(`The supplier is already ${status}.`, 400);
   const reason = text(note, 500);
+
+  // D9: "Supplier approval by the S&C Director, never by the person who proposed it; the MD may
+  // override with a reason." Applies to both approval-track decisions (Approved/Conditional) -
+  // the proposer is blocked outright unless they are the md role, and even the MD override
+  // requires an explicit reason (normally optional for a plain Approved decision - see below).
+  const isProposer = supplier.approval?.proposedBy && String(supplier.approval.proposedBy) === String(user._id);
+  if (isProposer && ['Approved', 'Conditional'].includes(status)) {
+    if (role !== 'md') {
+      throw new ApiError('You proposed this supplier - a different person (the Sales and Commercial Director) must approve it.', 403);
+    }
+    if (!reason) {
+      throw new ApiError('You proposed this supplier yourself - overriding that as the MD requires a reason.', 400);
+    }
+  }
+
   if (['Suspended', 'Removed', 'Conditional', 'Candidate'].includes(status) && !reason) throw new ApiError(`Give the reason for ${status}.`, 400);
   const before = supplier.status;
   supplier.status = status;

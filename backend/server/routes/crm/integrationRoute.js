@@ -25,19 +25,22 @@ router.post('/meta/webhook', controller.receiveMetaWebhook);
 router.post('/google_ads/webhook', integrationRateLimit, controller.receiveGoogleAdsWebhook);
 
 const staff = [authController.protect, requireCrmAccess];
-router.get('/status', ...staff, requireCrmRole('md', 'admin'), controller.getStatus);
-router.get('/events', ...staff, requireCrmRole('md', 'admin'), controller.listEvents);
-router.get('/keys', ...staff, requireCrmRole('md', 'admin'), controller.listKeys);
+// Go-live Developer Pack section 5.5: "Integrations, settings, CSV export" = Admin for md/admin
+// AND bdm (the BDM gets full CRM admin rights except Pricing Config, which is a Deal Engine
+// concept, not CRM) - S&C Director/Sales/Technical/Marketing stay at None.
+router.get('/status', ...staff, requireCrmRole('md', 'admin', 'bdm'), controller.getStatus);
+router.get('/events', ...staff, requireCrmRole('md', 'admin', 'bdm'), controller.listEvents);
+router.get('/keys', ...staff, requireCrmRole('md', 'admin', 'bdm'), controller.listKeys);
 // CRM C6 - credentials (encrypted, never echoed), enable/disable, real connection tests, retries.
 const knownSettingsChannel = (req, res, next) =>
   (['whatsapp', 'meta', 'tiktok', 'google_ads'].includes(req.params.channel) ? next() : res.status(404).json({ success: false, message: 'Unknown integration.' }));
-router.put('/settings/:channel', ...staff, requireCrmRole('md'), knownSettingsChannel, controller.saveSettings);
-router.patch('/settings/:channel/enabled', ...staff, requireCrmRole('md'), knownSettingsChannel, controller.setEnabled);
-router.post('/settings/:channel/test', ...staff, requireCrmRole('md', 'admin'), knownSettingsChannel, controller.testSettings);
-router.post('/events/:id/retry', ...staff, requireCrmRole('md', 'admin'), controller.retryEvent);
-router.get('/google_ads/offline-conversions.csv', ...staff, requireCrmRole('md', 'admin'), controller.exportGoogleAdsConversions);
-router.post('/keys', ...staff, requireCrmRole('md'), createKeyValidators, controller.createKey);
-router.patch('/keys/:id/revoke', ...staff, requireCrmRole('md'), keyIdValidator, controller.revokeKey);
+router.put('/settings/:channel', ...staff, requireCrmRole('md', 'bdm'), knownSettingsChannel, controller.saveSettings);
+router.patch('/settings/:channel/enabled', ...staff, requireCrmRole('md', 'bdm'), knownSettingsChannel, controller.setEnabled);
+router.post('/settings/:channel/test', ...staff, requireCrmRole('md', 'admin', 'bdm'), knownSettingsChannel, controller.testSettings);
+router.post('/events/:id/retry', ...staff, requireCrmRole('md', 'admin', 'bdm'), controller.retryEvent);
+router.get('/google_ads/offline-conversions.csv', ...staff, requireCrmRole('md', 'admin', 'bdm'), controller.exportGoogleAdsConversions);
+router.post('/keys', ...staff, requireCrmRole('md', 'bdm'), createKeyValidators, controller.createKey);
+router.patch('/keys/:id/revoke', ...staff, requireCrmRole('md', 'bdm'), keyIdValidator, controller.revokeKey);
 
 router.post('/:channel/leads', requireKnownChannel, integrationRateLimit, requireIntegrationKey, unifiedLeadValidators, controller.receiveUnifiedLead);
 

@@ -21,7 +21,20 @@ const STAGES = ['new', 'contacted', 'qualified', 'site_survey', 'proposal_sent',
 // The six "working" stages a deal moves through before it is decided - 'won'/'lost' are terminal
 // and follow their own separate rules below, never this list's adjacency checks.
 const OPEN_STAGES = ['new', 'contacted', 'qualified', 'site_survey', 'proposal_sent', 'negotiation'];
-const MD_APPROVAL_THRESHOLD_EGP = 1_000_000;
+// Go-live Developer Pack, section 3/5.1: one EGP 1,500,000 net threshold everywhere - was
+// 1,000,000 here (F7). Keep this in sync with frontend/src/pages/crm/_shared/lead-display.ts's
+// own copy and services/commercial/approvalService.js's (already-correct) Deal Engine threshold.
+const MD_APPROVAL_THRESHOLD_EGP = 1_500_000;
+// Go-live section 5.5: Sales and Technical Engineers' real CRM role (sales_viewer) can never move
+// a lead to a different stage at all - view leads and edit only their own assigned tasks. This is
+// a full block with no exception (unlike the legacy `technical` role's older, narrower
+// site_survey/proposal_sent-only restriction below, left as-is for backward compatibility).
+const STAGE_MOVE_BLOCKED_ROLES = ['sales_viewer'];
+// Go-live section 5.5: Mark Won is never available to Sales/Technical Engineers (sales_viewer) or
+// the Marketing Coordinator - only md/admin/bdm/commercial_director, subject to the MD threshold
+// above. technical is already blocked structurally (TECHNICAL_RESTRICTED - 'won' is not one of
+// its two allowed destinations).
+const WON_BLOCKED_ROLES = ['sales_viewer', 'marketing'];
 // Follow-up becomes mandatory from 'qualified' onwards (index 2) - matches the brief's "Qualified
 // and subsequent applicable stages require a follow-up date."
 const FOLLOW_UP_REQUIRED_FROM_INDEX = 2;
@@ -44,7 +57,9 @@ const RULES = {
   LOST_REASON_REQUIRED: { message: 'Choose a lost reason.', overridable: false },
   WON_REQUIRES_PROPOSAL: { message: 'Only a lead with a proposal can be marked won.', overridable: true },
   WON_VALUE_REQUIRED: { message: 'Enter the contract value.', overridable: false },
-  MD_APPROVAL_REQUIRED: { message: 'Contracts above EGP 1M need MD approval.', overridable: false },
+  MD_APPROVAL_REQUIRED: { message: 'Contracts above EGP 1,500,000 need MD approval.', overridable: false },
+  WON_ROLE_RESTRICTED: { message: 'This role cannot mark a lead Won.', overridable: false },
+  STAGE_MOVE_ROLE_RESTRICTED: { message: 'This role cannot move a lead to a different stage - view only, plus your own assigned tasks.', overridable: false },
   STAGE_SKIP: { message: null, overridable: true }, // message built per transition, see below
   BACK_MORE_THAN_ONE: { message: 'A lead can only move back one stage at a time.', overridable: true },
   FOLLOW_UP_REQUIRED: { message: 'Set a follow-up date.', overridable: false },
@@ -118,6 +133,7 @@ function evaluateStageTransition(ctx) {
   } else if (ctx.to === 'won') {
     if (!['proposal_sent', 'negotiation'].includes(ctx.from)) violations.push(violation('WON_REQUIRES_PROPOSAL'));
     if (!ctx.valueEgp || ctx.valueEgp <= 0) violations.push(violation('WON_VALUE_REQUIRED'));
+    if (WON_BLOCKED_ROLES.includes(ctx.role)) violations.push(violation('WON_ROLE_RESTRICTED'));
     if ((ctx.valueEgp || 0) > MD_APPROVAL_THRESHOLD_EGP && !ctx.mdApproved && ctx.role !== 'md') {
       violations.push(violation('MD_APPROVAL_REQUIRED'));
     }
@@ -152,6 +168,9 @@ function evaluateStageTransition(ctx) {
 
   if (ctx.role === 'technical' && !['site_survey', 'proposal_sent'].includes(ctx.to)) {
     violations.push(violation('TECHNICAL_RESTRICTED'));
+  }
+  if (STAGE_MOVE_BLOCKED_ROLES.includes(ctx.role)) {
+    violations.push(violation('STAGE_MOVE_ROLE_RESTRICTED'));
   }
 
   return violations;
@@ -193,5 +212,7 @@ module.exports = {
   OPEN_STAGES,
   STAGE_LABELS,
   MD_APPROVAL_THRESHOLD_EGP,
+  STAGE_MOVE_BLOCKED_ROLES,
+  WON_BLOCKED_ROLES,
   RULES,
 };

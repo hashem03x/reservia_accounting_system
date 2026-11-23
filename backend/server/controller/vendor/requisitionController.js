@@ -122,14 +122,22 @@ const updateRequisition = asyncHandler(async (req, res, next) => {
 });
 
 // Finalizes a draft Purchase Order, making it eligible for Purchase Invoices to reference.
+// Go-live D1/F8: this is the MD-only approval step (route requires Actions.approve, held only by
+// role==='admin') - and the creator can never approve their own Purchase Order, even an admin.
 const openRequisition = asyncHandler(async (req, res, next) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return next(new ApiError('No Purchase Order found with that id', 404));
   if (requisition.status !== 'draft') {
     return next(new ApiError('Only a draft Purchase Order can be opened.', 400));
   }
+  if (requisition.createdBy && String(requisition.createdBy._id || requisition.createdBy) === String(req.user._id)) {
+    return next(new ApiError('You drafted this Purchase Order - a different person must approve and open it.', 403));
+  }
 
   requisition.status = 'open';
+  requisition.approvedBy = req.user._id;
+  requisition.approvedAt = new Date();
+  requisition.approvedAmount = requisition.amount;
   await requisition.save();
   res.status(200).json(apiResponse('Purchase Order opened successfully', true, requisition));
 });

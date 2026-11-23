@@ -89,9 +89,19 @@ maybeTest('refuses when the resolved supplier has no linked ERP vendor (the B1/B
   await assert.rejects(createPrService.createPrFromBoqLine(revision._id, 'PV Modules', {}, { role: 'md' }), /not yet linked to an ERP vendor/);
 });
 
+// Go-live Developer Pack section 5.4: "Create PR / PO" is now Draft for Sales Engineer too
+// (sales was added to BOQ_VENDOR_ROLES) - technical/member stay unauthorized.
 maybeTest('refuses an unauthorized role', async () => {
   const { revision } = await makeDeal({ qty: 10 });
-  await assert.rejects(createPrService.createPrFromBoqLine(revision._id, 'PV Modules', {}, { role: 'sales' }), /is for:/);
+  await assert.rejects(createPrService.createPrFromBoqLine(revision._id, 'PV Modules', {}, { role: 'technical' }), /is for:/);
+});
+
+maybeTest('go-live: sales and bdm may now draft a PR from a BOQ line (section 5.4 "Create PR / PO: Draft")', async () => {
+  const { revision } = await makeDeal({ qty: 20 });
+  const bySales = await createPrService.createPrFromBoqLine(revision._id, 'PV Modules', { quantity: 5 }, { role: 'sales' });
+  assert.ok(bySales._id);
+  const byBdm = await createPrService.createPrFromBoqLine(revision._id, 'PV Modules', { quantity: 5 }, { role: 'bdm' });
+  assert.ok(byBdm._id);
 });
 
 maybeTest('split procurement: two Create PR calls for less than the full quantity both succeed and sum correctly; a third exceeding the remainder is refused', async () => {

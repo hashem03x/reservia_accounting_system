@@ -24,6 +24,13 @@ const commercialProjectSchema = new Schema(
     fxRate: { type: Number, default: null, min: 0 },
     scope: { type: String, enum: SCOPES, default: 'Supply & Installation' },
     designerUser: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    // Go-live Developer Pack section 5.4/5.8: the Sales Engineer who owns this deal - the ONLY
+    // basis for "a Sales Engineer may sign Stage 1 only on deals they own" (approvalService.js).
+    // Copied from CrmLead.owner at handoff (services/crm/commercialHandoffService.js) and
+    // preserved through later revisions/edits; settable directly for a Deal Engine project created
+    // without a CRM lead (controller/commercial/projectController.js). Never inferred from
+    // `createdBy`, which is whoever triggered the sync/creation, not necessarily the deal's owner.
+    owner: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     // B5 - the SAME admin-managed Project Manager list the ERP Project uses (models/project/
     // projectManagerModel.js), never a duplicate. Settable on the deal at any time; carried over to
     // the real ERP Project when it is created on Won (services/crm/wonToErpService.js) and pushed
@@ -119,6 +126,7 @@ commercialProjectSchema.pre(/^find/, function (next) {
   this.populate({ path: 'customer', select: 'name email phone customerNumber' })
     .populate({ path: 'createdBy', select: 'name' })
     .populate({ path: 'designerUser', select: 'name' })
+    .populate({ path: 'owner', select: 'name email' })
     .populate({ path: 'projectManager', select: 'name email phone isActive' });
   next();
 });

@@ -43,7 +43,9 @@ router
   .get(checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.read }), getRequisition)
   .patch(checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.update }), updateRequisitionValidators, updateRequisition);
 
-router.post('/:id/open', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.update }), openRequisition);
+// Go-live D1/F8: opening/approving a Purchase Order is its OWN permission, never the same one
+// that lets someone draft/edit a PO - see appConstant.js#Actions.approve's own comment.
+router.post('/:id/open', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.approve }), openRequisition);
 router.post('/:id/cancel', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.update }), cancelRequisition);
 router.get('/:id/invoices', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.read }), getRequisitionInvoices);
 router.get('/:id/remaining-quantities', checkUserPermissions({ resource: Resources.purchaseRequisitions, action: Actions.read }), getRequisitionRemainingQuantities);

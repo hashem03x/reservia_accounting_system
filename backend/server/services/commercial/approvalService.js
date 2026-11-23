@@ -4,7 +4,6 @@ const CommercialApproval = require('../../models/commercial/commercialApprovalMo
 const CommercialProject = require('../../models/commercial/commercialProjectModel');
 const User = require('../../models/userModel');
 const { roleLabel } = require('../../utils/commercial/dealEnginePermissions');
-const { logOverride } = require('../system/superAdminAuditService');
 
 // Reservia Commercial - the two-stage-plus-MD approval workflow (Developer Brief section 4). Server-
 // enforced stage order and role (never trust a frontend-only restriction): Stage 2 cannot be set
@@ -17,8 +16,11 @@ const { logOverride } = require('../system/superAdminAuditService');
 //   MD       Managing Director            -> 'md'
 // On top of the role check, segregation of duties: a person who has already decided one stage of a
 // revision can never decide another stage of the SAME revision, even if their role later changes.
+// Go-live Developer Pack section 5.4/5.8: BDM may also sign Stage 1 ("BDM: Sign"), alongside the
+// existing Sales/Technical roles - a Sales Engineer may still only sign a deal they OWN (checked
+// separately in setStageStatus below via the project's `owner` field, not here).
 const STAGE_ROLES = {
-  STAGE1: ['sales', 'technical'],
+  STAGE1: ['sales', 'technical', 'bdm'],
   STAGE2: ['commercial_director'],
   MD: ['md'],
 };
@@ -69,26 +71,18 @@ function waitingOn(revision) {
   return null;
 }
 
-async function setStageStatus(revisionId, stage, status, { userId, userRole, note = '', actor = null } = {}) {
+async function setStageStatus(revisionId, stage, status, { userId, userRole, note = '' } = {}) {
   if (!STAGE_ROLES[stage]) throw new ApiError(`Unknown approval stage "${stage}"`, 400);
   if (!['Approved', 'Rejected'].includes(status)) throw new ApiError('Status must be Approved or Rejected.', 400);
   const roleOk = STAGE_ROLES[stage].includes(userRole);
-  // Feature 5 - a Global Super Admin may sign ANY stage for end-to-end testing, every time this
-  // actually bypasses the real role rule (never when the role check would have passed anyway -
-  // this is an override log, not an access log). Segregation of duties below is ALSO explicitly
-  // waived for this account only (by instruction: "including consecutive approvals by the same
-  // Super Admin"), separately logged.
+  // Go-live Developer Pack, section 3/4: "the platform administrator must not be able to
+  // impersonate the MD approval authority simply by possessing administrator permissions."
+  // Feature 5 used to let a Global Super Admin sign ANY stage regardless of role, logged as an
+  // override - this was the exact mechanism behind the 23 Nov incident (a Commercial Director
+  // account completing an approval stage that required the MD's explicit `md` role). Removed: a
+  // super admin is now bound by the SAME role check as everyone else, with no waiver.
   if (!roleOk) {
-    if (!actor?.globalSuperAdmin) {
-      throw new ApiError(`${STAGE_LABEL[stage]} can only be signed by ${stageRoleLabel(stage)}. Your Deal Engine role is "${userRole ? roleLabel(userRole) : 'none'}".`, 403);
-    }
-    await logOverride({
-      actor,
-      action: 'commercial.approval.role_override',
-      targetType: 'CommercialRevision',
-      targetId: revisionId,
-      details: { stage, requiredRole: stageRoleLabel(stage), actingAs: userRole || null },
-    });
+    throw new ApiError(`${STAGE_LABEL[stage]} can only be signed by ${stageRoleLabel(stage)}. Your Deal Engine role is "${userRole ? roleLabel(userRole) : 'none'}".`, 403);
   }
 
   const revision = await CommercialRevision.findById(revisionId);
@@ -98,30 +92,30 @@ async function setStageStatus(revisionId, stage, status, { userId, userRole, not
     throw new ApiError(`This revision is in Draft (${revision.invalidationReason || 'its inputs changed'}). Recalculate it on the Engineering Input tab before signing.`, 400);
   }
 
+  // Go-live Developer Pack section 5.4/5.8: "Sales Engineer who owns the deal" - a Sales Engineer
+  // (role 'sales') may sign Stage 1 only on a deal they own (commercialProjectModel.js#owner,
+  // copied from the CRM lead at handoff). BDM/Technical signing Stage 1 are NOT owner-scoped - the
+  // matrix gives them unconditional Stage 1 rights.
+  if (stage === 'STAGE1' && userRole === 'sales') {
+    const project = await CommercialProject.findById(revision.project).select('owner').lean();
+    if (!project?.owner || String(project.owner) !== String(userId)) {
+      throw new ApiError('You can only sign Stage 1 on a deal you own. This deal has a different owner (or none set).', 403);
+    }
+  }
+
   const field = STAGE_FIELD[stage];
   if (revision[field].status !== 'Pending') {
     throw new ApiError(`${STAGE_LABEL[stage]} has already been decided (${revision[field].status}). Change the pricing or inputs to reopen it.`, 400);
   }
 
-  // Segregation of duties - one person, one stage per revision. Explicitly waived for a Global
-  // Super Admin ONLY (Feature 5 - "including consecutive approvals by the same Super Admin"),
-  // logged every time it actually applies (i.e. only when a real second signature by the same
-  // person is involved - never for the first, ordinary signature on a revision).
+  // Segregation of duties - one person, one stage per revision. Go-live Developer Pack section
+  // 3D: "no person can sign two stages of the same deal revision" - no exception, including for a
+  // Global Super Admin (removed; was the exact mechanism behind the 23 Nov incident).
   for (const [otherStage, otherField] of Object.entries(STAGE_FIELD)) {
     if (otherStage === stage) continue;
     const other = revision[otherField];
     if (other?.approver && String(other.approver) === String(userId) && other.status !== 'Pending') {
-      if (!actor?.globalSuperAdmin) {
-        throw new ApiError(`You already signed ${STAGE_LABEL[otherStage]} of this revision - ${STAGE_LABEL[stage]} must be signed by a different person.`, 403);
-      }
-      // eslint-disable-next-line no-await-in-loop
-      await logOverride({
-        actor,
-        action: 'commercial.approval.segregation_of_duties_override',
-        targetType: 'CommercialRevision',
-        targetId: revisionId,
-        details: { stage, alsoSigned: otherStage, note: note || null },
-      });
+      throw new ApiError(`You already signed ${STAGE_LABEL[otherStage]} of this revision - ${STAGE_LABEL[stage]} must be signed by a different person.`, 403);
     }
   }
 

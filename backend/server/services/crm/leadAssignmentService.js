@@ -47,12 +47,18 @@ async function nextRotationSeq(session) {
   return updated.seq;
 }
 
-/** Active users holding the CRM 'sales' role - the eligible assignment pool, ordered by _id for a stable rotation. */
+/**
+ * Active users holding the CRM 'sales' or 'sales_viewer' role - the eligible assignment pool,
+ * ordered by _id for a stable rotation. Go-live Developer Pack section 5.2: a real Sales
+ * Engineer's actual CRM role is `sales_viewer` (read-only leads, edit only their own assigned
+ * tasks/activities) - the legacy `sales` role is kept here too for backward compatibility with
+ * any account that still holds it.
+ */
 async function eligibleSalesEngineers() {
   return User.find({
     isActive: true,
     isDeleted: { $ne: true },
-    systemMemberships: { $elemMatch: { system: 'CRM', role: 'sales', isActive: true } },
+    systemMemberships: { $elemMatch: { system: 'CRM', role: { $in: ['sales', 'sales_viewer'] }, isActive: true } },
   })
     .select('_id name email')
     .sort({ _id: 1 })
@@ -129,12 +135,12 @@ function notifyAssignment(owner, lead) {
   sendEmail(owner.email, subject, html).catch(() => {});
 }
 
-/** Active CRM managers (MD / Admin) - who must hear about a lead nobody could be assigned to. */
+/** Active CRM managers (MD / Admin / BDM) - who must hear about a lead nobody could be assigned to. */
 async function crmManagers() {
   return User.find({
     isActive: true,
     isDeleted: { $ne: true },
-    systemMemberships: { $elemMatch: { system: 'CRM', role: { $in: ['md', 'admin'] }, isActive: true } },
+    systemMemberships: { $elemMatch: { system: 'CRM', role: { $in: ['md', 'admin', 'bdm'] }, isActive: true } },
   })
     .select('_id name email')
     .lean();

@@ -2,11 +2,13 @@ const asyncHandler = require('express-async-handler');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const proposalService = require('../../services/commercial/proposalService');
-const { assertCanAccessProposal } = require('../../utils/commercial/dealEnginePermissions');
+const { assertCanAccessProposal, assertCanIssueProposal } = require('../../utils/commercial/dealEnginePermissions');
 
 // Deal Engine C12-C17. The internal copy (priced BOQ, pricing stack, approval log) is for the MD,
-// the Commercial Director and Sales - checked here from the DB-loaded membership (req.commercialRole).
-const INTERNAL_ROLES = ['md', 'commercial_director', 'sales'];
+// the Commercial Director, Sales and BDM - checked here from the DB-loaded membership
+// (req.commercialRole). Marketing stays customer-copy-only (go-live: "cannot access the internal
+// proposal copy").
+const INTERNAL_ROLES = ['md', 'commercial_director', 'sales', 'bdm'];
 
 function copyFor(req) {
   const copy = req.query.copy === 'internal' ? 'internal' : 'customer';
@@ -29,7 +31,7 @@ const crmRoleOf = user => (Array.isArray(user?.systemMemberships) ? user.systemM
 // R2/R12: the whole Proposal tab is Hidden to Technical/Procurement/Member (A1/A12/A13) - a direct
 // API request from one of them must be refused exactly like the UI would hide the tab.
 exports.issueProposal = asyncHandler(async (req, res) => {
-  assertCanAccessProposal(req.commercialRoles);
+  assertCanIssueProposal(req.commercialRoles);
   const proposal = await proposalService.issueProposal(req.params.revisionId, {
     userId: req.user._id,
     userName: req.user.name || null,

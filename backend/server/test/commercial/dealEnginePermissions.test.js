@@ -29,9 +29,12 @@ const { priceCommercialRevision } = require('../../services/commercial/commercia
 test('R1: every role has one canonical label, matching the PDF\'s own wording', () => {
   assert.equal(roleLabel('md'), 'Managing Director');
   assert.equal(roleLabel('commercial_director'), 'Sales and Commercial Director');
-  assert.equal(roleLabel('technical'), 'Technical');
+  assert.equal(roleLabel('technical'), 'Technical Engineer');
   assert.equal(roleLabel('procurement'), 'Procurement');
   assert.equal(roleLabel('member'), 'Member');
+  // Go-live Developer Pack section 5.2/5.4 - the two new Deal Engine roles.
+  assert.equal(roleLabel('bdm'), 'Business Development Manager');
+  assert.equal(roleLabel('marketing'), 'Marketing Coordinator');
 });
 
 // ---------------------------------------------------------------- R13: widest access across roles
@@ -43,16 +46,18 @@ test('R13: a user with no Commercial role gets "hidden" on every row - sees no D
 
 test('R13: a single-role user gets exactly that role\'s level', () => {
   assert.equal(projectTabAccess(['technical'], 'pricing'), 'hidden');
-  assert.equal(projectTabAccess(['sales'], 'pricing'), 'limited');
+  // Go-live section 5.4: Sales Engineer's Pricing access is plain View - only BDM gets "Limited".
+  assert.equal(projectTabAccess(['sales'], 'pricing'), 'view');
+  assert.equal(projectTabAccess(['bdm'], 'pricing'), 'limited');
   assert.equal(projectTabAccess(['md'], 'pricing'), 'edit');
 });
 
-test('R13: a user holding BOTH technical (hidden on Pricing) and sales (limited on Pricing) gets the WIDER right - limited, not hidden', () => {
-  assert.equal(projectTabAccess(['technical', 'sales'], 'pricing'), 'limited');
+test('R13: a user holding BOTH technical (hidden on Pricing) and bdm (limited on Pricing) gets the WIDER right - limited, not hidden', () => {
+  assert.equal(projectTabAccess(['technical', 'bdm'], 'pricing'), 'limited');
 });
 
-test('R13: a user holding both sales (limited) and commercial_director (edit) gets edit - the widest of the two', () => {
-  assert.equal(projectTabAccess(['sales', 'commercial_director'], 'pricing'), 'edit');
+test('R13: a user holding both bdm (limited) and commercial_director (edit) gets edit - the widest of the two', () => {
+  assert.equal(projectTabAccess(['bdm', 'commercial_director'], 'pricing'), 'edit');
 });
 
 test('R13: widest-access resolution works identically for engine pages (Materials/Suppliers), not just project tabs', () => {
@@ -73,12 +78,13 @@ test('A1: technical gets Overview without prices, Engineering Input (design), De
   assert.equal(projectTabAccess(['technical'], 'proposal'), 'hidden');
 });
 
-test('A4: sales gets Pricing as "limited" (five levers read-only, category addition/discount editable)', () => {
-  assert.equal(projectTabAccess(['sales'], 'pricing'), 'limited');
+test('Go-live section 5.4: BDM gets Pricing as "limited" (five levers read-only, category addition/discount editable); Sales Engineer gets plain View', () => {
+  assert.equal(projectTabAccess(['bdm'], 'pricing'), 'limited');
+  assert.equal(projectTabAccess(['sales'], 'pricing'), 'view');
 });
 
-test('A9: sales can edit customer feasibility inputs; design inputs stay read-only for sales', () => {
-  assert.equal(projectTabAccess(['sales'], 'engineeringInputCustomer'), 'edit');
+test('Go-live section 5.4: Sales Engineer is VIEW ONLY on Engineering Input, both design and customer-facing sub-sections - never edit', () => {
+  assert.equal(projectTabAccess(['sales'], 'engineeringInputCustomer'), 'view');
   assert.equal(projectTabAccess(['sales'], 'engineeringInputDesign'), 'view');
 });
 
@@ -115,16 +121,21 @@ test('A3-equivalent: a role with Pricing hidden cannot touch pricingOverrides at
   assert.throws(() => assertPricingWriteAllowed(['member'], { overheadPct: 0.1 }), /do not have access to Pricing/);
 });
 
-test('A8: sales sending a policy lever (overhead) through the API is refused, naming the field', () => {
-  assert.throws(() => assertPricingWriteAllowed(['sales'], { overheadPct: 0.12 }), /overheadPct.*read-only for Sales/);
+test('Go-live: sales (plain View on Pricing) sending ANY pricing field at all is refused, including the category/discount fields BDM may touch', () => {
+  assert.throws(() => assertPricingWriteAllowed(['sales'], { overheadPct: 0.12 }), /read-only for this role/);
+  assert.throws(() => assertPricingWriteAllowed(['sales'], { categoryAdditionPct: 0.15, discountPct: 0.03 }), /read-only for this role/);
 });
 
-test('A6-equivalent: sales sending ONLY category addition + discount is accepted (the two Sales-owned fields)', () => {
-  assert.doesNotThrow(() => assertPricingWriteAllowed(['sales'], { categoryAdditionPct: 0.15, discountPct: 0.03 }));
+test('A8: bdm sending a policy lever (overhead) through the API is refused, naming the field', () => {
+  assert.throws(() => assertPricingWriteAllowed(['bdm'], { overheadPct: 0.12 }), /overheadPct.*read-only/);
 });
 
-test('sales sending category addition bundled with ANY policy lever in the same request is still refused (no smuggling a disallowed field alongside an allowed one)', () => {
-  assert.throws(() => assertPricingWriteAllowed(['sales'], { categoryAdditionPct: 0.15, salesBonusPct: 0.06 }), /salesBonusPct/);
+test('A6-equivalent: bdm sending ONLY category addition + discount is accepted (the two Sales-limits-owned fields)', () => {
+  assert.doesNotThrow(() => assertPricingWriteAllowed(['bdm'], { categoryAdditionPct: 0.15, discountPct: 0.03 }));
+});
+
+test('bdm sending category addition bundled with ANY policy lever in the same request is still refused (no smuggling a disallowed field alongside an allowed one)', () => {
+  assert.throws(() => assertPricingWriteAllowed(['bdm'], { categoryAdditionPct: 0.15, salesBonusPct: 0.06 }), /salesBonusPct/);
 });
 
 test('A10/A11-equivalent: commercial_director and md may send any pricing field without restriction', () => {
@@ -141,17 +152,24 @@ test('A3: technical sending a design engineeringInput key is allowed (it is thei
   assert.doesNotThrow(() => assertEngineeringInputWriteAllowed(['technical'], { moduleWatt: 670, kWp: 100 }));
 });
 
-test('A9: technical sending a CUSTOMER feasibility key (e.g. annualBillEgp) through the API is refused, naming the field', () => {
-  assert.throws(() => assertEngineeringInputWriteAllowed(['technical'], { annualBillEgp: 50000 }), /annualBillEgp.*customer feasibility input/);
+// Go-live section 5.4's single "Engineering Input" row gives Technical Engineer Edit across the
+// WHOLE tab (no design-vs-customer split, unlike the old Rev 02 matrix) - a customer-facing key
+// is now allowed too, not refused.
+test('Go-live: technical sending a CUSTOMER feasibility key (e.g. annualBillEgp) is now allowed - Technical Engineer edits the whole Engineering Input tab', () => {
+  assert.doesNotThrow(() => assertEngineeringInputWriteAllowed(['technical'], { annualBillEgp: 50000 }));
 });
 
-test('sales sending a DESIGN key (not one of the customer-facing ones) is refused, naming the field', () => {
+// Go-live section 5.4: Sales Engineer moves to View-only on Engineering Input (both design and
+// customer-facing) - they can no longer edit either sub-section, unlike the old Rev 02 matrix.
+test('Go-live: sales sending ANY engineeringInput key (design or customer-facing) is refused - Sales Engineer is view-only on Engineering Input now', () => {
   assert.throws(() => assertEngineeringInputWriteAllowed(['sales'], { inverterModel: 'SUN2000-150KTL' }), /inverterModel.*design engineering input/);
+  assert.throws(() => assertEngineeringInputWriteAllowed(['sales'], { annualBillEgp: 50000 }), /annualBillEgp.*customer feasibility input/);
 });
 
-test('sales sending its own customer feasibility keys (bills, consumption, tariff, escalation, discount rate) is allowed', () => {
+test('bdm (full Deal Engine admin except Pricing Config) can send both design and customer-facing engineeringInput keys', () => {
+  assert.doesNotThrow(() => assertEngineeringInputWriteAllowed(['bdm'], { inverterModel: 'SUN2000-150KTL' }));
   assert.doesNotThrow(() =>
-    assertEngineeringInputWriteAllowed(['sales'], {
+    assertEngineeringInputWriteAllowed(['bdm'], {
       annualBillEgp: 50000, annualConsumptionKwh: 18000, tariffEgpPerKwh: 2.8, headlineEscalation: 0.1, discountRate: 0.12,
     })
   );
@@ -227,10 +245,22 @@ test('shapeRevisionForRole strips pricing and feasibility for technical, keeps B
   assert.equal(shaped.boqLines[0].unitPrice, 50, 'technical keeps full BOQ including costs (boqCosts=view for technical)');
 });
 
-test('shapeRevisionForRole keeps pricing/feasibility for sales (Pricing=limited, Feasibility=edit for sales), strips BOQ entirely (sales has no BOQ access)', () => {
-  const revision = { pricing: { netExclVat: 999 }, feasibility: { paybackYears: 5 }, boqLines: [{ component: 'Pump', total: 50 }], boqTotal: 50 };
+// Go-live section 5.4: Sales Engineer gains BOQ view access (items AND costs) - was fully hidden
+// under the old Rev 02 matrix. Pricing/Feasibility stay visible too (both 'view').
+test('shapeRevisionForRole keeps pricing/feasibility/BOQ (incl. costs) for sales - all view-level, nothing hidden', () => {
+  const revision = { pricing: { netExclVat: 999 }, feasibility: { paybackYears: 5 }, boqLines: [{ component: 'Pump', total: 50, unitPrice: 25 }], boqTotal: 50 };
   const shaped = shapeRevisionForRole(revision, ['sales']);
   assert.equal(shaped.pricing.netExclVat, 999);
+  assert.equal(shaped.feasibility.paybackYears, 5);
+  assert.equal(shaped.boqLines[0].unitPrice, 25);
+  assert.equal(shaped.boqTotal, 50);
+});
+
+// Marketing gets Feasibility/Proposal view but Pricing/BOQ/Engineering Input stay hidden entirely.
+test('shapeRevisionForRole strips pricing and BOQ for marketing, keeps feasibility', () => {
+  const revision = { pricing: { netExclVat: 999 }, feasibility: { paybackYears: 5 }, boqLines: [{ component: 'Pump', total: 50 }], boqTotal: 50 };
+  const shaped = shapeRevisionForRole(revision, ['marketing']);
+  assert.equal(shaped.pricing, undefined);
   assert.equal(shaped.feasibility.paybackYears, 5);
   assert.equal(shaped.boqLines, undefined);
   assert.equal(shaped.boqTotal, undefined);
@@ -258,13 +288,13 @@ function priced(categoryAdditionPct, discountPct) {
 test('A6: category 15%/discount 3% -> concession 6.26%, inside the 8% ceiling -> accepted', () => {
   const pricing = priced(0.15, 0.03);
   assert.equal(Math.round(pricing.netExclVat), 6195121); // matches the PDF's own figure exactly
-  assert.doesNotThrow(() => assertSalesPricingWithinLimits(['sales'], pricing, EXAMPLE_LIMITS));
+  assert.doesNotThrow(() => assertSalesPricingWithinLimits(['bdm'], pricing, EXAMPLE_LIMITS));
 });
 
 test('A7: category 10%/discount 5% -> each value is within its own range, but the COMBINED concession (12.18%) breaks the 8% ceiling -> refused', () => {
   const pricing = priced(0.1, 0.05);
   assert.equal(Math.round(pricing.netExclVat), 5803588); // matches the PDF's own figure exactly
-  assert.throws(() => assertSalesPricingWithinLimits(['sales'], pricing, EXAMPLE_LIMITS), err => {
+  assert.throws(() => assertSalesPricingWithinLimits(['bdm'], pricing, EXAMPLE_LIMITS), err => {
     assert.match(err.message, /Concession 12\.2% .* above the 8% ceiling/);
     assert.equal(err.statusCode, 400);
     return true;
@@ -273,29 +303,29 @@ test('A7: category 10%/discount 5% -> each value is within its own range, but th
 
 test('A5: discount 7% (policy max 5%) is refused on the discount check alone, naming the field - never gets as far as computing a concession', () => {
   const pricing = priced(0.19, 0.07); // category still at the policy default - only discount is out of range
-  assert.throws(() => assertSalesPricingWithinLimits(['sales'], pricing, EXAMPLE_LIMITS), /Discount 7% is above the 5% allowed for Sales/);
+  assert.throws(() => assertSalesPricingWithinLimits(['bdm'], pricing, EXAMPLE_LIMITS), /Discount 7% is above the 5% allowed for Sales/);
 });
 
 test('category addition below the minimum is refused, naming the field', () => {
   const pricing = priced(0.05, 0);
-  assert.throws(() => assertSalesPricingWithinLimits(['sales'], pricing, EXAMPLE_LIMITS), /Category addition 5% is below the 10% minimum/);
+  assert.throws(() => assertSalesPricingWithinLimits(['bdm'], pricing, EXAMPLE_LIMITS), /Category addition 5% is below the 10% minimum/);
 });
 
 test('category addition above the maximum is refused, naming the field', () => {
   const pricing = priced(0.25, 0);
-  assert.throws(() => assertSalesPricingWithinLimits(['sales'], pricing, EXAMPLE_LIMITS), /Category addition 25% is above the 19% maximum/);
+  assert.throws(() => assertSalesPricingWithinLimits(['bdm'], pricing, EXAMPLE_LIMITS), /Category addition 25% is above the 19% maximum/);
 });
 
 test('gross profit below the floor is refused, independent of the concession check', () => {
   // Deliberately tiny profit lever to drag GP% below a 40% floor - isolates the GP-floor branch.
   const pricing = priced(0.19, 0);
-  assert.throws(() => assertSalesPricingWithinLimits(['sales'], pricing, { ...EXAMPLE_LIMITS, gpFloorPct: 0.4 }), /Gross profit .* is below the 40% floor/);
+  assert.throws(() => assertSalesPricingWithinLimits(['bdm'], pricing, { ...EXAMPLE_LIMITS, gpFloorPct: 0.4 }), /Gross profit .* is below the 40% floor/);
 });
 
 test('every Sales-limits check is SKIPPED (not approximated) when its limit is unset (null) - "do not invent missing business limits"', () => {
   const pricing = priced(0.05, 0.2); // would violate every bound above if any were enforced
   const unset = { categoryAdditionDefaultPct: 0.19, categoryAdditionMinPct: null, categoryAdditionMaxPct: null, discountMaxPct: null, concessionCeilingPct: null, gpFloorPct: null };
-  assert.doesNotThrow(() => assertSalesPricingWithinLimits(['sales'], pricing, unset));
+  assert.doesNotThrow(() => assertSalesPricingWithinLimits(['bdm'], pricing, unset));
 });
 
 test('S&C Director and MD are "editable without limit" - the Sales-limits check never applies to them, no matter the values', () => {
@@ -304,9 +334,9 @@ test('S&C Director and MD are "editable without limit" - the Sales-limits check 
   assert.doesNotThrow(() => assertSalesPricingWithinLimits(['md'], pricing, EXAMPLE_LIMITS));
 });
 
-test('a mixed technical+sales user still gets the Sales-limits check (widest Pricing access is "limited", not "edit")', () => {
+test('a mixed technical+bdm user still gets the Sales-limits check (widest Pricing access is "limited", not "edit")', () => {
   const pricing = priced(0.1, 0.05);
-  assert.throws(() => assertSalesPricingWithinLimits(['technical', 'sales'], pricing, EXAMPLE_LIMITS), /ceiling/);
+  assert.throws(() => assertSalesPricingWithinLimits(['technical', 'bdm'], pricing, EXAMPLE_LIMITS), /ceiling/);
 });
 
 // ---------------------------------------------------------------- R11: deal override + reason
@@ -315,7 +345,7 @@ test('isPolicyLeverOverride: S&C/MD touching a policy lever on a deal IS an over
   assert.equal(isPolicyLeverOverride(['commercial_director'], { overheadPct: 0.12 }), true);
   assert.equal(isPolicyLeverOverride(['md'], { profitPct: 0.08 }), true);
   assert.equal(isPolicyLeverOverride(['commercial_director'], { categoryAdditionPct: 0.15, discountPct: 0.03 }), false);
-  assert.equal(isPolicyLeverOverride(['sales'], { categoryAdditionPct: 0.15 }), false, 'sales has "limited" access, never "edit" - never an override by this definition');
+  assert.equal(isPolicyLeverOverride(['bdm'], { categoryAdditionPct: 0.15 }), false, 'bdm has "limited" access, never "edit" - never an override by this definition');
   assert.equal(isPolicyLeverOverride(['technical'], { overheadPct: 0.12 }), false, 'technical has no Pricing access at all - assertPricingWriteAllowed would already have refused this');
   assert.equal(isPolicyLeverOverride(['md'], undefined), false);
 });

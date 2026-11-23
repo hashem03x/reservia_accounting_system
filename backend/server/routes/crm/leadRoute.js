@@ -30,16 +30,22 @@ router.use(authController.protect, requireCrmAccess);
 
 // Registered before '/:id' so it is never matched as an id.
 router.get('/pipeline', leadController.getPipelineSummary);
-router.get('/export', leadController.exportLeads);
+// Go-live section 5.5: CSV export = Admin for md/admin/bdm only - everyone else = None.
+router.get('/export', requireCrmRole('md', 'admin', 'bdm'), leadController.exportLeads);
 
-router.route('/').get(leadController.getLeads).post(createLeadValidator, leadController.createLead);
+// Go-live Developer Pack section 5.5: Leads create/edit/import = md, admin (MD), bdm,
+// commercial_director (S&C Director), marketing. Sales/Technical Engineers (sales_viewer) and
+// technical can view but never create or import a lead.
+const CRM_LEAD_WRITE_ROLES = ['md', 'admin', 'sales', 'bdm', 'commercial_director', 'marketing'];
+
+router.route('/').get(leadController.getLeads).post(requireCrmRole(...CRM_LEAD_WRITE_ROLES), createLeadValidator, leadController.createLead);
 
 router.get('/:id', leadIdValidator, leadController.getLeadById);
-router.patch('/:id', requireCrmRole('md', 'admin', 'sales'), updateLeadDetailsValidator, leadController.updateLeadDetails);
+router.patch('/:id', requireCrmRole(...CRM_LEAD_WRITE_ROLES), updateLeadDetailsValidator, leadController.updateLeadDetails);
 router.patch('/:id/stage', changeStageValidator, leadController.changeStage);
-// Reassigning ownership is the brief's "admin officer" action - sales/technical cannot move a
-// lead off their own desk (or anyone else's) onto another rep.
-router.patch('/:id/owner', requireCrmRole('admin', 'md'), reassignLeadValidator, leadController.reassignLead);
+// Go-live section 5.5: Assign/change owner = md/admin/bdm (Admin), commercial_director/marketing
+// (Edit) - sales_viewer and technical never reassign ownership.
+router.patch('/:id/owner', requireCrmRole('admin', 'md', 'bdm', 'commercial_director', 'marketing'), reassignLeadValidator, leadController.reassignLead);
 router.post('/:id/activities', recordActivityValidator, leadController.recordActivity);
 // QA finding B5 - CRM -> Commercial handoff: retry a failed sync (or re-send the identifiers), and
 // the per-lead sync history. Any CRM role that can move the lead's stage may retry its sync.
@@ -49,8 +55,9 @@ router.get('/:id/commercial-sync', leadIdValidator, leadController.getCommercial
 // bill), stored the same private-GridFS way every other attachment in this ERP already is.
 router.use('/:leadId/attachments', leadAttachmentRoute);
 // Acceptance report finding 7 + Change Request 1, Feature 6: "Add a delete or archive action for
-// the MD only" / "require a reason".
-router.patch('/:id/archive', requireCrmRole('md'), archiveLeadValidator, leadController.archiveLead);
-router.patch('/:id/restore', requireCrmRole('md'), leadIdValidator, leadController.restoreLead);
+// the MD only" / "require a reason". Go-live section 5.5 extends Archive/delete = Admin to BDM
+// too - S&C Director/Marketing/Sales/Technical stay at None.
+router.patch('/:id/archive', requireCrmRole('md', 'bdm'), archiveLeadValidator, leadController.archiveLead);
+router.patch('/:id/restore', requireCrmRole('md', 'bdm'), leadIdValidator, leadController.restoreLead);
 
 module.exports = router;

@@ -25,7 +25,7 @@ import QuickStageChangeModal from "./_components/quick-stage-change-modal";
 
 // A click-to-move-OR-drag Kanban board. Every stage move - whichever way it's triggered - still
 // goes through the exact same PATCH crm/leads/:id/stage leads/[id]/index.tsx#StageChangeCard uses,
-// so the backend's real business rules (MD approval above EGP 1M, one-stage-back-at-a-time, Lost
+// so the backend's real business rules (MD approval above EGP 1.5M, one-stage-back-at-a-time, Lost
 // reopen restricted to Admin/MD, technical's restricted destinations, etc. -
 // backend/server/utils/crm/stageRules.js) are the one and only place a transition is actually
 // decided. A rejected drop/menu-move never leaves the board showing a stage change that didn't

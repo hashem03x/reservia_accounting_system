@@ -1,5 +1,4 @@
 const ApiError = require('../utils/apiError');
-const { isGlobalSuperAdmin } = require('../utils/systemAccess');
 
 // Reservia HR Portal access gate (HR Portal Developer Spec section 2) - mirrors
 // middleware/commercialAccess.js: an active HR membership, then role checks. The four roles are the
@@ -17,11 +16,12 @@ function hrMembership(user) {
   return user.systemMemberships.find(m => m.system === 'HR') || null;
 }
 
+// Go-live Developer Pack, section 3/4: platform administration and the Global Super Admin test
+// flag must NEVER automatically grant MD approval authority (payroll approval is MD-only, F10) -
+// a super admin now needs a REAL, explicit HR membership like anyone else. This file used to
+// force req.hrRole = 'md' for any globalSuperAdmin account - the same class of bypass fixed in
+// middleware/commercialAccess.js and middleware/crmAccess.js. Removed.
 exports.requireHrAccess = (req, res, next) => {
-  if (isGlobalSuperAdmin(req.user)) {
-    req.hrRole = 'md'; // the system-owning role (utils/systemsRegistry.js#SYSTEM_OWNER_ROLES)
-    return next();
-  }
   const membership = hrMembership(req.user);
   if (!membership?.isActive || !HR_ROLES.includes(membership.role)) {
     return next(new ApiError('You do not have access to the HR Portal. Contact your administrator.', 403));
@@ -31,7 +31,6 @@ exports.requireHrAccess = (req, res, next) => {
 };
 
 exports.requireHrRole = (...roles) => (req, res, next) => {
-  if (isGlobalSuperAdmin(req.user)) return next();
   if (!roles.includes(req.hrRole)) return next(new ApiError('Your HR role does not allow this action.', 403));
   return next();
 };

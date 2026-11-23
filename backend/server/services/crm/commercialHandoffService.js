@@ -218,6 +218,10 @@ async function ensureProjectForLead(lead, { userId = null } = {}) {
     leadSource: lead.source || null,
     leadCampaign: lead.campaign || null,
     createdBy: userId,
+    // Go-live section 5.4/5.8: copied from the CRM lead's own owner (leadModel.js#owner, which the
+    // model auto-populates - `?._id` handles both a populated doc and a raw id). The Sales
+    // Engineer who gets Stage 1 sign rights on this deal; null if the lead itself is unowned.
+    owner: lead.owner?._id || lead.owner || null,
   });
   await ensureDealIdentifiers(project);
   try {

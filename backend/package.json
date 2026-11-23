@@ -61,7 +61,8 @@
     "db:prelaunch-test-cleanup": "node server/scripts/prelaunchTestCleanup.js",
     "smoke-test:prelaunch": "node server/scripts/prelaunchSmokeTest.js",
     "db:normalize-commercial-regions": "node server/scripts/normalizeCommercialRegions.js",
-    "db:inventory-and-backup": "node server/scripts/productionDbInventoryAndBackup.js"
+    "db:inventory-and-backup": "node server/scripts/productionDbInventoryAndBackup.js",
+    "db:provision-golive-staff": "node server/scripts/provisionGoLiveStaffAccounts.js"
   },
   "keywords": [],
   "author": "",

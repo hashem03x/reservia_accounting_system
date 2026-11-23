@@ -82,6 +82,11 @@ exports.Actions = {
   // separate, more sensitive action than ordinary journalEntries:create, gated to only the role(s)
   // explicitly granted it below (adminPermission only) - see journalEntryValidators.js#projectRequired.
   createGeneral: 'createGeneral',
+  // Purchase order Draft -> Open (go-live F8): deliberately separate from purchaseRequisitions:
+  // update, which only ever meant "can edit a draft". Before this, the same update permission let
+  // whoever drafted a PO also open/approve it. Only a role that should actually approve money
+  // leaving the company gets this - see adminPermission below; po_drafter/viewer never do.
+  approve: 'approve',
 };
 
 exports.adminPermission = [
@@ -154,6 +159,45 @@ exports.operatorPermission = [
   { resource: 'journalEntries', actions: ['read'] },
   { resource: 'advancedPayments', actions: ['read'] },
   { resource: 'currencies', actions: ['read'] },
+];
+
+// Go-live roles matrix, section 5.6: read-only across ERP except Users, Settings and Backup
+// (the S&C Director's role). Never gets create/update/delete/approve on anything.
+exports.viewerPermission = [
+  { resource: 'categories', actions: ['read'] },
+  { resource: 'subcategories', actions: ['read'] },
+  { resource: 'products', actions: ['read'] },
+  { resource: 'reports', actions: ['read'] },
+  { resource: 'cash', actions: ['read'] },
+  { resource: 'inventories', actions: ['read'] },
+  { resource: 'vendors', actions: ['read'] },
+  { resource: 'customers', actions: ['read'] },
+  { resource: 'purchaseOrders', actions: ['read'] },
+  { resource: 'salesOrders', actions: ['read'] },
+  { resource: 'purchaseRequisitions', actions: ['read'] },
+  { resource: 'cashFlowForecast', actions: ['read'] },
+  { resource: 'inventoryTransfers', actions: ['read'] },
+  { resource: 'expenses', actions: ['read'] },
+  { resource: 'transactions', actions: ['read'] },
+  { resource: 'governorates', actions: ['read'] },
+  { resource: 'warehouses', actions: ['read'] },
+  { resource: 'transfers', actions: ['read'] },
+  { resource: 'stock', actions: ['read'] },
+  { resource: 'variants', actions: ['read'] },
+  { resource: 'projects', actions: ['read'] },
+  { resource: 'accounts', actions: ['read'] },
+  { resource: 'journalEntries', actions: ['read'] },
+  { resource: 'advancedPayments', actions: ['read'] },
+  { resource: 'shareholders', actions: ['read'] },
+  { resource: 'currencies', actions: ['read'] },
+];
+
+// Go-live roles matrix, section 5.2/5.6: may create/edit a purchase order DRAFT and see the
+// projects list, nothing else - never purchaseRequisitions:approve (BDM, Sales Engineers,
+// Marketing). Opening/approving a PO is Actions.approve, granted only via role==='admin' (MD).
+exports.poDrafterPermission = [
+  { resource: 'projects', actions: ['read'] },
+  { resource: 'purchaseRequisitions', actions: ['create', 'read', 'update'] },
 ];
 
 exports.userPermission = [

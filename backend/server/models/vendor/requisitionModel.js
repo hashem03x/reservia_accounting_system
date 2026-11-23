@@ -87,6 +87,11 @@ const requisitionSchema = new Schema(
     // below) from `status==='open'` + `invoicedAmount` - never stored directly, so they can never
     // drift out of sync with the real invoiced total.
     status: { type: String, enum: ['draft', 'open', 'cancelled'], default: 'draft' },
+    // Go-live D1/F8: only the MD approves and opens a Purchase Order, and never the person who
+    // created it - requisitionController.js#openRequisition is where these are actually set.
+    approvedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    approvedAt: { type: Date, default: null },
+    approvedAmount: { type: Number, default: null },
     invoicedAmount: { type: Number, default: 0, min: 0 },
     // ESTIMATE ONLY - Feature 4 ("PO VAT like Purchase Invoice VAT"). The real, accounting-affecting
     // VAT belongs exclusively to the Purchase Invoice (vendor/purchaseOrder.js) created against this
@@ -173,7 +178,8 @@ requisitionSchema.pre(/^find/, function (next) {
   this.populate({ path: 'vendorId', select: 'name vendorNumber contact.phone contact.email' })
     .populate({ path: 'project', select: 'projectNumber name' })
     .populate({ path: 'items.product', select: 'title type category subcategory brand model specifications sku' })
-    .populate({ path: 'createdBy', select: 'name' });
+    .populate({ path: 'createdBy', select: 'name' })
+    .populate({ path: 'approvedBy', select: 'name' });
   next();
 });
 
