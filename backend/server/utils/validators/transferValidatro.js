@@ -1,8 +1,17 @@
 const { body, check } = require('express-validator');
 const Warehouse = require('../../models/inventory/warehouseModel');
 const Product = require('../../models/inventory/productModel');
+const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const validatorMiddleware = require('../../middleware/validatorMiddleware');
-const { PaymentMethods } = require('../appConstant');
+const { isPaymentAccountEligible } = require('../accountingConstants');
+
+// Fast pre-check - services/accounting/moneyTransferService.js re-checks inside the transaction.
+const eligiblePaymentAccount = async value => {
+  const account = await ChartOfAccount.findById(value);
+  if (!account) throw new Error('The selected account does not exist');
+  if (!isPaymentAccountEligible(account)) throw new Error('The selected account must be a Cash or Cash Equivalent account');
+  return true;
+};
 
 exports.validateTransferStock = [
   body('type')
@@ -81,25 +90,28 @@ exports.validateMoneyTransfer = [
   check('from_warehouse_id').notEmpty().withMessage('Source warehouse ID is required').isMongoId().withMessage('Invalid source warehouse ID format'),
   check('to_warehouse_id').notEmpty().withMessage('Target warehouse ID is required').isMongoId().withMessage('Invalid target warehouse ID format'),
 
+  // Required unless a foreign-currency transfer is given instead (`foreign_amount` is then the
+  // authoritative amount - see services/accounting/moneyTransferService.js).
   check('amount')
+    .if((value, { req }) => !req.body.currency || String(req.body.currency).trim().toUpperCase() === 'EGP')
     .notEmpty()
     .withMessage('Amount is required')
-    .isNumeric()
-    .withMessage('Amount must be a number')
-    .custom(value => {
-      if (value <= 0) throw new Error('Amount must be greater than 0');
-      return true;
-    }),
+    .isFloat({ gt: 0 })
+    .withMessage('Amount must be greater than 0'),
 
-  check('withdraw_method')
-    .optional()
-    .isIn(PaymentMethods)
-    .withMessage(`Withdraw method must be one of: ${PaymentMethods.join(', ')}`),
+  check('withdraw_account').notEmpty().withMessage('A withdrawal account (Cash or Cash Equivalent) is required').isMongoId().withMessage('Invalid withdrawal account id').custom(eligiblePaymentAccount),
 
-  check('deposit_method')
-    .optional()
-    .isIn(PaymentMethods)
-    .withMessage(`Deposit method must be one of: ${PaymentMethods.join(', ')}`),
+  check('deposit_account').notEmpty().withMessage('A deposit account (Cash or Cash Equivalent) is required').isMongoId().withMessage('Invalid deposit account id').custom(eligiblePaymentAccount),
+
+  check('currency').optional({ nullable: true }).isString().trim().isLength({ min: 3, max: 3 }).withMessage('Currency must be a 3-letter code'),
+  check('foreign_amount')
+    .if((value, { req }) => !!req.body.currency && String(req.body.currency).trim().toUpperCase() !== 'EGP')
+    .notEmpty()
+    .withMessage('A foreign amount is required when a non-EGP currency is given')
+    .isFloat({ gt: 0 })
+    .withMessage('Foreign amount must be greater than 0'),
+  check('date').optional({ nullable: true }).isISO8601().withMessage('Invalid date'),
+  check('notes').optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),
 
   validatorMiddleware,
 ];

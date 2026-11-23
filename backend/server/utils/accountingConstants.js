@@ -144,6 +144,11 @@ exports.AccountingActions = [
   // reverses the direction for the returned quantity, at the ORIGINAL consumption's own cost.
   'SALES_PUC_CONSUMPTION',
   'SALES_PUC_CONSUMPTION_RETURN',
+  // Transfer Money (services/accounting/moneyTransferService.js): Dr the destination Cash/Cash
+  // Equivalent account / Cr the source one - a single balanced entry (never two), reversible like
+  // any other automatic entry through the normal Journal Entry "Reverse" action (not in the
+  // journalEntryController.js denylist, so no dedicated reversal code is needed for it).
+  'MONEY_TRANSFER',
 ];
 
 // Automatic actions that are inherently project-related: they are only ever posted for a document
@@ -308,4 +313,5 @@ exports.AccountingModuleByAction = {
   PURCHASE_RETURN: 'Purchase Order',
   SO_REFUND_RECORDED: 'Sales Order',
   PO_REFUND_RECORDED: 'Purchase Order',
+  MONEY_TRANSFER: 'Payment',
 };

@@ -4,7 +4,7 @@ const Expense = require('../models/expense/expenseModel');
 const factory = require('./handlersFactory');
 const ApiError = require('../utils/apiError');
 const apiResponse = require('../utils/apiResponse');
-const { createExpense, addExpensePayment, updateExpense, getExpenseAccountOptions } = require('../services/expenses/expenseService');
+const { createExpense, addExpensePayment, updateExpense, getExpenseAccountOptions, getLiabilityAccountOptions } = require('../services/expenses/expenseService');
 
 // Runs `work(session)` in one MongoDB transaction - the expense/payment records and their journal
 // entries commit together or not at all.
@@ -38,6 +38,10 @@ exports.updateExpense = asyncHandler(async (req, res) => {
 
 exports.getExpenseAccountOptions = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Expense accounts retrieved successfully', true, await getExpenseAccountOptions()));
+});
+
+exports.getLiabilityAccountOptions = asyncHandler(async (req, res) => {
+  res.status(200).json(apiResponse('Liability accounts retrieved successfully', true, await getLiabilityAccountOptions()));
 });
 
 // Get all expenses - `category` (an id, or "none") and `from`/`to` (YYYY-MM-DD, by expense date)

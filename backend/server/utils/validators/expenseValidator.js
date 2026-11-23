@@ -24,11 +24,11 @@ const warehouseExists = async value => {
 };
 
 exports.createExpenseValidator = [
-  check('expenseType').optional({ nullable: true }).isIn(['vendor', 'salary']).withMessage('Expense type must be "vendor" or "salary"'),
-  // A salary expense is not a vendor purchase - no vendor is required (or used) for it. Every other
-  // expense type keeps the existing, unconditional requirement.
+  check('expenseType').optional({ nullable: true }).isIn(['vendor', 'salary', 'liability']).withMessage('Expense type must be "vendor", "salary" or "liability"'),
+  // A salary or liability expense is not a vendor purchase - no vendor is required (or used) for
+  // it. Every other expense type keeps the existing, unconditional requirement.
   check('vendor')
-    .if((value, { req }) => req.body.expenseType !== 'salary')
+    .if((value, { req }) => !['salary', 'liability'].includes(req.body.expenseType))
     .notEmpty().withMessage('Vendor is required').isMongoId().withMessage('Invalid vendor id').custom(vendorExists),
   check('expenseAccount')
     .notEmpty()
@@ -38,6 +38,18 @@ exports.createExpenseValidator = [
     .custom(async value => {
       const account = await ChartOfAccount.findById(value);
       if (!account || account.isActive === false || account.type !== 'expense') throw new Error('The expense account must be an active Chart of Accounts expense account.');
+      return true;
+    }),
+  // Only required (and only read) for a liability expense - see expenseModel.js's own comment.
+  check('liabilityAccount')
+    .if((value, { req }) => req.body.expenseType === 'liability')
+    .notEmpty()
+    .withMessage('A liability account is required for a liability expense')
+    .isMongoId()
+    .withMessage('Invalid liability account id')
+    .custom(async value => {
+      const account = await ChartOfAccount.findById(value);
+      if (!account || account.isActive === false || account.type !== 'liability') throw new Error('The liability account must be an active Chart of Accounts liability account.');
       return true;
     }),
   check('amount').notEmpty().withMessage('Amount is required').isFloat({ gt: 0 }).withMessage('Amount must be greater than 0'),

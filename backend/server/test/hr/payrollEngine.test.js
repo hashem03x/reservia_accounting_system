@@ -229,6 +229,22 @@ test('documents, training and leave entitlement equal the prototype', { skip: !H
   }
 });
 
+test('leaveEnt prorates for a mid-year departure symmetrically with a mid-year hire, never the full annualDays for a partial year', () => {
+  const eng = P.createEngine({ cfg: {}, today: '2026-11-30', employees: [] });
+  // Employed the whole year: full 21 days.
+  assert.equal(eng.leaveEnt({ hire: '2020-01-01' }, '2026'), 21);
+  // Hired mid-year, still employed: existing proration, unaffected by this fix.
+  assert.equal(eng.leaveEnt({ hire: '2026-07-01' }, '2026'), Math.round((21 * 184) / 365));
+  // Employed the whole prior history, but leaves mid-year: 181 days (Jan 1 - Jun 30 inclusive).
+  assert.equal(eng.leaveEnt({ hire: '2020-01-01', end: '2026-06-30' }, '2026'), Math.round((21 * 181) / 365));
+  // Hired AND departs within the same year: 184 days (Mar 1 - Aug 31 inclusive).
+  assert.equal(eng.leaveEnt({ hire: '2026-03-01', end: '2026-08-31' }, '2026'), Math.round((21 * 184) / 365));
+  // Left before this year even began: zero entitlement for this year, not the full amount.
+  assert.equal(eng.leaveEnt({ hire: '2020-01-01', end: '2025-06-01' }, '2026'), 0);
+  // Not yet hired this year (unaffected by this fix, pre-existing behaviour).
+  assert.equal(eng.leaveEnt({ hire: '2027-01-01' }, '2026'), 0);
+});
+
 test('November 2026 register: the engine reproduces the prototype register (committed snapshot)', () => {
   const today = '2026-11-30';
   const month = '2026-11';

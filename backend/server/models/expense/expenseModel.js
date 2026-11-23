@@ -11,13 +11,20 @@ require('./expenseCategoryModel');
 //     Dr expense / Cr Salaries Payable (see utils/accountingConstants.js#SalariesPayableAccountName)
 //     instead of Suppliers - salaries are not vendor purchases, so no vendor/vendor account is ever
 //     involved; or
+//   - a liability expense (`expenseType: 'liability'`, no `vendor`): an expense owed to something
+//     OTHER than a vendor or payroll - Accrued Expenses, Tax Payable, VAT Payable, Other Current/
+//     Long-Term Liabilities, etc. - posted Dr expense / Cr the chosen `liabilityAccount` (a real,
+//     active, `type: 'liability'` Chart of Accounts account the user selects; never Suppliers or
+//     Salaries Payable, which stay tied to their own expense types). Paying it down later still
+//     goes through the existing Payment flow (addExpensePayment), crediting the SAME account - a
+//     liability settlement (Dr liability / Cr cash), never a second expense recognition; or
 //   - a legacy expense (no `vendor`): a category paid in cash immediately via `paymentId` - still
 //     created by paymentModel.js's finance-charges flow and kept for existing documents/reports.
-// A salary expense also has no `vendor` (same as a legacy expense) - `expenseType` is what tells
-// the two apart, so a salary expense is never mistaken for a legacy one and wrongly forced to carry
+// A salary or liability expense also has no `vendor` (same as a legacy expense) - `expenseType` is
+// what tells them apart, so neither is ever mistaken for a legacy one and wrongly forced to carry
 // legacy-only fields (`expenseCategory`, `paymentId`) it was never given.
 const isLegacy = function () {
-  return !this.vendor && this.expenseType !== 'salary';
+  return !this.vendor && !['salary', 'liability'].includes(this.expenseType);
 };
 
 // One payment made against a vendor expense.
@@ -45,9 +52,14 @@ const expenseSchema = new Schema(
     // `vendor`, posts Dr expense / Cr Suppliers (the vendor's control account).
     // 'salary': no vendor - posts Dr expense / Cr Salaries Payable instead (see
     // services/expenses/expenseService.js and utils/accountingConstants.js#SalariesPayableAccountName).
-    expenseType: { type: String, enum: ['vendor', 'salary'], default: 'vendor' },
+    // 'liability': no vendor - posts Dr expense / Cr `liabilityAccount` (the user's own choice of
+    // real liability account) instead of Suppliers/Salaries Payable.
+    expenseType: { type: String, enum: ['vendor', 'salary', 'liability'], default: 'vendor' },
     vendor: { type: Schema.Types.ObjectId, ref: 'Vendor' },
     expenseAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount' },
+    // Only set (and only meaningful) when expenseType === 'liability' - see this schema's own
+    // header comment. Fixed once posted, same as expenseAccount/vendor.
+    liabilityAccount: { type: Schema.Types.ObjectId, ref: 'ChartOfAccount', default: null },
     // Analysis grouping (Expense Categories - models/expense/expenseCategoryModel.js). Optional:
     // expenses created before categories existed have none. Separate from the legacy
     // `expenseCategory` string above, which only legacy cash expenses use.
@@ -117,6 +129,7 @@ expenseSchema.pre(/^find/, function () {
     })
     .populate({ path: 'vendor', select: 'name vendorNumber' })
     .populate({ path: 'expenseAccount', select: 'code name nameAr type' })
+    .populate({ path: 'liabilityAccount', select: 'code name nameAr type' })
     .populate({ path: 'category', select: 'name nameAr isActive' })
     .populate({ path: 'payments.paymentAccount', select: 'code name nameAr' });
 });

@@ -453,12 +453,18 @@ function createEngine(data) {
       .filter(f => f.ft === 'leave' && String(f.empId) === String(empId) && f.status === 'Approved' && f.ltype === 'Casual leave' && String(f.from).slice(0, 4) === String(year))
       .reduce((n, f) => n + (+f.days || 0), 0);
   const otApproved = (empId, date) => forms.some(f => f.ft === 'ot' && String(f.empId) === String(empId) && f.odate === date && f.status === 'Approved');
+  // Prorated for a mid-year hire AND symmetrically for a mid-year departure (e.end) - an employee
+  // who leaves partway through the year is entitled to less than the full annualDays, the same way
+  // one hired partway through it already was. Full entitlement only when employed the whole year.
   function leaveEnt(e, year) {
     const ys = `${year}-01-01`;
     const ye = `${year}-12-31`;
-    if (!e.hire || e.hire <= ys) return c.annualDays;
-    if (e.hire > ye) return 0;
-    const days = diffDays(ye, e.hire) + 1;
+    if (e.hire && e.hire > ye) return 0;
+    if (e.end && e.end < ys) return 0;
+    const start = !e.hire || e.hire <= ys ? ys : e.hire;
+    const end = !e.end || e.end >= ye ? ye : e.end;
+    if (start === ys && end === ye) return c.annualDays;
+    const days = diffDays(end, start) + 1;
     return Math.round((c.annualDays * days) / 365);
   }
 

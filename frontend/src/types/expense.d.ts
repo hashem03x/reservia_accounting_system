@@ -29,16 +29,20 @@ export type ExpensePayment = {
 };
 
 // A vendor expense (has `vendor`, Dr expense account / Cr Suppliers, paid later), a salary expense
-// (`expenseType: 'salary'`, no vendor, Dr expense account / Cr Salaries Payable), or a legacy
-// category expense (`expenseCategory` + `payment`, paid in cash at once).
+// (`expenseType: 'salary'`, no vendor, Dr expense account / Cr Salaries Payable), a liability
+// expense (`expenseType: 'liability'`, no vendor, Dr expense account / Cr the chosen
+// `liabilityAccount`), or a legacy category expense (`expenseCategory` + `payment`, paid in cash
+// at once).
 export type Expense = {
   _id: string;
-  // 'vendor' (default) requires `vendor`; 'salary' never has one - see
+  // 'vendor' (default) requires `vendor`; 'salary'/'liability' never have one - see
   // backend/server/models/expense/expenseModel.js.
-  expenseType?: "vendor" | "salary";
+  expenseType?: "vendor" | "salary" | "liability";
   // Vendor expense
   vendor?: { _id: string; name: string; vendorNumber?: number | null } | null;
   expenseAccount?: ChartOfAccountRef | null;
+  // Liability expense - the Chart of Accounts liability account credited instead of a vendor.
+  liabilityAccount?: ChartOfAccountRef | null;
   // Analysis grouping (Admin -> Expense Categories); null on expenses created without one.
   category?: { _id: string; name: string; nameAr?: string | null; isActive: boolean } | null;
   amount?: number;

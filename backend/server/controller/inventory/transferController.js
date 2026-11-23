@@ -4,6 +4,7 @@ const Transfer = require('../../models/inventory/transferModel'); // For logging
 const factory = require('../handlersFactory');
 const asyncHandler = require('express-async-handler');
 const Payment = require('../../models/vendor/paymentModel');
+const { transferMoney: transferMoneyService } = require('../../services/accounting/moneyTransferService');
 
 /**
  * Handle stock transfer logic.
@@ -134,67 +135,45 @@ exports.createTransfer = asyncHandler(async (req, res) => {
 
 exports.getTransfers = factory.getAll(Transfer);
 
-// @desc    Transfer Money Between Warehouses
+// @desc    Transfer Money Between Warehouses - Dr the destination Cash/Cash-Equivalent account /
+//          Cr the source one, atomically with the two Payment records (services/accounting/
+//          moneyTransferService.js). `withdraw_account`/`deposit_account` are real Chart of
+//          Accounts ids (validated eligible there), not the old free-text paymentMethod strings.
 // @route   POST /api/v1/transfers/money
 // @access  Private
 exports.transferMoney = asyncHandler(async (req, res) => {
-  const { from_warehouse_id, to_warehouse_id, amount, withdraw_method, deposit_method } = req.body;
+  const { from_warehouse_id, to_warehouse_id, amount, withdraw_account, deposit_account, currency, foreign_amount, date, notes } = req.body;
 
-  // Start a transaction
   const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    // Create payment records
-    const [paymentOut] = await Payment.create(
-      [
-        {
-          warehouseId: from_warehouse_id,
-          type: 'out',
-          amountPaid: amount,
-          paymentMethod: withdraw_method || 'cash',
-          paymentCategory: 'transfer',
-          createdBy: req.user._id,
-        },
-      ],
-      { session }
-    );
-
-    const [paymentIn] = await Payment.create(
-      [
-        {
-          warehouseId: to_warehouse_id,
-          type: 'in',
-          amountPaid: amount,
-          paymentMethod: deposit_method || 'cash',
-          paymentCategory: 'transfer',
-          createdBy: req.user._id,
-        },
-      ],
-      { session }
-    );
-
-    // Commit the transaction
-    await session.commitTransaction();
-
-    res.status(200).json({
-      status: 'success',
-      data: {
+  let result;
+  await session.withTransaction(async () => {
+    result = await transferMoneyService(
+      {
+        fromWarehouseId: from_warehouse_id,
+        toWarehouseId: to_warehouse_id,
+        fromAccount: withdraw_account,
+        toAccount: deposit_account,
         amount,
-        withdrawMethod: withdraw_method || 'cash',
-        depositMethod: deposit_method || 'cash',
-        paymentOut,
-        paymentIn,
+        currency,
+        foreignAmount: foreign_amount,
+        date,
+        notes,
       },
-    });
-  } catch (error) {
-    // If anything fails and transaction hasn't been committed, abort it
-    if (session.transaction.state !== 'committed') {
-      await session.abortTransaction();
-    }
-    throw error;
-  } finally {
-    // End the session
-    session.endSession();
-  }
+      req.user._id,
+      session
+    );
+  });
+  session.endSession();
+
+  const [paymentOut, paymentIn] = await Promise.all([Payment.findById(result.paymentOut._id), Payment.findById(result.paymentIn._id)]);
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      amount: result.amount,
+      journalEntry: result.journalEntry._id,
+      paymentOut,
+      paymentIn,
+    },
+  });
 });

@@ -13,14 +13,16 @@ import ErrorAlert from "@/components/ui/error-alert";
 import Modal from "@/components/ui/modal";
 import VendorSearch from "@/components/global/vendor-search";
 import PaymentAccountSelect from "@/components/global/payment-account-select";
+import LiabilityAccountSelect from "@/components/global/liability-account-select";
 import VatTreatmentSelect from "@/components/global/vat-treatment-select";
 import { Vendor } from "@/types/vendor";
 import { Expense } from "@/types/expense";
 import { ChartOfAccountRef } from "@/types/orders";
 import { DEFAULT_VAT_TREATMENT, VatTreatmentValue } from "@/utils/constants/vat-treatment";
 
-// A vendor expense: Dr the chosen expense account (+ VAT) / Cr the vendor. It can be paid at once
-// (Pay now) or later from the expense's page.
+// A vendor expense: Dr the chosen expense account (+ VAT) / Cr the vendor. A salary or liability
+// expense credits Salaries Payable / the chosen liability account instead - no vendor at all. Any
+// type can be paid at once (Pay now) or later from the expense's page.
 export default function ExpenseModal({
   opened,
   close,
@@ -34,9 +36,10 @@ export default function ExpenseModal({
   const { data: warehouses } = useWarehouses();
   const { updateWarehouseBalanceById } = useWarehouseHelpers();
 
-  const [expenseType, setExpenseType] = useState<"vendor" | "salary">("vendor");
+  const [expenseType, setExpenseType] = useState<"vendor" | "salary" | "liability">("vendor");
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [expenseAccount, setExpenseAccount] = useState("");
+  const [liabilityAccount, setLiabilityAccount] = useState("");
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState<string | number>("");
   const [vatPercentage, setVatPercentage] = useState<string | number>(0);
@@ -76,8 +79,9 @@ export default function ExpenseModal({
         url: "expenses",
         data: {
           expenseType,
-          vendor: expenseType === "salary" ? undefined : vendor?._id,
+          vendor: expenseType === "salary" || expenseType === "liability" ? undefined : vendor?._id,
           expenseAccount,
+          liabilityAccount: expenseType === "liability" ? liabilityAccount : undefined,
           category: category || undefined,
           amount,
           vatPercentage: vat,
@@ -101,6 +105,7 @@ export default function ExpenseModal({
       setExpenseType("vendor");
       setVendor(null);
       setExpenseAccount("");
+      setLiabilityAccount("");
       setAmount("");
       setVatPercentage(0);
       setVatTreatment(DEFAULT_VAT_TREATMENT);
@@ -115,7 +120,12 @@ export default function ExpenseModal({
   }
 
   const canSubmit =
-    (expenseType === "salary" || !!vendor) && !!expenseAccount && base > 0 && !!date && (!payNow || (!!paymentAccount && !!warehouseId));
+    (expenseType === "salary" || expenseType === "liability" || !!vendor) &&
+    (expenseType !== "liability" || !!liabilityAccount) &&
+    !!expenseAccount &&
+    base > 0 &&
+    !!date &&
+    (!payNow || (!!paymentAccount && !!warehouseId));
 
   return (
     <Modal opened={opened} onClose={handleClose} title={translate("Add Expense", "إضافة نفقة")} size="lg">
@@ -126,12 +136,15 @@ export default function ExpenseModal({
           label={translate("Expense Type", "نوع المصروف")}
           value={expenseType}
           onChange={(v) => {
-            setExpenseType((v as "vendor" | "salary") || "vendor");
-            if (v === "salary") setVendor(null);
+            const next = (v as "vendor" | "salary" | "liability") || "vendor";
+            setExpenseType(next);
+            if (next !== "vendor") setVendor(null);
+            if (next !== "liability") setLiabilityAccount("");
           }}
           data={[
             { value: "vendor", label: translate("Vendor Expense", "مصروف لمورد") },
             { value: "salary", label: translate("Salary Expense", "مصروف رواتب") },
+            { value: "liability", label: translate("Liability Expense", "مصروف خصوم") },
           ]}
           allowDeselect={false}
         />
@@ -159,6 +172,10 @@ export default function ExpenseModal({
           searchable
           required
         />
+
+        {expenseType === "liability" && (
+          <LiabilityAccountSelect value={liabilityAccount} onChange={setLiabilityAccount} required />
+        )}
 
         <ExpenseCategorySelect value={category} onChange={setCategory} />
 

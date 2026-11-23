@@ -18,6 +18,7 @@
     "db:create-admin": "node server/scripts/createAdminUser.js",
     "db:backfill-journal-line-projects": "node server/scripts/backfillJournalLineProjects.js",
     "db:audit-depreciation": "node server/scripts/auditDepreciationEntries.js",
+    "db:audit-money-transfers": "node server/scripts/auditMoneyTransfers.js",
     "db:import-project-managers": "node server/scripts/importProjectManagers.js",
     "db:recalculate-project-remaining": "node server/scripts/recalculateProjectRemaining.js",
     "db:seed-order-number-counters": "node server/scripts/seedOrderNumberCounters.js",

@@ -267,6 +267,79 @@ maybeTest('HR Portal D1: a leave request over the remaining balance is blocked; 
   assert.equal(within.body.data.form.balanceOverride, false);
 });
 
+maybeTest('the leave balance cap is re-checked AT APPROVAL time too, not only at creation - several Pending requests cannot jointly bypass it', async () => {
+  const { hr, md } = await team();
+  const e = (await api('POST', '/employees', { user: hr, body: { name: 'Cumulative Over Balance', hire: '2026-01-01', basic: 9000 } })).body.data;
+  // Two separate requests, each created while the other is still Pending - both individually pass
+  // the creation-time check (used=0 for each, since neither sibling is Approved yet).
+  const f1 = await api('POST', '/forms', { user: hr, body: { ft: 'leave', empId: e._id, ltype: 'Annual leave', from: '2099-01-01', to: '2099-01-21' } });
+  assert.equal(f1.status, 200, f1.text);
+  const f2 = await api('POST', '/forms', { user: hr, body: { ft: 'leave', empId: e._id, ltype: 'Annual leave', from: '2099-03-01', to: '2099-03-21' } });
+  assert.equal(f2.status, 200, f2.text);
+  assert.ok(f1.body.data.form.days + f2.body.data.form.days > 21, `need the two forms to jointly exceed the 21-day entitlement: ${f1.body.data.form.days} + ${f2.body.data.form.days}`);
+
+  const d1 = await api('POST', `/forms/${f1.body.data.form._id}/decide`, { user: hr, body: { status: 'Approved' } });
+  assert.equal(d1.status, 200, d1.text);
+
+  // Approving the second one now would take the cumulative total over entitlement - blocked for
+  // HR, exactly like the creation-time D1 rule, even though THIS form's own creation passed.
+  const blocked = await api('POST', `/forms/${f2.body.data.form._id}/decide`, { user: hr, body: { status: 'Approved' } });
+  assert.equal(blocked.status, 403, blocked.text);
+  assert.match(blocked.body.message, /remaining leave balance/);
+  const stillPending = await M.HrForm.findById(f2.body.data.form._id).lean();
+  assert.equal(stillPending.status, 'Pending', 'the second form was never silently approved');
+
+  const mdNoReason = await api('POST', `/forms/${f2.body.data.form._id}/decide`, { user: md, body: { status: 'Approved' } });
+  assert.equal(mdNoReason.status, 400, mdNoReason.text);
+  assert.match(mdNoReason.body.message, /reason/);
+
+  const approved = await api('POST', `/forms/${f2.body.data.form._id}/decide`, { user: md, body: { status: 'Approved', dnote: 'MD override - exceeds balance, approved anyway' } });
+  assert.equal(approved.status, 200, approved.text);
+  assert.ok(approved.body.data.effects.attendanceDays > 0, 'the MD override still actually posts the leave');
+});
+
+maybeTest('postLeave/unpostLeave never mutate an already-approved timesheet, mirroring the lock postVisitDays already respects', async () => {
+  const { hr } = await team();
+  const month = '2099-07';
+  const e = (await api('POST', '/employees', { user: hr, body: { name: 'Locked Timesheet', hire: '2026-01-01', basic: 9000 } })).body.data;
+  const f = await api('POST', '/forms', { user: hr, body: { ft: 'leave', empId: e._id, ltype: 'Annual leave', from: `${month}-05`, to: `${month}-09` } });
+  assert.equal(f.status, 200, f.text);
+  const approve = await api('POST', `/forms/${f.body.data.form._id}/decide`, { user: hr, body: { status: 'Approved' } });
+  assert.equal(approve.status, 200, approve.text);
+  assert.ok(approve.body.data.effects.attendanceDays > 0);
+
+  // Fill the rest of the month's blank working days (the leave days are no longer blank, so
+  // fillBlanks skips them), then approve the timesheet.
+  await api('POST', `/attendance/${e._id}/${month}/fill`, { user: hr });
+  const tsApprove = await api('POST', `/timesheets/${e._id}/${month}/approve`, { user: hr });
+  assert.equal(tsApprove.status, 200, tsApprove.text);
+
+  const before = await M.HrAttendance.findOne({ employee: e._id, month }).lean();
+  const leaveDaysBefore = Object.values(before.days).filter(x => x.s === 'L').length;
+  assert.ok(leaveDaysBefore > 0);
+
+  // Reject the leave form now that the timesheet is approved - unpostLeave must refuse to touch
+  // the locked month, so the 'L' days stay exactly as they are and the timesheet stays approved.
+  const reject = await api('POST', `/forms/${f.body.data.form._id}/decide`, { user: hr, body: { status: 'Rejected' } });
+  assert.equal(reject.status, 200, reject.text);
+
+  const after = await M.HrAttendance.findOne({ employee: e._id, month }).lean();
+  const leaveDaysAfter = Object.values(after.days).filter(x => x.s === 'L').length;
+  assert.equal(leaveDaysAfter, leaveDaysBefore, 'the approved timesheet was never silently mutated by the rejection');
+  assert.ok(after.approval?.at, 'still approved');
+});
+
+maybeTest('a race between two concurrent employee creates with the same code surfaces a friendly 409, never a raw error', async () => {
+  const { hr } = await team();
+  const body = { name: 'Race A', hire: '2026-01-01', basic: 9000, code: 'EMP-RACE-1' };
+  const [r1, r2] = await Promise.all([api('POST', '/employees', { user: hr, body }), api('POST', '/employees', { user: hr, body: { ...body, name: 'Race B' } })]);
+  const statuses = [r1.status, r2.status].sort();
+  assert.deepEqual(statuses, [201, 409], `expected one created, one friendly conflict: ${r1.status} / ${r2.status}`);
+  const failed = r1.status === 409 ? r1 : r2;
+  assert.match(failed.body.message, /already used/);
+  assert.equal(await M.HrEmployee.countDocuments({ code: 'EMP-RACE-1' }), 1, 'only one employee actually got this code');
+});
+
 maybeTest('HR Portal D11: reopening an approved timesheet needs a reason, which is stamped on the record and surfaced until re-approved', async () => {
   const { hr } = await team();
   const month = '2026-09';

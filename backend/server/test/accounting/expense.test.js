@@ -63,6 +63,9 @@ beforeEach(async () => {
   warehouse = await Warehouse.create({ name: 'Head Office', location: 'Cairo', balance: 50000 });
   accounts.salary = await ChartOfAccount.create({ code: '61000002', name: 'Salaries Expense', type: 'expense' });
   accounts.salariesPayable = await ChartOfAccount.create({ code: 'SAL-PAY-1', name: 'Salaries Payable', type: 'liability' });
+  // Task 2 - liability-type expenses (Accrued Expenses here is just one example of a real
+  // liability account, never invented - any active `type: 'liability'` account qualifies).
+  accounts.accruedExpenses = await ChartOfAccount.create({ code: 'LIAB-1', name: 'Accrued Expenses', type: 'liability' });
 });
 
 async function inTx(work) {
@@ -80,6 +83,7 @@ async function inTx(work) {
 
 const RENT = (overrides = {}) => ({ vendor: vendor._id, expenseAccount: accounts.rent._id, amount: 10000, vatPercentage: 14, date: new Date('2026-09-01'), reference: 'SEP-RENT', notes: 'September rent', ...overrides });
 const SALARY = (overrides = {}) => ({ expenseType: 'salary', expenseAccount: accounts.salary._id, amount: 8000, date: new Date('2026-09-01'), reference: 'SEP-SALARY', notes: 'September salary', ...overrides });
+const LIABILITY = (overrides = {}) => ({ expenseType: 'liability', expenseAccount: accounts.rent._id, liabilityAccount: accounts.accruedExpenses._id, amount: 5000, date: new Date('2026-09-01'), reference: 'ACCRUED-1', notes: 'Accrued utility bill', ...overrides });
 const create = data => inTx(session => createExpense(data, null, session));
 const pay = (expense, data) => inTx(session => addExpensePayment(expense._id, { paymentAccount: accounts.cash._id, warehouseId: warehouse._id, ...data }, null, session));
 const vendorBalance = async () => (await Vendor.findById(vendor._id).lean()).balance;
@@ -339,4 +343,76 @@ test('a missing/inactive Salaries Payable account aborts the posting with a clea
   await assert.rejects(() => create(SALARY()), /Salaries Payable/);
   assert.equal(await Expense.countDocuments({}), 0);
   await ChartOfAccount.deleteOne({ _id: inactive._id });
+});
+
+// ===================== Liability expenses (Task 2 - Add Expense Liability support) =====================
+// Expense recognition against a directly-chosen liability account (Accrued Expenses, Tax Payable,
+// VAT Payable, etc.) instead of Suppliers/Salaries Payable - never a vendor, and settling it later
+// is the SAME addExpensePayment path a vendor/salary payable already settles through (the task's
+// own "a liability settlement is Dr liability / Cr cash, not a second expense recognition").
+
+test('creating a liability expense posts Dr expense / Cr the chosen liability account, with no vendor at all', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const expense = await create(LIABILITY());
+  const stored = await Expense.findById(expense._id).lean();
+  assert.equal(stored.expenseType, 'liability');
+  assert.ok(!stored.vendor, 'a liability expense must never carry a vendor reference');
+  assert.equal(idStr(stored.liabilityAccount), String(accounts.accruedExpenses._id));
+
+  const entry = await JournalEntry.findById(stored.journalEntry).lean();
+  assert.equal(entry.accountingAction, 'EXPENSE_RECORDED');
+  assert.equal(entry.description, 'Liability - Office Rent (ACCRUED-1)');
+  assert.deepEqual(linesOf(entry), [
+    ['rent', 5000, 0],
+    ['accruedExpenses', 0, 5000],
+  ]);
+  // No vendor sub-account on a liability entry either - it is not a vendor control account.
+  for (const line of entry.lines) {
+    assert.ok(!line.partyNumber);
+    assert.ok(!line.partyType);
+  }
+  assert.equal(await vendorBalance(), 0, 'a liability expense must never touch any vendor balance');
+});
+
+test('settling a liability expense is the SAME payment path as a vendor/salary expense: Dr the liability account / Cr the payment account - never a second expense recognition', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const expense = await create(LIABILITY());
+  await pay(expense, { amount: 5000, notes: 'Accrued utility bill settled' });
+
+  const stored = await Expense.findById(expense._id).lean();
+  assert.equal(stored.paymentStatus, 'paid');
+  assert.equal(stored.paidAmount, 5000);
+  // Exactly the one EXPENSE_RECORDED entry from creation plus the one EXPENSE_PAYMENT_RECORDED
+  // entry from settlement - never a second recognition entry.
+  assert.equal(await JournalEntry.countDocuments({ sourceType: 'EXPENSE', sourceId: expense._id }), 1);
+  assert.equal(await JournalEntry.countDocuments({ accountingAction: 'EXPENSE_PAYMENT_RECORDED' }), 1);
+
+  const payment = await Payment.findById(stored.payments[0].payment).lean();
+  assert.equal(payment.vendorId, undefined, 'a liability payment must never carry a vendor reference');
+
+  const entry = await JournalEntry.findById(stored.payments[0].journalEntry).lean();
+  assert.deepEqual(linesOf(entry), [
+    ['accruedExpenses', 5000, 0],
+    ['cash', 0, 5000],
+  ]);
+  assert.equal(await warehouseBalance(), 45000);
+  assert.equal(await vendorBalance(), 0);
+});
+
+test('a liability expense requires an active, type:"liability" account - an expense/asset/other account is rejected, and nothing is created', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  await assert.rejects(() => create(LIABILITY({ liabilityAccount: accounts.rent._id })), /liability account must be an active Chart of Accounts liability account/);
+  assert.equal(await Expense.countDocuments({}), 0);
+
+  const inactive = await ChartOfAccount.create({ code: 'LIAB-2', name: 'Tax Payable', type: 'liability', isActive: false });
+  await assert.rejects(() => create(LIABILITY({ liabilityAccount: inactive._id })), /liability account must be an active Chart of Accounts liability account/);
+  assert.equal(await Expense.countDocuments({}), 0);
+});
+
+test('a liability expense can be edited (not treated as a legacy, vendor-less expense)', async t => {
+  if (!transactionsSupported) return t.skip('needs a replica set (transactions)');
+  const expense = await create(LIABILITY());
+  await inTx(session => updateExpense(expense._id, { notes: 'Revised accrual note' }, session));
+  const stored = await Expense.findById(expense._id).lean();
+  assert.equal(stored.notes, 'Revised accrual note');
 });

@@ -115,16 +115,31 @@ function signatures(doc, labels) {
 }
 
 /* ---------- payslip ---------- */
+// "Total earnings"/"Net pay" are the SUM of the already-rounded (W()) line items printed above
+// them, never a fresh rounding of the true, unrounded r.earn/r.net - otherwise the printed line
+// items can foot to a different total than the printed total/net (e.g. several .40-.49 EGP
+// fractional components each round down on their own line, while their true sum rounds up),
+// exactly the discrepancy the register (registerTable, below) already avoids the same way.
 function slipRows(r, m, cfg, extras) {
   const R = [];
   const dim = P.daysIn(m);
+  let earnSum = 0;
+  let dedSum = 0;
+  const E = (label, value) => {
+    earnSum += W(value);
+    R.push([label, fmt(value)]);
+  };
+  const D = (label, value) => {
+    dedSum += W(value);
+    R.push([label, `-${fmt(value)}`]);
+  };
   R.push(['Earnings', '', 'sec']);
-  R.push([`Basic gross salary${r.t.emp < dim ? ` (part month, ${r.t.emp} of ${dim} days)` : ''}`, fmt(r.basic)]);
-  R.push(['Transportation allowance', fmt(r.transport)]);
-  if (r.incentive) R.push(['Incentive monthly payout', fmt(r.incentive)]);
-  if (r.other) R.push(['Other fixed allowances', fmt(r.other)]);
-  if (r.comm) R.push([`Performance commission, target achieved ${r.tgt}%`, fmt(r.comm)]);
-  const ot = (h, mult, label) => h && R.push([`${label}: ${P.r1(h)} h x ${P.r2(r.hr * mult)}`, fmt(r.hr * h * mult)]);
+  E(`Basic gross salary${r.t.emp < dim ? ` (part month, ${r.t.emp} of ${dim} days)` : ''}`, r.basic);
+  E('Transportation allowance', r.transport);
+  if (r.incentive) E('Incentive monthly payout', r.incentive);
+  if (r.other) E('Other fixed allowances', r.other);
+  if (r.comm) E(`Performance commission, target achieved ${r.tgt}%`, r.comm);
+  const ot = (h, mult, label) => h && E(`${label}: ${P.r1(h)} h x ${P.r2(r.hr * mult)}`, r.hr * h * mult);
   ot(r.otD, cfg.otDay, 'Overtime, day');
   ot(r.otN, cfg.otNight, 'Overtime, night');
   ot(r.otF, cfg.otFri, 'Friday work');
@@ -132,23 +147,23 @@ function slipRows(r, m, cfg, extras) {
   ot(r.otH, cfg.otHol, 'Public holiday work');
   (extras.visits || []).forEach(vp => {
     const v = vp.v;
-    R.push([`Site visit ${v.date}, ${v.city} (${v.days || 1} d, ${v.nights || 0} n): allowance${vp.pd ? ' and per diem' : ''}`, fmt(vp.allow + vp.pd)]);
-    if (vp.tr) R.push(['   Transport reimbursed', fmt(vp.tr)]);
-    if (vp.ac) R.push(['   Accommodation reimbursed', fmt(vp.ac)]);
-    if (vp.ml) R.push(['   Meals reimbursed', fmt(vp.ml)]);
+    E(`Site visit ${v.date}, ${v.city} (${v.days || 1} d, ${v.nights || 0} n): allowance${vp.pd ? ' and per diem' : ''}`, vp.allow + vp.pd);
+    if (vp.tr) E('   Transport reimbursed', vp.tr);
+    if (vp.ac) E('   Accommodation reimbursed', vp.ac);
+    if (vp.ml) E('   Meals reimbursed', vp.ml);
   });
-  (extras.expenses || []).forEach(x => R.push([`Expense claim ${x.date}: ${x.type}`, fmt(x.amount)]));
-  (extras.adjustments || []).filter(a => a.type === 'add').forEach(a => R.push([`${a.label}${a.taxable ? '' : ' (not taxed)'}`, fmt(a.amount)]));
-  R.push(['Total earnings', fmt(r.earn), 'tot']);
+  (extras.expenses || []).forEach(x => E(`Expense claim ${x.date}: ${x.type}`, x.amount));
+  (extras.adjustments || []).filter(a => a.type === 'add').forEach(a => E(`${a.label}${a.taxable ? '' : ' (not taxed)'}`, a.amount));
+  R.push(['Total earnings', earnSum.toLocaleString('en-US'), 'tot']);
   R.push(['Deductions', '', 'sec']);
-  if (r.absDed) R.push([`Absence: ${r.unpaidDays} unpaid day${r.unpaidDays > 1 ? 's' : ''}`, `-${fmt(r.absDed)}`]);
-  if (r.lateDed) R.push([`Late arrival: ${r.t.late} minutes`, `-${fmt(r.lateDed)}`]);
-  (extras.adjustments || []).filter(a => a.type !== 'add').forEach(a => R.push([a.label, `-${fmt(a.amount)}`]));
-  R.push([`Social insurance, employee share ${cfg.insEmp}% on ${fmt(r.insBase)}`, `-${fmt(r.insEmp)}`]);
+  if (r.absDed) D(`Absence: ${r.unpaidDays} unpaid day${r.unpaidDays > 1 ? 's' : ''}`, r.absDed);
+  if (r.lateDed) D(`Late arrival: ${r.t.late} minutes`, r.lateDed);
+  (extras.adjustments || []).filter(a => a.type !== 'add').forEach(a => D(a.label, a.amount));
+  D(`Social insurance, employee share ${cfg.insEmp}% on ${fmt(r.insBase)}`, r.insEmp);
   // HR Portal D6: Martyrs and Veterans of War Fund - only shown once Finance sets a rate above 0.
-  if (r.martyrsAmt) R.push([`Martyrs and Veterans of War Fund, ${cfg.martyrsPct}% on ${fmt(r.insBase)}`, `-${fmt(r.martyrsAmt)}`]);
-  R.push(['Income tax', `-${fmt(r.tax)}`]);
-  R.push(['Net pay (EGP)', fmt(r.net), 'net']);
+  if (r.martyrsAmt) D(`Martyrs and Veterans of War Fund, ${cfg.martyrsPct}% on ${fmt(r.insBase)}`, r.martyrsAmt);
+  D('Income tax', r.tax);
+  R.push(['Net pay (EGP)', (earnSum - dedSum).toLocaleString('en-US'), 'net']);
   return R;
 }
 

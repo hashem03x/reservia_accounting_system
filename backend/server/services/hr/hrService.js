@@ -83,7 +83,16 @@ async function createEmployee(body, ctx) {
   // treats any non-positive value this way), not 0 - a stored 0 round-tripped through decryption
   // and displayed as the literal digit "0" in the override field, instead of the intended blank.
   const full = Object.assign({ basic: 0, transport: 0, incentive: 0, commission: 0, other: 0, insBase: null }, pay);
-  const doc = await M.HrEmployee.create(Object.assign(o, { payBox: crypto.seal(full), createdBy: ctx.user?._id, updatedBy: ctx.user?._id }));
+  let doc;
+  try {
+    doc = await M.HrEmployee.create(Object.assign(o, { payBox: crypto.seal(full), createdBy: ctx.user?._id, updatedBy: ctx.user?._id }));
+  } catch (err) {
+    // The exists() pre-check above has a race window between two concurrent creates with the same
+    // code (both can pass it before either writes) - the unique index (hrModels.js) is the real
+    // backstop, so a lost race surfaces the same friendly message instead of a raw E11000/500.
+    if (err?.code === 11000) throw new ApiError(`Employee code ${o.code} is already used.`, 409);
+    throw err;
+  }
   await audit(ctx, 'employees', doc._id, 'create', null, { ...o, pay: full });
   return C.shapeEmployee(doc.toObject(), ctx.role);
 }
@@ -104,7 +113,12 @@ async function updateEmployee(id, body, ctx) {
   Object.assign(doc, o);
   if (payTouched || !crypto.isEncrypted(doc.payBox)) doc.payBox = crypto.seal(newPay);
   doc.updatedBy = ctx.user?._id;
-  await doc.save();
+  try {
+    await doc.save();
+  } catch (err) {
+    if (err?.code === 11000) throw new ApiError(`Employee code ${o.code} is already used.`, 409);
+    throw err;
+  }
   await audit(ctx, 'employees', doc._id, 'update', { ...pick(before, Object.keys(o)), pay: payTouched ? oldPay : undefined }, { ...o, pay: payTouched ? newPay : undefined });
   return C.shapeEmployee(doc.toObject(), ctx.role);
 }
@@ -495,14 +509,19 @@ async function cleanForm(ft, b, engine) {
   return { f, warnings, leaveBalanceExceeded };
 }
 
-async function unpostLeave(formId, ctx) {
+async function unpostLeave(formId, employeeId, ctx) {
   const tag = `HR-F01:${formId}`;
-  const docs = await M.HrAttendance.find({}).lean();
+  // Scoped to the one employee this form belongs to - a leave form can only ever have tagged this
+  // employee's own attendance, so scanning every employee's attendance history was pure waste.
+  const docs = await M.HrAttendance.find({ employee: employeeId }).lean();
   for (const a of docs) {
     const hit = Object.keys(a.days || {}).filter(dd => a.days[dd]?.n === tag);
     if (!hit.length) continue;
     const run = await C.runOf(a.month);
     if (run && run.status !== 'draft') continue;
+    // Mirrors postVisitDays' own guard - an approved timesheet is never silently mutated, even
+    // under skipLocks:true (which only bypasses the "is the MONTH's payroll run open" check below).
+    if (a.approval?.at) continue;
     await writeDays(a.employee, a.month, Object.fromEntries(hit.map(dd => [`${a.month}-${dd}`, null])), ctx, { skipLocks: true, action: 'leave-unpost' });
   }
 }
@@ -520,6 +539,10 @@ async function postLeave(form, ctx) {
   for (const month of Object.keys(months)) {
     const run = await C.runOf(month);
     if (run && run.status !== 'draft') continue;
+    // Mirrors postVisitDays' own guard - an approved timesheet must stay exactly as approved, even
+    // though a later leave decision is still allowed to go through for months that aren't locked.
+    const a = await M.HrAttendance.findOne({ employee: form.employee, month }).lean();
+    if (a?.approval?.at) continue;
     const { engine: em } = await C.loadMonth(month);
     const upd = {};
     months[month].forEach(dt => {
@@ -567,21 +590,45 @@ async function saveForm(id, body, ctx) {
   return { form: doc.toObject(), warnings };
 }
 
+/**
+ * Re-checks the Annual/Casual leave balance cap AT APPROVAL TIME, not only when the request was
+ * created (cleanForm/saveForm's own check). Several Pending requests for the same employee can
+ * each individually pass that creation-time check (none of their siblings are Approved yet), then
+ * all be approved later with nobody re-validating the cumulative total - this is the re-check that
+ * closes that gap. Excludes this form's OWN days from the "already used" count when it is already
+ * Approved (re-deciding an unchanged, already-Approved form must never look like new consumption).
+ */
+async function assertLeaveBalanceForApproval(doc, before, ctx, dnote) {
+  if (doc.ft !== 'leave' || !['Annual leave', 'Casual leave'].includes(doc.ltype)) return;
+  const year = String(doc.from).slice(0, 4);
+  const { engine } = await C.loadMonth(String(doc.from).slice(0, 7));
+  const e = engine.empById(String(doc.employee));
+  if (!e) return;
+  const alreadyCountedOwnDays = before.status === 'Approved' ? +doc.days || 0 : 0;
+  const used = engine.leaveUsed(String(doc.employee), year) - alreadyCountedOwnDays;
+  const ent = engine.leaveEnt(e, year);
+  if (used + (+doc.days || 0) <= ent) return;
+  if (ctx.role !== 'md') throw new ApiError('This request exceeds the remaining leave balance. Only the MD can approve it anyway, with a reason.', 403);
+  if (!dnote) throw new ApiError('This request exceeds the remaining leave balance. Give a reason (decision note) to approve it anyway.', 400);
+}
+
 async function decideForm(id, body, ctx) {
   const doc = await found(M.HrForm, id, 'Form');
   await C.assertCanDecideFor(ctx, doc.employee);
   const status = body.status;
   if (!P.FORM_STATUS.includes(status)) throw new ApiError('Status is Pending, Approved or Rejected.', 400);
   const before = plain(doc);
+  const dnote = str(body.dnote, 500) || '';
+  if (status === 'Approved') await assertLeaveBalanceForApproval(doc, before, ctx, dnote);
   doc.status = status;
   doc.by = str(body.by, 120) || C.userName(ctx.user);
   doc.decidedBy = ctx.user?._id;
   doc.decided = status === 'Pending' ? undefined : before.status === status && before.decided ? before.decided : C.todayCairo();
-  doc.dnote = str(body.dnote, 500) || '';
+  doc.dnote = dnote;
   await doc.save();
   const effects = {};
   if (doc.ft === 'leave') {
-    await unpostLeave(String(doc._id), ctx);
+    await unpostLeave(String(doc._id), doc.employee, ctx);
     if (status === 'Approved') effects.attendanceDays = await postLeave(doc.toObject(), ctx);
   }
   if (doc.ft === 'visit' && status === 'Approved' && !doc.visit) {
@@ -597,7 +644,7 @@ async function decideForm(id, body, ctx) {
 async function deleteForm(id, ctx) {
   assertRole(ctx, EDIT_ROLES, 'delete forms');
   const doc = await found(M.HrForm, id, 'Form');
-  if (doc.ft === 'leave') await unpostLeave(String(doc._id), ctx);
+  if (doc.ft === 'leave') await unpostLeave(String(doc._id), doc.employee, ctx);
   await doc.deleteOne();
   await audit(ctx, 'forms', doc._id, 'delete', plain(doc), null);
 }

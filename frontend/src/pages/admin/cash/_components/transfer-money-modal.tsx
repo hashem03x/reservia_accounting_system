@@ -3,14 +3,17 @@ import { useWarehouses } from "@/context/WarehousesContext";
 import { outlineIcons } from "@/components/icons";
 import Modal from "@/components/ui/modal";
 import ErrorAlert from "@/components/ui/error-alert";
+import PaymentAccountSelect from "@/components/global/payment-account-select";
 import { Button, NumberInput, Select } from "@mantine/core";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
-import { paymentMethodsArray } from "@/utils/constants/payment-methods";
-import { Payment, PaymentMethod } from "@/types/payment";
+import { Payment } from "@/types/payment";
+import { Currency } from "@/types/currency";
+import { BASE_CURRENCY_CODE } from "@/utils/helpers/currency-math";
 import { PaginatedData } from "@/types/global";
 import useWarehouseHelpers from "@/hooks/useWarehouseHelpers";
+import { buildTransferMoneyPayload } from "./transfer-money-payload";
 
 export default function TransferMoneyModal({
   opened,
@@ -30,12 +33,26 @@ export default function TransferMoneyModal({
   const [sourceWarehouseId, setSourceWarehouseId] = useState("");
   const [targetWarehouseId, setTargetWarehouseId] = useState("");
   const [amount, setAmount] = useState<string | number>("");
-  const [withdrawMethod, setWithdrawMethod] = useState<PaymentMethod | null>(null);
-  const [depositMethod, setDepositMethod] = useState<PaymentMethod | null>(null);
+  const [withdrawAccount, setWithdrawAccount] = useState("");
+  const [depositAccount, setDepositAccount] = useState("");
+  // Optional foreign-currency transfer - converted to EGP server-side via the real Currency
+  // Manager rate for the transfer date (never a client-supplied rate, see
+  // services/accounting/moneyTransferService.js). EGP (the default) sends `amount` as-is.
+  const [currencyCode, setCurrencyCode] = useState(BASE_CURRENCY_CODE);
+  const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const isForeign = currencyCode !== BASE_CURRENCY_CODE;
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler({
     initialData: null,
   });
+
+  useEffect(() => {
+    if (!opened) return;
+    privateRequest({ url: "currencies", params: { status: "active", limit: 200 }, language })
+      .then((res) => setCurrencies(res.data || []))
+      .catch(() => setCurrencies([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened]);
 
   const warehouseOptions = useMemo(
     () =>
@@ -48,15 +65,12 @@ export default function TransferMoneyModal({
     [warehouses],
   );
 
-  const paymentMethodOptions = useMemo(
-    () =>
-      (paymentMethodsArray ?? [])
-        .filter((method) => method && typeof method === "object" && method.value && method.label)
-        .map((method) => ({
-          value: method.value,
-          label: translate(method.label?.en ?? "", method.label?.ar ?? ""),
-        })),
-    [translate],
+  const currencyOptions = useMemo(
+    () => [
+      { value: BASE_CURRENCY_CODE, label: BASE_CURRENCY_CODE },
+      ...currencies.filter((c) => c.code !== BASE_CURRENCY_CODE).map((c) => ({ value: c.code, label: `${c.code} - ${c.name}` })),
+    ],
+    [currencies],
   );
 
   async function handleSubmit(e: React.FormEvent) {
@@ -67,13 +81,14 @@ export default function TransferMoneyModal({
         language,
         method: "POST",
         url: "transfer/money",
-        data: {
-          from_warehouse_id: sourceWarehouseId,
-          to_warehouse_id: targetWarehouseId,
+        data: buildTransferMoneyPayload({
+          fromWarehouseId: sourceWarehouseId,
+          toWarehouseId: targetWarehouseId,
+          withdrawAccount,
+          depositAccount,
           amount,
-          withdraw_method: withdrawMethod,
-          deposit_method: depositMethod,
-        },
+          currencyCode,
+        }),
       });
 
       setPaginatedPayments((prev) => {
@@ -85,8 +100,8 @@ export default function TransferMoneyModal({
         };
       });
 
-      updateWarehouseBalanceById(sourceWarehouseId, +amount, "out");
-      updateWarehouseBalanceById(targetWarehouseId, +amount, "in");
+      updateWarehouseBalanceById(sourceWarehouseId, +res.data.amount, "out");
+      updateWarehouseBalanceById(targetWarehouseId, +res.data.amount, "in");
 
       close();
     });
@@ -99,8 +114,9 @@ export default function TransferMoneyModal({
       setSourceWarehouseId("");
       setTargetWarehouseId("");
       setAmount("");
-      setWithdrawMethod(null);
-      setDepositMethod(null);
+      setWithdrawAccount("");
+      setDepositAccount("");
+      setCurrencyCode(BASE_CURRENCY_CODE);
       setError("");
     }, 250);
   }
@@ -137,8 +153,8 @@ export default function TransferMoneyModal({
             onClick={() => {
               setSourceWarehouseId(targetWarehouseId);
               setTargetWarehouseId(sourceWarehouseId);
-              setWithdrawMethod(depositMethod);
-              setDepositMethod(withdrawMethod);
+              setWithdrawAccount(depositAccount);
+              setDepositAccount(withdrawAccount);
             }}
             variant="light"
             color="gray"
@@ -148,39 +164,33 @@ export default function TransferMoneyModal({
           </Button>
         </div>
 
-        <NumberInput
-          value={amount}
-          onChange={(value) => setAmount(value)}
-          label={translate("Amount", "المبلغ")}
-          placeholder={translate("Enter amount", "أدخل المبلغ")}
-          min={0}
-          decimalScale={2}
-          hideControls
-          required
-        />
+        <div className="flex flex-col gap-2 md:flex-row">
+          <NumberInput
+            value={amount}
+            onChange={setAmount}
+            label={isForeign ? translate(`Amount (${currencyCode})`, `المبلغ (${currencyCode})`) : translate("Amount", "المبلغ")}
+            placeholder={translate("Enter amount", "أدخل المبلغ")}
+            min={0}
+            decimalScale={2}
+            hideControls
+            required
+            flex={1}
+          />
+
+          <Select
+            label={translate("Currency", "العملة")}
+            value={currencyCode}
+            onChange={(v) => setCurrencyCode(v || BASE_CURRENCY_CODE)}
+            data={currencyOptions}
+            allowDeselect={false}
+            flex={1}
+          />
+        </div>
 
         <div className="flex flex-col gap-2 md:flex-row">
-          <Select
-            clearable
-            value={withdrawMethod}
-            onChange={(value) => setWithdrawMethod(value as PaymentMethod | null)}
-            data={paymentMethodOptions}
-            label={translate("Withdraw Method", "طريقة السحب")}
-            placeholder={translate("Select withdraw method", "اختر طريقة السحب")}
-            required
-            flex={1}
-          />
+          <PaymentAccountSelect value={withdrawAccount} onChange={setWithdrawAccount} label={translate("Withdraw Account", "حساب السحب")} required />
 
-          <Select
-            clearable
-            value={depositMethod}
-            onChange={(value) => setDepositMethod(value as PaymentMethod | null)}
-            data={paymentMethodOptions}
-            label={translate("Deposit Method", "طريقة الإيداع")}
-            placeholder={translate("Select deposit method", "اختر طريقة الإيداع")}
-            required
-            flex={1}
-          />
+          <PaymentAccountSelect value={depositAccount} onChange={setDepositAccount} label={translate("Deposit Account", "حساب الإيداع")} required />
         </div>
 
         <div className="flex gap-2">
@@ -191,7 +201,7 @@ export default function TransferMoneyModal({
           <Button
             type="submit"
             loading={loading}
-            disabled={!sourceWarehouseId || !targetWarehouseId || !amount || !withdrawMethod || !depositMethod}
+            disabled={!sourceWarehouseId || !targetWarehouseId || !amount || !withdrawAccount || !depositAccount}
             fullWidth
           >
             {title}

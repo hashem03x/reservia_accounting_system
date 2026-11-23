@@ -12,8 +12,9 @@ const router = express.Router();
 // Protect all routes after this middleware
 router.use(authController.protect);
 
-// Registered before '/:id' so it is never matched as an id.
+// Registered before '/:id' so neither is ever matched as an id.
 router.get('/account-options', checkUserPermissions({ resource: Resources.expenses, action: Actions.read }), expenseController.getExpenseAccountOptions);
+router.get('/liability-account-options', checkUserPermissions({ resource: Resources.expenses, action: Actions.read }), expenseController.getLiabilityAccountOptions);
 
 router
   .route('/')
