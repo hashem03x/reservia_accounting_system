@@ -1,5 +1,4 @@
 const ApiError = require('../utils/apiError');
-const { isGlobalSuperAdmin } = require('../utils/systemAccess');
 
 // Reservia Commercial access gate - mirrors middleware/crmAccess.js exactly (active-membership
 // check, then a role check, both via next(new ApiError(...))). Gates directly on the Commercial
@@ -33,13 +32,19 @@ function commercialMembership(user) {
 
 const hasActiveCommercialMembership = user => commercialMemberships(user).length > 0;
 
-/** Requires active Commercial membership; attaches req.commercialRole(s) for downstream role/permission checks. */
+/**
+ * Requires active Commercial membership; attaches req.commercialRole(s) for downstream
+ * role/permission checks.
+ *
+ * Go-live Developer Pack, section 3/4: platform administration and the Global Super Admin test
+ * flag must NEVER automatically grant MD approval authority "simply by possessing administrator
+ * permissions" - a super admin now needs a REAL, explicit Commercial membership like anyone else.
+ * This file used to force req.commercialRole(s) = ['md'] for any globalSuperAdmin account; that
+ * was the exact mechanism behind the 23 Nov incident (a Commercial Director account completing an
+ * approval stage that should have required the MD's explicit `md` role). Removed - see
+ * services/commercial/approvalService.js's matching fix for the segregation-of-duties waiver.
+ */
 exports.requireCommercialAccess = (req, res, next) => {
-  if (isGlobalSuperAdmin(req.user)) {
-    req.commercialRoles = ['md']; // the system-owning role (utils/systemsRegistry.js#SYSTEM_OWNER_ROLES)
-    req.commercialRole = 'md';
-    return next();
-  }
   const memberships = commercialMemberships(req.user);
   if (!memberships.length) {
     return next(new ApiError('You do not have access to the Deal Engine. Contact your administrator.', 403));
@@ -51,7 +56,6 @@ exports.requireCommercialAccess = (req, res, next) => {
 
 /** Requires active Commercial membership AND one of the given Commercial roles. Always run after requireCommercialAccess. */
 exports.requireCommercialRole = (...roles) => (req, res, next) => {
-  if (isGlobalSuperAdmin(req.user)) return next();
   if (!req.commercialRoles?.length) {
     return next(new ApiError('You do not have access to the Deal Engine. Contact your administrator.', 403));
   }

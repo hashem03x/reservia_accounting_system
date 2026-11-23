@@ -37,13 +37,31 @@ test('Won requires a valid positive contract value', () => {
   assert.ok(validateStageTransition(base({ from: 'negotiation', to: 'won', valueEgp: -100 })).includes('Enter the contract value.'));
 });
 
-test('contracts above EGP 1,000,000 need MD approval unless the actor is the MD', () => {
-  const tooMuch = base({ from: 'negotiation', to: 'won', valueEgp: 1_000_001, role: 'sales', mdApproved: false });
-  assert.ok(validateStageTransition(tooMuch).includes('Contracts above EGP 1M need MD approval.'));
+test('contracts above EGP 1,500,000 need MD approval unless the actor is the MD', () => {
+  const tooMuch = base({ from: 'negotiation', to: 'won', valueEgp: 1_500_001, role: 'sales', mdApproved: false });
+  assert.ok(validateStageTransition(tooMuch).includes('Contracts above EGP 1,500,000 need MD approval.'));
   assert.deepEqual(validateStageTransition({ ...tooMuch, mdApproved: true }), []);
   assert.deepEqual(validateStageTransition({ ...tooMuch, role: 'md' }), []);
   // Exactly at the threshold does not require approval - only strictly above it.
-  assert.deepEqual(validateStageTransition(base({ from: 'negotiation', to: 'won', valueEgp: 1_000_000, role: 'sales' })), []);
+  assert.deepEqual(validateStageTransition(base({ from: 'negotiation', to: 'won', valueEgp: 1_500_000, role: 'sales' })), []);
+});
+
+// Go-live Developer Pack section 5.5: Sales/Technical Engineers' real CRM role (sales_viewer)
+// and the Marketing Coordinator can never mark a lead Won, regardless of value.
+test('sales_viewer and marketing can never mark a lead Won', () => {
+  const attempt = role => base({ from: 'negotiation', to: 'won', valueEgp: 500000, role });
+  assert.ok(validateStageTransition(attempt('sales_viewer')).includes('This role cannot mark a lead Won.'));
+  assert.ok(validateStageTransition(attempt('marketing')).includes('This role cannot mark a lead Won.'));
+  assert.deepEqual(validateStageTransition(attempt('bdm')), []);
+  assert.deepEqual(validateStageTransition(attempt('commercial_director')), []);
+});
+
+// Go-live Developer Pack section 5.5, note 3: "Sales and Technical Engineers see all leads
+// read-only... they cannot move stages." sales_viewer gets a full block, unlike the legacy
+// `technical` role's older site_survey/proposal_sent exception (left untouched above).
+test('sales_viewer can never move a lead to any stage', () => {
+  const errors = validateStageTransition(base({ from: 'new', to: 'contacted', role: 'sales_viewer' }));
+  assert.ok(errors.includes('This role cannot move a lead to a different stage - view only, plus your own assigned tasks.'));
 });
 
 // Change Request 2, item 1: strict progression replaces the old "no forward restriction" rule.

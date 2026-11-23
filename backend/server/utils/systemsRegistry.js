@@ -53,7 +53,9 @@ exports.SYSTEMS = {
   // default working role, full CRM admin per the go-live matrix is held via `admin` instead - see
   // notes below), technical (technical engineer - restricted to moving a lead to Site survey or
   // Proposal sent only, per utils/crm/stageRules.js), bdm (Business Development Manager - full
-  // admin-equivalent CRM rights per the go-live matrix), sales_viewer (Sales/Technical Engineers'
+  // admin-equivalent CRM rights per the go-live matrix), commercial_director (S&C Director's CRM
+  // role per section 5.2 - "Edit" throughout, same string as the Deal Engine role of the same
+  // name, each system interprets it independently), sales_viewer (Sales/Technical Engineers'
   // actual CRM role per section 5.2 - read-only leads, edit only tasks/activities assigned to
   // them), marketing (Marketing Coordinator - every stage and Lost, never Won/archive/delete).
   // Deliberately NOT the ERP's role enum - see this file's own header comment on why the
@@ -63,7 +65,7 @@ exports.SYSTEMS = {
     name: 'CRM',
     description: 'Customer relationships, leads, interactions, and customer lifecycle management.',
     implemented: true,
-    roles: ['md', 'admin', 'sales', 'technical', 'bdm', 'sales_viewer', 'marketing'],
+    roles: ['md', 'admin', 'sales', 'technical', 'bdm', 'commercial_director', 'sales_viewer', 'marketing'],
   },
   // Reservia Commercial - engineering estimation, BOQ, pricing and quotation workflow for solar
   // projects (On-Grid, Off-Grid, Agriculture Pumping, Utility Scale, Street Lighting, Solar Water

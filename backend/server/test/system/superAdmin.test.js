@@ -9,11 +9,16 @@ const mongoose = require('mongoose');
 // Engine tests above/below this guard never touch a session and are unaffected.
 let crmTransactionsSupported = false;
 
-// Feature 5 - the Global Super Administrator. Verifies the real mechanism end to end at the
-// service layer (not just reading the code): membership bypass (systemAccess.js), the Deal Engine
-// approval-role bypass with its audit trail (approvalService.js + superAdminOverrideLogModel.js),
-// segregation of duties still enforced even for this account, and - critically - that an ORDINARY
-// user sees none of this (no leaked access).
+// Feature 5 - the Global Super Administrator. Previously let a globalSuperAdmin-flagged account
+// sign ANY Deal Engine approval stage regardless of role, and waived segregation of duties for
+// consecutive approvals by the same account - this was the exact mechanism behind the 23 Nov 2026
+// go-live incident (a Commercial Director account completed an approval stage that should have
+// required the MD's explicit `md` role). Go-live Developer Pack section 3/4: "the platform
+// administrator must not be able to impersonate the MD approval authority simply by possessing
+// administrator permissions." Both bypasses are now removed (services/commercial/
+// approvalService.js, middleware/commercialAccess.js, middleware/crmAccess.js): a super admin
+// needs a REAL, explicit module membership and is bound by the SAME role/segregation-of-duties
+// rules as everyone else. This file now verifies the ABSENCE of the old bypass, end to end.
 //
 // Self-skips without TEST_DB_URI, like every other DB-backed suite in this repo.
 const DB_URI = process.env.TEST_DB_URI;
@@ -83,40 +88,40 @@ maybeTest('getEffectiveSystemAccess: super admin is active (with the owning role
   assert.equal(ordinaryAccess.COMMERCIAL.active, false);
 });
 
-maybeTest('Deal Engine: super admin can sign a stage that requires a role they do not hold, and the override is logged', async () => {
+maybeTest('Deal Engine: a super admin acting under a role that cannot sign the stage is rejected exactly like anyone else - no bypass, nothing logged', async () => {
   const revision = await CommercialRevision.create({
     project: new mongoose.Types.ObjectId(),
     revisionNumber: 1,
     pricing: { netExclVat: 500000 }, // below the MD threshold - mdRequired stays false
   });
 
-  // STAGE1 requires 'sales'/'technical' - super admin's own Deal Engine role is unset/whatever the
-  // controller resolved (simulated here as 'md', matching what requireCommercialAccess now sets).
-  const updated = await approvalService.setStageStatus(revision._id, 'STAGE1', 'Approved', {
-    userId: superAdmin._id, userRole: 'md', note: 'super admin test', actor: superAdmin,
-  });
-  assert.equal(updated.stage1.status, 'Approved');
+  // STAGE1 requires 'sales'/'technical' - acting as 'md' (even as the super admin) is refused.
+  await assert.rejects(
+    approvalService.setStageStatus(revision._id, 'STAGE1', 'Approved', { userId: superAdmin._id, userRole: 'md', note: 'super admin test' }),
+    /can only be signed by/
+  );
 
   const logs = await SuperAdminOverrideLog.find({ targetId: revision._id });
-  assert.equal(logs.length, 1);
-  assert.equal(logs[0].action, 'commercial.approval.role_override');
-  assert.equal(String(logs[0].actor), String(superAdmin._id));
-  assert.equal(logs[0].details.stage, 'STAGE1');
+  assert.equal(logs.length, 0, 'the role_override mechanism no longer exists - nothing is ever logged for it');
 });
 
-maybeTest('Deal Engine: by explicit instruction, the super admin CAN now also sign Stage 2 of the SAME revision - segregation of duties is waived for this account, and the waiver is logged', async () => {
+maybeTest('Deal Engine: segregation of duties applies to a super admin too - signing Stage 1 then Stage 2 of the SAME revision as the same person is refused, no waiver', async () => {
   const revision = await CommercialRevision.create({
     project: new mongoose.Types.ObjectId(),
     revisionNumber: 1,
     pricing: { netExclVat: 500000 },
   });
-  await approvalService.setStageStatus(revision._id, 'STAGE1', 'Approved', { userId: superAdmin._id, userRole: 'md', actor: superAdmin });
-  const updated = await approvalService.setStageStatus(revision._id, 'STAGE2', 'Approved', { userId: superAdmin._id, userRole: 'md', actor: superAdmin });
-  assert.equal(updated.stage2.status, 'Approved');
+  // The super admin acts under two DIFFERENT real roles here (sales for Stage 1, commercial_director
+  // for Stage 2) purely to isolate the segregation-of-duties check from the role check - the point
+  // is that being the SAME PERSON still blocks the second signature, super admin or not.
+  await approvalService.setStageStatus(revision._id, 'STAGE1', 'Approved', { userId: superAdmin._id, userRole: 'sales' });
+  await assert.rejects(
+    approvalService.setStageStatus(revision._id, 'STAGE2', 'Approved', { userId: superAdmin._id, userRole: 'commercial_director' }),
+    /already signed Stage 1/
+  );
 
   const logs = await SuperAdminOverrideLog.find({ targetId: revision._id, action: 'commercial.approval.segregation_of_duties_override' });
-  assert.equal(logs.length, 1);
-  assert.equal(logs[0].details.alsoSigned, 'STAGE1');
+  assert.equal(logs.length, 0, 'the segregation-of-duties waiver no longer exists - nothing is ever logged for it');
 });
 
 maybeTest('Deal Engine: an ORDINARY user (even one with both sales and commercial_director roles) is still blocked by segregation of duties - the waiver is super-admin-only, no leak', async () => {

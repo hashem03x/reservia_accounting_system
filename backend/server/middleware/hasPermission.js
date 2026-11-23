@@ -1,6 +1,6 @@
 const User = require('../models/userModel');
 const ApiError = require('../utils/apiError');
-const { hasActiveErpMembership, isGlobalSuperAdmin } = require('../utils/systemAccess');
+const { hasActiveErpMembership } = require('../utils/systemAccess');
 
 // async function hasPermission(roleId, resource, action) {
 //     // Step 1: Populate user roles and permissions  can use it
@@ -44,9 +44,16 @@ const { hasActiveErpMembership, isGlobalSuperAdmin } = require('../utils/systemA
 // second, drift-prone reimplementation. Deliberately does NOT check ERP membership itself - that
 // is the route's own `checkUserPermissions` gate's job, already run before any validator;  this
 // helper is for an ADDITIONAL business rule layered on top of an already-authorized request.
+// Go-live Developer Pack, section 3/4: a business role (like Actions.approve - MD-only PO
+// approval, F8/D1) must never be granted automatically "simply by possessing administrator
+// permissions". role==='admin' is the REAL, explicit ERP role (what the MD's account actually
+// holds) and stays a full bypass; the separate globalSuperAdmin TEST flag no longer is - same
+// fix as middleware/crmAccess.js/commercialAccess.js/hrAccess.js/websiteAccess.js. A super admin
+// still gets into the ERP system at all (utils/systemAccess.js#hasActiveErpMembership, unchanged -
+// that is general access, not a specific approval authority), but now needs a real permission
+// grant for any specific resource:action, exactly like an ordinary account.
 function userHasPermission(user, resource, action) {
   if (user?.role === 'admin') return true;
-  if (isGlobalSuperAdmin(user)) return true;
   return (user?.permissions || []).some(permission => permission.resource === resource && permission.actions.includes(action));
 }
 

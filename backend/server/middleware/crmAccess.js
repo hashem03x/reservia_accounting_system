@@ -1,5 +1,4 @@
 const ApiError = require('../utils/apiError');
-const { isGlobalSuperAdmin } = require('../utils/systemAccess');
 
 // Reservia CRM access gate - mirrors middleware/hasPermission.js's ERP gate exactly in shape
 // (active-membership check, then an authorization check, both via next(new ApiError(...))), but
@@ -22,12 +21,18 @@ function crmMembership(user) {
 
 const hasActiveCrmMembership = user => !!crmMembership(user)?.isActive;
 
-/** Requires active CRM membership; attaches `req.crmRole` for downstream role checks. */
+/**
+ * Requires active CRM membership; attaches `req.crmRole` for downstream role checks.
+ *
+ * Go-live Developer Pack, section 3/4: platform administration (isAdmin/platformAdmin) and the
+ * Global Super Admin test flag must NEVER automatically grant MD approval authority or any other
+ * business role "simply by possessing administrator permissions" - a super admin now needs a
+ * REAL, explicit CRM membership like anyone else. This file used to force req.crmRole = 'md' for
+ * any globalSuperAdmin account; that was the exact class of bypass behind the 23 Nov incident (a
+ * Commercial Director account completing an approval stage that should have required the MD's
+ * explicit `md` role - see services/commercial/approvalService.js's own history). Removed.
+ */
 exports.requireCrmAccess = (req, res, next) => {
-  if (isGlobalSuperAdmin(req.user)) {
-    req.crmRole = 'md'; // the system-owning role (utils/systemsRegistry.js#SYSTEM_OWNER_ROLES)
-    return next();
-  }
   const membership = crmMembership(req.user);
   if (!membership?.isActive) {
     return next(new ApiError('You do not have access to the CRM system. Contact your administrator.', 403));
@@ -38,7 +43,6 @@ exports.requireCrmAccess = (req, res, next) => {
 
 /** Requires active CRM membership AND one of the given CRM roles. Always run after requireCrmAccess. */
 exports.requireCrmRole = (...roles) => (req, res, next) => {
-  if (isGlobalSuperAdmin(req.user)) return next();
   if (!req.crmRole) return next(new ApiError('You do not have access to the CRM system. Contact your administrator.', 403));
   if (!roles.includes(req.crmRole)) return next(new ApiError('You are not allowed to perform this action in the CRM.', 403));
   return next();
