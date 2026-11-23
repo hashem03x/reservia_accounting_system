@@ -18,46 +18,61 @@
 exports.SYSTEM_IDS = ['ERP', 'HR', 'CRM', 'COMMERCIAL', 'WEBSITE'];
 
 exports.SYSTEMS = {
+  // 'viewer' and 'po_drafter' added for the go-live roles matrix (Developer Pack, section 5.2):
+  // viewer is read-only across ERP (the S&C Director); po_drafter may create/edit a purchase
+  // order draft but never approve/open one (BDM, Sales Engineers, Marketing Coordinator). This
+  // array mirrors models/userModel.js's `role` enum exactly, same as the header comment says.
   ERP: {
     id: 'ERP',
     name: 'ERP',
     description: 'Accounting, finance, procurement, projects, and enterprise operations.',
     implemented: true,
-    roles: ['admin', 'moderator', 'operator'],
+    roles: ['admin', 'moderator', 'operator', 'viewer', 'po_drafter'],
   },
-  // Reservia HR Portal (HR Portal Developer Spec, 11 Nov 2026). Roles are the spec's section 2:
-  // md (everything, approves payroll), hr (HR officer), manager (line manager - team time, never
-  // pay), finance (register, journal, ERP post; no edits to people or time). See
-  // middleware/hrAccess.js. Memberships stored while HR was a placeholder ('MEMBER') carry no
-  // permission and must be re-granted with a real role.
+  // Reservia HR Portal (HR Portal Developer Spec, 11 Nov 2026; roles matrix, go-live Developer
+  // Pack section 5.2/5.7). md (everything, approves payroll), hr (HR officer), manager (legacy
+  // line-manager role, kept for backward compatibility), finance (register, journal, ERP post; no
+  // edits to people or time), employee (every staff member gets this - self-service only: own
+  // profile/attendance/visits/claims/documents, no approval rights), line_manager (approves their
+  // own direct reports' attendance/visits/claims/timesheets via HrEmployee.mgrId - functionally
+  // the same capability as the legacy `manager` role; see services/hr/hrCore.js#assertCanDecideFor,
+  // which checks both). See middleware/hrAccess.js. Memberships stored while HR was a placeholder
+  // ('MEMBER') carry no permission and must be re-granted with a real role.
   HR: {
     id: 'HR',
     name: 'HR',
     description: 'People, contracts, time, site visits, expenses, payroll and approvals.',
     implemented: true,
-    roles: ['md', 'hr', 'manager', 'finance'],
+    roles: ['md', 'hr', 'manager', 'finance', 'employee', 'line_manager'],
     requireValidRole: true,
   },
-  // Reservia CRM (Developer Brief "Website, Amplitude and CRM") - lead-to-contract pipeline.
-  // Roles are the brief's own four: md (Managing Director - the only role that can approve >EGP 1M
-  // contracts, reopen a lost lead together with admin, and set targets), admin (admin officer -
-  // reassigns leads, reopens lost leads), sales (sales engineer - the default working role), and
-  // technical (technical engineer - restricted to moving a lead to Site survey or Proposal sent
-  // only, per utils/crm/stageRules.js). Deliberately NOT the ERP's role enum - see this file's own
-  // header comment on why the unimplemented systems never borrow ERP's vocabulary.
+  // Reservia CRM (Developer Brief "Website, Amplitude and CRM"; roles matrix, go-live Developer
+  // Pack section 5.2/5.5) - lead-to-contract pipeline. md (Managing Director - the only role that
+  // can approve >EGP 1.5M contracts, reopen a lost lead together with admin, and set targets),
+  // admin (admin officer - reassigns leads, reopens lost leads), sales (sales engineer - the
+  // default working role, full CRM admin per the go-live matrix is held via `admin` instead - see
+  // notes below), technical (technical engineer - restricted to moving a lead to Site survey or
+  // Proposal sent only, per utils/crm/stageRules.js), bdm (Business Development Manager - full
+  // admin-equivalent CRM rights per the go-live matrix), sales_viewer (Sales/Technical Engineers'
+  // actual CRM role per section 5.2 - read-only leads, edit only tasks/activities assigned to
+  // them), marketing (Marketing Coordinator - every stage and Lost, never Won/archive/delete).
+  // Deliberately NOT the ERP's role enum - see this file's own header comment on why the
+  // unimplemented systems never borrow ERP's vocabulary.
   CRM: {
     id: 'CRM',
     name: 'CRM',
     description: 'Customer relationships, leads, interactions, and customer lifecycle management.',
     implemented: true,
-    roles: ['md', 'admin', 'sales', 'technical'],
+    roles: ['md', 'admin', 'sales', 'technical', 'bdm', 'sales_viewer', 'marketing'],
   },
   // Reservia Commercial - engineering estimation, BOQ, pricing and quotation workflow for solar
   // projects (On-Grid, Off-Grid, Agriculture Pumping, Utility Scale, Street Lighting, Solar Water
   // Heaters). Roles mirror the two-stage-plus-MD commercial approval workflow: member (create/edit
   // projects, no approval rights), sales / technical (either can give the Stage 1 gross-profit
   // sign-off), commercial_director (Stage 2 allocations sign-off, opens only after Stage 1), md
-  // (final sign-off, required when net price excl. VAT is above the configured threshold).
+  // (final sign-off, required when net price excl. VAT is above the configured threshold), bdm
+  // (go-live section 5.2/5.4: full Deal Engine admin EXCEPT Pricing Config - see
+  // dealEnginePermissions.js), marketing (go-live section 5.4: Proposal and Feasibility view-only).
   // Deliberately NOT the ERP's role enum, same reasoning as CRM above.
   COMMERCIAL: {
     id: 'COMMERCIAL',
@@ -68,7 +83,7 @@ exports.SYSTEMS = {
     implemented: true,
     // 'procurement' (Deal Engine C18): maintains the approved supplier list and uploads supplier
     // price lists; the MD approves suppliers.
-    roles: ['md', 'commercial_director', 'sales', 'technical', 'procurement', 'member'],
+    roles: ['md', 'commercial_director', 'sales', 'technical', 'procurement', 'member', 'bdm', 'marketing'],
   },
   // Website Management (CMS for the public Reservia marketing site, Reservia_Website repo). Roles
   // are a simple content-authority ladder, not the ERP's resource:action matrix - see

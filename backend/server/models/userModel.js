@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const { moderatorPermission, userPermission, operatorPermission } = require('../utils/appConstant');
+const { moderatorPermission, userPermission, operatorPermission, viewerPermission, poDrafterPermission } = require('../utils/appConstant');
 const { taxInfoSchema, bankInfoSchema, businessDocumentSchema } = require('./shared/businessPartnerSchemas');
 const { getNextCustomerNumber } = require('../services/customer/customerNumberService');
 const { PaymentTerms } = require('../utils/paymentTerms');
@@ -38,7 +38,11 @@ const userSchema = mongoose.Schema(
       default: undefined,
     },
 
-    role: { type: String, default: 'user', enum: ['user', 'moderator', 'operator', 'admin'] },
+    // 'viewer' and 'po_drafter' added for the go-live roles matrix (Developer Pack, section 5.2):
+    // 'viewer' is read-only across ERP (the S&C Director); 'po_drafter' may create/edit a
+    // purchase order draft but never approve/open one (BDM, Sales Engineers, Marketing - see
+    // appConstant.js#Actions.approve and requisitionRoute.js's /:id/open route).
+    role: { type: String, default: 'user', enum: ['user', 'moderator', 'operator', 'admin', 'viewer', 'po_drafter'] },
 
     // We need to store the permissions for each 'moderator' and 'operator'.
     permissions: [
@@ -179,6 +183,8 @@ userSchema.methods.savePermissions = async function (next) {
   if (this.role === 'admin') this.permissions = [{ resource: 'all', actions: ['create', 'read', 'update', 'delete'] }];
   else if (this.role === 'moderator') this.permissions = moderatorPermission;
   else if (this.role === 'operator') this.permissions = operatorPermission;
+  else if (this.role === 'viewer') this.permissions = viewerPermission;
+  else if (this.role === 'po_drafter') this.permissions = poDrafterPermission;
   else this.permissions = userPermission;
 };
 
