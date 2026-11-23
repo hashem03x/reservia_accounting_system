@@ -2,7 +2,9 @@
 // backend/server/utils/crm/stageRules.js exactly, so the frontend's own copies of these
 // vocabularies can never drift from what the API actually accepts/returns.
 
-export type CrmRole = "md" | "admin" | "sales" | "technical";
+// bdm/commercial_director/sales_viewer/marketing added for the go-live Developer Pack's roles
+// matrix (section 5.2/5.5) - md/admin/sales/technical are the original Developer Brief roles.
+export type CrmRole = "md" | "admin" | "sales" | "technical" | "bdm" | "commercial_director" | "sales_viewer" | "marketing";
 
 export type CrmStage = "new" | "contacted" | "qualified" | "site_survey" | "proposal_sent" | "negotiation" | "won" | "lost";
 

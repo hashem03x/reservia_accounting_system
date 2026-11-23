@@ -180,7 +180,7 @@ export default function QuickStageChangeModal({
             autoFocus
             description={
               typeof valueEgp === "number" && valueEgp > MD_APPROVAL_THRESHOLD_EGP
-                ? translate("Contracts above EGP 1,000,000 need MD approval.", "العقود التي تزيد عن 1,000,000 جنيه تحتاج موافقة المدير العام.")
+                ? translate("Contracts above EGP 1,500,000 need MD approval.", "العقود التي تزيد عن 1,500,000 جنيه تحتاج موافقة المدير العام.")
                 : undefined
             }
           />

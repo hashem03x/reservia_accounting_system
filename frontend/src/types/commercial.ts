@@ -4,8 +4,9 @@
 
 // R1/T4: the backend's real role set (utils/systemsRegistry.js COMMERCIAL.roles) has always
 // included "procurement" (Deal Engine C18) - this type was missing it entirely, so nothing in the
-// frontend could even express a procurement-specific check.
-export type CommercialRole = "md" | "commercial_director" | "sales" | "technical" | "procurement" | "member";
+// frontend could even express a procurement-specific check. bdm/marketing added for the go-live
+// Developer Pack's roles matrix (section 5.2/5.4).
+export type CommercialRole = "md" | "commercial_director" | "sales" | "technical" | "procurement" | "member" | "bdm" | "marketing";
 
 export type CommercialCategory = "On-Grid C&I" | "Off-Grid" | "Agriculture Pumping" | "Utility Scale" | "Street Lighting" | "Solar Water Heating";
 export const COMMERCIAL_CATEGORIES: CommercialCategory[] = ["On-Grid C&I", "Off-Grid", "Agriculture Pumping", "Utility Scale", "Street Lighting", "Solar Water Heating"];

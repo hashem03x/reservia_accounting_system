@@ -87,7 +87,9 @@ export function timeAgo(date: string | Date, language: string): string {
 
 // Mirrors backend/server/utils/crm/stageRules.js's MD_APPROVAL_THRESHOLD_EGP - display only (e.g.
 // a hint in the Won confirmation step); the backend is still the one place this is enforced.
-export const MD_APPROVAL_THRESHOLD_EGP = 1_000_000;
+// Go-live Developer Pack section 3/5.1: one EGP 1,500,000 net threshold everywhere (F7) - was
+// 1,000,000.
+export const MD_APPROVAL_THRESHOLD_EGP = 1_500_000;
 
 /**
  * Which extra fields a stage change needs before it can be submitted - the EXACT same conditions
@@ -119,7 +121,7 @@ export const isTerminalStage = (stage: string) => stage === "won";
  * A fast, NECESSARILY INCOMPLETE client-side check for "could this possibly be a valid drop
  * target" - used only to dim obviously-impossible columns while dragging (same stage, or
  * anywhere other than Contacted when leaving Lost). It deliberately does NOT attempt to replicate
- * the one-stage-back-at-a-time rule, the EGP 1M MD-approval gate, or the technical role's
+ * the one-stage-back-at-a-time rule, the EGP 1.5M MD-approval gate, or the technical role's
  * restricted destinations - those depend on fields (role, existing value, MD approval state) this
  * preview does not have the full picture of, and a stale/wrong "looks valid" hint would be worse
  * than none. The backend (services/crm/leadService.js#changeStage) is the real, final check on
