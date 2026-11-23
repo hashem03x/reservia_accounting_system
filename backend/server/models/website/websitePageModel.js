@@ -17,7 +17,21 @@ const websitePageSchema = new Schema(
       unique: true,
       match: [/^[a-z0-9-]+$/, 'Slug may only contain lowercase letters, numbers and hyphens'],
     },
-    path: { type: String, required: [true, 'Page path is required'], trim: true },
+    // The public URL path, PER LANGUAGE (e.g. pathEn:'/about-us' -> /en/about-us, pathAr:'/من-نحن'
+    // -> /ar/من-نحن) - never one shared path with only the /en or /ar prefix swapped. `slug` above
+    // stays a single, language-agnostic INTERNAL identifier (nav-menu linking, parent/child
+    // hierarchy, dashboard search) - it was never what produced the public URL; CmsRoute.tsx and
+    // every URL-building helper always matched on `path`, which is what this splits.
+    // Required only for a language this page is actually available in (`locales` below) -
+    // enforced in the validator/service layer, not the schema, so a page that drops a language
+    // later doesn't fail re-validation on save.
+    pathEn: { type: String, trim: true, default: '' },
+    pathAr: { type: String, trim: true, default: '' },
+    // Retired paths this page used to live at, per language - so the website can redirect an old
+    // bookmarked/indexed URL to the page's current one instead of 404ing after a slug change
+    // (pageController.js#retirePath). Capped and de-duplicated there, never by a raw $push.
+    retiredPathsEn: { type: [String], default: [] },
+    retiredPathsAr: { type: [String], default: [] },
     isHomePage: { type: Boolean, default: false },
     pageType: { type: String, enum: ['managed', 'legacy'], default: 'managed' },
     // The page's own name (dashboard lists, navigation defaults) - separate from the SEO title.

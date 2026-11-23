@@ -41,7 +41,8 @@ async function loadPublishedPages() {
     out.push({
       _id: p._id,
       slug: p.slug,
-      path: p.path,
+      pathEn: p.pathEn,
+      pathAr: p.pathAr,
       pageType: p.pageType,
       isHomePage: p.isHomePage,
       parentSlug: p.parentSlug,
@@ -109,4 +110,21 @@ async function loadPublishedBlogPosts() {
   return out;
 }
 
-module.exports = { loadSettings, loadPublishedPages, loadDraftPages, loadPublishedBlogPosts };
+/**
+ * Every retired path (a page's path before it was changed - websitePageModel.js#retiredPathsEn/
+ * Ar) paired with where it should now redirect to, per language. Only pages with a CURRENT path
+ * in that language produce a redirect - one that was retired and never replaced (the page is now
+ * unavailable in that language) produces none, so the website's catch-all falls through to its
+ * normal not-found page instead of redirecting into a dead end.
+ */
+async function loadRedirects() {
+  const pages = await WebsitePage.find({ isActive: true }).select('pathEn pathAr retiredPathsEn retiredPathsAr').lean();
+  const out = [];
+  for (const p of pages) {
+    if (p.pathEn) for (const from of p.retiredPathsEn || []) out.push({ lang: 'en', from, to: p.pathEn });
+    if (p.pathAr) for (const from of p.retiredPathsAr || []) out.push({ lang: 'ar', from, to: p.pathAr });
+  }
+  return out;
+}
+
+module.exports = { loadSettings, loadPublishedPages, loadDraftPages, loadPublishedBlogPosts, loadRedirects };

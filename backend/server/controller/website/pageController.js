@@ -53,28 +53,73 @@ async function renameSlugInNavigation(oldSlug, newSlug) {
 // hard delete for anything another record can reference).
 
 /**
- * Two active pages on the same path would serve the same URL with two different heads (and two
- * self-referencing canonicals) - refused. Returns an error message, or null when the path is free.
+ * Two active pages with the same path IN THE SAME LANGUAGE would serve the same URL with two
+ * different heads (and two self-referencing canonicals) - refused. Pages in different languages
+ * never conflict with each other even if the raw text happens to collide (an English path and an
+ * Arabic path are different URL namespaces: /en/x vs /ar/x). Returns an error message, or null
+ * when the path is free.
  */
-async function pathConflict(path, exceptId) {
-  if (path === undefined) return null;
-  const filter = { isActive: true, path: normalizePath(path) };
+// normalizePath('') is '/' (its own "no path given" default) - wrong here, where an empty
+// pathEn/pathAr means "this language has no path at all", never the home page.
+const normalizeOrEmpty = p => (p ? normalizePath(p) : '');
+
+async function pathConflict(lang, path, exceptId) {
+  if (!path) return null;
+  const field = lang === 'en' ? 'pathEn' : 'pathAr';
+  const filter = { isActive: true, [field]: normalizePath(path) };
   if (exceptId) filter._id = { $ne: exceptId };
   const other = await WebsitePage.findOne(filter).select('slug').lean();
-  return other ? `The path ${normalizePath(path)} is already used by the page "${other.slug}".` : null;
+  if (!other) return null;
+  const label = lang === 'en' ? 'English' : 'Arabic';
+  return `The ${label} path ${normalizePath(path)} is already used by the page "${other.slug}".`;
+}
+
+const MAX_RETIRED_PATHS = 20;
+
+/** `retiredPathsEn`/`retiredPathsAr` after `oldPath` is replaced by a different `newPath` - deduped, capped, never containing the path a page currently uses. */
+function withRetiredPath(existing, oldPath, newPath) {
+  if (!oldPath || oldPath === newPath) return existing || [];
+  const list = [oldPath, ...(existing || []).filter(p => p !== oldPath && p !== newPath)];
+  return list.slice(0, MAX_RETIRED_PATHS);
+}
+
+/** Both languages' paths are required for every language this page is actually available in. */
+function assertLocalizedPathsPresent(locales, pathEn, pathAr) {
+  const missing = [];
+  if ((locales || []).includes('en') && !pathEn) missing.push('an English path');
+  if ((locales || []).includes('ar') && !pathAr) missing.push('an Arabic path');
+  return missing.length ? `This page needs ${missing.join(' and ')}.` : null;
 }
 
 const createPage = asyncHandler(async (req, res, next) => {
   try {
-    const { slug, path, isHomePage, pageType, parentSlug, sortOrder, locales, seo, titleEn, titleAr, layout } = req.body;
-    const conflict = await pathConflict(path);
-    if (conflict) return next(new ApiError(conflict, 400));
+    const { slug, pathEn, pathAr, isHomePage, pageType, parentSlug, sortOrder, locales, seo, titleEn, titleAr, layout } = req.body;
+    const finalLocales = locales && locales.length ? locales : ['ar', 'en'];
+    const missing = assertLocalizedPathsPresent(finalLocales, pathEn, pathAr);
+    if (missing) return next(new ApiError(missing, 400));
+    const [enConflict, arConflict] = await Promise.all([pathConflict('en', pathEn), pathConflict('ar', pathAr)]);
+    if (enConflict) return next(new ApiError(enConflict, 400));
+    if (arConflict) return next(new ApiError(arConflict, 400));
     let order = sortOrder;
     if (order === undefined) {
       const last = await WebsitePage.findOne({ isActive: true }).sort({ sortOrder: -1 }).select('sortOrder').lean();
       order = (last?.sortOrder ?? -1) + 1;
     }
-    const page = await WebsitePage.create({ slug, path: normalizePath(path), isHomePage, pageType, parentSlug, sortOrder: order, locales, seo, titleEn, titleAr, layout, createdBy: req.user._id });
+    const page = await WebsitePage.create({
+      slug,
+      pathEn: pathEn ? normalizePath(pathEn) : '',
+      pathAr: pathAr ? normalizePath(pathAr) : '',
+      isHomePage,
+      pageType,
+      parentSlug,
+      sortOrder: order,
+      locales,
+      seo,
+      titleEn,
+      titleAr,
+      layout,
+      createdBy: req.user._id,
+    });
     await logWebsiteActivity({ actor: req.user, action: 'page.create', targetType: 'WebsitePage', targetId: page._id, targetLabel: page.slug, after: page.toObject() });
     res.status(201).json(apiResponse('Page created successfully', true, page));
   } catch (err) {
@@ -96,7 +141,7 @@ const getPages = asyncHandler(async (req, res) => {
   else if (status !== 'all') filter.status = { $ne: 'archived' };
   if (q) {
     const rx = new RegExp(escapeRegex(String(q).slice(0, 80)), 'i');
-    filter.$or = [{ slug: rx }, { path: rx }, { titleEn: rx }, { titleAr: rx }, { 'seo.titleEn': rx }, { 'seo.titleAr': rx }];
+    filter.$or = [{ slug: rx }, { pathEn: rx }, { pathAr: rx }, { titleEn: rx }, { titleAr: rx }, { 'seo.titleEn': rx }, { 'seo.titleAr': rx }];
   }
   ['status', 'q'].forEach(k => delete req.query[k]);
   const countDocuments = await WebsitePage.countDocuments(filter);
@@ -141,9 +186,15 @@ const updatePage = asyncHandler(async (req, res, next) => {
 
   try {
     const before = page.toObject();
-    const { path, isHomePage, pageType, parentSlug, sortOrder, locales, seo, titleEn, titleAr, layout, slug } = req.body;
-    const conflict = await pathConflict(path, page._id);
-    if (conflict) return next(new ApiError(conflict, 400));
+    const { pathEn, pathAr, isHomePage, pageType, parentSlug, sortOrder, locales, seo, titleEn, titleAr, layout, slug } = req.body;
+    const [enConflict, arConflict] = await Promise.all([pathConflict('en', pathEn, page._id), pathConflict('ar', pathAr, page._id)]);
+    if (enConflict) return next(new ApiError(enConflict, 400));
+    if (arConflict) return next(new ApiError(arConflict, 400));
+    const finalLocales = locales !== undefined ? locales : page.locales;
+    const finalPathEn = pathEn !== undefined ? normalizeOrEmpty(pathEn) : page.pathEn;
+    const finalPathAr = pathAr !== undefined ? normalizeOrEmpty(pathAr) : page.pathAr;
+    const missing = assertLocalizedPathsPresent(finalLocales, finalPathEn, finalPathAr);
+    if (missing) return next(new ApiError(missing, 400));
     if (parentSlug && parentSlug === page.slug) return next(new ApiError('A page cannot be its own parent.', 400));
     let renamedFrom = null;
     if (slug !== undefined && slug !== page.slug) {
@@ -155,7 +206,16 @@ const updatePage = asyncHandler(async (req, res, next) => {
     if (titleEn !== undefined) page.titleEn = titleEn;
     if (titleAr !== undefined) page.titleAr = titleAr;
     if (layout !== undefined) page.layout = layout;
-    if (path !== undefined) page.path = normalizePath(path);
+    // A changed path retires the old one (per language) so the website can redirect it instead of
+    // 404ing - never just overwritten and forgotten.
+    if (pathEn !== undefined && normalizeOrEmpty(pathEn) !== page.pathEn) {
+      page.retiredPathsEn = withRetiredPath(page.retiredPathsEn, page.pathEn, finalPathEn);
+      page.pathEn = finalPathEn;
+    }
+    if (pathAr !== undefined && normalizeOrEmpty(pathAr) !== page.pathAr) {
+      page.retiredPathsAr = withRetiredPath(page.retiredPathsAr, page.pathAr, finalPathAr);
+      page.pathAr = finalPathAr;
+    }
     if (isHomePage !== undefined) page.isHomePage = isHomePage;
     if (pageType !== undefined) page.pageType = pageType;
     if (parentSlug !== undefined) page.parentSlug = parentSlug || null;
@@ -185,15 +245,19 @@ const updatePage = asyncHandler(async (req, res, next) => {
 const duplicatePage = asyncHandler(async (req, res, next) => {
   const original = await WebsitePage.findById(req.params.id);
   if (!original || !original.isActive) return next(new ApiError('No page found with that id', 404));
-  const { slug, path } = req.body;
-  if (!slug || !path) return next(new ApiError('A new slug and path are required to duplicate a page.', 400));
-  const conflict = await pathConflict(path);
-  if (conflict) return next(new ApiError(conflict, 400));
+  const { slug, pathEn, pathAr } = req.body;
+  if (!slug || (!pathEn && !pathAr)) return next(new ApiError('A new slug and at least one localized path are required to duplicate a page.', 400));
+  const missing = assertLocalizedPathsPresent(original.locales, pathEn, pathAr);
+  if (missing) return next(new ApiError(missing, 400));
+  const [enConflict, arConflict] = await Promise.all([pathConflict('en', pathEn), pathConflict('ar', pathAr)]);
+  if (enConflict) return next(new ApiError(enConflict, 400));
+  if (arConflict) return next(new ApiError(arConflict, 400));
 
   try {
     const copy = await WebsitePage.create({
       slug,
-      path: normalizePath(path),
+      pathEn: pathEn ? normalizePath(pathEn) : '',
+      pathAr: pathAr ? normalizePath(pathAr) : '',
       isHomePage: false,
       pageType: original.pageType,
       parentSlug: original.parentSlug,
@@ -364,11 +428,12 @@ const previewPageSeo = asyncHandler(async (req, res, next) => {
   const page = await WebsitePage.findById(req.params.id).lean();
   if (!page || !page.isActive) return next(new ApiError('No page found with that id', 404));
 
-  const { seo, locales, path, parentSlug, pageType, isHomePage } = req.body || {};
+  const { seo, locales, pathEn, pathAr, parentSlug, pageType, isHomePage } = req.body || {};
   const sections = await WebsiteSection.find({ page: page._id }).sort({ sortOrder: 1 }).lean();
   const draft = {
     ...page,
-    path: path !== undefined ? normalizePath(path) : page.path,
+    pathEn: pathEn !== undefined ? normalizeOrEmpty(pathEn) : page.pathEn,
+    pathAr: pathAr !== undefined ? normalizeOrEmpty(pathAr) : page.pathAr,
     parentSlug: parentSlug !== undefined ? parentSlug || null : page.parentSlug,
     pageType: pageType !== undefined ? pageType : page.pageType,
     isHomePage: isHomePage !== undefined ? isHomePage : page.isHomePage,

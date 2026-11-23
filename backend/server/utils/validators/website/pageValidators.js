@@ -65,19 +65,44 @@ const seoRule = check('seo').optional().custom(value => {
   return true;
 });
 
-// A page path is language-agnostic ("/about"; the website adds /ar or /en itself), lowercase.
+// A page path is PER LANGUAGE now (pathEn:'/about-us' -> /en/about-us, pathAr:'/من-نحن' ->
+// /ar/من-نحن) - never one shared path with only the language prefix swapped. English keeps the
+// original lowercase-ascii-only rule (unchanged, so every existing English URL stays valid);
+// Arabic allows Arabic-script segments instead, since that is the whole point of a localized slug.
+const ARABIC_PATH_SEGMENT = /^[؀-ۿݐ-ݿ0-9]+(-[؀-ۿݐ-ݿ0-9]+)*$/;
+
+function commonPathChecks(p) {
+  if (/^\/(ar|en)(\/|$)/.test(p)) throw new Error('Leave out the language: use /about, not /ar/about - the language is added automatically');
+  if (NON_PUBLIC_PATH.test(p)) throw new Error('This path is reserved for staff areas and cannot be a website page');
+  return true;
+}
+
 const pathRule = (field, { required }) => {
-  const chain = required ? check(field).notEmpty().withMessage('Path is required') : check(field).optional();
+  const chain = required ? check(field).notEmpty().withMessage('English path is required') : check(field).optional();
   return chain
     .bail()
     .isString()
     .trim()
     .custom(v => {
       const p = v.length > 1 ? v.replace(/\/+$/, '') : v;
-      if (!/^\/([a-z0-9-]+(\/[a-z0-9-]+)*)?$/.test(p)) throw new Error('Path must start with / and use only lowercase letters, numbers, hyphens and /');
-      if (/^\/(ar|en)(\/|$)/.test(p)) throw new Error('Leave out the language: use /about, not /ar/about - the language is added automatically');
-      if (NON_PUBLIC_PATH.test(p)) throw new Error('This path is reserved for staff areas and cannot be a website page');
-      return true;
+      if (!/^\/([a-z0-9-]+(\/[a-z0-9-]+)*)?$/.test(p)) throw new Error('English path must start with / and use only lowercase letters, numbers, hyphens and /');
+      return commonPathChecks(p);
+    });
+};
+
+const arabicPathRule = (field, { required }) => {
+  const chain = required ? check(field).notEmpty().withMessage('Arabic path is required') : check(field).optional();
+  return chain
+    .bail()
+    .isString()
+    .trim()
+    .custom(v => {
+      const p = v.length > 1 ? v.replace(/\/+$/, '') : v;
+      const segments = p.split('/').filter(Boolean);
+      if (!segments.length || !segments.every(s => ARABIC_PATH_SEGMENT.test(s))) {
+        throw new Error('Arabic path must start with / and use only Arabic letters, numbers and hyphens between segments');
+      }
+      return commonPathChecks(`/${segments.join('/')}`);
     });
 };
 
@@ -92,12 +117,17 @@ const localesRule = check('locales')
     return true;
   });
 
+// Format only here (never hard-required - a page in one language only has no path for the
+// other). Whether pathEn/pathAr is actually required for THIS page's chosen `locales`, and the
+// per-language conflict check, both need the existing document (on update) and so are enforced in
+// pageController.js, mirroring how slug-duplicate checks already work there, not here.
 const createPageValidators = [
   slugRule('slug', { required: true }),
   check('titleEn').optional().isString().trim().isLength({ max: 120 }).withMessage('Page title (English) must be at most 120 characters'),
   check('titleAr').optional().isString().trim().isLength({ max: 120 }).withMessage('Page title (Arabic) must be at most 120 characters'),
   check('layout').optional().isIn(['default', 'landing', 'full-width']).withMessage('Layout must be default, landing or full-width'),
-  pathRule('path', { required: true }),
+  pathRule('pathEn', { required: false }),
+  arabicPathRule('pathAr', { required: false }),
   check('isHomePage').optional().isBoolean(),
   check('pageType').optional().isIn(['managed', 'legacy']),
   check('parentSlug').optional({ nullable: true }).isString().trim(),
@@ -109,7 +139,8 @@ const createPageValidators = [
 
 const updatePageValidators = [
   slugRule('slug', { required: false }),
-  pathRule('path', { required: false }),
+  pathRule('pathEn', { required: false }),
+  arabicPathRule('pathAr', { required: false }),
   check('titleEn').optional().isString().trim().isLength({ max: 120 }).withMessage('Page title (English) must be at most 120 characters'),
   check('titleAr').optional().isString().trim().isLength({ max: 120 }).withMessage('Page title (Arabic) must be at most 120 characters'),
   check('layout').optional().isIn(['default', 'landing', 'full-width']).withMessage('Layout must be default, landing or full-width'),
@@ -122,11 +153,11 @@ const updatePageValidators = [
   validatorMiddleware,
 ];
 
-const duplicatePageValidators = [slugRule('slug', { required: true }), pathRule('path', { required: true }), validatorMiddleware];
+const duplicatePageValidators = [slugRule('slug', { required: true }), pathRule('pathEn', { required: false }), arabicPathRule('pathAr', { required: false }), validatorMiddleware];
 
 const publishPageValidators = [check('label').optional().isString().trim().isLength({ max: 200 }), validatorMiddleware];
 
 // The live preview takes the same (unsaved) fields as an update, validated the same way.
 const previewPageSeoValidators = updatePageValidators;
 
-module.exports = { createPageValidators, updatePageValidators, duplicatePageValidators, publishPageValidators, previewPageSeoValidators, SEO_TEXT_LIMITS, slugRule, seoRule, SEO_KEYS, NON_PUBLIC_PATH };
+module.exports = { createPageValidators, updatePageValidators, duplicatePageValidators, publishPageValidators, previewPageSeoValidators, SEO_TEXT_LIMITS, slugRule, pathRule, arabicPathRule, seoRule, SEO_KEYS, NON_PUBLIC_PATH };

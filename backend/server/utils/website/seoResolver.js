@@ -41,8 +41,13 @@ function trimOrigin(origin) {
   return String(origin || '').trim().replace(/\/+$/, '');
 }
 
-/** Absolute URL of a page in a language: https://site/ar, https://site/en/services */
+/**
+ * Absolute URL of a page in a language: https://site/ar, https://site/en/services. `path` must be
+ * non-empty - an empty path means "this language has no path at all" (never the home page, which
+ * passes '/' explicitly), so it returns '' rather than normalizePath's own "nothing given" default.
+ */
 function localeUrl(origin, locale, path) {
+  if (!path) return '';
   const p = normalizePath(path);
   return `${trimOrigin(origin)}/${locale}${p === '/' ? '' : p}`;
 }
@@ -143,6 +148,11 @@ function baseDescription(page, sections, settings, locale) {
   return { value: '', source: 'none' };
 }
 
+/** This page's own path in `locale` - pathEn/pathAr, never one shared path for both languages. */
+function pathFor(page, locale) {
+  return locale === 'en' ? page.pathEn : page.pathAr;
+}
+
 /** Breadcrumb trail for a page from the parentSlug hierarchy, Home first (brief 2.6). */
 function breadcrumbsFor(page, locale, ctx) {
   if (page.isHomePage || page.seo?.showBreadcrumbs === false) return [];
@@ -163,7 +173,8 @@ function breadcrumbsFor(page, locale, ctx) {
     // A legacy page's label is only ever the explicit breadcrumb label (empty = the website keeps
     // its own short navigation label - an SEO title is usually far too long for a breadcrumb).
     const label = field(p.seo, 'breadcrumbLabel', locale) || (isLegacy(p) ? '' : baseTitle(p, p.sections, locale).value);
-    crumbs.push({ name: label, url: localeUrl(ctx.origin, locale, p.path), path: normalizePath(p.path) });
+    const path = pathFor(p, locale);
+    crumbs.push({ name: label, url: localeUrl(ctx.origin, locale, path), path: normalizePath(path) });
   }
   return crumbs;
 }
@@ -185,9 +196,10 @@ function resolvePageLocale(page, locale, ctx) {
   if (page.isHomePage && title.source !== 'custom' && !isLegacy(page)) fullTitle = siteName || title.value;
   else fullTitle = applyTemplate(title.value, field(settings, 'titleTemplate', locale), siteName);
 
-  const selfUrl = localeUrl(origin, locale, page.path);
+  const pagePath = pathFor(page, locale);
+  const selfUrl = localeUrl(origin, locale, pagePath);
   const canonical = resolveCanonicalOverride(field(page.seo, 'canonical', locale), origin, locale) || selfUrl;
-  const noindex = !!page.seo?.noindex || NON_PUBLIC_PATH.test(normalizePath(page.path));
+  const noindex = !!page.seo?.noindex || NON_PUBLIC_PATH.test(normalizePath(pagePath));
   const nofollow = !!page.seo?.nofollow;
 
   // hreflang alternates are filled in by resolveOne once every language version is known.
@@ -327,6 +339,7 @@ function publishProblems(page, sections, settings) {
   if (!locales.length) problems.push('at least one language that is enabled for the site');
   for (const locale of locales) {
     const label = locale === 'ar' ? 'Arabic' : 'English';
+    if (!pathFor(page, locale)) problems.push(`${label} path`);
     if (baseTitle(page, sections, locale).source === 'none') problems.push(`${label} SEO title (or a heading in the page content)`);
     if (baseDescription(page, sections, settings, locale).source === 'none') problems.push(`${label} meta description (or descriptive text in the page content)`);
   }

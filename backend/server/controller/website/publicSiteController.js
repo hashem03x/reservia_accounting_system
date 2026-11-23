@@ -8,7 +8,7 @@ const WebsiteBlogPost = require('../../models/website/websiteBlogPostModel');
 const WebsiteNavigation = require('../../models/website/websiteNavigationModel');
 const WebsiteIntegration = require('../../models/website/websiteIntegrationModel');
 const WebsiteCustomCode = require('../../models/website/websiteCustomCodeModel');
-const { loadSettings, loadPublishedPages, loadPublishedBlogPosts } = require('../../services/website/publishedSite');
+const { loadSettings, loadPublishedPages, loadPublishedBlogPosts, loadRedirects } = require('../../services/website/publishedSite');
 const { resolveSite, resolveDraft, normalizePath } = require('../../utils/website/seoResolver');
 const { resolveBlogPost } = require('../../utils/website/blogSeoResolver');
 const { publicNavigation } = require('../../utils/website/navigation');
@@ -92,7 +92,8 @@ async function loadCustomCode(publishedPages) {
 
 const pageOutput = (p, resolved) => ({
   slug: p.slug,
-  path: p.path,
+  pathEn: p.pathEn,
+  pathAr: p.pathAr,
   pageType: p.pageType,
   isHomePage: p.isHomePage,
   parentSlug: p.parentSlug,
@@ -136,7 +137,13 @@ function feedContentHash(data) {
 
 /** The published-content feed (data part of GET /website/public/site). */
 async function buildPublicFeed() {
-  const [settings, pages, blogPosts, integrationsDoc] = await Promise.all([loadSettings(), loadPublishedPages(), loadPublishedBlogPosts(), WebsiteIntegration.findById(WebsiteIntegration.SINGLETON_ID).lean()]);
+  const [settings, pages, blogPosts, integrationsDoc, redirects] = await Promise.all([
+    loadSettings(),
+    loadPublishedPages(),
+    loadPublishedBlogPosts(),
+    WebsiteIntegration.findById(WebsiteIntegration.SINGLETON_ID).lean(),
+    loadRedirects(),
+  ]);
   const site = resolveSite(pages, settings);
   const seoBySlug = new Map(site.pages.map(p => [p.slug, p]));
   const [navigation, customCode, visual] = await Promise.all([loadNavigation(pages), loadCustomCode(pages), publishedVisual()]);
@@ -157,6 +164,10 @@ async function buildPublicFeed() {
     visual,
     pages: pages.map(p => pageOutput(p, seoBySlug.get(p.slug))),
     blogPosts: blogPosts.map(p => blogPostOutput(p, resolveBlogPost(p, site.origin, settings))),
+    // A localized path that changed: the website 301s the old one to the page's current path in
+    // that language instead of 404ing (CmsCatchAll - never auto-backfilled before this field
+    // existed, so older URLs retired before this shipped are not covered).
+    redirects,
   };
   data.contentHash = feedContentHash(data);
   return data;
@@ -208,7 +219,7 @@ const getPublicPreview = asyncHandler(async (req, res, next) => {
     .filter(s => s.isVisible !== false)
     .map(s => ({ type: s.type, sortOrder: s.sortOrder, content: s.content || {}, settings: s.settings || {} }));
   const [settings, published] = await Promise.all([loadSettings(), loadPublishedPages()]);
-  const draft = { ...page, path: normalizePath(page.path), sections };
+  const draft = { ...page, pathEn: page.pathEn ? normalizePath(page.pathEn) : '', pathAr: page.pathAr ? normalizePath(page.pathAr) : '', sections };
   const resolved = resolveDraft(draft, published, settings);
   // The preview's menus are the live menus (plus this page, so its own links resolve).
   const navigation = await loadNavigation([...published.filter(p => p.slug !== page.slug), { ...draft }]);
