@@ -120,12 +120,31 @@ test('createUser: creates a user with no auto-granted system memberships', async
 test('createUser: rejects a duplicate email', async () => {
   await makeUser({ email: 'dup@example.com' });
   const admin = await makeUser({ platformAdmin: true });
-  const req = { user: admin, body: { name: 'Dup', email: 'dup@example.com', password: 'secret1' } };
+  const req = { user: admin, body: { name: 'Dup', email: 'dup@example.com', password: 'secret1', role: 'moderator' } };
   const res = mockRes();
   let captured = null;
   await platformAdminController.createUser(req, res, err => { captured = err; });
   assert.ok(captured);
   assert.equal(captured.statusCode, 400);
+});
+
+// NOTE: role:'user' is NOT exclusively "customer" (it is also the ERP's "no elevated ERP role"
+// default for a real staff member - see createUser/updateUserSystems's own comments), so creating
+// a role:'user' login and later granting it CRM/HR/Commercial/Website access both stay allowed.
+// A legitimate staff member with no ERP role at all is exercised by
+// test/portal/userCreationLogin.test.js's "CRM and Deal Engine access but ERP left disabled" case.
+test('createUser/updateUserSystems: role:"user" with no other access can still be created and later granted a non-ERP system membership', async () => {
+  const admin = await makeUser({ platformAdmin: true });
+  const req = { user: admin, body: { name: 'No ERP Role', email: 'no-erp-role@example.com', password: 'secret1' } };
+  const res = mockRes();
+  await platformAdminController.createUser(req, res, err => { throw err; });
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.body.data.role, 'user');
+
+  const req2 = { user: admin, params: { id: res.body.data._id.toString() }, body: { systemMemberships: [{ system: 'CRM', role: 'sales' }] } };
+  const res2 = mockRes();
+  await platformAdminController.updateUserSystems(req2, res2, err => { throw err; });
+  assert.equal(res2.body.data.systemMemberships.length, 1);
 });
 
 test('updateUserSystems: rejects an unknown system id', async () => {
@@ -232,14 +251,28 @@ test('updatePlatformAdmin: granting platform admin to a new user succeeds and is
 
 // ===================== listUsers / listAuditLog =====================
 
+// Go-live Developer Pack F26/section 14: listUsers now excludes role:'user' (the customer role)
+// unconditionally - these fixtures use a real staff role so this test still exercises pagination/
+// password-redaction on what the endpoint actually lists.
 test('listUsers: paginates and never leaks the password field', async () => {
-  for (let i = 0; i < 3; i += 1) await makeUser(); // eslint-disable-line no-await-in-loop
-  const req = { user: await makeUser({ platformAdmin: true }), query: { page: '1', limit: '2' } };
+  for (let i = 0; i < 3; i += 1) await makeUser({ role: 'operator' }); // eslint-disable-line no-await-in-loop
+  const req = { user: await makeUser({ platformAdmin: true, role: 'operator' }), query: { page: '1', limit: '2' } };
   const res = mockRes();
   await platformAdminController.listUsers(req, res);
   assert.equal(res.body.data.length, 2);
   assert.ok(res.body.data.every(u => !('password' in u.toObject())));
   assert.equal(res.body.pagination.total, 4);
+});
+
+// The actual go-live requirement this endpoint must satisfy: a customer (role:'user') is excluded
+// even though it co-exists in the same User collection as real staff accounts.
+test('listUsers: a customer (role:"user") never appears, even alongside real staff accounts', async () => {
+  await makeUser({ role: 'operator' });
+  await makeUser({ role: 'user' }); // the customer
+  const req = { user: await makeUser({ platformAdmin: true, role: 'operator' }), query: { page: '1', limit: '20' } };
+  const res = mockRes();
+  await platformAdminController.listUsers(req, res);
+  assert.ok(res.body.data.every(u => u.role !== 'user'), 'no customer record should ever be listed in User Management');
 });
 
 test('listAuditLog: lists recorded entries, most recent first', async () => {
