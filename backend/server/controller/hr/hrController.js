@@ -68,6 +68,50 @@ exports.saveVisit = asyncHandler(async (req, res) => ok(res, 'Visit saved', awai
 exports.deleteVisit = asyncHandler(async (req, res) => ok(res, 'Visit deleted', await svc.deleteVisit(req.params.id, ctx(req))));
 exports.saveExpense = asyncHandler(async (req, res) => ok(res, 'Claim saved', await svc.saveExpense(req.params.id, req.body || {}, ctx(req))));
 exports.decideExpense = asyncHandler(async (req, res) => ok(res, 'Claim decided', await svc.decideExpense(req.params.id, req.body || {}, ctx(req))));
+
+// Go-live F10: a real receipt file (replaces the old tickbox) - reuses services/files/
+// attachmentService.js wholesale, same as CRM lead attachments (controller/crm/
+// leadAttachmentController.js), just with the HR self-service-or-md/hr gate instead of a CRM role.
+const multer = require('multer');
+const attachmentService = require('../../services/files/attachmentService');
+const { setFileHeaders } = require('../../utils/contentDisposition');
+const { decodeUploadName } = require('../../utils/uploadFileName');
+
+exports.receiveReceiptFiles = (req, res, next) => {
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: attachmentService.maxBytes(), files: attachmentService.maxFiles(), fields: 10 } }).array(
+    'files',
+    attachmentService.maxFiles()
+  );
+  upload(req, res, err => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') return next(new ApiError(`The file is larger than the ${Math.round((attachmentService.maxBytes() / 1048576) * 10) / 10} MB limit.`, 413));
+      if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE')
+        return next(new ApiError(`Attach at most ${attachmentService.maxFiles()} files at a time, in the "files" field.`, 400));
+    }
+    return next(new ApiError('The upload could not be read.', 400));
+  });
+};
+
+exports.uploadExpenseReceipt = asyncHandler(async (req, res) => {
+  const files = (req.files || []).map(f => ({ ...f, originalname: decodeUploadName(f.originalname) }));
+  const result = await svc.uploadExpenseReceipt(req.params.id, files, ctx(req));
+  res.status(201).json(apiResponse('Receipt uploaded', true, result));
+});
+
+exports.listExpenseReceipts = asyncHandler(async (req, res) => {
+  const data = await attachmentService.listAttachments('hr-expenses', req.params.id);
+  res.status(200).json(apiResponse('Receipts retrieved', true, data));
+});
+
+exports.downloadExpenseReceipt = asyncHandler(async (req, res) => {
+  const { attachment, owner } = await attachmentService.getAttachment(req.params.attachmentId);
+  if (owner?.ownerType !== 'HrExpense') throw new ApiError('Receipt not found.', 404);
+  const { stream, size } = await attachmentService.openFile(attachment);
+  setFileHeaders(res, { fileName: attachment.originalName, contentType: attachment.contentType, size, inline: req.query.inline === '1' || req.query.inline === 'true' });
+  stream.on('error', err => (res.headersSent ? res.destroy(err) : res.status(500).json({ success: false, message: 'Could not read the receipt.' })));
+  stream.pipe(res);
+});
 exports.deleteExpense = asyncHandler(async (req, res) => ok(res, 'Claim deleted', await svc.deleteExpense(req.params.id, ctx(req))));
 exports.saveForm = asyncHandler(async (req, res) => ok(res, 'Form saved', await svc.saveForm(req.params.id, req.body || {}, ctx(req))));
 exports.decideForm = asyncHandler(async (req, res) => ok(res, 'Form decided', await svc.decideForm(req.params.id, req.body || {}, ctx(req))));

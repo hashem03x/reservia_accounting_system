@@ -272,6 +272,22 @@ test('shapeRevisionForRole gives md everything untouched', () => {
   assert.deepEqual(shaped, revision);
 });
 
+// designChecks is 'hidden' for sales/commercial_director/bdm/marketing/procurement/member - the
+// inverter pick and DC/AC ratio (engineeringResult) must not reach them, even though they're not
+// a pricing/feasibility/BOQ field and so weren't covered by any of the redactions above.
+test('shapeRevisionForRole strips engineeringResult for sales and commercial_director (designChecks=hidden)', () => {
+  const revision = { engineeringResult: { inverter: { model: 'X1' }, dcAc: { ratio: 1.2 } }, pricing: { netExclVat: 999 } };
+  assert.equal(shapeRevisionForRole(revision, ['sales']).engineeringResult, undefined);
+  assert.equal(shapeRevisionForRole(revision, ['commercial_director']).engineeringResult, undefined);
+  assert.equal(shapeRevisionForRole(revision, ['bdm']).engineeringResult, undefined);
+});
+
+test('shapeRevisionForRole keeps engineeringResult for md and technical (designChecks=edit)', () => {
+  const revision = { engineeringResult: { inverter: { model: 'X1' }, dcAc: { ratio: 1.2 } } };
+  assert.equal(shapeRevisionForRole(revision, ['md']).engineeringResult.inverter.model, 'X1');
+  assert.equal(shapeRevisionForRole(revision, ['technical']).engineeringResult.inverter.model, 'X1');
+});
+
 // ---------------------------------------------------------------- R9: Sales-limits validation
 // Every scenario below uses the PDF's own worked example (294.8 kWp factory, COGS EGP 4,467,599,
 // policy v1: overhead 10%, contingency 2%, profit 10%, sales bonus 5.5%, engineering incentive 5%,

@@ -229,8 +229,17 @@ async function saveDay(date, rows, ctx) {
 }
 
 async function saveTimesheetDays(employeeId, month, updates, ctx) {
-  assertRole(ctx, EDIT_ROLES, 'edit timesheets');
+  // Go-live D6: every employee may submit their OWN attendance; md/hr for anyone.
+  await C.assertCanActOnEmployee(ctx, oid(employeeId), 'edit timesheets');
   assertMonth(month);
+  // F25: a self-service submission (not md/hr) can never record a date in the future - approved
+  // leave is posted separately by postLeave/postVisitDays (system-triggered, not this direct
+  // self-service path), so this never blocks a legitimate advance leave entry.
+  if (!EDIT_ROLES.includes(ctx.role)) {
+    const today = C.todayCairo();
+    const future = Object.keys(updates || {}).find(date => date > today);
+    if (future) throw new ApiError(`${future} is in the future - attendance can only be recorded for today or earlier, unless it is approved leave.`, 400);
+  }
   return writeDays(oid(employeeId), month, updates || {}, ctx);
 }
 
@@ -383,14 +392,19 @@ async function postVisitDays(v, ctx) {
 }
 
 async function saveVisit(id, body, ctx) {
-  assertRole(ctx, EDIT_ROLES, 'log site visits');
-  const { values } = await C.settingsFor(String(body.date || '').slice(0, 7) || '2026-01');
-  const v = cleanVisit(body, P.config(values));
-  await C.assertMonthOpen(v.date.slice(0, 7));
+  // Go-live D6: every employee may log their OWN site visits; md/hr for anyone. On an edit, the
+  // record's OWN employee (never a value the request body could swap in) decides ownership.
   let doc;
   let before = null;
-  if (id) {
-    doc = await found(M.HrVisit, id, 'Visit');
+  if (id) doc = await found(M.HrVisit, id, 'Visit');
+  await C.assertCanActOnEmployee(ctx, doc ? doc.employee : oid(body.empId), 'log site visits');
+  const { values } = await C.settingsFor(String(body.date || '').slice(0, 7) || '2026-01');
+  const v = cleanVisit(body, P.config(values));
+  // A self-service caller can never reassign the visit to someone else, even by sending a
+  // different empId - the target employee was already fixed above.
+  if (doc) v.employee = doc.employee;
+  await C.assertMonthOpen(v.date.slice(0, 7));
+  if (doc) {
     before = plain(doc);
     if (before.status === 'Done') await C.assertMonthOpen(before.date.slice(0, 7));
     Object.assign(doc, v, { updatedBy: ctx.user?._id });
@@ -411,24 +425,49 @@ async function deleteVisit(id, ctx) {
 
 /* ===================== expense claims ===================== */
 async function saveExpense(id, body, ctx) {
-  assertRole(ctx, EDIT_ROLES, 'record expense claims');
-  const x = {
-    employee: oid(body.empId), date: assertDate(body.date, 'Date paid'), type: P.EXPENSE_TYPES.includes(body.type) ? body.type : 'Other',
-    amount: num(body.amount, 'Amount', { min: 0.01, max: 10000000, optional: false }), payMonth: assertMonth(body.payMonth || String(body.date).slice(0, 7), 'Reimburse with payroll of'),
-    ref: str(body.ref, 120) || '', desc: str(body.desc, 300) || '', receipt: !!body.receipt,
-  };
+  // Go-live D6: every employee may submit their OWN expense claims; md/hr for anyone.
   let doc;
   let before = null;
-  if (id) {
-    doc = await found(M.HrExpense, id, 'Claim');
+  if (id) doc = await found(M.HrExpense, id, 'Claim');
+  await C.assertCanActOnEmployee(ctx, doc ? doc.employee : oid(body.empId), 'record expense claims');
+  const x = {
+    employee: doc ? doc.employee : oid(body.empId), date: assertDate(body.date, 'Date paid'), type: P.EXPENSE_TYPES.includes(body.type) ? body.type : 'Other',
+    amount: num(body.amount, 'Amount', { min: 0.01, max: 10000000, optional: false }), payMonth: assertMonth(body.payMonth || String(body.date).slice(0, 7), 'Reimburse with payroll of'),
+    ref: str(body.ref, 120) || '', desc: str(body.desc, 300) || '',
+    // Go-live F10: "Expense claims require an uploaded receipt file" - `receipt` is no longer a
+    // user-settable tickbox; it is set ONLY by uploadExpenseReceipt below, once a real file is
+    // actually attached (services/files/attachmentService.js). Never trusted from this body.
+  };
+  if (doc) {
     before = plain(doc);
     if (doc.status === 'Approved') await C.assertMonthOpen(doc.payMonth);
     if (doc.status !== 'Pending' && ctx.role !== 'md') throw new ApiError('A decided claim can be changed by the MD only.', 403);
     Object.assign(doc, x, { updatedBy: ctx.user?._id });
     await doc.save();
-  } else doc = await M.HrExpense.create(Object.assign(x, { status: 'Pending', created: C.todayCairo(), createdBy: ctx.user?._id }));
+  } else doc = await M.HrExpense.create(Object.assign(x, { receipt: false, status: 'Pending', created: C.todayCairo(), createdBy: ctx.user?._id }));
   await audit(ctx, 'expenses', doc._id, id ? 'update' : 'create', before, x);
   return doc.toObject();
+}
+
+/**
+ * Go-live F10: attaches a real receipt file to an expense claim (replaces the old tickbox) and
+ * flips `receipt` true ONLY once a file has actually been stored - reusing services/files/
+ * attachmentService.js wholesale (same private GridFS bucket, same PDF/image checks), exactly
+ * like CRM lead attachments do. Self-service aware: the claim's own employee, or md/hr.
+ */
+async function uploadExpenseReceipt(id, files, ctx) {
+  const doc = await found(M.HrExpense, id, 'Claim');
+  await C.assertCanActOnEmployee(ctx, doc.employee, 'attach a receipt to');
+  if (doc.status !== 'Pending') throw new ApiError('A decided claim cannot have its receipt changed. Reopen it first.', 409);
+  // eslint-disable-next-line global-require
+  const attachmentService = require('../files/attachmentService');
+  const uploaded = await attachmentService.uploadAttachments({ ownerKey: 'hr-expenses', ownerId: doc._id, files, userId: ctx.user?._id });
+  if (!doc.receipt) {
+    doc.receipt = true;
+    doc.updatedBy = ctx.user?._id;
+    await doc.save();
+  }
+  return { expense: doc.toObject(), attachments: uploaded };
 }
 
 async function decideExpense(id, body, ctx) {
@@ -438,7 +477,8 @@ async function decideExpense(id, body, ctx) {
   if (!P.FORM_STATUS.includes(status)) throw new ApiError('Status is Pending, Approved or Rejected.', 400);
   const before = plain(doc);
   if (status === 'Approved') {
-    // Receipt file required unless the MD overrides (spec section 7).
+    // Receipt file required unless the MD overrides (spec section 7). `doc.receipt` is now only
+    // ever set true by uploadExpenseReceipt actually storing a file - never user-settable here.
     const override = !!body.receiptOverride;
     if (override && ctx.role !== 'md') throw new ApiError('Only the MD can approve a claim without a receipt.', 403);
     if (!doc.receipt && !override) throw new ApiError('A receipt is required. The MD can approve without one.', 409);
@@ -448,7 +488,10 @@ async function decideExpense(id, body, ctx) {
   }
   if (before.status === 'Approved') await C.assertMonthOpen(before.payMonth);
   doc.status = status;
-  doc.by = str(body.by, 120) || C.userName(ctx.user);
+  // F10: "Decided by" is the AUTHENTICATED approver, never free text from the request body - a
+  // client could previously send any name here, which would display as the decision-maker while
+  // the trusted `decidedBy` field (unused by the UI) held the real one.
+  doc.by = C.userName(ctx.user);
   doc.decidedBy = ctx.user?._id;
   doc.decided = status === 'Pending' ? undefined : C.todayCairo();
   doc.note = str(body.note, 500) || '';
@@ -557,7 +600,7 @@ async function postLeave(form, ctx) {
 }
 
 async function saveForm(id, body, ctx) {
-  assertRole(ctx, EDIT_ROLES, 'submit forms');
+  // Go-live D6: every employee may submit their OWN leave/overtime/visit forms; md/hr for anyone.
   const { engine } = await C.loadMonth(C.todayCairo().slice(0, 7));
   let doc;
   let before = null;
@@ -568,7 +611,11 @@ async function saveForm(id, body, ctx) {
     before = plain(doc);
     if (doc.status !== 'Pending') throw new ApiError('A decided form cannot be edited. Change the decision first.', 409);
   }
+  await C.assertCanActOnEmployee(ctx, doc ? doc.employee : oid(body.empId), 'submit forms');
   const { f, warnings, leaveBalanceExceeded } = await cleanForm(ft, body, engine);
+  // A self-service caller can never reassign the form to someone else, even by sending a
+  // different empId - the target employee was already fixed above.
+  if (doc) f.employee = doc.employee;
   // HR Portal D1: block sending a leave request that exceeds the remaining balance. The MD may
   // still send it, but only with a reason - stamped on the record (balanceOverride*), not just a
   // warning that is easy to miss.
@@ -621,7 +668,8 @@ async function decideForm(id, body, ctx) {
   const dnote = str(body.dnote, 500) || '';
   if (status === 'Approved') await assertLeaveBalanceForApproval(doc, before, ctx, dnote);
   doc.status = status;
-  doc.by = str(body.by, 120) || C.userName(ctx.user);
+  // F10: "Decided by" is the AUTHENTICATED approver, never free text from the request body.
+  doc.by = C.userName(ctx.user);
   doc.decidedBy = ctx.user?._id;
   doc.decided = status === 'Pending' ? undefined : before.status === status && before.decided ? before.decided : C.todayCairo();
   doc.dnote = dnote;
@@ -810,6 +858,6 @@ async function removeExampleTeam(ctx) {
 
 module.exports = {
   createEmployee, updateEmployee, deleteEmployee, saveDocument, saveExit, saveDay, saveTimesheetDays, fillBlanks, bulkMarkPresent, approveTimesheet, reopenTimesheet,
-  saveVisit, deleteVisit, saveExpense, decideExpense, deleteExpense, saveForm, decideForm, deleteForm, setTarget, addAdjustment, deleteAdjustment,
+  saveVisit, deleteVisit, saveExpense, uploadExpenseReceipt, decideExpense, deleteExpense, saveForm, decideForm, deleteForm, setTarget, addAdjustment, deleteAdjustment,
   saveSimple, deleteSimple, hireCandidate, loadExampleTeam, removeExampleTeam, oid,
 };

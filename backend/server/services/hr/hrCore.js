@@ -9,7 +9,13 @@ const P = require('./payrollEngine');
 const crypto = require('./hrCrypto');
 
 const PAY_ROLES = ['md', 'hr', 'finance']; // spec section 2: pay fields go only to MD, HR and Finance
-const EDIT_ROLES = ['md', 'hr']; // people, contracts, documents, time, visits, claims
+const EDIT_ROLES = ['md', 'hr']; // full admin: people, contracts, documents, time, visits, claims for ANYONE
+// Go-live Developer Pack section 5.7/D7: line_manager is functionally identical to the original
+// manager role - approves (and sees the time of) their own direct reports via HrEmployee.mgrId.
+// Added as a SEPARATE go-live role (not a rename of `manager`) because systemMemberships allows
+// only one HR role per person, and the go-live roster's BDM needs this capability under a role
+// name distinct from the generic legacy `manager`.
+const LINE_MANAGER_ROLES = ['manager', 'line_manager'];
 const PAY_FIELDS = ['basic', 'transport', 'incentive', 'commission', 'other', 'insBase'];
 
 const canSeePay = role => PAY_ROLES.includes(role);
@@ -134,9 +140,24 @@ async function myEmployee(ctx) {
   return M.HrEmployee.findOne({ user: ctx.user._id }).lean();
 }
 
-/** Employee ids the caller may see: everyone for MD/HR/Finance; the direct reports (and self) for a line manager. */
+/**
+ * Employee ids the caller may see: everyone for MD/HR/Finance; the direct reports (and self) for a
+ * line manager; ONLY self for the plain employee role.
+ *
+ * Go-live Developer Pack section 5.7/D6: "Self-service is the same for every employee - own
+ * attendance, site visits, expense claims" describes a READ scope too, not just the write-side
+ * assertCanActOnEmployee below - before this fix, 'employee' fell through to the `return null`
+ * (unrestricted) branch like Finance, so GET /hr/state would hand every one of the 6 newly
+ * provisioned employee-role staff accounts the WHOLE company's attendance, site visits and leave
+ * balances. Caught by re-reading this function against the brief's own self-service principle,
+ * not by a failing test - there was no prior test exercising a plain 'employee' read at all.
+ */
 async function visibleEmployeeIds(ctx) {
-  if (ctx.role !== 'manager') return null; // null = no restriction
+  if (ctx.role === 'employee') {
+    const me = await myEmployee(ctx);
+    return me ? [String(me._id)] : [];
+  }
+  if (!LINE_MANAGER_ROLES.includes(ctx.role)) return null; // null = no restriction (MD/HR/Finance)
   const me = await myEmployee(ctx);
   if (!me) return [];
   const team = await M.HrEmployee.find({ mgrId: me._id }, { _id: 1 }).lean();
@@ -146,10 +167,26 @@ async function visibleEmployeeIds(ctx) {
 /** A line manager may decide only for a direct report; MD and HR for anyone. */
 async function assertCanDecideFor(ctx, employeeId) {
   if (EDIT_ROLES.includes(ctx.role)) return;
-  if (ctx.role !== 'manager') throw new ApiError('Your HR role cannot approve this.', 403);
+  if (!LINE_MANAGER_ROLES.includes(ctx.role)) throw new ApiError('Your HR role cannot approve this.', 403);
   const me = await myEmployee(ctx);
   const emp = await M.HrEmployee.findById(employeeId, { mgrId: 1 }).lean();
   if (!me || !emp || String(emp.mgrId || '') !== String(me._id)) throw new ApiError('A line manager can approve only for their direct reports.', 403);
+}
+
+/**
+ * Go-live Developer Pack section 5.7/D6: "Self-service is the same for every employee" - own
+ * attendance, site visits, expense claims, documents. md/hr act on ANYONE's record (unchanged);
+ * every other HR role (employee/line_manager/manager/finance) may act ONLY on their own linked
+ * employee record, never another person's - never trusts an employee id from the request body to
+ * decide ownership, only the authenticated user's own HrEmployee.user link (myEmployee above).
+ */
+async function assertCanActOnEmployee(ctx, employeeId, what) {
+  if (EDIT_ROLES.includes(ctx.role)) return;
+  if (!employeeId) throw new ApiError(`Your HR role (${ctx.role}) cannot ${what}.`, 403);
+  const me = await myEmployee(ctx);
+  if (!me || String(me._id) !== String(employeeId)) {
+    throw new ApiError(`Your HR role (${ctx.role}) can only ${what} for your own record, not another employee's.`, 403);
+  }
 }
 
 /* ---------- shaping ---------- */
@@ -256,7 +293,7 @@ async function assertTimesheetOpen(employeeId, month) {
 }
 
 module.exports = {
-  PAY_ROLES, EDIT_ROLES, PAY_FIELDS, canSeePay, userName, assertRole, todayCairo, assertMonth, assertDate, num, str, TIME_RE, DATE_RE,
-  audit, settingsFor, saveSettings, myEmployee, visibleEmployeeIds, assertCanDecideFor, payOf, engineEmployee, shapeEmployee, loadMonth,
+  PAY_ROLES, EDIT_ROLES, LINE_MANAGER_ROLES, PAY_FIELDS, canSeePay, userName, assertRole, todayCairo, assertMonth, assertDate, num, str, TIME_RE, DATE_RE,
+  audit, settingsFor, saveSettings, myEmployee, visibleEmployeeIds, assertCanDecideFor, assertCanActOnEmployee, payOf, engineEmployee, shapeEmployee, loadMonth,
   monthRange, runOf, assertMonthOpen, assertTimesheetOpen, docsObj,
 };

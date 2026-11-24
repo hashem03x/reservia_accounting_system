@@ -109,4 +109,6 @@ export const MAPPING_FIELDS: { key: string; en: string; required?: boolean }[] =
   { key: "validityDate", en: "Validity date" },
 ];
 
-export const EDIT_ROLES = ["md", "commercial_director", "procurement"];
+// Go-live Developer Pack 5.4/5.8/D9: "Propose suppliers" gains bdm - mirrors backend
+// services/commercial/supplierService.js#EDIT_ROLES exactly.
+export const EDIT_ROLES = ["md", "commercial_director", "procurement", "bdm"];

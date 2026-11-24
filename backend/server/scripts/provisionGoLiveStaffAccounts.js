@@ -24,8 +24,8 @@
  * email addresses or credentials." Her row is reported as BLOCKED every run until a real email is
  * supplied via --menna-email.
  *
- * Usage:
- *   node server/scripts/provisionGoLiveStaffAccounts.js --dry-run              # report only
+ * Usage - the RELIABLE way, bypassing npm's own argument forwarding entirely:
+ *   node server/scripts/provisionGoLiveStaffAccounts.js --dry-run              # report only (default)
  *   node server/scripts/provisionGoLiveStaffAccounts.js --yes                  # create the 6 ready accounts
  *   node server/scripts/provisionGoLiveStaffAccounts.js --yes --menna-email m@reservia-energy.com
  *   node server/scripts/provisionGoLiveStaffAccounts.js --yes --update-existing   # also fix role/
@@ -37,12 +37,84 @@
  *                                                                                  # password unless
  *                                                                                  # --reset-password
  *                                                                                  # is ALSO given)
+ *
+ * Via npm - THREE equally valid ways, because npm itself reserves a global `--yes`/`-y` config
+ * flag (the one `npm init`/`npx` use to auto-confirm) and on some npm/shell combinations this
+ * intercepts a bare `--yes` BEFORE it ever reaches this script's argv, even after the `--`
+ * separator. All three of the below are verified immune to that:
+ *   npm run db:provision-golive-staff:apply          # dedicated script, --yes is hardcoded in
+ *                                                     # package.json - nothing for a shell to
+ *                                                     # mis-forward
+ *   npm run db:provision-golive-staff -- --yes       # works once this script's own argv parser
+ *                                                     # (below) normalizes a stray leading `--`
+ *                                                     # some shells insert
+ *   GOLIVE_STAFF_APPLY=true npm run db:provision-golive-staff   # env var, never touched by any
+ *                                                                # argv-forwarding quirk at all
+ *      (PowerShell: $env:GOLIVE_STAFF_APPLY='true'; npm run db:provision-golive-staff)
+ *
+ * Any argument this script does not recognize is a hard error naming every accepted flag - it
+ * never silently falls back to a dry run on bad input (see parseArgs below).
  */
 const mongoose = require('mongoose');
 const { loadEnv, assertDbUriConfigured, assertSafeDatabaseName, assertNotLeopardDatabase, SafetyError } = require('./lib/dbSafety');
 const { generateStrongPassword } = require('../utils/generatePassword');
 
-const DOMAIN = 'reservia-energy.com';
+const DOMAIN = 'reservia.com';
+
+const USAGE = [
+  'Accepted arguments:',
+  '  --yes               actually apply changes (default without it: dry run / report only)',
+  '  --dry-run           explicit no-op flag - this is the default when --yes is absent',
+  '  --update-existing   also reconcile an account that already exists by email',
+  '  --reset-password    rotate the password of an updated existing account (requires --update-existing)',
+  '  --menna-email <email>   provision Menna once a real email exists for her',
+  '',
+  'Or set the GOLIVE_STAFF_APPLY=true environment variable instead of --yes - immune to any',
+  'shell/npm argument-forwarding quirk (PowerShell: $env:GOLIVE_STAFF_APPLY=\'true\').',
+].join('\n');
+
+/**
+ * Pure, side-effect-free (beyond throwing) - never touches the DB, never prints. Exported so
+ * tests can exercise every accepted/rejected combination without any DB connection at all.
+ *
+ * A bare leading `--` token (some shells/npm versions insert one when forwarding arguments
+ * through `npm run script -- --flag`) is stripped before validation rather than rejected - it is
+ * the separator itself, not an argument, and a user who typed `-- --yes` correctly must not be
+ * told their input was invalid.
+ *
+ * @param {string[]} argv - already sliced to just the script's own arguments (process.argv.slice(2))
+ * @param {Record<string,string|undefined>} env - process.env, or an equivalent plain object in tests
+ */
+function parseArgs(argv, env = {}) {
+  const tokens = argv[0] === '--' ? argv.slice(1) : argv;
+  const flags = { yes: false, dryRun: false, updateExisting: false, resetPassword: false, mennaEmail: null };
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (token === '--yes') flags.yes = true;
+    else if (token === '--dry-run') flags.dryRun = true;
+    else if (token === '--update-existing') flags.updateExisting = true;
+    else if (token === '--reset-password') flags.resetPassword = true;
+    else if (token === '--menna-email') {
+      const value = tokens[i + 1];
+      if (!value || value.startsWith('--')) {
+        throw new SafetyError(`--menna-email requires a value, e.g. --menna-email menna@reservia.com\n\n${USAGE}`);
+      }
+      flags.mennaEmail = value;
+      i += 1;
+    } else {
+      throw new SafetyError(`Unrecognized argument "${token}".\n\n${USAGE}`);
+    }
+  }
+
+  const envApply = env.GOLIVE_STAFF_APPLY === 'true';
+  if (flags.yes && flags.dryRun) {
+    throw new SafetyError(`Both --yes and --dry-run were given - that is contradictory. Pass exactly one.\n\n${USAGE}`);
+  }
+
+  const apply = (flags.yes || envApply) && !flags.dryRun;
+  return { apply, dryRun: !apply, updateExisting: flags.updateExisting, resetPassword: flags.resetPassword, mennaEmail: flags.mennaEmail };
+}
 
 // ERP access is the top-level User.role field (mirrored into a systemMemberships ERP entry of the
 // same role value) - never a second vocabulary. null erp = no ERP access at all (no role
@@ -86,12 +158,11 @@ function buildMembershipsFor(staffer) {
 }
 
 async function provision() {
-  const args = process.argv.slice(2);
-  const dryRun = !args.includes('--yes');
-  const updateExisting = args.includes('--update-existing');
-  const resetPassword = args.includes('--reset-password');
-  const mennaIdx = args.indexOf('--menna-email');
-  const mennaEmail = mennaIdx !== -1 ? args[mennaIdx + 1] : null;
+  const { dryRun, updateExisting, resetPassword, mennaEmail } = parseArgs(process.argv.slice(2), process.env);
+
+  // Printed BEFORE anything else - including before connecting to the database - so it is
+  // impossible to miss which mode a run is actually in, regardless of how it was invoked.
+  console.log(dryRun ? '=== DRY RUN (no changes will be written; pass --yes to apply) ===' : '=== APPLY MODE - changes WILL be written ===');
 
   loadEnv();
   assertDbUriConfigured();
@@ -208,4 +279,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { provision, STAFF };
+module.exports = { provision, STAFF, parseArgs, USAGE };

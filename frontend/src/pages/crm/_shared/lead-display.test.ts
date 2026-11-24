@@ -124,3 +124,18 @@ test("allowedNextStages: technical can only move a lead to Site survey or Propos
 test("allowedNextStages: from New a sales/md/admin user sees the next stage and Lost only (Change Request 2)", () => {
   assert.deepEqual(allowedNextStages("new", "sales"), ["contacted", "lost"]);
 });
+
+// Go-live Developer Pack 5.5: sales_viewer (the real Sales/Technical Engineer CRM role) can never
+// move a lead at all - mirrors backend utils/crm/stageRules.js#STAGE_MOVE_BLOCKED_ROLES exactly.
+test("allowedNextStages: sales_viewer gets no destinations at all, from any stage", () => {
+  for (const stage of ["new", "contacted", "qualified", "site_survey", "proposal_sent", "negotiation", "lost"]) {
+    assert.deepEqual(allowedNextStages(stage, "sales_viewer"), [], `${stage} -> (sales_viewer) should offer nothing`);
+  }
+});
+
+// Go-live 5.5: WON_BLOCKED_ROLES - Marketing never gets Won offered, even from Negotiation/Proposal Sent.
+test("allowedNextStages: marketing never sees Won as a destination", () => {
+  assert.ok(!allowedNextStages("proposal_sent", "marketing").includes("won"));
+  assert.ok(!allowedNextStages("negotiation", "marketing").includes("won"));
+  assert.ok(allowedNextStages("proposal_sent", "md").includes("won"), "md should still see Won from Proposal sent");
+});

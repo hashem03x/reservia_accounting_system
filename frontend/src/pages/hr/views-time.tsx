@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
-import { ATT, ATTN, canEdit, DayRec, DN, dAdd, fmt, mLabel, pad, r1, sum, useHr } from "./hr-context";
+import { ATT, ATTN, canDecideHr, canEdit, DayRec, DN, dAdd, fmt, mLabel, pad, r1, sum, useHr } from "./hr-context";
 import { ArmedButton, Chk, Empty, Inp, Kpi, Modal, MonthBar, Panel, Pill, Sel, statusPill, Top, Txt, useFormVals, useModal } from "./ui";
 import { useEmp } from "./views-people";
 
@@ -386,7 +386,7 @@ export function Timesheets({ initialEmp }: { initialEmp?: string }) {
   const lk = st !== "draft";
   const ap = t.approval;
   const edit = canEdit(state.role);
-  const canDecide = edit || state.role === "manager";
+  const canDecide = canDecideHr(state.role);
   const dis = lk || !!ap || !edit;
   const change = async (d: DayRec, k: "s" | "in" | "out", v: string) => {
     const rec = { s: d.s, in: d.in, out: d.out, n: d.n, [k]: v };
@@ -879,7 +879,7 @@ export function ExpenseModal({ id, empId }: { id?: string; empId?: string }) {
   const f = useFormVals(x ? { ...x, empId: x.employee, receiptOverride: !!x.receiptOverride } : { date: state?.today, type: state?.lists.EXPENSE_TYPES[0], status: "Pending", receipt: true, payMonth: state?.month, empId: empId || "" });
   if (!state || (id && !x)) return null;
   const edit = canEdit(state.role);
-  const canDecide = edit || state.role === "manager";
+  const canDecide = canDecideHr(state.role);
   const emps = state.employees.filter((e) => e.status !== "Left").map((e) => [e._id, `${e.name} (${e.code})`] as [string, string]);
   const save = async () => {
     if (edit && (!id || x?.status === "Pending" || state.role === "md")) await call(id ? "PATCH" : "POST", id ? `expenses/${id}` : "expenses", f.v);

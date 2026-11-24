@@ -8,12 +8,18 @@ import { formatAmount } from "@/utils/helpers/format-amount";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
 import { solidIcons } from "@/components/icons";
 import { notifyError } from "@/utils/helpers/notifiers";
-import { BoqLine, CommercialProject, CommercialRevision } from "@/types/commercial";
+import { BoqLine, CommercialProject, CommercialRevision, CommercialRole } from "@/types/commercial";
+import { canEdit, projectTabAccess } from "../../../_shared/dealEnginePermissions";
 import CreatePrModal from "./create-pr-modal";
 
-// Feature 2/3 - who may select/change a BOQ line's vendor AND who may Create PR (mirrors backend
-// revisionService.js#BOQ_VENDOR_ROLES / createPrService.js#BOQ_VENDOR_ROLES - same list, same reasoning).
+// Feature 2/3 - who may select/change a BOQ line's vendor (mirrors backend
+// revisionService.js#BOQ_VENDOR_ROLES).
 const BOQ_VENDOR_ROLES = ["md", "commercial_director", "procurement"];
+// Go-live Developer Pack 5.4: who may Create PR from a BOQ line - a WIDER, separate list (mirrors
+// backend createPrService.js#BOQ_VENDOR_ROLES, which gained bdm/sales for this action specifically
+// while the vendor-select list above did not change). These two backend lists share a name but have
+// diverged - do not collapse them back into one constant here.
+const BOQ_CREATE_PR_ROLES = ["md", "commercial_director", "procurement", "bdm", "sales"];
 
 // Every BOQ line distinguishes automatic vs. manually-overridden values (source badge) - an
 // override is applied on top of the live recalculation without discarding the auto-calculated
@@ -21,8 +27,13 @@ const BOQ_VENDOR_ROLES = ["md", "commercial_director", "procurement"];
 export default function BoqTab({ project, revision, onChanged }: { project: CommercialProject; revision: CommercialRevision; onChanged: () => void }) {
   const { translate, language } = useLanguage();
   const { systems } = useSystemAccess();
-  const role = systems?.COMMERCIAL?.role || "";
+  const role = (systems?.COMMERCIAL?.role || "") as CommercialRole | "";
   const canSetVendor = BOQ_VENDOR_ROLES.includes(role);
+  const canCreatePr = BOQ_CREATE_PR_ROLES.includes(role);
+  // Go-live audit: qty/unit price overrides need EDIT-level BOQ access (backend
+  // assertEngineeringInputWriteAllowed/boqLines row) - Sales and Procurement are 'view' only and
+  // would always get a 403 on save, so the inputs below must not invite them to try.
+  const canEditBoq = canEdit(projectTabAccess(role ? [role as CommercialRole] : [], "boqLines"));
   const [overrides, setOverrides] = useState<Record<string, { qty?: number; unitPrice?: number }>>({});
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler<null>({ initialData: null });
 
@@ -32,12 +43,12 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
   const [vendorBusy, setVendorBusy] = useState<string | null>(null);
   const [prLine, setPrLine] = useState<BoqLine | null>(null);
   useEffect(() => {
-    if (!canSetVendor) return;
+    if (!canSetVendor && !canCreatePr) return;
     privateRequest({ url: "commercial/suppliers", language })
       .then((res) => setSuppliers((res.data || []).filter((s: { status: string }) => ["Approved", "Conditional"].includes(s.status))))
       .catch(() => setSuppliers([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canSetVendor]);
+  }, [canSetVendor, canCreatePr]);
 
   function setLineVendor(component: string, supplierId: string | null) {
     setVendorBusy(component);
@@ -128,10 +139,10 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                 </Table.Td>
                 <Table.Td>{line.unit}</Table.Td>
                 <Table.Td className="text-right">
-                  <NumberInput size="xs" value={overrides[line.component]?.qty ?? line.qty ?? undefined} onChange={(v) => setOverride(line.component, "qty", v as number)} w={90} />
+                  <NumberInput size="xs" value={overrides[line.component]?.qty ?? line.qty ?? undefined} onChange={(v) => setOverride(line.component, "qty", v as number)} w={90} disabled={!canEditBoq} />
                 </Table.Td>
                 <Table.Td className="text-right">
-                  <NumberInput size="xs" value={overrides[line.component]?.unitPrice ?? line.unitPrice ?? undefined} onChange={(v) => setOverride(line.component, "unitPrice", v as number)} w={110} />
+                  <NumberInput size="xs" value={overrides[line.component]?.unitPrice ?? line.unitPrice ?? undefined} onChange={(v) => setOverride(line.component, "unitPrice", v as number)} w={110} disabled={!canEditBoq} />
                 </Table.Td>
                 <Table.Td className="text-right font-medium">{formatAmount(line.total, project.currency)}</Table.Td>
                 <Table.Td>
@@ -170,7 +181,7 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                     <Badge size="sm" variant="light" color={!line.orderedQty ? "gray" : line.orderedQty >= (line.qty || 0) ? "green" : "yellow"}>
                       {!line.orderedQty ? translate("Not requested", "لم يُطلب") : line.orderedQty >= (line.qty || 0) ? translate("Fully ordered", "تم طلبه بالكامل") : translate("Partially ordered", "طُلب جزئياً")}
                     </Badge>
-                    {canSetVendor && (line.qty || 0) > 0 && (
+                    {canCreatePr && (line.qty || 0) > 0 && (
                       <Button size="compact-xs" variant="subtle" onClick={() => setPrLine(line)}>
                         {translate("Create PR", "إنشاء أمر شراء")}
                       </Button>
@@ -191,9 +202,11 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
       </DataTableContainer>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button onClick={handleSave} loading={loading} color="teal" disabled={!Object.keys(overrides).length} className="self-start">
-        {translate("Save Overrides", "حفظ التعديلات")}
-      </Button>
+      {canEditBoq && (
+        <Button onClick={handleSave} loading={loading} color="teal" disabled={!Object.keys(overrides).length} className="self-start">
+          {translate("Save Overrides", "حفظ التعديلات")}
+        </Button>
+      )}
 
       <CreatePrModal opened={!!prLine} onClose={() => setPrLine(null)} revisionId={revision._id} line={prLine} suppliers={suppliers} onCreated={onChanged} />
     </div>

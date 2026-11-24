@@ -54,6 +54,10 @@ const OWNERS = {
   // (resource: null since Commercial gates via middleware/commercialAccess.js, not the ERP's
   // resource:action list - same reasoning as crm-leads above).
   'commercial-projects': { ownerType: 'CommercialProject', model: 'CommercialProject', resource: null, allowImages: true },
+  // Go-live Developer Pack F10: HR expense claim receipts - a photo of a paper receipt is the
+  // normal case (allowImages: true), gated by middleware/hrAccess.js, not the ERP's resource:
+  // action list (resource: null, same reasoning as crm-leads/commercial-projects above).
+  'hr-expenses': { ownerType: 'HrExpense', model: 'HrExpense', resource: null, allowImages: true },
 };
 const OWNER_BY_TYPE = Object.fromEntries(Object.values(OWNERS).map(o => [o.ownerType, o]));
 
