@@ -116,22 +116,23 @@ export default function CrmLeadDetail() {
             <Badge color={stageBadgeColor(lead.stage)} size="lg" variant="light">
               {stageLabel(lead.stage)}
             </Badge>
-            {role === "md" ? (
+            {role === "md" || role === "bdm" ? (
               <ArchiveAction lead={lead} onChanged={load} onArchivedAway={() => navigate(`/${paths.crm}/${paths.leads}`)} />
             ) : (
               role === "admin" && (
                 // CRM Changes Required, item 3: the button was simply absent for a non-MD login, which
-                // read as "missing". Say who can archive and which role this login holds.
+                // read as "missing". Say who can archive and which role this login holds. Go-live 5.5
+                // added BDM to the backend's allowlist (routes/crm/leadRoute.js) alongside MD.
                 <Tooltip
                   multiline
                   w={260}
                   label={translate(
-                    "Archive and restore are for the CRM MD role only. This login holds the CRM Admin role - the MD role is granted in Central Portal > Users > system access.",
-                    "الأرشفة والاستعادة لدور المدير العام في النظام فقط. هذا الحساب يحمل دور المسؤول - يُمنح دور المدير العام من بوابة النظام > المستخدمون > صلاحيات الأنظمة.",
+                    "Archive and restore are for the CRM MD or BDM role only. This login holds the CRM Admin role - the MD/BDM role is granted in Central Portal > Users > system access.",
+                    "الأرشفة والاستعادة لدور المدير العام أو مدير تطوير الأعمال فقط. هذا الحساب يحمل دور المسؤول - يُمنح الدور من بوابة النظام > المستخدمون > صلاحيات الأنظمة.",
                   )}
                 >
                   <Button variant="light" color="gray" size="sm" disabled data-testid="archive-md-only">
-                    {translate("Archive (MD only)", "أرشفة (للمدير العام فقط)")}
+                    {translate("Archive (MD/BDM only)", "أرشفة (للمدير العام أو مدير تطوير الأعمال فقط)")}
                   </Button>
                 </Tooltip>
               )
@@ -146,8 +147,11 @@ export default function CrmLeadDetail() {
             lead={lead}
             overdue={overdue}
             firstReply={data.firstReply}
-            canEdit={role === "md" || role === "admin" || role === "sales"}
-            canReassignOwner={role === "md" || role === "admin"}
+            // Go-live Developer Pack 5.5: mirrors backend routes/crm/leadRoute.js#CRM_LEAD_WRITE_ROLES
+            // and the owner-reassign route's own role list exactly - both gained bdm/commercial_director/
+            // marketing (sales_viewer stays excluded from both, by design: view only).
+            canEdit={["md", "admin", "sales", "bdm", "commercial_director", "marketing"].includes(role || "")}
+            canReassignOwner={["md", "admin", "bdm", "commercial_director", "marketing"].includes(role || "")}
             onEdited={load}
           />
           <LeadCommercialCard lead={lead} onChanged={load} />

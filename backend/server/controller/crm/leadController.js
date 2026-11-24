@@ -19,8 +19,12 @@ const { buildLeadExportRows, HEADERS: EXPORT_HEADERS } = require('../../services
 //
 // Archived leads (acceptance report finding 7) are excluded by default - a soft-deleted test
 // record must behave like it's gone for everyone's everyday view, not just visually hidden. Only
-// the MD can even ask to see them (`includeArchived=1`), and only the MD has the archive/restore
-// actions below that would ever put one there in the first place.
+// a role with the archive/restore actions below can even ask to see them (`includeArchived=1`) -
+// go-live Developer Pack 5.5 added bdm to those actions (routes/crm/leadRoute.js) but this toggle
+// was left md-only, so a BDM who archived a lead would have had no way to find it again to restore
+// it. Kept as its own explicit list rather than re-deriving from the route's role check, so the two
+// can be told apart deliberately if they are ever meant to diverge.
+const ARCHIVE_VISIBILITY_ROLES = ['md', 'bdm'];
 const listLeads = factory.getAll(Lead, 'CrmLead');
 exports.getLeads = (req, res, next) => {
   const filter = {};
@@ -35,7 +39,7 @@ exports.getLeads = (req, res, next) => {
   }
   if (segment) filter.segment = segment;
   if (q) filter.$text = { $search: q };
-  if (!(includeArchived && req.crmRole === 'md')) filter.archived = { $ne: true };
+  if (!(includeArchived && ARCHIVE_VISIBILITY_ROLES.includes(req.crmRole))) filter.archived = { $ne: true };
   ['stage', 'owner', 'segment', 'q', 'includeArchived'].forEach(k => delete req.query[k]);
   req.filterObject = filter;
   return listLeads(req, res, next);

@@ -41,7 +41,10 @@ export default function CrmLeads() {
   const [segment, setSegment] = useState((searchParams.get("segment") as CrmSegment) || "");
   const [q, setQ] = useState(searchParams.get("q") || "");
   const [debouncedQ] = useDebounce(q, 350);
-  // MD only (acceptance report finding 7) - everyone else never even sees archived leads exist.
+  // MD/BDM only (acceptance report finding 7; BDM added by go-live 5.5 alongside the archive/
+  // restore actions themselves) - everyone else never even sees archived leads exist. Mirrors
+  // backend controller/crm/leadController.js#ARCHIVE_VISIBILITY_ROLES exactly.
+  const canSeeArchived = role === "md" || role === "bdm";
   const [includeArchived, setIncludeArchived] = useState(false);
 
   const params = {
@@ -49,7 +52,7 @@ export default function CrmLeads() {
     ...(stage ? { stage } : {}),
     ...(segment ? { segment } : {}),
     ...(debouncedQ ? { q: debouncedQ } : {}),
-    ...(includeArchived && role === "md" ? { includeArchived: "1" } : {}),
+    ...(includeArchived && canSeeArchived ? { includeArchived: "1" } : {}),
   };
 
   const {
@@ -131,7 +134,7 @@ export default function CrmLeads() {
           label={translate("Segment", "القطاع")}
           clearable
         />
-        {role === "md" && (
+        {canSeeArchived && (
           <Switch
             checked={includeArchived}
             onChange={(e) => (setActivePage(1), setIncludeArchived(e.currentTarget.checked))}
