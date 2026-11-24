@@ -98,7 +98,15 @@ async function setStageStatus(revisionId, stage, status, { userId, userRole, not
   // matrix gives them unconditional Stage 1 rights.
   if (stage === 'STAGE1' && userRole === 'sales') {
     const project = await CommercialProject.findById(revision.project).select('owner').lean();
-    if (!project?.owner || String(project.owner) !== String(userId)) {
+    // commercialProjectModel.js's own pre(/^find/) hook ALWAYS populates `owner` (even under this
+    // .select('owner').lean() query - lean only skips hydrating the result into a Mongoose
+    // document, it does not stop query-building middleware from running), so `project.owner` here
+    // is a populated {_id, name, email} object, never a raw id - comparing it directly as a string
+    // always produced "[object Object]", meaning NO Sales Engineer could ever sign Stage 1 on ANY
+    // deal, including one they genuinely own. Caught by test/golive/acceptanceScenarios.test.js
+    // (8.1.2 - the one test anywhere that actually signed Stage 1 as the deal's real owner).
+    const ownerId = project?.owner?._id || project?.owner;
+    if (!ownerId || String(ownerId) !== String(userId)) {
       throw new ApiError('You can only sign Stage 1 on a deal you own. This deal has a different owner (or none set).', 403);
     }
   }
