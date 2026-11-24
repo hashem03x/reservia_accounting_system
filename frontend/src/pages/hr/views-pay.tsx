@@ -430,15 +430,17 @@ export function Erp() {
       </Top>
       <Panel title="Connection">
         <div className="fg">
-          <Inp label="ERP system name" k="erpName" f={f} placeholder="Odoo, Dynamics 365, SAP B1" />
-          <Inp label="Company code in the ERP" k="erpCo" f={f} />
-          <Inp label="Endpoint for posting the payroll journal (https)" k="erpUrl" f={f} full placeholder="https://erp.example.com/api/payroll/journal" />
+          <Inp label="ERP system name (display only)" k="erpName" f={f} placeholder="Odoo, Dynamics 365, SAP B1" />
+          <Inp label="Company code (display only)" k="erpCo" f={f} />
           <label className="chk full">
             <input type="checkbox" checked={!!f.v.erpAuto} onChange={(e) => f.set("erpAuto", e.target.checked)} /> Post the journal automatically when a month is closed
           </label>
         </div>
         <div className="sub" style={{ marginTop: 8 }}>
-          The server sends one JSON document per month: the journal lines below plus a per-employee breakdown, with the bearer token configured on the server (HR_ERP_API_TOKEN). The ERP must answer with its journal reference. Phase 1: download the file and import it.
+          {/* Go-live F14: posting now happens inside this same platform - straight into the real
+              Journal Entries below, mapped through the accounts set under "Account mapping". No
+              external endpoint or bearer token is used any more. */}
+          Posting creates a real Journal Entry in this platform&apos;s own Chart of Accounts, using the account mapping below - there is no external ERP endpoint to configure.
         </div>
       </Panel>
       <Panel title="Account mapping">
@@ -456,10 +458,7 @@ export function Erp() {
           </div>
         )}
       </Panel>
-      {/* HR Portal D8: a brand-new month with no ERP endpoint configured has never been posted
-          (`erp` is null) - the small text below is otherwise ok, this just also covers the case
-          where a stale/legacy run has no endpoint and no recorded error either. */}
-      <Panel title={`Journal for ${mLabel(month)}`} small={`${st}${!c.erpUrl ? " · No ERP endpoint set" : erp ? (erp.ok ? ` · posted, reference ${erp.reference}` : ` · last attempt failed: ${erp.error || "unknown error"}`) : ""}`}>
+      <Panel title={`Journal for ${mLabel(month)}`} small={`${st}${erp ? (erp.ok ? ` · posted, journal entry #${erp.reference}` : ` · last attempt failed: ${erp.error || "unknown error"}`) : ""}`}>
         <div className="tablewrap">
           <table>
             <thead>
@@ -494,9 +493,9 @@ export function Erp() {
         <div className="row2" style={{ marginTop: 10 }}>
           <button
             className="btn primary"
-            disabled={st === "draft" || st === "review" || !c.erpUrl}
-            title={st === "draft" || st === "review" ? "Approve the month first" : !c.erpUrl ? "Save an ERP endpoint above first" : ""}
-            onClick={() => call("POST", `payroll/${month}/erp`).then((r) => toast(r.data.ok ? `Posted to the ERP, reference ${r.data.reference}` : `The ERP did not accept it: ${r.data.error}`)).catch(() => undefined)}
+            disabled={st === "draft" || st === "review"}
+            title={st === "draft" || st === "review" ? "Approve the month first" : ""}
+            onClick={() => call("POST", `payroll/${month}/erp`).then((r) => toast(r.data.ok ? `Posted - journal entry #${r.data.reference}` : `Could not post: ${r.data.error}`)).catch(() => undefined)}
           >
             {erp && !erp.ok ? "Retry post to ERP" : "Post to ERP"}
           </button>

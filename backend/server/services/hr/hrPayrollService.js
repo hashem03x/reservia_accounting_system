@@ -246,7 +246,7 @@ async function close(month, body, ctx) {
   }
   await audit(ctx, 'payroll_runs', month, 'close', { status: 'approved' }, { status: 'closed', version: run.version, employees: rows.length });
   let erp = null;
-  if (cfg.erpAuto && cfg.erpUrl) erp = await postToErp(month, ctx).catch(e => ({ ok: false, error: e.message }));
+  if (cfg.erpAuto) erp = await postToErp(month, ctx).catch(e => ({ ok: false, error: e.message }));
   return { run: run.toObject(), erp };
 }
 
@@ -319,46 +319,38 @@ async function journalCsv(month, ctx) {
 }
 
 /**
- * ERP post (spec section 9): only from an approved or closed run; one post per run version unless
- * reopened; the ERP must answer 2xx with its journal reference, which is stored. Bearer token from
- * HR_ERP_API_TOKEN (never stored in the database).
+ * ERP post (spec section 9 / go-live F14): only from an approved or closed run; one post per run
+ * version unless reopened. Posts a REAL JournalEntry inside this same platform's own Chart of
+ * Accounts (services/accounting/hrPayrollAccountingService.js) - F14's fix is explicitly "post the
+ * closed HR month INSIDE THE PLATFORM to mapped ERP accounts", replacing the old external-HTTP
+ * call to a configurable `cfg.erpUrl` that had no real receiver and always failed. The HR Settings
+ * "ERP link" page's endpoint/token fields are no longer read by this function; the only input that
+ * matters now is the ERP account mapping (ERP_KEYS.gl), which must point at real, existing Chart
+ * of Accounts codes - exactly what F14 found missing (5100-2330 are not in the ERP chart).
  */
 async function postToErp(month, ctx) {
   assertRole(ctx, C.PAY_ROLES, 'post to the ERP');
   const run = await runDoc(month);
   if (!['approved', 'closed'].includes(run.status)) throw new ApiError('Post to the ERP once the MD has approved the month.', 409);
-  if (run.erp?.ok && run.erp.version === run.version) throw new ApiError(`Already posted (ERP reference ${run.erp.reference}). Reopen the month to post again.`, 409);
-  const { values } = await C.settingsFor(month);
-  const cfg = P.config(values);
-  if (!cfg.erpUrl) throw new ApiError('Set the ERP endpoint on the ERP link page first.', 400);
-  // https only; HR_ERP_ALLOW_INSECURE=1 exists for local tests against a stand-in ERP.
-  if (!/^https:\/\//.test(cfg.erpUrl) && process.env.HR_ERP_ALLOW_INSECURE !== '1') throw new ApiError('The ERP endpoint must start with https://', 400);
+  if (run.erp?.ok && run.erp.version === run.version) throw new ApiError(`Already posted (ERP journal entry ${run.erp.reference}). Reopen the month to post again.`, 409);
   const payload = await journal(month, { ...ctx, role: 'md' });
-  const headers = { 'Content-Type': 'application/json' };
-  if (process.env.HR_ERP_API_TOKEN) headers.Authorization = `Bearer ${process.env.HR_ERP_API_TOKEN}`;
   const erp = { at: new Date(), by: ctx.user?._id, byName: C.userName(ctx.user), attempts: (run.erp?.attempts || 0) + 1, version: run.version };
   try {
-    const res = await fetch(cfg.erpUrl, { method: 'POST', headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(20000) });
-    erp.status = res.status;
-    const text = await res.text();
-    let body = null;
-    try {
-      body = JSON.parse(text);
-    } catch {
-      body = null;
-    }
-    const reference = body && (body.reference || body.journal_reference || body.journalReference || body.ref || body.id);
-    erp.ok = res.ok && !!reference;
-    erp.reference = reference ? String(reference).slice(0, 120) : '';
-    erp.error = res.ok ? (reference ? '' : 'The ERP answered without a journal reference.') : `The ERP answered ${res.status}.`;
+    const entry = await require('../accounting/hrPayrollAccountingService').postHrPayrollJournal(month, payload);
+    erp.ok = true;
+    erp.reference = String(entry.entryNumber);
+    erp.error = '';
   } catch (e) {
     erp.ok = false;
-    erp.error = `The ERP could not be reached: ${e.message}`.slice(0, 300);
+    erp.error = (e.message || 'The journal entry could not be posted.').slice(0, 300);
   }
   run.erp = erp;
   run.markModified('erp');
   await run.save();
-  await audit(ctx, 'payroll_runs', month, 'erp-post', null, { ok: erp.ok, status: erp.status, reference: erp.reference, error: erp.error });
+  await audit(ctx, 'payroll_runs', month, 'erp-post', null, { ok: erp.ok, reference: erp.reference, error: erp.error });
+  // Never throws on a failed post (e.g. a missing mapped account) - returned as {ok:false, error}
+  // instead, same contract as before, since the frontend's own success/failure branch reads this
+  // shape directly rather than catching a rejection (views-pay.tsx#Erp).
   return erp;
 }
 

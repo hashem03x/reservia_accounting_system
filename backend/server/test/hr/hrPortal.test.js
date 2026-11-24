@@ -34,9 +34,8 @@ require.cache[authPath] = {
   },
 };
 
-let User, M, C;
-let server, baseUrl, erpServer, erpUrl;
-const erpCalls = [];
+let User, M, C, ChartOfAccount;
+let server, baseUrl;
 let seq = 0;
 
 before(async () => {
@@ -46,7 +45,8 @@ before(async () => {
   User = require('../../models/userModel');
   M = require('../../models/hr/hrModels');
   C = require('../../services/hr/hrCore');
-  await Promise.all([User.init(), ...Object.values(M).map(m => m.init())]);
+  ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
+  await Promise.all([User.init(), ChartOfAccount.init(), ...Object.values(M).map(m => m.init())]);
   const express = require('express');
   const app = express();
   app.use(express.json());
@@ -55,31 +55,17 @@ before(async () => {
   server = http.createServer(app);
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
-  // A stand-in ERP: answers 201 with a journal reference.
-  erpServer = http.createServer((req, res) => {
-    let body = '';
-    req.on('data', c => (body += c));
-    req.on('end', () => {
-      erpCalls.push({ auth: req.headers.authorization, body: JSON.parse(body) });
-      res.writeHead(201, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ reference: `JV-${erpCalls.length}` }));
-    });
-  });
-  await new Promise(r => erpServer.listen(0, '127.0.0.1', r));
-  erpUrl = `http://127.0.0.1:${erpServer.address().port}/journal`;
 });
 
 after(async () => {
   if (!RUN) return;
   await new Promise(r => server.close(r));
-  await new Promise(r => erpServer.close(r));
   await mongoose.connection.dropDatabase();
   await mongoose.disconnect();
 });
 
 beforeEach(async () => {
   if (!RUN) return;
-  erpCalls.length = 0;
   const names = (await mongoose.connection.db.listCollections().toArray()).map(c => c.name);
   await Promise.all(names.map(n => mongoose.connection.collection(n).deleteMany({})));
 });
@@ -412,30 +398,46 @@ maybeTest('a Done site visit records V days and pays its allowance', async () =>
   assert.equal(row.reimb, 300);
 });
 
-maybeTest('ERP post: approved month only, bearer token, reference stored, one post per closed version', async () => {
+maybeTest('ERP post (go-live F14): approved month only, posts a REAL balanced JournalEntry inside this platform, reference stored, one post per closed version', async () => {
   const { hr, md, fin } = await team();
-  process.env.HR_ERP_API_TOKEN = 'test-erp-token';
   const month = '2026-07';
   await recordedMonth(hr, month);
-  // The stand-in ERP runs on http: settings validation requires https, so it is stored directly.
-  process.env.HR_ERP_ALLOW_INSECURE = '1';
-  await M.HrSettings.create({ effectiveMonth: '2026-01', values: { erpUrl } });
+  // F14: posting now creates a real Journal Entry in this platform's own Chart of Accounts
+  // (services/accounting/hrPayrollAccountingService.js) instead of calling an external HTTP
+  // endpoint - every account the default GL mapping (payrollEngine.js#DEFAULTS.gl) points at must
+  // actually exist first, exactly like a real deployment's Finance team would set up.
+  await ChartOfAccount.create([
+    { code: '5100', name: 'Salaries and wages', type: 'expense' },
+    { code: '5110', name: 'Allowances', type: 'expense' },
+    { code: '5120', name: 'Overtime', type: 'expense' },
+    { code: '5130', name: 'Site and travel allowances', type: 'expense' },
+    { code: '5140', name: 'Travel reimbursements', type: 'expense' },
+    { code: '5150', name: 'Social insurance, employer', type: 'expense' },
+    { code: '2310', name: 'Social insurance payable', type: 'liability' },
+    { code: '2320', name: 'Income tax payable', type: 'liability' },
+    { code: '2330', name: 'Salaries payable', type: 'liability' },
+    { code: '2340', name: 'Martyrs Fund payable', type: 'liability' },
+  ]);
   assert.equal((await api('POST', `/payroll/${month}/erp`, { user: fin })).status, 409, 'draft cannot post');
   await api('POST', `/payroll/${month}/submit`, { user: hr });
   await api('POST', `/payroll/${month}/approve`, { user: md });
   await api('POST', `/payroll/${month}/close`, { user: hr });
   const post = await api('POST', `/payroll/${month}/erp`, { user: fin });
   assert.equal(post.status, 200, post.text);
-  assert.equal(post.body.data.ok, true);
-  assert.equal(post.body.data.reference, 'JV-1');
-  assert.equal(erpCalls[0].auth, 'Bearer test-erp-token');
-  const dr = erpCalls[0].body.lines.reduce((a, l) => a + l.debit, 0);
-  const cr = erpCalls[0].body.lines.reduce((a, l) => a + l.credit, 0);
-  assert.ok(Math.abs(dr - cr) < 0.05, 'balanced journal');
-  assert.equal(erpCalls[0].body.status, 'closed');
+  assert.equal(post.body.data.ok, true, post.body.data.error);
+  assert.ok(post.body.data.reference, 'a real journal entry number is returned');
+
+  const JournalEntry = require('../../models/accounting/journalEntryModel');
+  const entry = await JournalEntry.findOne({ accountingAction: 'HR_PAYROLL_POST' }).lean();
+  assert.ok(entry, 'a real JournalEntry document now exists');
+  assert.equal(entry.status, 'posted');
+  assert.equal(String(entry.entryNumber), post.body.data.reference);
+  const dr = entry.lines.reduce((a, l) => a + l.debit, 0);
+  const cr = entry.lines.reduce((a, l) => a + l.credit, 0);
+  assert.equal(dr, cr, 'the posted journal entry balances exactly');
+
   assert.equal((await api('POST', `/payroll/${month}/erp`, { user: fin })).status, 409, 'one post per run');
-  delete process.env.HR_ERP_API_TOKEN;
-  delete process.env.HR_ERP_ALLOW_INSECURE;
+  assert.equal(await JournalEntry.countDocuments({ accountingAction: 'HR_PAYROLL_POST' }), 1, 'retrying never creates a second entry');
 });
 
 maybeTest('outputs: register PDF and CSV, journal CSV, form PDFs, exports limited to MD and HR, audit log hides pay', async () => {

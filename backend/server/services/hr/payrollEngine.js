@@ -492,7 +492,19 @@ function createEngine(data) {
     // either way (net above is already net of this deduction).
     add(g.martyrsPay, 0, sum(rows, 'martyrsAmt'), 'Martyrs Fund payable');
     add(g.taxPay, 0, sum(rows, 'tax'), 'Income tax payable');
-    add(g.net, 0, sum(rows, 'net'), 'Net salaries payable');
+    // Go-live F14: Net salaries payable is the BALANCING FIGURE, not an independent sum of every
+    // employee's own (separately rounded) `net` - across dozens of employees, r2(sum(basic)) -
+    // r2(sum(deductions)) etc. does not always land on exactly r2(sum(net)) (a classic "sum of
+    // rounded parts != round of the sum" drift of a cent or two), which the real posting this
+    // journal now does (services/accounting/hrPayrollAccountingService.js) refuses outright - a
+    // JournalEntry must balance exactly, by design, with no cent-level tolerance. Deriving net as
+    // whatever makes the lines above balance is also the more correct definition of "net
+    // payable" (gross minus every other line), not a plug for its own sake.
+    const debitSoFar = J.reduce((s, l) => s + l.debit, 0);
+    const creditSoFar = J.reduce((s, l) => s + l.credit, 0);
+    const netPlug = r2(debitSoFar - creditSoFar);
+    if (netPlug >= 0) add(g.net, 0, netPlug, 'Net salaries payable');
+    else add(g.net, -netPlug, 0, 'Net salaries payable (negative - review payroll inputs)');
     return {
       company: co,
       period: m,

@@ -144,6 +144,11 @@ exports.AccountingActions = [
   // reverses the direction for the returned quantity, at the ORIGINAL consumption's own cost.
   'SALES_PUC_CONSUMPTION',
   'SALES_PUC_CONSUMPTION_RETURN',
+  // Go-live F14: closing an HR Payroll month posts its journal (services/accounting/
+  // hrPayrollAccountingService.js) straight into this same platform's own Chart of Accounts -
+  // replacing the old external-HTTP "ERP endpoint" field, which had no real receiver and always
+  // failed. One entry per month (sourceType 'HR_PAYROLL', sourceId the month's deterministic id).
+  'HR_PAYROLL_POST',
   // Transfer Money (services/accounting/moneyTransferService.js): Dr the destination Cash/Cash
   // Equivalent account / Cr the source one - a single balanced entry (never two), reversible like
   // any other automatic entry through the normal Journal Entry "Reverse" action (not in the
@@ -174,7 +179,7 @@ exports.ProjectRequiredAccountingActions = [
 // which is the older (pre-existing) idempotency-key vocabulary for the two legacy automatic flows
 // (project creation, fixed asset purchase) - kept separate rather than merged, since those two
 // still only ever produce exactly one JE each and don't need an `accountingAction` to disambiguate.
-exports.AccountingSourceTypes = ['ADVANCED_PAYMENT', 'PO', 'SO', 'PAYMENT', 'PROJECT', 'FIXED_ASSET', 'EXPENSE', 'SHAREHOLDER', 'PUC_TRANSFER'];
+exports.AccountingSourceTypes = ['ADVANCED_PAYMENT', 'PO', 'SO', 'PAYMENT', 'PROJECT', 'FIXED_ASSET', 'EXPENSE', 'SHAREHOLDER', 'PUC_TRANSFER', 'HR_PAYROLL'];
 
 exports.ProjectStatuses = ['active', 'completed', 'cancelled', 'on_hold'];
 
@@ -279,7 +284,7 @@ exports.ProjectCostRecognitionDescriptionAr = 'تحميل المشروع بال�
 // so an automatic entry's module can never drift into inconsistent casing/spelling. 'Manual' is
 // the default for every hand-entered journal entry (source: 'manual'); the two legacy automatic
 // flows (project_creation, fixed_asset_purchase) keep their own plain labels for the same reason.
-exports.AccountingModules = ['Advanced Payment', 'Purchase Order', 'Sales Order', 'Payment', 'Manual', 'Fixed Asset', 'Project', 'Expense', 'Equity', 'Inventory'];
+exports.AccountingModules = ['Advanced Payment', 'Purchase Order', 'Sales Order', 'Payment', 'Manual', 'Fixed Asset', 'Project', 'Expense', 'Equity', 'Inventory', 'Payroll'];
 
 // accountingAction -> Module label. Deliberately keyed by accountingAction (not sourceType) -
 // PO_PAYMENT_RECORDED/SO_PAYMENT_RECORDED both carry `sourceType: 'PAYMENT'` but their real business
@@ -314,4 +319,5 @@ exports.AccountingModuleByAction = {
   SO_REFUND_RECORDED: 'Sales Order',
   PO_REFUND_RECORDED: 'Purchase Order',
   MONEY_TRANSFER: 'Payment',
+  HR_PAYROLL_POST: 'Payroll',
 };
