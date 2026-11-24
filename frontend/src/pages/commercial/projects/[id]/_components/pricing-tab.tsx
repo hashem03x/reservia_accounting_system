@@ -10,6 +10,7 @@ import SectionCard from "@/components/ui/section-card";
 import { CommercialProject, CommercialRevision, CommercialRole, PricingLevers } from "@/types/commercial";
 import PctInput, { toPct } from "../../../_shared/PctInput";
 import { perKwpBasis } from "../../../_shared/ruleVersion";
+import { projectTabAccess, canEdit, canEditFully } from "../../../_shared/dealEnginePermissions";
 
 // R2/R9/R11: the five policy levers (read-only to Sales; an S&C/MD deal override needs a reason).
 // Category addition and discount are Sales' own fields - never part of this set.
@@ -33,10 +34,17 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
   const { translate, language } = useLanguage();
   const { systems } = useSystemAccess();
   const role = systems?.COMMERCIAL?.role as CommercialRole | null | undefined;
-  // R2/5.2: Sales/BDM gets the five policy levers read-only (shown "as set by the policy version
-  // applied"); only the Commercial Director/MD may change them here, as a logged deal override.
-  const leversReadOnly = role === "sales";
-  const canOverride = role === "commercial_director" || role === "md";
+  // Go-live Developer Pack section 5.4: Pricing access is now three-tiered, not just "Sales vs.
+  // everyone else" - md/commercial_director = edit (everything, incl. the 5 policy levers as a
+  // logged override); bdm = limited (category addition + discount only, the 5 levers stay
+  // read-only); sales (the real Sales Engineer's role now) = plain view, nothing editable at all
+  // (previously had the same 2-field access BDM now exclusively has - moved per the new matrix).
+  const pricingLevel = projectTabAccess(role ? [role] : [], "pricing");
+  const fullyEditable = canEditFully(pricingLevel); // md / commercial_director
+  const limitedEditable = canEdit(pricingLevel); // + bdm (category/discount only)
+  const leversReadOnly = !fullyEditable; // the 5 policy levers: md/commercial_director only
+  const categoryDiscountReadOnly = !limitedEditable; // category/discount: md/commercial_director/bdm
+  const canOverride = fullyEditable;
   const p = revision.pricing;
   const applied = revision.pricingConfigApplied;
   const cur = project.currency;
@@ -61,7 +69,13 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
   const isOverride = canOverride && POLICY_LEVER_KEYS.some((k) => Math.abs(levers[k] - toPct(p[k] as number)) > 0.0001);
 
   function handleSave() {
-    const pricingOverrides = Object.fromEntries(LEVERS.map((l) => [l.key, levers[l.key] / 100]));
+    // Go-live audit: only send the levers that actually CHANGED - the backend's limited-level
+    // check (assertPricingWriteAllowed) looks at which KEYS are present, not which values differ,
+    // so sending the full set (including the 5 untouched policy levers) would 403 a BDM's
+    // legitimate category/discount-only edit every time. The backend merges a partial
+    // pricingOverrides on top of the revision's stored levers (revisionService.js#computeAndSave),
+    // so omitting an unchanged key is always safe - it is never reset to a policy default.
+    const pricingOverrides = Object.fromEntries(LEVERS.filter((l) => Math.abs(levers[l.key] / 100 - (Number(p[l.key]) || 0)) > 0.0001).map((l) => [l.key, levers[l.key] / 100]));
     save({ engineeringInput: revision.engineeringInput, pricingOverrides, ...(isOverride ? { overrideReason } : {}) });
   }
 
@@ -102,15 +116,23 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
                 label={translate(l.en, l.ar)}
                 value={levers[l.key]}
                 onChange={(v) => setLevers((prev) => ({ ...prev, [l.key]: v }))}
-                disabled={leversReadOnly && POLICY_LEVER_KEYS.includes(l.key)}
+                disabled={POLICY_LEVER_KEYS.includes(l.key) ? leversReadOnly : categoryDiscountReadOnly}
               />
             ))}
           </div>
-          {leversReadOnly && (
+          {leversReadOnly && !categoryDiscountReadOnly && (
             <p className="mt-2 text-xs text-gray-400">
               {translate(
-                "The five policy levers are read-only for Sales, shown as set by the policy version applied. Category addition and discount are yours to move within the Sales limits.",
-                "عوامل السياسة الخمسة للقراءة فقط للمبيعات، وتُعرض كما حددها إصدار السياسة المطبق. إضافة الفئة والخصم بين يديك ضمن حدود المبيعات."
+                "The five policy levers are read-only, shown as set by the policy version applied. Category addition and discount are yours to move within the Sales limits.",
+                "عوامل السياسة الخمسة للقراءة فقط، وتُعرض كما حددها إصدار السياسة المطبق. إضافة الفئة والخصم بين يديك ضمن حدود المبيعات."
+              )}
+            </p>
+          )}
+          {categoryDiscountReadOnly && (
+            <p className="mt-2 text-xs text-gray-400">
+              {translate(
+                "Pricing is read-only for your role - you can see the numbers, but only BDM, the Commercial Director or the MD can change them.",
+                "التسعير للقراءة فقط لدورك - يمكنك رؤية الأرقام، لكن فقط مدير تطوير الأعمال أو المدير التجاري أو المدير العام يمكنهم تعديلها."
               )}
             </p>
           )}
@@ -129,16 +151,21 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
             />
           )}
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button onClick={handleSave} loading={loading} color={isOverride ? "orange" : "teal"} disabled={isOverride && !overrideReason.trim()}>
-              {translate("Recalculate Pricing", "إعادة حساب التسعير")}
-            </Button>
-            {canOverride && (
-              <Button variant="light" loading={loading} onClick={() => save({ applyCurrentConfig: true })}>
-                {translate("Apply current default levers", "تطبيق القيم الافتراضية الحالية")}
+          {/* Go-live audit: plain VIEW (Sales) has nothing to save here at all - the backend
+             refuses ANY pricingOverrides for this level outright, even an unchanged/empty one
+             (assertPricingWriteAllowed), so offering this button would always just 403. */}
+          {limitedEditable && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button onClick={handleSave} loading={loading} color={isOverride ? "orange" : "teal"} disabled={isOverride && !overrideReason.trim()}>
+                {translate("Recalculate Pricing", "إعادة حساب التسعير")}
               </Button>
-            )}
-          </div>
+              {canOverride && (
+                <Button variant="light" loading={loading} onClick={() => save({ applyCurrentConfig: true })}>
+                  {translate("Apply current default levers", "تطبيق القيم الافتراضية الحالية")}
+                </Button>
+              )}
+            </div>
+          )}
           <p className="mt-2 text-xs text-gray-400">
             {translate(
               "Changing any lever resets earlier sign-offs on this revision (re-approval rule).",

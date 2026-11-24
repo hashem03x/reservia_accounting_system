@@ -260,3 +260,29 @@ maybeTest('payroll approved by a DIFFERENT person than who submitted it needs no
   assert.equal(approved.status, 200, approved.text);
   assert.equal(approved.body.data.selfApproved, false);
 });
+
+// Go-live section 5.7/D6's "own record only" principle is a READ rule too, not just a write rule -
+// GET /hr/state used to hand a plain 'employee' the WHOLE company's attendance/visits/leave data
+// (visibleEmployeeIds fell through to its "no restriction" branch, same as Finance). Caught by
+// re-reading hrCore.js#visibleEmployeeIds against the brief, not by a failing test.
+maybeTest('go-live READ scope: a plain employee sees only their OWN attendance/visits/expenses via GET /hr/state, never a colleague\'s', async () => {
+  const alice = await mkStaffer('Alice Employee', 'employee');
+  const bob = await mkStaffer('Bob Employee', 'employee');
+  const month = thisMonth();
+  await api('POST', '/visits', { user: alice.user, body: { empId: String(alice.emp._id), date: `${month}-03`, site: 'Client HQ', purpose: 'Install' } });
+  await api('POST', '/visits', { user: bob.user, body: { empId: String(bob.emp._id), date: `${month}-03`, site: 'Client HQ', purpose: 'Install' } });
+  await api('POST', '/expenses', { user: alice.user, body: { empId: String(alice.emp._id), date: `${month}-02`, type: 'Meals', amount: 50 } });
+  await api('POST', '/expenses', { user: bob.user, body: { empId: String(bob.emp._id), date: `${month}-02`, type: 'Meals', amount: 50 } });
+
+  const asAlice = await api('GET', `/state?month=${month}`, { user: alice.user });
+  assert.equal(asAlice.status, 200, asAlice.text);
+  const empIds = asAlice.body.data.employees.map(e => e._id);
+  assert.deepEqual(empIds, [String(alice.emp._id)], 'an employee must see only their own employee record, never a colleague\'s');
+  assert.deepEqual(asAlice.body.data.visits.map(v => v.employee), [String(alice.emp._id)]);
+  assert.deepEqual(asAlice.body.data.expenses.map(x => x.employee), [String(alice.emp._id)]);
+
+  // md/hr are unaffected - still see everyone.
+  const hr = await mkUser('Hala HR', 'hr');
+  const asHr = await api('GET', `/state?month=${month}`, { user: hr });
+  assert.ok(asHr.body.data.employees.length >= 2, 'HR must still see every employee');
+});

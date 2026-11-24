@@ -10,9 +10,12 @@ export const STAGE_META: { key: ApprovalStageKey; apiStage: string; roles: strin
   {
     key: "stage1",
     apiStage: "stage1",
-    roles: ["sales", "technical"],
+    // Go-live Developer Pack 5.4/5.8: BDM may also sign Stage 1, alongside Sales/Technical -
+    // mirrors backend services/commercial/approvalService.js#STAGE_ROLES.STAGE1 exactly. A Sales
+    // Engineer may only sign a deal they own (enforced server-side; not re-derived here).
+    roles: ["sales", "technical", "bdm"],
     title: { en: "Stage 1: Gross Profit & Technical Scope", ar: "المرحلة 1: الربح الإجمالي والنطاق الفني" },
-    who: { en: "Sales & Technical", ar: "المبيعات والفني" },
+    who: { en: "Sales, Technical & BDM", ar: "المبيعات والفني ومدير تطوير الأعمال" },
   },
   {
     key: "stage2",

@@ -6,7 +6,12 @@ import { useLanguage } from "@/context/LanguageContext";
 // Reservia HR Portal - one month snapshot from GET /hr/state (the backend computes every figure with
 // the payroll engine; the screens only display and send changes), plus the helpers every view uses.
 
-export type HrRole = "md" | "hr" | "manager" | "finance";
+// Go-live Developer Pack 5.5: employee/line_manager are real HR Portal roles now too (the
+// backend's role field for ordinary staff and line managers - middleware/hrAccess.js#HR_ROLES and
+// services/hr/hrCore.js#LINE_MANAGER_ROLES). line_manager has the exact same decision-approval
+// rights as the legacy "manager" role (see canDecideHr below) - kept as two literal role strings
+// rather than merged into one, matching the backend's own choice not to rename "manager".
+export type HrRole = "md" | "hr" | "manager" | "finance" | "employee" | "line_manager";
 export type DayRec = {
   date: string; dow: number; emp: boolean; rest: boolean; hol: boolean; s: string; in: string; out: string; n: string;
   worked: number; ot: number; otN: number; sp: number; spT: string; late: number; inGrace: boolean; unrec: boolean; present: number;
@@ -218,3 +223,7 @@ export const ATTN: Record<string, (typeof ATT)[number]> = Object.fromEntries(ATT
 export const grossOf = (e: Partial<Employee>) => (+(e.basic || 0)) + (+(e.transport || 0)) + (+(e.incentive || 0)) + (+(e.other || 0));
 export const sum = <T,>(rows: T[], f: (r: T) => number) => rows.reduce((a, r) => a + (+f(r) || 0), 0);
 export const canEdit = (role?: HrRole) => role === "md" || role === "hr";
+// Mirrors backend services/hr/hrCore.js#LINE_MANAGER_ROLES / assertCanDecideFor exactly - a line
+// manager approving their team's timesheet/expense/leave/OT has the same decision rights as the
+// legacy "manager" role, on top of md/hr's full admin rights.
+export const canDecideHr = (role?: HrRole) => canEdit(role) || role === "manager" || role === "line_manager";

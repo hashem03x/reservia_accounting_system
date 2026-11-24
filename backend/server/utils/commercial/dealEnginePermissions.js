@@ -288,6 +288,12 @@ function shapeProjectForRole(projectObj, roles) {
 function shapeRevisionForRole(revisionObj, roles) {
   if (!revisionObj) return revisionObj;
   const out = { ...revisionObj };
+  // Go-live audit: designChecks is 'hidden' for sales/commercial_director/procurement/member/bdm/
+  // marketing in the matrix above, but engineeringResult (inverter pick, DC/AC ratio) was never
+  // actually stripped for them - the Design Checks card relies entirely on the matrix's
+  // tab-visibility gate, which it does not share a row with. Caught by re-reading this function
+  // against every PROJECT_TAB_MATRIX row, not by a failing test.
+  if (!canView(widestLevel(PROJECT_TAB_MATRIX.designChecks, roles))) delete out.engineeringResult;
   if (!canView(widestLevel(PROJECT_TAB_MATRIX.pricing, roles))) delete out.pricing;
   if (!canView(widestLevel(PROJECT_TAB_MATRIX.feasibility, roles))) {
     delete out.feasibility;

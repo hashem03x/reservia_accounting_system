@@ -380,9 +380,12 @@ export default function App() {
                   <Route path={paths.leads} element={<CRM_Leads />} />
                   <Route path={paths.leads + "/:id"} element={<CRM_Lead />} />
                   <Route path={paths.performance} element={<CRM_Performance />} />
-                  {/* Change Request 2, section 4: lead integrations - MD/Admin only (the API
-                      enforces the same, and key creation/revocation is MD-only server-side). */}
-                  <Route element={<CrmRoleGuard allowedRoles={["md", "admin"]} />}>
+                  {/* Change Request 2, section 4: lead integrations - MD/Admin (key creation/
+                      revocation is MD-only server-side regardless). Go-live section 5.5: BDM also
+                      gets "Integrations, settings, CSV export" = Admin - routes/crm/
+                      integrationRoute.js already allows it server-side; this guard must match or
+                      BDM would be blocked from a page the API actually lets them use. */}
+                  <Route element={<CrmRoleGuard allowedRoles={["md", "admin", "bdm"]} />}>
                     <Route path={paths.integrations} element={<CRM_Integrations />} />
                   </Route>
                 </Route>

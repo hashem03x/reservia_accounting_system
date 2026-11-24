@@ -56,4 +56,5 @@ export function enginePageAccess(roles: CommercialRole[] | null | undefined, pag
 }
 
 export const canView = (level: AccessLevel) => level !== "hidden";
+export const canEdit = (level: AccessLevel) => level === "edit" || level === "limited";
 export const canEditFully = (level: AccessLevel) => level === "edit";

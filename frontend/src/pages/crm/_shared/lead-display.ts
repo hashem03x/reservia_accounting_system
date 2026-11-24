@@ -154,6 +154,11 @@ const OPEN_STAGES = ["new", "contacted", "qualified", "site_survey", "proposal_s
  */
 export function allowedNextStages(from: string, role: string): string[] {
   if (isTerminalStage(from)) return []; // Won is done - no further moves.
+  // Go-live Developer Pack section 5.5: sales_viewer (the real Sales/Technical Engineer CRM role)
+  // can never move a lead to a different stage at all - view only, plus their own assigned tasks
+  // (backend utils/crm/stageRules.js#STAGE_MOVE_BLOCKED_ROLES, non-overridable even by the MD).
+  // Without this, the pipeline board would offer every normal destination and fail on every drop.
+  if (role === "sales_viewer") return [];
 
   return ALL_STAGES.filter((to) => {
     if (to === from) return false;
@@ -163,7 +168,12 @@ export function allowedNextStages(from: string, role: string): string[] {
       return to === "contacted" && ["admin", "md"].includes(role);
     }
 
-    if (to === "won" && !["proposal_sent", "negotiation"].includes(from)) return false;
+    if (to === "won") {
+      if (!["proposal_sent", "negotiation"].includes(from)) return false;
+      // Go-live 5.5: Mark Won is never available to the Marketing Coordinator either (backend
+      // WON_BLOCKED_ROLES) - sales_viewer is already excluded above.
+      if (role === "marketing") return false;
+    }
 
     if (OPEN_STAGES.includes(from) && OPEN_STAGES.includes(to)) {
       const step = OPEN_STAGES.indexOf(to) - OPEN_STAGES.indexOf(from);

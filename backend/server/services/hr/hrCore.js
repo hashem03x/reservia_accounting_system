@@ -140,9 +140,24 @@ async function myEmployee(ctx) {
   return M.HrEmployee.findOne({ user: ctx.user._id }).lean();
 }
 
-/** Employee ids the caller may see: everyone for MD/HR/Finance; the direct reports (and self) for a line manager. */
+/**
+ * Employee ids the caller may see: everyone for MD/HR/Finance; the direct reports (and self) for a
+ * line manager; ONLY self for the plain employee role.
+ *
+ * Go-live Developer Pack section 5.7/D6: "Self-service is the same for every employee - own
+ * attendance, site visits, expense claims" describes a READ scope too, not just the write-side
+ * assertCanActOnEmployee below - before this fix, 'employee' fell through to the `return null`
+ * (unrestricted) branch like Finance, so GET /hr/state would hand every one of the 6 newly
+ * provisioned employee-role staff accounts the WHOLE company's attendance, site visits and leave
+ * balances. Caught by re-reading this function against the brief's own self-service principle,
+ * not by a failing test - there was no prior test exercising a plain 'employee' read at all.
+ */
 async function visibleEmployeeIds(ctx) {
-  if (!LINE_MANAGER_ROLES.includes(ctx.role)) return null; // null = no restriction
+  if (ctx.role === 'employee') {
+    const me = await myEmployee(ctx);
+    return me ? [String(me._id)] : [];
+  }
+  if (!LINE_MANAGER_ROLES.includes(ctx.role)) return null; // null = no restriction (MD/HR/Finance)
   const me = await myEmployee(ctx);
   if (!me) return [];
   const team = await M.HrEmployee.find({ mgrId: me._id }, { _id: 1 }).lean();

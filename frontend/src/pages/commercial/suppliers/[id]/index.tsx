@@ -16,8 +16,10 @@ import paths from "@/utils/constants/paths";
 import { DOCUMENT_KINDS, EDIT_ROLES, PRICE_BOOK_CATEGORIES, STATUS_COLOR, Supplier, SupplierStatus, VendorCandidate } from "../types";
 import PriceListUpload from "../price-list-upload";
 
-// Who may set which status (backend services/commercial/supplierService.js STATUS_ROLES).
-const STATUS_ROLES: Record<SupplierStatus, string[]> = { Approved: ["md"], Conditional: ["md"], Suspended: ["md", "commercial_director"], Removed: ["md", "commercial_director"], Candidate: ["md"] };
+// Who may set which status (backend services/commercial/supplierService.js#STATUS_ROLES). Go-live
+// Developer Pack D9: approval is primarily the S&C Director's call (never the proposer's), with md
+// kept for the explicit MD override the brief allows - all five statuses share the same two roles.
+const STATUS_ROLES: Record<SupplierStatus, string[]> = { Approved: ["md", "commercial_director"], Conditional: ["md", "commercial_director"], Suspended: ["md", "commercial_director"], Removed: ["md", "commercial_director"], Candidate: ["md", "commercial_director"] };
 const SCORES = ["price", "quality", "delivery", "documentation", "support"] as const;
 
 // Deal Engine C18 - one supplier: record, approval, documents with expiry, scorecard, append-only notes,

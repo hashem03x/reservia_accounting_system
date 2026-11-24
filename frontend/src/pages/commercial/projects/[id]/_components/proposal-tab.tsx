@@ -10,7 +10,8 @@ import errorMessage from "@/utils/helpers/error-message";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import SectionCard from "@/components/ui/section-card";
 import EmptySection from "@/components/ui/sections/empty";
-import { CommercialPricing, CommercialProject, CommercialRevision } from "@/types/commercial";
+import { CommercialPricing, CommercialProject, CommercialRevision, CommercialRole } from "@/types/commercial";
+import { projectTabAccess, canEditFully } from "../../../_shared/dealEnginePermissions";
 
 type Proposal = {
   _id: string;
@@ -27,8 +28,8 @@ type Proposal = {
 };
 
 // Roles that may open the internal copy (priced BOQ, pricing stack, approval log) - the backend
-// enforces the same list (controller/commercial/proposalController.js).
-const INTERNAL_ROLES = ["md", "commercial_director", "sales"];
+// enforces the same list (controller/commercial/proposalController.js#INTERNAL_ROLES).
+const INTERNAL_ROLES = ["md", "commercial_director", "sales", "bdm"];
 // Deal Engine C20: who may release past the supplier-price rule (backend proposalService RELEASE_OVERRIDE_ROLES).
 const OVERRIDE_ROLES = ["commercial_director", "md"];
 
@@ -38,8 +39,12 @@ const OVERRIDE_ROLES = ["commercial_director", "md"];
 export default function ProposalTab({ project, revision }: { project: CommercialProject; revision: CommercialRevision }) {
   const { translate, language } = useLanguage();
   const { systems } = useSystemAccess();
-  const role = systems?.COMMERCIAL?.role || "";
+  const role = (systems?.COMMERCIAL?.role || "") as CommercialRole | "";
   const canInternal = INTERNAL_ROLES.includes(role);
+  // Go-live Developer Pack 5.4: issuing needs EDIT-level Proposal access, not just view - Marketing
+  // can see this tab (and preview/download) but never issue (mirrors backend's stricter
+  // assertCanIssueProposal, used instead of the view-level assertCanAccessProposal just for this).
+  const canIssueRole = canEditFully(projectTabAccess(role ? [role as CommercialRole] : [], "proposal"));
   const privateRequest = usePrivateRequest();
   const { loading, setLoading, error, setError, data: proposals, setData: setProposals } = useDataHandler<Proposal[]>({ initialData: [], initialLoading: true });
   const [busy, setBusy] = useState<string | null>(null);
@@ -133,9 +138,11 @@ export default function ProposalTab({ project, revision }: { project: Commercial
                 {translate("Preview (internal copy)", "معاينة (النسخة الداخلية)")}
               </Button>
             )}
-            <Button onClick={issue} disabled={!canIssue || (blockers.length > 0 && (!canOverride || overrideNote.trim().length < 5))} loading={busy === "issue"} color={blockers.length ? "orange" : "teal"} data-testid="proposal-issue">
-              {translate("Issue Proposal", "إصدار العرض")}
-            </Button>
+            {canIssueRole && (
+              <Button onClick={issue} disabled={!canIssue || (blockers.length > 0 && (!canOverride || overrideNote.trim().length < 5))} loading={busy === "issue"} color={blockers.length ? "orange" : "teal"} data-testid="proposal-issue">
+                {translate("Issue Proposal", "إصدار العرض")}
+              </Button>
+            )}
           </div>
         }
       >

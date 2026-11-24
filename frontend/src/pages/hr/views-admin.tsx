@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
-import { canEdit, DN, fmt, Form, mLabel, r1, sum, useHr } from "./hr-context";
+import { canDecideHr, canEdit, DN, fmt, Form, mLabel, r1, sum, useHr } from "./hr-context";
 import { ArmedButton, Chk, Empty, Inp, Kpi, Modal, MonthBar, Panel, Pill, Sel, SL, slText, SL_ICON, statusPill, Top, Txt, useFormVals, useModal } from "./ui";
 import { probationSoon, useEmp, usePendingCount } from "./views-people";
 
@@ -278,7 +278,7 @@ export function FormModal({ id, ft: ft0, empId }: { id?: string; ft?: string; em
   const FT = ftMap(translate);
   const EXIT_STEPS = exitSteps(translate);
   const edit = canEdit(state.role);
-  const canDecide = edit || state.role === "manager";
+  const canDecide = canDecideHr(state.role);
   const emps = state.employees.filter((e) => e.status !== "Left").map((e) => [e._id, `${e.name} (${e.code})`] as [string, string]);
   const title = `${FT[ft].c} ${FT[ft].t}`;
   if (ft === "hire" || ft === "exit") {
