@@ -866,7 +866,11 @@ export function CandModal({ id }: { id?: string }) {
         <button className="btn primary" onClick={save}>
           {translate("Save", "حفظ")}
         </button>
-        {id && c?.stage !== "Hired" && (
+        {/* F23: gated on whether a real employee record was ever created (c.employee), not on
+            stage - a candidate manually moved to "Hired" via the Stage dropdown above (without
+            using this button) used to make this button disappear with no way back, forcing a
+            second, manual re-entry of the same person as a brand-new employee. */}
+        {id && !c?.employee && (
           <button
             className="btn"
             onClick={() =>

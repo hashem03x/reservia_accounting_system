@@ -93,7 +93,16 @@ const DEFAULTS = Object.freeze({
   holidays: '2026-10-06\n2027-01-07\n2027-01-25\n2027-04-25\n2027-05-01\n2027-06-30\n2027-07-23',
   cities: [
     { n: 'Cairo', z: 'Greater Cairo' }, { n: 'Giza', z: 'Greater Cairo' }, { n: 'Qalyubia', z: 'Greater Cairo' },
+    // F39: Sharqia/10th of Ramadan/Matrouh were missing from this list entirely, so a site visit
+    // there had no zone to compute its allowance from. Zone placement is a judgment call (no
+    // source table gave it); flagged for HR/MD to confirm, not treated as settled:
+    // - 10th of Ramadan: an industrial satellite city ~45 min from Cairo, grouped with Greater
+    //   Cairo the way most Cairo-based companies' travel policies already treat it.
+    { n: '10th of Ramadan', z: 'Greater Cairo' },
     { n: 'Alexandria', z: 'Delta and North Coast' }, { n: 'Tanta', z: 'Delta and North Coast' }, { n: 'Mansoura', z: 'Delta and North Coast' },
+    // - Sharqia: a Delta governorate, grouped with Tanta/Mansoura.
+    // - Matrouh: the north-west coast, grouped with Alexandria (same coastal zone).
+    { n: 'Sharqia', z: 'Delta and North Coast' }, { n: 'Matrouh', z: 'Delta and North Coast' },
     { n: 'Ismailia', z: 'Canal' }, { n: 'Suez', z: 'Canal' }, { n: 'Port Said', z: 'Canal' },
     { n: 'Fayoum', z: 'Upper Egypt near' }, { n: 'Beni Suef', z: 'Upper Egypt near' },
     { n: 'Minya', z: 'Upper Egypt' }, { n: 'Assiut', z: 'Upper Egypt' }, { n: 'Luxor', z: 'Upper Egypt' }, { n: 'Aswan', z: 'Upper Egypt' },

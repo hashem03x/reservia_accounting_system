@@ -201,7 +201,10 @@ const createVendorValidators = [
     check('name')
         .notEmpty().withMessage('Name is required')
         .isLength({ min: 2, max: 50 }).withMessage('Name must be between 2 and 50 characters')
-        .matches(/^[a-zA-Z\s\u0600-\u06FF\-\u2013]+$/).withMessage('Name must only contain letters, spaces and hyphens'),
+        // F24: a real company name regularly needs digits ("ABC Trading 2024"), an ampersand
+        // ("Al Rajhi & Co."), or a full stop ("Smith Industries Co.") - the old pattern rejected
+        // all three, blocking normal vendor names outright.
+        .matches(/^[a-zA-Z0-9\s\u0600-\u06FF\-\u2013&.]+$/).withMessage('Name must only contain letters, numbers, spaces, hyphens, "&" and "."'),
 
      // Phone and email are both mandatory for every NEW vendor (docs section "Mandatory Vendor
      // and Customer Contact Information") - an existing vendor missing one is never retroactively
