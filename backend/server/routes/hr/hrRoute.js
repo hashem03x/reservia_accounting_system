@@ -31,6 +31,11 @@ router.route('/visits/:id').patch(c.saveVisit).delete(c.deleteVisit);
 router.post('/expenses', c.saveExpense);
 router.route('/expenses/:id').patch(c.saveExpense).delete(c.deleteExpense);
 router.post('/expenses/:id/decide', c.decideExpense);
+// Go-live F10: real receipt files (replaces the old tickbox) - self-service-or-md/hr gate lives
+// in services/hr/hrService.js#uploadExpenseReceipt (C.assertCanActOnEmployee), not here.
+router.get('/expenses/:id/receipts', c.listExpenseReceipts);
+router.post('/expenses/:id/receipts', c.receiveReceiptFiles, c.uploadExpenseReceipt);
+router.get('/expenses/receipts/:attachmentId/download', c.downloadExpenseReceipt);
 router.post('/forms', c.saveForm);
 router.route('/forms/:id').patch(c.saveForm).delete(c.deleteForm);
 router.post('/forms/:id/decide', c.decideForm);

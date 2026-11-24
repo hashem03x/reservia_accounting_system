@@ -187,6 +187,10 @@ const payrollRunSchema = new Schema(
     month: { type: String, required: true },
     status: { type: String, enum: ['draft', 'review', 'approved', 'closed'], default: 'draft' },
     log: [{ s: String, by: ref('User'), byName: String, at: Date, note: String, _id: false }],
+    // Go-live F9/F10/D7: set when the MD who approved this run is the same person who submitted
+    // it - a queryable field for the payroll register to show (not just buried in `log[].note`),
+    // alongside the mandatory reason services/hr/hrPayrollService.js#approve requires in that case.
+    selfApproved: { type: Boolean, default: false },
     rowsBox: { type: String, default: null }, // encrypted frozen payroll_lines, written on close
     closedAt: Date,
     version: { type: Number, default: 0 }, // incremented on every close; payslip PDFs keep each version

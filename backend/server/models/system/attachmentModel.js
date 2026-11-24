@@ -15,7 +15,10 @@ const { Schema, model } = require('mongoose');
 // permissions at all.
 // CommercialProject: Deal Engine project files and issued proposal PDFs (it was registered in
 // services/files/attachmentService.js but missing here, so every Deal Engine project upload failed).
-const OWNER_TYPES = ['PurchaseOrder', 'SalesOrder', 'JournalEntry', 'CrmLead', 'CommercialProject'];
+// HrExpense: go-live F10 receipt uploads - same exact class of bug repeated once (registered in
+// attachmentService.js's OWNERS map but forgotten here, so every receipt upload would have failed
+// with a schema validation error, caught only by test/hr/hrGoLive.test.js).
+const OWNER_TYPES = ['PurchaseOrder', 'SalesOrder', 'JournalEntry', 'CrmLead', 'CommercialProject', 'HrExpense'];
 
 const attachmentSchema = new Schema(
   {

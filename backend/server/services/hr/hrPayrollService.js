@@ -193,10 +193,21 @@ async function approve(month, body, ctx) {
   assertRole(ctx, ['md'], 'approve payroll');
   const run = await runDoc(month);
   if (run.status !== 'review') throw new ApiError('Only a payroll under review can be approved.', 409);
+  // Go-live F9/F10/D7: "Payroll is prepared by HR (MD until an HR/Finance officer exists) and
+  // approved by MD. When the same person prepares and approves, the system requires a reason and
+  // shows it on the payroll register." The MOST RECENT 'review' log entry is who actually
+  // submitted this run - never trusted from the request, always the run's own stamped history.
+  const submittedBy = [...(run.log || [])].reverse().find(l => l.s === 'review');
+  const sameSubmitterAndApprover = submittedBy && String(submittedBy.by || '') === String(ctx.user?._id || '');
+  const note = C.str(body?.note, 500) || '';
+  if (sameSubmitterAndApprover && !note) {
+    throw new ApiError('You also submitted this payroll - give a reason to approve it yourself too.', 400);
+  }
   run.status = 'approved';
-  stamp(run, 'approved', ctx, C.str(body?.note, 500));
+  run.selfApproved = !!sameSubmitterAndApprover;
+  stamp(run, 'approved', ctx, sameSubmitterAndApprover ? `Prepared and approved by the same person: ${note}` : note);
   await run.save();
-  await audit(ctx, 'payroll_runs', month, 'approve', { status: 'review' }, { status: 'approved' });
+  await audit(ctx, 'payroll_runs', month, 'approve', { status: 'review' }, { status: 'approved', selfApproved: run.selfApproved, note });
   return run.toObject();
 }
 
