@@ -16,7 +16,10 @@ const NAV_ITEMS = [
   { key: "crm-pipeline", to: `/${paths.crm}/${paths.pipeline}`, label: { en: "Pipeline", ar: "المسار" }, Icon: outlineIcons.ChartBar },
   { key: "crm-leads", to: `/${paths.crm}/${paths.leads}`, label: { en: "Leads", ar: "العملاء المحتملون" }, Icon: outlineIcons.Users },
   { key: "crm-performance", to: `/${paths.crm}/${paths.performance}`, label: { en: "Performance", ar: "الأداء" }, Icon: outlineIcons.ChartBar },
-  { key: "crm-integrations", to: `/${paths.crm}/${paths.integrations}`, label: { en: "Integrations", ar: "التكاملات" }, Icon: outlineIcons.Globe, roles: ["md", "admin"] },
+  // Go-live Developer Pack 5.5 added bdm alongside md/admin (App.tsx's CrmRoleGuard and
+  // routes/crm/integrationRoute.js both already allow it) - this nav filter is a second,
+  // independent gate that must list the same three roles or BDM would still never see the link.
+  { key: "crm-integrations", to: `/${paths.crm}/${paths.integrations}`, label: { en: "Integrations", ar: "التكاملات" }, Icon: outlineIcons.Globe, roles: ["md", "admin", "bdm"] },
 ];
 
 export default function CrmLayout() {
