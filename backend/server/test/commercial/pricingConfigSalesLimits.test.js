@@ -10,12 +10,13 @@ const mongoose = require('mongoose');
 
 const DB_URI = 'mongodb://127.0.0.1:27017/dealengine_pricing_config_test';
 
-let PricingConfig, pricingConfigService;
+let PricingConfig, ChartOfAccount, pricingConfigService;
 
 before(async () => {
   await mongoose.connect(DB_URI);
   await mongoose.connection.dropDatabase();
   PricingConfig = require('../../models/commercial/pricingConfigModel');
+  ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
   pricingConfigService = require('../../services/commercial/pricingConfigService');
 });
 
@@ -27,6 +28,7 @@ after(async () => {
 beforeEach(async () => {
   await PricingConfig.deleteMany({});
   await PricingConfig.Audit.deleteMany({});
+  await ChartOfAccount.deleteMany({});
 });
 
 test('getActiveConfig: a brand-new configuration has the real, already-agreed defaults - not invented ones', async () => {
@@ -77,6 +79,39 @@ test('updateConfig: category addition min above max is refused', async () => {
     () => pricingConfigService.updateConfig({ note: 'bad range', salesLimits: { categoryAdditionMinPct: 0.2, categoryAdditionMaxPct: 0.1 } }),
     /minimum cannot be above the maximum/
   );
+});
+
+// Regression test for a real production bug (Vercel module resolution error): updateConfig's
+// erpCostAccountCodes branch does a lazy `require('../accounting/chartOfAccountModel')` from
+// services/commercial/ - one directory level too shallow (every other services/<dir>/*.js file in
+// the codebase uses '../../models/accounting/chartOfAccountModel'). This never surfaced locally
+// via a plain `getActiveConfig`/sales-limits save because the branch only runs when
+// erpCostAccountCodes is actually part of the patch - exactly what this test now exercises.
+test('updateConfig: saving erpCostAccountCodes resolves and validates against a real Chart of Accounts entry', async () => {
+  await pricingConfigService.getActiveConfig();
+  await ChartOfAccount.create({ code: 'COGS-OH-1', name: 'Overhead COGS', type: 'cogs' });
+  await ChartOfAccount.create({ code: 'REV-1', name: 'Sales Revenue', type: 'revenue' });
+
+  const updated = await pricingConfigService.updateConfig(
+    { note: 'link the overhead lever to its COGS account', erpCostAccountCodes: { overhead: 'COGS-OH-1' } },
+    { userId: new mongoose.Types.ObjectId(), userName: 'Test MD' }
+  );
+  assert.equal(updated.erpCostAccountCodes.overhead, 'COGS-OH-1');
+
+  await assert.rejects(
+    () => pricingConfigService.updateConfig({ note: 'unknown code', erpCostAccountCodes: { contingency: 'DOES-NOT-EXIST' } }),
+    /No Chart of Accounts entry with code/,
+    'an unknown account code must be refused, not silently accepted'
+  );
+
+  await assert.rejects(
+    () => pricingConfigService.updateConfig({ note: 'wrong account type', erpCostAccountCodes: { salesBonus: 'REV-1' } }),
+    /is not a COGS account/,
+    'a non-COGS account must be refused for an Average Cost lever'
+  );
+
+  const cleared = await pricingConfigService.updateConfig({ note: 'unlink it', erpCostAccountCodes: { overhead: null } });
+  assert.equal(cleared.erpCostAccountCodes.overhead, null);
 });
 
 test('R7: salesLimitsFor falls back to the default row for a sector with no override of its own, and merges partial per-sector overrides field-by-field', async () => {

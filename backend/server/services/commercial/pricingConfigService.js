@@ -172,7 +172,7 @@ async function updateConfig(patch, { userId = null, userName = null } = {}) {
     next.requireMdApprovalForPolicyChange = !!patch.requireMdApprovalForPolicyChange;
   }
   if (patch.erpCostAccountCodes && typeof patch.erpCostAccountCodes === 'object') {
-    const ChartOfAccount = require('../accounting/chartOfAccountModel'); // eslint-disable-line global-require
+    const ChartOfAccount = require('../../models/accounting/chartOfAccountModel'); // eslint-disable-line global-require
     for (const k of ['overhead', 'contingency', 'salesBonus', 'engineeringIncentive']) {
       if (patch.erpCostAccountCodes[k] === undefined) continue;
       if (patch.erpCostAccountCodes[k] === null || patch.erpCostAccountCodes[k] === '') {
