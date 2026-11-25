@@ -4,6 +4,7 @@ const ApiError = require('../../utils/apiError');
 const PricingConfig = require('../../models/commercial/pricingConfigModel');
 const { BRIEF_DEFAULT_LEVERS, LEVER_KEYS } = require('./commercialPricingService');
 const { CATEGORIES } = require('../../utils/commercial/constants');
+const { canonicalCountry } = require('../../utils/commercial/regions');
 const { engineSettings, proposalSettings, validateEngine, validateProposal } = require('./dealEngineSettings');
 
 const { Audit } = PricingConfig;
@@ -52,7 +53,8 @@ function salesLimitsFor(config, category) {
 
 /** VAT fraction for a country, or undefined when the configuration has none. */
 function vatFor(config, country) {
-  const v = config.vatPctByCountry?.[country];
+  // Keys are the canonical country names (utils/commercial/regions.js COMMERCIAL_COUNTRIES).
+  const v = config.vatPctByCountry?.[canonicalCountry(country) || country];
   return typeof v === 'number' ? v : undefined;
 }
 

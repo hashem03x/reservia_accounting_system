@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
-import { ATT, ATTN, canDecideHr, canEdit, DayRec, DN, dAdd, fmt, mLabel, pad, r1, sum, useHr } from "./hr-context";
+import { ATT, ATTN, canDecideHr, canEdit, DayRec, DN, dAdd, fmt, mLabel, pad, r1, sum, useHr, canActOn } from "./hr-context";
+import RecordFiles from "./record-files";
 import { ArmedButton, Chk, Empty, Inp, Kpi, Modal, MonthBar, Panel, Pill, Sel, statusPill, Top, Txt, useFormVals, useModal } from "./ui";
 import { useEmp } from "./views-people";
 
@@ -387,7 +388,7 @@ export function Timesheets({ initialEmp }: { initialEmp?: string }) {
   const ap = t.approval;
   const edit = canEdit(state.role);
   const canDecide = canDecideHr(state.role);
-  const dis = lk || !!ap || !edit;
+  const dis = lk || !!ap || !(edit || canActOn(state, id));
   const change = async (d: DayRec, k: "s" | "in" | "out", v: string) => {
     const rec = { s: d.s, in: d.in, out: d.out, n: d.n, [k]: v };
     if (k === "s" && ["A", "L", "S", "U"].includes(v)) {
@@ -464,6 +465,17 @@ export function Timesheets({ initialEmp }: { initialEmp?: string }) {
         <Kpi label={translate("Late minutes", "دقائق التأخير")} value={t.t.late} sub={state.cfg.lateDeduct ? translate("Deducted", "مخصومة") : translate("Tracked, not deducted", "مُتتبَّعة، غير مخصومة")} />
         <Kpi label={translate("Not recorded", "غير مسجَّل")} value={t.t.unrec} sub={translate("working days", "يوم عمل")} alert={!!t.t.unrec} />
       </div>
+      <Panel title={translate("Attendance documents", "مستندات الحضور")}>
+        <RecordFiles
+          key={`${id}-${month}`}
+          listUrl={`attendance/${id}/${month}/files`}
+          uploadUrl={`attendance/${id}/${month}/files`}
+          canUpload={canActOn(state, id)}
+          title={translate(`Sick notes, signed timesheets and other documents for ${mLabel(month)}`, `الإجازات المرضية وسجلات الدوام الموقعة ومستندات أخرى لشهر ${mLabel(month)}`)}
+          emptyText={translate("No documents for this month.", "لا توجد مستندات لهذا الشهر.")}
+          testId="attendance-files"
+        />
+      </Panel>
       <div className="tablewrap">
         <table>
           <thead>
@@ -636,8 +648,8 @@ export function Visits() {
     <>
       <Top title={translate("Site visits", "الزيارات الميدانية")}>
         <MonthBar />
-        {canEdit(state.role) && (
-          <button className="btn primary" data-testid="hr-new-visit" onClick={() => open({ type: "vis" })}>
+        {(canEdit(state.role) || !!state.me) && (
+          <button className="btn primary" data-testid="hr-new-visit" onClick={() => open({ type: "vis", empId: canEdit(state.role) ? undefined : state.me || undefined })}>
             {translate("Log a visit", "تسجيل زيارة")}
           </button>
         )}
@@ -730,10 +742,11 @@ export function VisitModal({ id, empId }: { id?: string; empId?: string }) {
   const v = id ? state?.visits.find((x) => x._id === id) : null;
   const f = useFormVals(v ? { ...v, empId: v.employee } : { date: state?.today, city: "Cairo", days: 1, nights: 0, status: "Planned", purpose: "Site survey", empId: empId || "" });
   if (!state || (id && !v)) return null;
-  const edit = canEdit(state.role);
-  const emps = state.employees.filter((e) => e.status !== "Left").map((e) => [e._id, e.name] as [string, string]);
+  // MD/HR for anyone; any other role for their own visits only (the API enforces the same).
+  const edit = canActOn(state, v ? v.employee : f.v.empId || state.me);
+  const emps = state.employees.filter((e) => e.status !== "Left" && (canEdit(state.role) || e._id === state.me)).map((e) => [e._id, e.name] as [string, string]);
   const save = () =>
-    call(id ? "PATCH" : "POST", id ? `visits/${id}` : "visits", f.v).then((r) => {
+    call(id ? "PATCH" : "POST", id ? `visits/${id}` : "visits", { ...f.v, empId: canEdit(state.role) ? f.v.empId : state.me }).then((r) => {
       toast(r.data.attendanceDays ? translate(`Saved. ${r.data.attendanceDays} days recorded as Site visit in Attendance`, `تم الحفظ. تم تسجيل ${r.data.attendanceDays} يوم كزيارة ميدانية في الحضور`) : translate("Saved", "تم الحفظ"));
       close();
     });
@@ -765,6 +778,16 @@ export function VisitModal({ id, empId }: { id?: string; empId?: string }) {
         </div>
       )}
       <div className="sub">{translate("Only visits marked Done are paid. Marking a visit Done also records the working days as Site visit in Attendance.", "تُدفع فقط الزيارات المُعلَّمة كمنتهية. تعليم زيارة كمنتهية يُسجِّل أيضًا أيام العمل كزيارة ميدانية في الحضور.")}</div>
+      {id && v && (
+        <RecordFiles
+          listUrl={`files/visit/${id}`}
+          uploadUrl={`files/visit/${id}`}
+          canUpload={canActOn(state, v.employee)}
+          title={translate("Visit documents (report, photos)", "مستندات الزيارة (التقرير، الصور)")}
+          emptyText={translate("No documents on this visit yet.", "لا توجد مستندات لهذه الزيارة بعد.")}
+          testId="visit-files"
+        />
+      )}
       <div className="row2">
         {edit && (
           <button className="btn primary" data-testid="hr-save-visit" onClick={save}>
@@ -803,8 +826,8 @@ export function Expenses() {
     <>
       <Top title={translate("Expense claims", "المصروفات")}>
         <MonthBar />
-        {canEdit(state.role) && (
-          <button className="btn primary" data-testid="hr-new-exp" onClick={() => open({ type: "exp" })}>
+        {(canEdit(state.role) || !!state.me) && (
+          <button className="btn primary" data-testid="hr-new-exp" onClick={() => open({ type: "exp", empId: canEdit(state.role) ? undefined : state.me || undefined })}>
             {translate("New claim", "مطالبة جديدة")}
           </button>
         )}
@@ -872,18 +895,22 @@ export function Expenses() {
 }
 
 export function ExpenseModal({ id, empId }: { id?: string; empId?: string }) {
-  const { state, call, toast } = useHr();
+  const { state, call, toast, reload } = useHr();
   const { translate } = useLanguage();
   const { close } = useModal();
   const x = id ? state?.expenses.find((e) => e._id === id) : null;
   const f = useFormVals(x ? { ...x, empId: x.employee, receiptOverride: !!x.receiptOverride } : { date: state?.today, type: state?.lists.EXPENSE_TYPES[0], status: "Pending", receipt: true, payMonth: state?.month, empId: empId || "" });
   if (!state || (id && !x)) return null;
-  const edit = canEdit(state.role);
-  const canDecide = canDecideHr(state.role);
-  const emps = state.employees.filter((e) => e.status !== "Left").map((e) => [e._id, `${e.name} (${e.code})`] as [string, string]);
+  // MD/HR for anyone; any other role for their own claims only (the API enforces the same).
+  const edit = canActOn(state, x ? x.employee : f.v.empId || state.me);
+  const canDecide = canDecideHr(state.role) && (!x || x.employee !== state.me || canEdit(state.role));
+  const emps = state.employees.filter((e) => e.status !== "Left" && (canEdit(state.role) || e._id === state.me)).map((e) => [e._id, `${e.name} (${e.code})`] as [string, string]);
   const save = async () => {
-    if (edit && (!id || x?.status === "Pending" || state.role === "md")) await call(id ? "PATCH" : "POST", id ? `expenses/${id}` : "expenses", f.v);
-    if (id && canDecide && f.v.status !== x?.status) await call("POST", `expenses/${id}/decide`, { status: f.v.status, by: f.v.by, note: f.v.note, payMonth: f.v.payMonth, receiptOverride: !!f.v.receiptOverride });
+    // `receipt` is set by the server only when a file is uploaded - never sent from the form.
+    const { receipt: _r, ...body } = f.v;
+    void _r;
+    if (edit && (!id || x?.status === "Pending" || state.role === "md")) await call(id ? "PATCH" : "POST", id ? `expenses/${id}` : "expenses", { ...body, empId: canEdit(state.role) ? body.empId : state.me });
+    if (id && canDecide && f.v.status !== x?.status) await call("POST", `expenses/${id}/decide`, { status: f.v.status, note: f.v.note, payMonth: f.v.payMonth, receiptOverride: !!f.v.receiptOverride });
     toast(translate("Saved", "تم الحفظ"));
     close();
   };
@@ -897,8 +924,20 @@ export function ExpenseModal({ id, empId }: { id?: string; empId?: string }) {
         <Inp label={translate("Reimburse with payroll of", "يُرد مع رواتب شهر")} k="payMonth" f={f} type="month" />
         <Inp label={translate("Project or client", "المشروع أو العميل")} k="ref" f={f} disabled={!edit} />
         <Inp label={translate("Description", "الوصف")} k="desc" f={f} full disabled={!edit} />
-        <Chk label={translate("Receipt attached to the claim file", "الإيصال مرفق بملف المطالبة")} k="receipt" f={f} full />
       </div>
+      {id && x ? (
+        <RecordFiles
+          listUrl={`files/expense/${id}`}
+          uploadUrl={`files/expense/${id}`}
+          canUpload={canActOn(state, x.employee) && x.status === "Pending"}
+          title={translate("Receipts", "الإيصالات")}
+          emptyText={translate("No receipt uploaded yet. A claim needs its receipt to be approved.", "لم يُرفع إيصال بعد. تحتاج المطالبة إلى إيصال لاعتمادها.")}
+          onUploaded={reload}
+          testId="expense-receipts"
+        />
+      ) : (
+        <div className="sub">{translate("Submit the claim, then open it to upload the receipt (PDF or photo).", "أرسل المطالبة، ثم افتحها لرفع الإيصال (PDF أو صورة).")}</div>
+      )}
       {id && canDecide && (
         <div className="sect">
           <h4>{translate("Decision", "القرار")}</h4>
@@ -919,7 +958,7 @@ export function ExpenseModal({ id, empId }: { id?: string; empId?: string }) {
             />
             <Inp label={translate("Decided by", "اعتمده")} k="by" f={f} />
             <Inp label={translate("Note", "ملاحظة")} k="note" f={f} full />
-            {state.role === "md" && !f.v.receipt && <Chk label={translate("Approve without a receipt (MD override)", "الموافقة بدون إيصال (تجاوز من المدير العام)")} k="receiptOverride" f={f} full />}
+            {state.role === "md" && !x?.receipt && <Chk label={translate("Approve without a receipt (MD override)", "الموافقة بدون إيصال (تجاوز من المدير العام)")} k="receiptOverride" f={f} full />}
           </div>
         </div>
       )}

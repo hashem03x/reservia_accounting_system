@@ -20,9 +20,23 @@ import { Approvals, FormModal, Forms, PerfModal, Performance, Policy, Settings, 
 // shown; the API enforces the same rules.
 
 type View = { k: string; en: string; ar: string; g: string; roles: HrRole[]; Icon: (typeof outlineIcons)[keyof typeof outlineIcons] };
-const ALL: HrRole[] = ["md", "hr", "manager", "finance"];
+// employee (every staff member: self-service on their own records) and line_manager (identical to
+// manager: their own records + direct reports) are the go-live roles; before they were listed here,
+// an employee's sidebar was EMPTY and Attendance / Site visits / Expenses could not be reached at
+// all, although the API already returned their own records.
+const ALL: HrRole[] = ["md", "hr", "manager", "line_manager", "finance"];
 const ED: HrRole[] = ["md", "hr"];
-const TIME: HrRole[] = ["md", "hr", "manager"];
+const TIME: HrRole[] = ["md", "hr", "manager", "line_manager", "employee"];
+const EVERYONE: HrRole[] = [...ALL, "employee"];
+// What an employee sees these sections called: their own records only.
+const MY: Record<string, [string, string]> = {
+  att: ["My attendance", "حضوري"],
+  ts: ["My timesheet", "سجل دوامي"],
+  leave: ["My leave", "إجازاتي"],
+  visit: ["My site visits", "زياراتي الميدانية"],
+  exp: ["My expenses", "مصروفاتي"],
+  forms: ["My requests", "طلباتي"],
+};
 const PAY: HrRole[] = ["md", "hr", "finance"];
 const GROUPS: Record<string, [string, string]> = {
   home: ["Home", "الرئيسية"],
@@ -33,7 +47,7 @@ const GROUPS: Record<string, [string, string]> = {
   admin: ["Admin", "الإدارة"],
 };
 const VIEWS: View[] = [
-  { k: "home", en: "Overview", ar: "نظرة عامة", g: "home", roles: ALL, Icon: outlineIcons.Home },
+  { k: "home", en: "Overview", ar: "نظرة عامة", g: "home", roles: EVERYONE, Icon: outlineIcons.Home },
   { k: "appr", en: "Approvals", ar: "الموافقات", g: "home", roles: ALL, Icon: outlineIcons.ShieldCheck },
   { k: "people", en: "People", ar: "الموظفون", g: "people", roles: ALL, Icon: outlineIcons.Users },
   { k: "org", en: "Org chart", ar: "الهيكل التنظيمي", g: "people", roles: ALL, Icon: outlineIcons.Compass },
@@ -51,7 +65,7 @@ const VIEWS: View[] = [
   { k: "erp", en: "ERP link", ar: "الربط مع ERP", g: "pay", roles: PAY, Icon: outlineIcons.Globe },
   { k: "reports", en: "Reports", ar: "التقارير", g: "pay", roles: PAY, Icon: outlineIcons.ChartBar },
   { k: "forms", en: "Forms", ar: "النماذج", g: "admin", roles: TIME, Icon: outlineIcons.Edit },
-  { k: "policy", en: "Policy", ar: "السياسة", g: "admin", roles: ALL, Icon: outlineIcons.Document },
+  { k: "policy", en: "Policy", ar: "السياسة", g: "admin", roles: EVERYONE, Icon: outlineIcons.Document },
   { k: "set", en: "Settings", ar: "الإعدادات", g: "admin", roles: ED, Icon: outlineIcons.Admin },
 ];
 
@@ -101,7 +115,7 @@ function HrShell() {
               key: `hr-${v.k}`,
               // Overview is the section root, so /hr and /hr/home both select it.
               to: v.k === "home" ? `/${paths.hr}` : `/${paths.hr}/${v.k}`,
-              label: translate(v.en, v.ar),
+              label: role === "employee" && MY[v.k] ? translate(MY[v.k][0], MY[v.k][1]) : translate(v.en, v.ar),
               Icon: v.Icon,
               testId: `hr-nav-${v.k}`,
               badge: v.k === "people" ? people : v.k === "hire" ? hiring : v.k === "appr" ? pend : undefined,
@@ -118,6 +132,14 @@ function HrShell() {
           <div className="main">
             {error && !state && <div className="banner">{error}</div>}
             {loading && !state && <div className="sub">{translate("Loading...", "جار التحميل...")}</div>}
+            {state && !state.me && !["md", "hr", "finance"].includes(state.role) && (
+              <div className="banner" data-testid="hr-unlinked">
+                {translate(
+                  "Your portal login is not linked to an employee record yet, so there are no attendance, site visit or expense records to show. Ask HR to link it (People -> your record -> Portal login).",
+                  "حساب الدخول الخاص بك غير مرتبط بسجل موظف بعد، لذلك لا توجد سجلات حضور أو زيارات أو مصروفات لعرضها. اطلب من الموارد البشرية ربطه (الموظفون -> سجلك -> حساب الدخول).",
+                )}
+              </div>
+            )}
             {state && <ViewBody view={view} emp={search.get("emp") || undefined} />}
           </div>
           {state && <ModalHost modal={modal} />}

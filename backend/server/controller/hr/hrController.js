@@ -99,19 +99,29 @@ exports.uploadExpenseReceipt = asyncHandler(async (req, res) => {
   res.status(201).json(apiResponse('Receipt uploaded', true, result));
 });
 
+// Every list / download checks that the caller may see the employee the record belongs to
+// (services/hr/hrService.js) - these two used to answer ANY HR member for ANY claim's receipts.
 exports.listExpenseReceipts = asyncHandler(async (req, res) => {
-  const data = await attachmentService.listAttachments('hr-expenses', req.params.id);
-  res.status(200).json(apiResponse('Receipts retrieved', true, data));
+  res.status(200).json(apiResponse('Receipts retrieved', true, await svc.listRecordFiles('expense', req.params.id, ctx(req))));
 });
 
-exports.downloadExpenseReceipt = asyncHandler(async (req, res) => {
-  const { attachment, owner } = await attachmentService.getAttachment(req.params.attachmentId);
-  if (owner?.ownerType !== 'HrExpense') throw new ApiError('Receipt not found.', 404);
+const sendHrFile = async (req, res) => {
+  const attachment = await svc.fileForDownload(req.params.attachmentId, ctx(req));
   const { stream, size } = await attachmentService.openFile(attachment);
+  res.setHeader('Cache-Control', 'private, no-store');
   setFileHeaders(res, { fileName: attachment.originalName, contentType: attachment.contentType, size, inline: req.query.inline === '1' || req.query.inline === 'true' });
-  stream.on('error', err => (res.headersSent ? res.destroy(err) : res.status(500).json({ success: false, message: 'Could not read the receipt.' })));
+  stream.on('error', err => (res.headersSent ? res.destroy(err) : res.status(500).json({ success: false, message: 'Could not read the document.' })));
   stream.pipe(res);
-});
+};
+exports.downloadExpenseReceipt = asyncHandler(sendHrFile);
+exports.downloadFile = asyncHandler(sendHrFile);
+
+// Documents on expense claims, site visits and attendance months (kind = expense | visit | attendance).
+const uploadedFiles = req => (req.files || []).map(f => ({ ...f, originalname: decodeUploadName(f.originalname) }));
+exports.listFiles = asyncHandler(async (req, res) => ok(res, 'Documents', await svc.listRecordFiles(req.params.kind, req.params.id, ctx(req))));
+exports.uploadFiles = asyncHandler(async (req, res) => ok(res, 'Document uploaded', await svc.uploadRecordFiles(req.params.kind, req.params.id, uploadedFiles(req), ctx(req)), 201));
+exports.listAttendanceFiles = asyncHandler(async (req, res) => ok(res, 'Documents', await svc.attendanceMonthFiles(req.params.empId, req.params.month, ctx(req))));
+exports.uploadAttendanceFiles = asyncHandler(async (req, res) => ok(res, 'Document uploaded', await svc.attendanceMonthFiles(req.params.empId, req.params.month, ctx(req), { files: uploadedFiles(req) }), 201));
 exports.deleteExpense = asyncHandler(async (req, res) => ok(res, 'Claim deleted', await svc.deleteExpense(req.params.id, ctx(req))));
 exports.saveForm = asyncHandler(async (req, res) => ok(res, 'Form saved', await svc.saveForm(req.params.id, req.body || {}, ctx(req))));
 exports.decideForm = asyncHandler(async (req, res) => ok(res, 'Form decided', await svc.decideForm(req.params.id, req.body || {}, ctx(req))));

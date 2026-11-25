@@ -36,6 +36,12 @@ router.post('/expenses/:id/decide', c.decideExpense);
 router.get('/expenses/:id/receipts', c.listExpenseReceipts);
 router.post('/expenses/:id/receipts', c.receiveReceiptFiles, c.uploadExpenseReceipt);
 router.get('/expenses/receipts/:attachmentId/download', c.downloadExpenseReceipt);
+// Documents on HR records - every list/download is ownership-checked in services/hr/hrService.js.
+router.get('/files/download/:attachmentId', c.downloadFile);
+router.get('/files/:kind/:id', c.listFiles);
+router.post('/files/:kind/:id', c.receiveReceiptFiles, c.uploadFiles);
+router.get('/attendance/:empId/:month/files', c.listAttendanceFiles);
+router.post('/attendance/:empId/:month/files', c.receiveReceiptFiles, c.uploadAttendanceFiles);
 router.post('/forms', c.saveForm);
 router.route('/forms/:id').patch(c.saveForm).delete(c.deleteForm);
 router.post('/forms/:id/decide', c.decideForm);

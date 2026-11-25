@@ -58,6 +58,10 @@ const OWNERS = {
   // normal case (allowImages: true), gated by middleware/hrAccess.js, not the ERP's resource:
   // action list (resource: null, same reasoning as crm-leads/commercial-projects above).
   'hr-expenses': { ownerType: 'HrExpense', model: 'HrExpense', resource: null, allowImages: true },
+  // HR attendance supporting documents (sick notes, signed timesheets) and site-visit documents
+  // (reports, photos) - same HR gate (services/hr/hrService.js#listRecordFiles / fileForDownload).
+  'hr-attendance': { ownerType: 'HrAttendance', model: 'HrAttendance', resource: null, allowImages: true },
+  'hr-visits': { ownerType: 'HrVisit', model: 'HrVisit', resource: null, allowImages: true },
 };
 const OWNER_BY_TYPE = Object.fromEntries(Object.values(OWNERS).map(o => [o.ownerType, o]));
 

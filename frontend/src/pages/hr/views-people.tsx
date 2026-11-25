@@ -313,10 +313,10 @@ export function EmployeeDrawer({ id }: { id?: string }) {
           <Inp label={translate("Contract end (fixed term)", "نهاية العقد (مدة محددة)")} k="cend" f={f} type="date" disabled={ro} />
           <Inp label={translate("Probation ends", "نهاية فترة الاختبار")} k="probEnd" f={f} type="date" disabled={ro} />
           <Inp label={translate("Nationality", "الجنسية")} k="nat" f={f} disabled={ro} />
-          {state.role !== "manager" && <Inp label={translate("Social insurance No.", "رقم التأمين الاجتماعي")} k="sin" f={f} disabled={ro} />}
+          {!(state.role === "manager" || state.role === "line_manager") && <Inp label={translate("Social insurance No.", "رقم التأمين الاجتماعي")} k="sin" f={f} disabled={ro} />}
           {/* HR Portal D5: the registration DATE, not only the number - on the employee record
               itself, not only inside Documents. Hidden from a line manager, same as the number. */}
-          {state.role !== "manager" && <Inp label={translate("Social insurance registration date", "تاريخ تسجيل التأمين الاجتماعي")} k="sinRegDate" f={f} type="date" disabled={ro} />}
+          {!(state.role === "manager" || state.role === "line_manager") && <Inp label={translate("Social insurance registration date", "تاريخ تسجيل التأمين الاجتماعي")} k="sinRegDate" f={f} type="date" disabled={ro} />}
           <Inp label={translate("Highest qualification", "أعلى شهادة دراسية")} k="edu" f={f} disabled={ro} />
         </div>
         <div className="sub" style={{ marginTop: 6 }}>

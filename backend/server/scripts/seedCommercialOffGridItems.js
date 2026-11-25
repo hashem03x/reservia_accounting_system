@@ -41,8 +41,15 @@ async function seedCommercialOffGridItems({ dryRun = process.argv.includes('--dr
   const MaterialItem = require('../models/commercial/materialItemModel');
   // eslint-disable-next-line global-require
   const catalog = require('../services/commercial/catalogData/offGridCatalog');
-  const items = buildItems(catalog);
-  const existing = new Set((await MaterialItem.find({ key: { $in: items.map(i => i.key) } }).select('key').lean()).map(i => i.key));
+  // eslint-disable-next-line global-require
+  const { canonicalMaterialKey } = require('../utils/commercial/materialKey');
+  // insertMany skips the model's save hook, so keyNorm (the unique canonical key) is set here; an
+  // item already present under another spelling of the same canonical key is left untouched.
+  const items = buildItems(catalog).map(i => ({ ...i, keyNorm: canonicalMaterialKey(i) }));
+  const found = await MaterialItem.find({ $or: [{ key: { $in: items.map(i => i.key) } }, { keyNorm: { $in: items.map(i => i.keyNorm) } }] }).select('key keyNorm').lean();
+  const existingKeys = new Set(found.map(i => i.key));
+  const existingNorm = new Set(found.map(i => i.keyNorm).filter(Boolean));
+  const existing = new Set(items.filter(i => existingKeys.has(i.key) || existingNorm.has(i.keyNorm)).map(i => i.key));
   const toInsert = items.filter(i => !existing.has(i.key));
   console.log(`${items.length} off-grid items in the catalog; ${existing.size} already present (left untouched); ${toInsert.length} to insert.`);
   if (!dryRun && toInsert.length) await MaterialItem.insertMany(toInsert, { ordered: false });

@@ -30,6 +30,11 @@ const ratesConfigSchema = new Schema(
     // never hardcoded in the engine itself.
     acCableDeratingFactor: { type: Number, required: true, default: 0.8, min: 0.1, max: 1 },
     effectiveDate: { type: Date, required: true, default: Date.now },
+    // Where this version came from: the db:seed-commercial-materials script, the reference matrix
+    // loaded from the Pricing Config page, or rates entered on that page. Optional - documents
+    // created before this field read as 'seed'.
+    source: { type: String, enum: ['seed', 'reference', 'manual'], default: 'manual' },
+    note: { type: String, trim: true, maxlength: 500, default: '' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }

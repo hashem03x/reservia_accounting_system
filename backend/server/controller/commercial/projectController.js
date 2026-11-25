@@ -11,9 +11,9 @@ const revisionService = require('../../services/commercial/revisionService');
 const { ensureDealIdentifiers } = require('../../services/commercial/dealNumberService');
 const { waitingOn } = require('../../services/commercial/approvalService');
 const { CATEGORIES, SCOPES } = require('../../utils/commercial/constants');
-const { resolveProjectRegion, EGYPT_REGIONS, RATES_MATRIX_COUNTRIES } = require('../../utils/commercial/regions');
+const { resolveProjectRegion, EGYPT_REGIONS, RATES_MATRIX_COUNTRIES, COMMERCIAL_COUNTRIES, canonicalCountry } = require('../../utils/commercial/regions');
 const sharedCustomers = require('../../services/customer/sharedCustomerService');
-const { shapeProjectForRole } = require('../../utils/commercial/dealEnginePermissions');
+const { shapeProjectForRole, shapeRevisionForRole } = require('../../utils/commercial/dealEnginePermissions');
 const { assertSelectableProjectManager } = require('../../services/project/projectManagerService');
 const { syncProjectManagerToErp } = require('../../services/commercial/projectService');
 const ProjectManager = require('../../models/project/projectManagerModel');
@@ -59,9 +59,11 @@ async function validateHeader(body, { existing = null } = {}) {
     else values.category = body.category;
   }
   if (creating || has('country')) {
-    const country = String(body.country ?? '').trim();
-    if (!country) errors.push('Country is required.');
-    else values.country = country.slice(0, 80);
+    const raw = String(body.country ?? '').trim();
+    const country = canonicalCountry(raw);
+    if (!raw) errors.push('Country is required.');
+    else if (!country) errors.push(`Country "${raw.slice(0, 80)}" is not a Deal Engine country. Choose one of: ${COMMERCIAL_COUNTRIES.join(', ')}.`);
+    else values.country = country;
   }
   if (creating || has('region') || has('country')) {
     const country = values.country ?? existing?.country;
@@ -241,7 +243,7 @@ exports.listRevisions = asyncHandler(async (req, res) => {
 
 /** The controlled vocabularies the New/Edit Project form offers (QA B2: region is a dropdown). */
 exports.getFormOptions = asyncHandler(async (req, res) => {
-  res.status(200).json(apiResponse('Form options', true, { categories: CATEGORIES, scopes: SCOPES, regionsByCountry: { Egypt: EGYPT_REGIONS }, regionRequiredCountries: RATES_MATRIX_COUNTRIES }));
+  res.status(200).json(apiResponse('Form options', true, { categories: CATEGORIES, scopes: SCOPES, regionsByCountry: { Egypt: EGYPT_REGIONS }, regionRequiredCountries: RATES_MATRIX_COUNTRIES, countries: COMMERCIAL_COUNTRIES }));
 });
 
 // B5 - the SAME admin-managed Project Manager list the ERP Project form uses (the real list

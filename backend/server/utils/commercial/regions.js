@@ -37,10 +37,33 @@ function canonicalRegion(value) {
 const RATES_MATRIX_COUNTRIES = ['Egypt'];
 
 /**
+ * The Deal Engine's project countries - the same list the project form offers
+ * (frontend/src/types/commercial.ts COMMERCIAL_COUNTRIES). One spelling everywhere: the Rates
+ * matrix lookup, the region rule, VAT by country and the stored project all use the canonical name.
+ */
+const COMMERCIAL_COUNTRIES = ['Egypt', 'Saudi Arabia', 'United Arab Emirates', 'South Africa', 'Europe', 'Other Country'];
+
+/**
+ * The canonical spelling of a country, matched case- and space-insensitively ("egypt", " EGYPT "
+ * -> "Egypt"); null when it is not a Deal Engine country. Before this, "egypt" typed through the API
+ * silently skipped the Rates matrix and the region rule, because every check compared to 'Egypt'.
+ */
+function canonicalCountry(value) {
+  if (typeof value !== 'string') return null;
+  const v = value.trim().replace(/\s+/g, ' ').toLowerCase();
+  if (!v) return null;
+  return COMMERCIAL_COUNTRIES.find(c => c.toLowerCase() === v) || null;
+}
+
+/** True when a project in this country is priced with a Rates matrix. */
+const usesRatesMatrix = country => RATES_MATRIX_COUNTRIES.includes(canonicalCountry(country));
+
+/**
  * Validates a project's country/region pair for create AND edit. Returns the canonical region to
  * store (or the trimmed free-text region for a country without a Rates matrix), or throws a message.
  */
-function resolveProjectRegion(country, region) {
+function resolveProjectRegion(rawCountry, region) {
+  const country = canonicalCountry(rawCountry) || rawCountry;
   if (RATES_MATRIX_COUNTRIES.includes(country)) {
     if (region === undefined || region === null || String(region).trim() === '') {
       return { error: `Region is required for projects in ${country}. Choose one of the ${EGYPT_REGIONS.length} Rates matrix regions.` };
@@ -103,6 +126,9 @@ module.exports = {
   REGION_ALIASES,
   GREATER_CAIRO,
   RATES_MATRIX_COUNTRIES,
+  COMMERCIAL_COUNTRIES,
+  canonicalCountry,
+  usesRatesMatrix,
   canonicalRegion,
   resolveProjectRegion,
   GOVERNORATE_TO_REGION,

@@ -856,7 +856,82 @@ async function removeExampleTeam(ctx) {
   return { removed: n };
 }
 
+/* ===================== documents on HR records ===================== */
+// Expense receipts (go-live F10), attendance supporting documents (sick notes, signed timesheets,
+// device exports) and site-visit documents (reports, photos) - all in the same private GridFS
+// storage as every other attachment (services/files/attachmentService.js), never public, never a
+// server's temporary disk. Who may see a document = who may see the record it is on
+// (hrCore.assertCanViewEmployee: the employee, their line manager, MD/HR/Finance); who may add one =
+// the employee for their own record, or MD/HR (hrCore.assertCanActOnEmployee).
+const FILE_KINDS = {
+  expense: { ownerKey: 'hr-expenses', Model: M.HrExpense, label: 'Claim' },
+  visit: { ownerKey: 'hr-visits', Model: M.HrVisit, label: 'Visit' },
+  attendance: { ownerKey: 'hr-attendance', Model: M.HrAttendance, label: 'Attendance month' },
+};
+const KIND_BY_OWNER = { HrExpense: 'expense', HrVisit: 'visit', HrAttendance: 'attendance' };
+const attachments = () => require('../files/attachmentService'); // eslint-disable-line global-require
+
+function fileKind(kind) {
+  const k = FILE_KINDS[kind];
+  if (!k) throw new ApiError('Unknown HR record type.', 404);
+  return k;
+}
+
+/** The documents on one record, for a caller allowed to see that employee's records. */
+async function listRecordFiles(kind, id, ctx) {
+  const k = fileKind(kind);
+  const doc = await M[k.Model.modelName].findById(oid(id), { employee: 1 }).lean();
+  if (!doc) throw new ApiError(`${k.label} not found.`, 404);
+  await C.assertCanViewEmployee(ctx, doc.employee, k.label);
+  return attachments().listAttachments(k.ownerKey, doc._id);
+}
+
+/** Adds documents to a record: the employee's own record, or MD/HR for anyone's. */
+async function uploadRecordFiles(kind, id, files, ctx) {
+  const k = fileKind(kind);
+  const doc = await M[k.Model.modelName].findById(oid(id), { employee: 1 }).lean();
+  if (!doc) throw new ApiError(`${k.label} not found.`, 404);
+  // Outside the caller's scope the record does not exist for them (404), the same as list/download.
+  await C.assertCanViewEmployee(ctx, doc.employee, k.label);
+  if (kind === 'expense') return uploadExpenseReceipt(id, files, ctx);
+  await C.assertCanActOnEmployee(ctx, doc.employee, 'attach documents');
+  const uploaded = await attachments().uploadAttachments({ ownerKey: k.ownerKey, ownerId: doc._id, files, userId: ctx.user?._id });
+  await audit(ctx, `${kind}-documents`, doc._id, 'upload', null, { files: uploaded.map(f => f.originalName) });
+  return { attachments: uploaded };
+}
+
+/**
+ * The attendance month record of an employee (one per employee and month). Listing never creates
+ * one; an upload creates the empty month record if it does not exist yet, so a sick note can be
+ * filed before any day is recorded.
+ */
+async function attendanceMonthFiles(employeeId, month, ctx, { files = null } = {}) {
+  assertMonth(month);
+  const employee = oid(employeeId);
+  await C.assertCanViewEmployee(ctx, employee, 'Attendance month');
+  let doc = await M.HrAttendance.findOne({ employee, month }, { _id: 1 }).lean();
+  if (!files) return doc ? attachments().listAttachments('hr-attendance', doc._id) : [];
+  await C.assertCanActOnEmployee(ctx, employee, 'attach documents');
+  if (!(await M.HrEmployee.exists({ _id: employee }))) throw new ApiError('Employee not found.', 404);
+  if (!doc) {
+    await M.HrAttendance.updateOne({ employee, month }, { $setOnInsert: { employee, month, days: {}, createdBy: ctx.user?._id } }, { upsert: true });
+    doc = await M.HrAttendance.findOne({ employee, month }, { _id: 1 }).lean();
+  }
+  return uploadRecordFiles('attendance', doc._id, files, ctx);
+}
+
+/** A document's stored record, after checking the caller may see the HR record it belongs to. */
+async function fileForDownload(attachmentId, ctx) {
+  const { attachment } = await attachments().getAttachment(attachmentId);
+  const kind = KIND_BY_OWNER[attachment.ownerType];
+  if (!kind) throw new ApiError('Document not found.', 404);
+  const rec = await M[FILE_KINDS[kind].Model.modelName].findById(attachment.owner, { employee: 1 }).lean();
+  if (!rec || !(await C.canViewEmployee(ctx, rec.employee))) throw new ApiError('Document not found.', 404);
+  return attachment;
+}
+
 module.exports = {
+  listRecordFiles, uploadRecordFiles, attendanceMonthFiles, fileForDownload,
   createEmployee, updateEmployee, deleteEmployee, saveDocument, saveExit, saveDay, saveTimesheetDays, fillBlanks, bulkMarkPresent, approveTimesheet, reopenTimesheet,
   saveVisit, deleteVisit, saveExpense, uploadExpenseReceipt, decideExpense, deleteExpense, saveForm, decideForm, deleteForm, setTarget, addAdjustment, deleteAdjustment,
   saveSimple, deleteSimple, hireCandidate, loadExampleTeam, removeExampleTeam, oid,

@@ -189,6 +189,21 @@ async function assertCanActOnEmployee(ctx, employeeId, what) {
   }
 }
 
+/**
+ * Read access to one employee's records (their attendance, visits, claims and the documents on
+ * them): the employee themself, their line manager, and MD / HR / Finance. The SAME scope GET
+ * /hr/state uses (visibleEmployeeIds), applied to a single record fetched by id - so a hand-made
+ * request for another employee's record or file is refused, never answered.
+ */
+async function canViewEmployee(ctx, employeeId) {
+  const visible = await visibleEmployeeIds(ctx);
+  return visible === null || visible.includes(String(employeeId));
+}
+async function assertCanViewEmployee(ctx, employeeId, label = 'record') {
+  // 404, not 403: a caller outside the scope is not told the record exists.
+  if (!(await canViewEmployee(ctx, employeeId))) throw new ApiError(`${label} not found.`, 404);
+}
+
 /* ---------- shaping ---------- */
 function payOf(emp) {
   return crypto.open(emp.payBox, {}) || {};
@@ -217,7 +232,8 @@ function shapeEmployee(e, role) {
     cend: e.cend, probEnd: e.probEnd, paym: e.paym, insured: e.insured !== false, docs: docsObj(e.docs),
     exit: e.exit ? { last: e.exit.last, reason: e.exit.reason, steps: docsObj(e.exit.steps) } : null, example: !!e.example,
   };
-  if (role === 'manager') {
+  // Line managers (both role names) see their team's time, not personal file data or payment details.
+  if (LINE_MANAGER_ROLES.includes(role)) {
     delete o.docs;
     delete o.sin;
     delete o.sinRegDate;
@@ -294,6 +310,6 @@ async function assertTimesheetOpen(employeeId, month) {
 
 module.exports = {
   PAY_ROLES, EDIT_ROLES, LINE_MANAGER_ROLES, PAY_FIELDS, canSeePay, userName, assertRole, todayCairo, assertMonth, assertDate, num, str, TIME_RE, DATE_RE,
-  audit, settingsFor, saveSettings, myEmployee, visibleEmployeeIds, assertCanDecideFor, assertCanActOnEmployee, payOf, engineEmployee, shapeEmployee, loadMonth,
+  audit, settingsFor, saveSettings, myEmployee, visibleEmployeeIds, assertCanDecideFor, assertCanActOnEmployee, canViewEmployee, assertCanViewEmployee, payOf, engineEmployee, shapeEmployee, loadMonth,
   monthRange, runOf, assertMonthOpen, assertTimesheetOpen, docsObj,
 };

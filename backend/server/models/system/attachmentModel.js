@@ -18,7 +18,7 @@ const { Schema, model } = require('mongoose');
 // HrExpense: go-live F10 receipt uploads - same exact class of bug repeated once (registered in
 // attachmentService.js's OWNERS map but forgotten here, so every receipt upload would have failed
 // with a schema validation error, caught only by test/hr/hrGoLive.test.js).
-const OWNER_TYPES = ['PurchaseOrder', 'SalesOrder', 'JournalEntry', 'CrmLead', 'CommercialProject', 'HrExpense'];
+const OWNER_TYPES = ['PurchaseOrder', 'SalesOrder', 'JournalEntry', 'CrmLead', 'CommercialProject', 'HrExpense', 'HrAttendance', 'HrVisit'];
 
 const attachmentSchema = new Schema(
   {

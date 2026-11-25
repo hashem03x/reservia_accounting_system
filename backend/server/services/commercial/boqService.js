@@ -12,6 +12,7 @@ const priceBook = require('./priceBookLookup');
 const dealEngineSettings = require('./dealEngineSettings');
 const { linePriceFields } = require('./supplierPricing');
 const ratesMatrix = require('./ratesMatrix');
+const { usesRatesMatrix, canonicalCountry } = require('../../utils/commercial/regions');
 const pricingService = require('./commercialPricingService');
 
 // Reservia Commercial - orchestrates "which engine(s) does this project category need, and how
@@ -59,7 +60,7 @@ async function buildOnGridCatalog(country, region) {
     priceBook.getItemsByCategory('AC Breaker'),
     priceBook.getItemsByCategory('AC Distribution Board'),
   ]);
-  const rates = country === 'Egypt' ? ratesMatrix.toEngineCatalogShape(await ratesMatrix.getActiveRatesConfig(country)) : {};
+  const rates = usesRatesMatrix(country) ? ratesMatrix.toEngineCatalogShape(await ratesMatrix.getActiveRatesConfig(country)) : {};
   return {
     PV_MODULES: priceBook.toPvModuleShape(pvItems),
     GRID_INVERTERS: priceBook.toGridInverterShape(invItems),
@@ -279,8 +280,8 @@ async function resolveOffGridInput(engineeringInput, country, region) {
 
   let installSource = 'manual';
   let installRates = null;
-  if (country === 'Egypt') {
-    installRates = ratesMatrix.toEngineCatalogShape(await ratesMatrix.getActiveRatesConfig('Egypt'));
+  if (usesRatesMatrix(country)) {
+    installRates = ratesMatrix.toEngineCatalogShape(await ratesMatrix.getActiveRatesConfig(country));
     installSource = 'rates';
   }
   return { ei, keys, installRates, installSource };
@@ -386,7 +387,10 @@ function buildPumpingBoqLines({ pump, motor, module_, strings, dcCable, submersi
   ];
 }
 
-async function buildBoq({ category, engineeringInput, country, region, manualOverrides = {}, engineSettings = null }) {
+async function buildBoq({ category, engineeringInput, country: rawCountry, region, manualOverrides = {}, engineSettings = null }) {
+  // One spelling for every engine (onGridEngine compares to 'Egypt'): a project stored as "egypt" before
+  // the country fix is priced exactly like an "Egypt" one.
+  const country = canonicalCountry(rawCountry) || rawCountry;
   if (category === 'On-Grid C&I' || category === 'Utility Scale') return runOnGridOrUtility({ category, engineeringInput, country, region, manualOverrides, engineSettings });
   if (category === 'Off-Grid') return runOffGrid({ engineeringInput, manualOverrides, country, region });
   if (category === 'Agriculture Pumping') return runAgriculturePumping({ engineeringInput, manualOverrides });

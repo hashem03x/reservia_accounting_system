@@ -40,6 +40,8 @@ async function seedCommercialMaterials({ dryRun = process.argv.includes('--dry-r
   const pumping = require('../services/commercial/catalogData/pumpingCatalog');
   // eslint-disable-next-line global-require
   const pumpingExtras = require('../services/commercial/catalogData/pumpingExtras');
+  // eslint-disable-next-line global-require
+  const { canonicalMaterialKey } = require('../utils/commercial/materialKey');
 
   await MaterialItem.init();
   await RatesConfig.init();
@@ -89,32 +91,13 @@ async function seedCommercialMaterials({ dryRun = process.argv.includes('--dry-r
     sourceWorkbook: 'Solar_Pumping3.xlsx', sourceSheet: 'DC Cable Price List', key: `${c.brand} | Pumping ${c.sizeMm2}mm2 | ${c.sizeMm2}mm2`, effectiveDate: EFFECTIVE_DATE,
   }));
 
-  let created = 0;
-  let skipped = 0;
-  for (const item of items) {
-    if (dryRun) {
-      // eslint-disable-next-line no-await-in-loop
-      const exists = await MaterialItem.exists({ key: item.key });
-      if (exists) skipped += 1; else created += 1;
-      continue;
-    }
-    // eslint-disable-next-line no-await-in-loop
-    const res = await MaterialItem.updateOne({ key: item.key }, { $setOnInsert: item }, { upsert: true });
-    if (res.upsertedCount) created += 1; else skipped += 1;
-  }
-  console.log(`Material items: ${created} created, ${skipped} already present.`);
-
-  const ratesDoc = {
-    country: 'Egypt',
-    regions: onGrid.EGYPT_REGIONS,
-    installRatesEgpPerKwpByRegion: onGrid.EGYPT_REGIONS.map(r => onGrid.INSTALL_RATES_BY_REGION[r]),
-    transportRatesEgpByRegion: onGrid.EGYPT_REGIONS.map(r => onGrid.TRANSPORT_RATES_BY_REGION[r]),
-    mountingStructureRatesEgpPerKwp: onGrid.MOUNTING_STRUCTURE_RATES,
-    earthingRateEgpPerKwp: 100,
-    accessoriesRateEgpPerKwp: 85,
-    dcCableRouteMPerKwp: 8, // On-Grid Design!D26's 8 m/kWp route allowance
-    effectiveDate: EFFECTIVE_DATE,
-  };
+  // The Egypt Rates Matrix first: it does not depend on the Price Book, and before this order a
+  // failure in the item loop below (e.g. the keyNorm duplicate fixed here) ended the script before
+  // the matrix was created - leaving "No Rates Matrix configured for country Egypt" in the app.
+  // The same reference matrix the Pricing Config page's "Load the reference matrix" uses
+  // (services/commercial/ratesMatrix.js#referenceMatrix) - one definition, not two copies.
+  // eslint-disable-next-line global-require
+  const ratesDoc = { ...require('../services/commercial/ratesMatrix').referenceMatrix('Egypt', EFFECTIVE_DATE), source: 'seed' };
   if (dryRun) {
     const existingRates = await RatesConfig.exists({ country: 'Egypt' });
     console.log(existingRates ? 'Egypt Rates Matrix already present.' : 'Would create the Egypt Rates Matrix.');
@@ -127,6 +110,26 @@ async function seedCommercialMaterials({ dryRun = process.argv.includes('--dry-r
       console.log('Egypt Rates Matrix already present - left unchanged.');
     }
   }
+
+  // keyNorm (utils/commercial/materialKey.js) is the unique canonical key. updateOne/insertMany do
+  // not run the model's save hook, so it is computed here; an item already present under a
+  // differently spelled key with the same canonical key counts as present (never a duplicate).
+  let created = 0;
+  let skipped = 0;
+  for (const item of items) {
+    item.keyNorm = canonicalMaterialKey(item);
+    if (dryRun) {
+      // eslint-disable-next-line no-await-in-loop
+      const exists = await MaterialItem.exists({ $or: [{ key: item.key }, { keyNorm: item.keyNorm }] });
+      if (exists) skipped += 1; else created += 1;
+      continue;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    const res = await MaterialItem.updateOne({ $or: [{ key: item.key }, { keyNorm: item.keyNorm }] }, { $setOnInsert: item }, { upsert: true });
+    if (res.upsertedCount) created += 1; else skipped += 1;
+  }
+  console.log(`Material items: ${created} created, ${skipped} already present.`);
+
 
   return { materialsCreated: created, materialsSkipped: skipped };
 }

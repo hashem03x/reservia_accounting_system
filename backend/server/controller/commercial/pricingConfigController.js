@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const pricingConfigService = require('../../services/commercial/pricingConfigService');
+const ratesMatrix = require('../../services/commercial/ratesMatrix');
 const { hasActiveCommercialMembership } = require('../../middleware/commercialAccess');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { ACCOUNT_CODE_SORT, ACCOUNT_CODE_COLLATION } = require('../../utils/accountCodeSort');
@@ -35,6 +36,21 @@ exports.updateConfig = asyncHandler(async (req, res) => {
   const config = await pricingConfigService.updateConfig(req.body || {}, { userId: req.user._id, userName: req.user.name || null });
   console.info(`[Commercial] pricing configuration v${config.version} saved by user ${req.user._id}`);
   res.status(200).json(apiResponse('Pricing configuration saved. New revisions use it; existing revisions keep the rates they were priced with.', true, config));
+});
+
+// Rates Matrix (installation / transport rates by region and size band) - read by every Deal Engine
+// member, versioned changes by the Pricing Config managers only.
+exports.getRatesMatrix = asyncHandler(async (req, res) => {
+  const view = await ratesMatrix.getMatrixView(req.query.country || 'Egypt');
+  res.status(200).json(apiResponse('Rates Matrix', true, { ...view, canManage: pricingConfigService.canManagePricingConfig(req.user) }));
+});
+exports.saveRatesMatrix = asyncHandler(async (req, res) => {
+  const version = await ratesMatrix.saveVersion(req.body?.country || 'Egypt', req.body || {}, req.user);
+  res.status(201).json(apiResponse('Rates Matrix saved as a new version', true, version));
+});
+exports.loadReferenceRatesMatrix = asyncHandler(async (req, res) => {
+  const version = await ratesMatrix.loadReference(req.body?.country || 'Egypt', req.user);
+  res.status(201).json(apiResponse('Reference Rates Matrix loaded', true, version));
 });
 
 exports.getHistory = asyncHandler(async (req, res) => {

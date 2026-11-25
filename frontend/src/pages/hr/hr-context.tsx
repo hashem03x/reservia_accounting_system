@@ -227,3 +227,10 @@ export const canEdit = (role?: HrRole) => role === "md" || role === "hr";
 // manager approving their team's timesheet/expense/leave/OT has the same decision rights as the
 // legacy "manager" role, on top of md/hr's full admin rights.
 export const canDecideHr = (role?: HrRole) => canEdit(role) || role === "manager" || role === "line_manager";
+/**
+ * May add or change records (claims, visits, forms, timesheet days, documents) of employee `empId`:
+ * MD/HR for anyone; any other HR role for THEIR OWN linked employee record only (HrEmployee.user ->
+ * state.me) - the same rule the API enforces (services/hr/hrCore.js#assertCanActOnEmployee).
+ */
+export const canActOn = (state: { role: HrRole; me: string | null } | null | undefined, empId?: string | null) =>
+  !!state && (canEdit(state.role) || (!!state.me && !!empId && String(empId) === state.me));

@@ -19,6 +19,7 @@ type NullablePct = number | "";
 const toPctOrUnset = (fraction: number | null | undefined): NullablePct => (fraction == null ? "" : toPct(fraction));
 const fromPctOrUnset = (pct: NullablePct): number | null => (pct === "" ? null : pct / 100);
 import EngineSettingsCard from "./engine-settings-card";
+import RatesMatrixCard from "./rates-matrix-card";
 import ProposalTextCard, { ProposalSettings } from "./proposal-text-card";
 
 const ERP_COST_LEVERS: { key: keyof ErpCostAccountCodes; en: string; ar: string }[] = [
@@ -271,6 +272,10 @@ export default function PricingConfigPage() {
         </SectionCard>
       </div>
 
+      {/* The installation / transport Rates Matrix that Engineering calculations for Egypt need. */}
+      <div className="mt-4">
+        <RatesMatrixCard country="Egypt" />
+      </div>
       {config.engine && (
         <div className="mt-4">
           <EngineSettingsCard key={config.version} engine={config.engine} canManage={canManage} onSaved={load} />

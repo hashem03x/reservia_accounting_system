@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
-import { canDecideHr, canEdit, DN, fmt, Form, mLabel, r1, sum, useHr } from "./hr-context";
+import { canDecideHr, canEdit, DN, fmt, Form, mLabel, r1, sum, useHr, canActOn } from "./hr-context";
 import { ArmedButton, Chk, Empty, Inp, Kpi, Modal, MonthBar, Panel, Pill, Sel, SL, slText, SL_ICON, statusPill, Top, Txt, useFormVals, useModal } from "./ui";
 import { probationSoon, useEmp, usePendingCount } from "./views-people";
 
@@ -199,8 +199,8 @@ export function Forms() {
                 <b>{FT[k].t}</b>
                 <span className="sub">{FT[k].d}</span>
                 <div className="row2">
-                  {edit && (
-                    <button className="btn primary sm" data-testid={`new-form-${k}`} onClick={() => open({ type: "frm", ft: k })}>
+                  {(edit || (!!state.me && (k === "leave" || k === "ot" || k === "visit"))) && (
+                    <button className="btn primary sm" data-testid={`new-form-${k}`} onClick={() => open({ type: "frm", ft: k, empId: edit ? undefined : state.me || undefined })}>
                       {k === "hire" || k === "exit" ? translate("Open for an employee", "فتح لموظف") : translate("New request", "طلب جديد")}
                     </button>
                   )}
@@ -264,7 +264,7 @@ export function FormModal({ id, ft: ft0, empId }: { id?: string; ft?: string; em
     x.setDate(x.getDate() + k);
     return x.toISOString().slice(0, 10);
   };
-  const firstEmp = empId || state?.employees.find((e) => e.status !== "Left")?._id || "";
+  const firstEmp = empId || (canEdit(state?.role) ? state?.employees.find((e) => e.status !== "Left")?._id : state?.me) || "";
   const defaults: Record<string, Record<string, unknown>> = {
     leave: { ltype: "Annual leave", from: add(today, 21), to: add(today, 21) },
     ot: { odate: today, kind: state?.lists.OT_KINDS[0], from: "18:00", to: "20:00", hours: 2 },
@@ -277,9 +277,10 @@ export function FormModal({ id, ft: ft0, empId }: { id?: string; ft?: string; em
   if (!state) return null;
   const FT = ftMap(translate);
   const EXIT_STEPS = exitSteps(translate);
-  const edit = canEdit(state.role);
-  const canDecide = canDecideHr(state.role);
-  const emps = state.employees.filter((e) => e.status !== "Left").map((e) => [e._id, `${e.name} (${e.code})`] as [string, string]);
+  // MD/HR for anyone; any other role may raise leave / overtime / visit requests for themself only.
+  const edit = canEdit(state.role) || ((ft === "leave" || ft === "ot" || ft === "visit") && canActOn(state, f0 ? f0.employee : f.v.empId || state.me));
+  const canDecide = canDecideHr(state.role) && (!f0 || f0.employee !== state.me || canEdit(state.role));
+  const emps = state.employees.filter((e) => e.status !== "Left" && (canEdit(state.role) || e._id === state.me)).map((e) => [e._id, `${e.name} (${e.code})`] as [string, string]);
   const title = `${FT[ft].c} ${FT[ft].t}`;
   if (ft === "hire" || ft === "exit") {
     const e = byId[f.v.empId];
