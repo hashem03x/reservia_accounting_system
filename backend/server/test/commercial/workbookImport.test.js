@@ -92,6 +92,7 @@ async function team() {
   return {
     md: await mkUser('Ahmed MD', [m('COMMERCIAL', 'md')]),
     procurement: await mkUser('Paula Procurement', [m('COMMERCIAL', 'procurement')]),
+    director: await mkUser('Dina Director', [m('COMMERCIAL', 'commercial_director')]),
     sales: await mkUser('Sara Sales', [m('COMMERCIAL', 'sales')]),
     tech: await mkUser('Tarek Tech', [m('COMMERCIAL', 'technical')]),
     // ERP admin + Deal Engine procurement: may create ERP products.
@@ -190,14 +191,16 @@ maybeTest('On_Grid.xlsx into an EMPTY database: Price Book + Rates Matrix, then 
   assert.equal((await upload('workbook-import/preview', t.sales, wb)).status, 403, 'sales may not import');
   assert.equal((await upload('workbook-import/preview', t.tech, wb)).status, 403, 'technical may not import');
 
-  const preview = await upload('workbook-import/preview', t.procurement, wb);
+  // Pricing confidentiality (26 Nov 2026): the workbook carries prices - Procurement may no longer import it.
+  assert.equal((await upload('workbook-import/preview', t.procurement, wb)).status, 403, 'procurement may not import prices');
+  const preview = await upload('workbook-import/preview', t.director, wb);
   assert.equal(preview.status, 200, JSON.stringify(preview.body));
   const p = preview.body.data;
   assert.equal(p.workbook.kind, 'on-grid');
   assert.equal(p.items.create, 3 + 19 + 13 + 3 + 19 + 1 + 6);
   assert.equal(p.items.update, 0);
   assert.equal(p.rates.status, 'missing');
-  assert.equal(p.rates.canApply, false, 'procurement does not manage the Rates Matrix');
+  assert.equal(p.rates.canApply, true, 'the S&C Director manages the Rates Matrix');
   assert.equal(await MaterialItem.countDocuments(), 0, 'preview writes nothing');
 
   assert.equal((await upload('workbook-import/apply', t.procurement, wb, { rates: true })).status, 403, 'rates need a Pricing Config manager');
@@ -232,11 +235,11 @@ maybeTest('a changed price is appended to the history; the key and earlier revis
   const before = await MaterialItem.findOne({ model: 'SUN2000-50KTL-M3' }).lean();
   await MaterialItem.updateOne({ model: 'SUN2000-60KTL-M0' }, { archived: true });
   const changed = onGridWorkbook(rows => rows.map(r => (r[1] === 'SUN2000-50KTL-M3' ? [r[0], r[1], r[2], 170000, ...r.slice(4)] : r)));
-  const p = (await upload('workbook-import/preview', t.procurement, changed)).body.data;
+  const p = (await upload('workbook-import/preview', t.director, changed)).body.data;
   assert.equal(p.items.update, 1);
   assert.equal(p.items.archived, 1);
   assert.deepEqual(p.items.samples.update[0].changes, [{ field: 'price', before: before.unitPrice, after: 170000 }]);
-  assert.equal((await upload('workbook-import/apply', t.procurement, changed)).status, 200, 'items alone: Materials editors');
+  assert.equal((await upload('workbook-import/apply', t.director, changed)).status, 200, 'items alone: Materials editors with pricing access');
   const after = await MaterialItem.findOne({ _id: before._id }).lean();
   assert.equal(after.unitPrice, 170000);
   assert.equal(after.key, before.key);

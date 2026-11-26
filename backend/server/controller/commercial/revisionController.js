@@ -12,6 +12,7 @@ const { setFileHeaders } = require('../../utils/contentDisposition');
 const {
   shapeRevisionForRole, assertEngineeringInputWriteAllowed, assertPricingWriteAllowed,
   isPolicyLeverOverride, assertOverrideReasonGiven, PROJECT_TAB_MATRIX, widestLevel, canView,
+  canSeePricing, guardPriceWrites, redactMoney, scrubMoneyText,
 } = require('../../utils/commercial/dealEnginePermissions');
 
 /**
@@ -20,6 +21,14 @@ const {
  */
 function summaryForRole(summary, roles) {
   if (!summary) return null;
+  // Pricing confidentiality: no totals, no unit prices, and no amounts inside changed descriptions.
+  if (!canSeePricing(roles)) {
+    const r = redactMoney(summary);
+    r.changedLines = (r.changedLines || []).map(l => (l.description ? { ...l, description: { from: scrubMoneyText(l.description.from), to: scrubMoneyText(l.description.to) } } : l))
+      .filter(l => l.change !== 'changed' || l.qty || (l.description && l.description.from !== l.description.to));
+    delete r.linesWithPriceNotes;
+    return r;
+  }
   const costs = canView(widestLevel(PROJECT_TAB_MATRIX.boqCosts, roles));
   const pricing = canView(widestLevel(PROJECT_TAB_MATRIX.pricing, roles));
   const money = t => ({ boqTotal: costs ? t.boqTotal : undefined, netExclVat: pricing ? t.netExclVat : undefined, grossInclVat: pricing ? t.grossInclVat : undefined });
@@ -68,11 +77,13 @@ exports.setBoqLineVendor = asyncHandler(async (req, res) => {
 // Feature 3/B4 - Create PR (a real ERP Purchase Order) from a BOQ line.
 exports.getBoqLineProcurementStatus = asyncHandler(async (req, res) => {
   const status = await createPrService.getBoqLineProcurementStatus(req.params.id, decodeURIComponent(req.params.component));
-  res.status(200).json(apiResponse('BOQ line procurement status', true, status));
+  // Purchase Order amounts are BOQ money - quantities and statuses only for non-pricing roles.
+  res.status(200).json(apiResponse('BOQ line procurement status', true, canSeePricing(req.commercialRoles) ? status : redactMoney(status)));
 });
 exports.createPr = asyncHandler(async (req, res) => {
-  const requisition = await createPrService.createPrFromBoqLine(req.params.id, decodeURIComponent(req.params.component), { supplierId: req.body?.supplierId, quantity: req.body?.quantity }, { role: req.commercialRole });
-  res.status(201).json(apiResponse('Purchase Order created', true, requisition));
+  const requisition = await createPrService.createPrFromBoqLine(req.params.id, decodeURIComponent(req.params.component), { supplierId: req.body?.supplierId, quantity: req.body?.quantity }, { role: req.commercialRole, roles: req.commercialRoles });
+  const data = requisition.toJSON();
+  res.status(201).json(apiResponse('Purchase Order created', true, canSeePricing(req.commercialRoles) ? data : redactMoney(data)));
 });
 
 /**
@@ -105,8 +116,12 @@ exports.recomputeRevision = asyncHandler(async (req, res, next) => {
   if (current.project.outcome === 'Won') {
     throw new ApiError(`Deal ${current.project.dealNumber || ''} is Won - this revision is locked and can no longer be recalculated. Create a new revision for any further change.`, 400);
   }
+  // Pricing confidentiality: a non-pricing role (Technical, BDM, Procurement...) can not type a price
+  // (price inputs, unit-price overrides, re-applying the pricing levers), and the price inputs it
+  // never saw are kept rather than wiped by its form.
+  const safeInput = guardPriceWrites(req.commercialRoles, { engineeringInput, storedInput: current.engineeringInput, manualOverrides, storedLines: current.boqLines, applyCurrentConfig: applyCurrentConfig === true });
   const { salesLimits, policyVersion } = await salesLimitsForProjectCategory(current.project.category);
-  let revision = await revisionService.recomputeCurrentRevision(req.params.id, engineeringInput, {
+  let revision = await revisionService.recomputeCurrentRevision(req.params.id, safeInput, {
     manualOverrides, pricingOverrides, applyCurrentConfig: applyCurrentConfig === true, userId: req.user._id,
     roles: req.commercialRoles, salesLimits,
   });
@@ -141,8 +156,10 @@ exports.createRevisionForProject = asyncHandler(async (req, res, next) => {
   if (isOverride) assertOverrideReasonGiven(overrideReason);
   const project = await CommercialProject.findById(req.params.projectId).select('category');
   if (!project) return next(new ApiError('Deal Engine project not found.', 404));
+  const previous = await CommercialRevision.findOne({ project: project._id, isCurrent: true }).select('engineeringInput boqLines').lean();
+  const safeInput = guardPriceWrites(req.commercialRoles, { engineeringInput, storedInput: previous?.engineeringInput, manualOverrides, storedLines: previous?.boqLines });
   const { salesLimits, policyVersion } = await salesLimitsForProjectCategory(project.category);
-  let revision = await revisionService.createRevision(req.params.projectId, engineeringInput, {
+  let revision = await revisionService.createRevision(req.params.projectId, safeInput, {
     manualOverrides, pricingOverrides, userId: req.user._id, roles: req.commercialRoles, salesLimits, requestId,
   });
   const duplicate = !!revision.$locals?.duplicateOf;

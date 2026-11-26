@@ -7,6 +7,7 @@ import useDocumentTitle from "@/hooks/useDocumentTitle";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { formatAmount } from "@/utils/helpers/format-amount";
+import usePricingAccess from "../_shared/usePricingAccess";
 import KpiCard from "@/components/ui/kpi-card";
 import SectionCard from "@/components/ui/section-card";
 import ErrorSection from "@/components/ui/sections/error";
@@ -26,6 +27,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 // CommercialProject/CommercialRevision documents at request time - nothing here is a static
 // sample, matching the same "no fabricated statistics" rule CRM's own dashboard follows.
 export default function CommercialDashboardPage() {
+  const { canSeePricing: showMoney } = usePricingAccess();
   const { translate, language } = useLanguage();
   const colorScheme = useComputedColorScheme("light");
   const isDark = colorScheme === "dark";
@@ -83,14 +85,19 @@ export default function CommercialDashboardPage() {
         <KpiCard label={translate("Pending Engineering Approval", "في انتظار الموافقة الفنية")} value={data?.pendingEngineeringApproval ?? 0} loading={loading} />
         <KpiCard label={translate("Pending Commercial Approval", "في انتظار الموافقة التجارية")} value={data?.pendingCommercialApproval ?? 0} loading={loading} />
         <KpiCard label={translate("Approved Projects", "مشاريع معتمدة")} value={data?.approvedProjects ?? 0} loading={loading} />
-        <KpiCard label={translate("Total Estimated Project Value", "القيمة التقديرية الإجمالية")} value={formatAmount(data?.totalEstimatedProjectValue, "EGP")} loading={loading} />
-        <KpiCard label={translate("Total Estimated Material Cost", "إجمالي تكلفة المواد")} value={formatAmount(data?.totalEstimatedMaterialCost, "EGP")} loading={loading} />
-        <KpiCard label={translate("Expected Gross Profit", "إجمالي الربح المتوقع")} value={formatAmount(data?.expectedGrossProfit, "EGP")} loading={loading} />
-        <KpiCard
-          label={translate("Average Margin", "متوسط الهامش")}
-          value={data?.averageMarginPct != null ? `${(data.averageMarginPct * 100).toFixed(1)}%` : "-"}
-          loading={loading}
-        />
+        {/* Pricing confidentiality: the money KPIs exist only for pricing roles (the API omits them otherwise). */}
+        {showMoney && (
+          <>
+            <KpiCard label={translate("Total Estimated Project Value", "القيمة التقديرية الإجمالية")} value={formatAmount(data?.totalEstimatedProjectValue, "EGP")} loading={loading} />
+            <KpiCard label={translate("Total Estimated Material Cost", "إجمالي تكلفة المواد")} value={formatAmount(data?.totalEstimatedMaterialCost, "EGP")} loading={loading} />
+            <KpiCard label={translate("Expected Gross Profit", "إجمالي الربح المتوقع")} value={formatAmount(data?.expectedGrossProfit, "EGP")} loading={loading} />
+            <KpiCard
+              label={translate("Average Margin", "متوسط الهامش")}
+              value={data?.averageMarginPct != null ? `${(data.averageMarginPct * 100).toFixed(1)}%` : "-"}
+              loading={loading}
+            />
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

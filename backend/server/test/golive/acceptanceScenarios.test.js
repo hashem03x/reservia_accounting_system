@@ -170,7 +170,8 @@ maybeTest('8.1.3: Technical Engineer - Engineering Input/BOQ edit, Pricing/Feasi
   const roles = [techEng.commercialRole];
   assert.doesNotThrow(() => perms.assertEngineeringInputWriteAllowed(roles, { kWp: 120 }));
   assert.equal(perms.canEdit(perms.widestLevel(perms.PROJECT_TAB_MATRIX.boqLines, roles)), true);
-  assert.equal(perms.canView(perms.widestLevel(perms.PROJECT_TAB_MATRIX.boqCosts, roles)), true, 'D8: technical sees BOQ cost prices');
+  // Pricing confidentiality (26 Nov 2026, MD instruction) supersedes D8: technical no longer sees BOQ prices.
+  assert.equal(perms.canView(perms.widestLevel(perms.PROJECT_TAB_MATRIX.boqCosts, roles)), false, 'technical sees no BOQ prices');
   assert.equal(perms.canView(perms.widestLevel(perms.PROJECT_TAB_MATRIX.pricing, roles)), false);
   assert.equal(perms.canView(perms.widestLevel(perms.PROJECT_TAB_MATRIX.feasibility, roles)), false);
   assert.equal(perms.canView(perms.widestLevel(perms.PROJECT_TAB_MATRIX.proposal, roles)), false);
@@ -180,7 +181,7 @@ maybeTest('8.1.3: Technical Engineer - Engineering Input/BOQ edit, Pricing/Feasi
   const shaped = perms.shapeRevisionForRole(revision, roles);
   assert.equal(shaped.pricing, undefined);
   assert.equal(shaped.feasibility, undefined);
-  assert.equal(shaped.boqLines[0].unitPrice, 10, 'BOQ cost prices stay visible to Technical');
+  assert.equal(shaped.boqLines[0].unitPrice, undefined, 'no BOQ prices for Technical (pricing confidentiality)');
 });
 
 maybeTest('8.1.3: Technical Engineer has no ERP membership at all - /erp (any ERP resource) is refused', async () => {
@@ -338,14 +339,14 @@ maybeTest('8.1.7: Marketing moves a lead to Negotiation and Lost, refused on Won
   assert.match(stageRules.validateStageTransition(toWon).join(' '), /cannot mark a lead Won/);
 });
 
-maybeTest('8.1.7: Marketing sees Proposal/Feasibility read-only (D5), drafts a PO (ERP po_drafter)', async () => {
+// Pricing confidentiality (26 Nov 2026, MD instruction) supersedes D5: the proposal and the
+// feasibility both state the final deal price - Marketing no longer sees either.
+maybeTest('8.1.7: Marketing no longer sees Proposal/Feasibility (pricing confidentiality), drafts a PO (ERP po_drafter)', async () => {
   const { marketing } = await roster();
   const perms = require('../../utils/commercial/dealEnginePermissions');
   const roles = [marketing.commercialRole];
-  assert.equal(perms.canView(perms.widestLevel(perms.PROJECT_TAB_MATRIX.proposal, roles)), true);
-  assert.equal(perms.canEditFully(perms.widestLevel(perms.PROJECT_TAB_MATRIX.proposal, roles)), false, 'view only, never issue');
-  assert.equal(perms.canView(perms.widestLevel(perms.PROJECT_TAB_MATRIX.feasibility, roles)), true);
-  assert.equal(perms.canEditFully(perms.widestLevel(perms.PROJECT_TAB_MATRIX.feasibility, roles)), false);
+  assert.equal(perms.canView(perms.widestLevel(perms.PROJECT_TAB_MATRIX.proposal, roles)), false);
+  assert.equal(perms.canView(perms.widestLevel(perms.PROJECT_TAB_MATRIX.feasibility, roles)), false);
 
   const vendor = await Vendor.create({ name: 'Marketing Vendor', contact: { phone: '01011110003' } });
   const category = await Category.create({ name: { en: 'Signage', ar: 'لوحات' } });

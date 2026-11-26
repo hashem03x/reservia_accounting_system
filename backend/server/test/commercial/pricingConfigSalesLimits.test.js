@@ -143,5 +143,5 @@ test('R8: requireMdApprovalForPolicyChange off (default) lets the Commercial Dir
 
 test('assertCanSavePolicyChange still refuses a role with no manage access at all, regardless of the MD-approval setting', () => {
   const sales = { systemMemberships: [{ system: 'COMMERCIAL', role: 'sales', isActive: true }] };
-  assert.throws(() => pricingConfigService.assertCanSavePolicyChange(sales, { requireMdApprovalForPolicyChange: false }), /Only Finance/);
+  assert.throws(() => pricingConfigService.assertCanSavePolicyChange(sales, { requireMdApprovalForPolicyChange: false }), /Only the Sales and Commercial Director or the MD/);
 });

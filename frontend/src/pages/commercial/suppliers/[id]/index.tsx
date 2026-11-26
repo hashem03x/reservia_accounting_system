@@ -14,6 +14,8 @@ import ErrorSection from "@/components/ui/sections/error";
 import SectionCard from "@/components/ui/section-card";
 import paths from "@/utils/constants/paths";
 import { DOCUMENT_KINDS, EDIT_ROLES, PRICE_BOOK_CATEGORIES, STATUS_COLOR, Supplier, SupplierStatus, VendorCandidate } from "../types";
+import { canEditFully, canView, enginePageAccess } from "../../_shared/dealEnginePermissions";
+import { CommercialRole } from "@/types/commercial";
 import PriceListUpload from "../price-list-upload";
 
 // Who may set which status (backend services/commercial/supplierService.js#STATUS_ROLES). Go-live
@@ -30,6 +32,9 @@ export default function SupplierPage() {
   const { systems } = useSystemAccess();
   const role = systems?.COMMERCIAL?.role || "";
   const canEdit = EDIT_ROLES.includes(role);
+  // Pricing confidentiality: the supplier's price lists (view: MD / S&C Director / Sales; upload: MD /
+  // S&C Director) - not rendered at all for other roles, and the API refuses them too.
+  const priceListLevel = enginePageAccess(role ? [role as CommercialRole] : [], "priceLists");
   const { privateRequest, loading, setLoading, error, setError, data: s, setData } = useDataHandler<Supplier | null>({ initialData: null, initialLoading: true });
   const [form, setForm] = useState<Supplier | null>(null);
   const [statusTo, setStatusTo] = useState<SupplierStatus | "">("");
@@ -299,7 +304,7 @@ export default function SupplierPage() {
           </div>
         </div>
 
-        <PriceListUpload supplierId={s._id} canEdit={canEdit && !["Suspended", "Removed"].includes(s.status)} onChanged={load} />
+        {canView(priceListLevel) && <PriceListUpload supplierId={s._id} canEdit={canEditFully(priceListLevel) && !["Suspended", "Removed"].includes(s.status)} onChanged={load} />}
 
         <SectionCard title={translate("Notes and history (append-only)", "الملاحظات والسجل")}>
           <div className="flex flex-col gap-1 text-sm">

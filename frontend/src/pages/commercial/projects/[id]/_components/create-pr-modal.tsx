@@ -22,6 +22,7 @@ export default function CreatePrModal({
   line,
   suppliers,
   onCreated,
+  showPrices = true,
 }: {
   opened: boolean;
   onClose: () => void;
@@ -29,6 +30,8 @@ export default function CreatePrModal({
   line: BoqLine | null;
   suppliers: Supplier[];
   onCreated: () => void;
+  // Pricing confidentiality: false for roles that may not see BOQ prices (the PO is then raised without one).
+  showPrices?: boolean;
 }) {
   const { translate, language } = useLanguage();
   const requisitionStatusLabel = useRequisitionStatusLabel();
@@ -89,7 +92,8 @@ export default function CreatePrModal({
           <div className="font-medium">{line.component}</div>
           <div className="text-xs text-gray-500">{line.description}</div>
           <div className="mt-1 text-xs text-gray-500">
-            {translate("BOQ Qty", "كمية جدول الكميات")}: {line.qty} {line.unit} · {translate("Unit Price", "سعر الوحدة")}: {line.unitPrice}
+            {translate("BOQ Qty", "كمية جدول الكميات")}: {line.qty} {line.unit}
+            {showPrices ? <> · {translate("Unit Price", "سعر الوحدة")}: {line.unitPrice}</> : <> · {translate("The Purchase Order is created without a unit price - Purchasing enters the agreed supplier price.", "يُنشأ أمر الشراء بدون سعر - تدخل المشتريات سعر المورد المتفق عليه.")}</>}
           </div>
         </div>
 

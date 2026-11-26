@@ -11,7 +11,7 @@ import { solidIcons } from "@/components/icons";
 import { notifyError } from "@/utils/helpers/notifiers";
 import errorMessage from "@/utils/helpers/error-message";
 import { BoqLine, CommercialProject, CommercialRevision, CommercialRole } from "@/types/commercial";
-import { canEdit, projectTabAccess } from "../../../_shared/dealEnginePermissions";
+import { canEdit, canSeePricing, projectTabAccess } from "../../../_shared/dealEnginePermissions";
 import CreatePrModal from "./create-pr-modal";
 import { notifyRecalculated } from "../../../_shared/recalcNotice";
 
@@ -37,6 +37,10 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
   // assertEngineeringInputWriteAllowed/boqLines row) - Sales and Procurement are 'view' only and
   // would always get a 403 on save, so the inputs below must not invite them to try.
   const canEditBoq = canEdit(projectTabAccess(role ? [role as CommercialRole] : [], "boqLines"));
+  // Pricing confidentiality: roles outside MD / S&C Director / Sales get the TECHNICAL BOQ - no price
+  // or total column, no supplier pricing, no price recalculation, a technical-only export. The API
+  // already omits those fields; this keeps the screen from showing empty columns for them.
+  const costs = canSeePricing(role ? [role as CommercialRole] : []);
   const [overrides, setOverrides] = useState<Record<string, { qty?: number; unitPrice?: number }>>({});
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler<null>({ initialData: null });
 
@@ -133,7 +137,7 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {canEditBoq && !isLocked && (
+          {costs && canEditBoq && !isLocked && (
             <Tooltip
               label={translate(
                 "Re-runs this revision with its engineering inputs and the latest Price Book, supplier prices and rates, keeps your overrides, and saves it.",
@@ -150,7 +154,7 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
           <Menu position="bottom-end" withinPortal>
             <Menu.Target>
               <Button size="xs" variant="default" loading={!!exporting} disabled={!hasLines} data-testid="boq-export">
-                {translate("Export", "تصدير")}
+                {costs ? translate("Export", "تصدير") : translate("Export technical BOQ (no prices)", "تصدير جدول الكميات الفني (بدون أسعار)")}
               </Button>
             </Menu.Target>
             <Menu.Dropdown>
@@ -164,7 +168,7 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
           </Menu>
         </div>
       </div>
-      {revision.priceChangedSinceCalculation && (
+      {costs && revision.priceChangedSinceCalculation && (
         // Deal Engine C24 - a price this revision uses changed (supplier price list, supplier approval,
         // Materials edit, workbook import). Nothing recalculates on its own: the figures below stay the
         // stored ones - flagged outdated - until someone recalculates.
@@ -194,8 +198,8 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
               <Table.Th>{translate("Description", "الوصف")}</Table.Th>
               <Table.Th>{translate("Unit", "الوحدة")}</Table.Th>
               <Table.Th className="text-right">{translate("Qty", "الكمية")}</Table.Th>
-              <Table.Th className="text-right">{translate("Unit Price", "سعر الوحدة")}</Table.Th>
-              <Table.Th className="text-right">{translate("Total", "الإجمالي")}</Table.Th>
+              {costs && <Table.Th className="text-right">{translate("Unit Price", "سعر الوحدة")}</Table.Th>}
+              {costs && <Table.Th className="text-right">{translate("Total", "الإجمالي")}</Table.Th>}
               <Table.Th>{translate("Source", "المصدر")}</Table.Th>
               <Table.Th>{translate("Vendor", "المورد")}</Table.Th>
               <Table.Th>{translate("Procurement", "التوريد")}</Table.Th>
@@ -214,7 +218,7 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                 </Table.Td>
                 <Table.Td className="max-w-[320px] text-xs text-gray-500">
                   <div className="truncate">{line.description}</div>
-                  {line.priceSource && (
+                  {costs && line.priceSource && (
                     // Deal Engine C19/C23: price source, flags, foreign price and the EGP price used.
                     <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px]" data-testid="boq-price-source">
                       <span className="text-gray-500" data-testid="boq-line-supplier">
@@ -236,7 +240,7 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                       ))}
                     </div>
                   )}
-                  {line.priceNote && (
+                  {costs && line.priceNote && (
                     <div className="whitespace-normal text-[11px] text-amber-700" data-testid="boq-line-price-note">
                       {line.priceNote}
                     </div>
@@ -247,17 +251,20 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                 <Table.Td className="text-right">
                   <NumberInput size="xs" value={overrides[line.component]?.qty ?? line.qty ?? undefined} onChange={(v) => setOverride(line.component, "qty", v as number)} w={90} disabled={!canEditBoq} />
                 </Table.Td>
+                {costs && (
                 <Table.Td className="text-right">
                   <NumberInput size="xs" value={overrides[line.component]?.unitPrice ?? line.unitPrice ?? undefined} onChange={(v) => setOverride(line.component, "unitPrice", v as number)} w={110} disabled={!canEditBoq} />
                 </Table.Td>
-                <Table.Td className="text-right font-medium">{formatAmount(line.total, project.currency)}</Table.Td>
+                )}
+                {costs && <Table.Td className="text-right font-medium">{formatAmount(line.total, project.currency)}</Table.Td>}
                 <Table.Td>
                   <Badge size="sm" color={line.source === "override" ? "orange" : line.source === "manual" ? "gray" : "teal"} variant="light">
                     {line.source}
                   </Badge>
                   {line.source === "override" && (
                     <div className="mt-0.5 text-[10px] text-gray-400">
-                      {translate("auto", "تلقائي")}: {line.autoQty} x {line.autoUnitPrice}
+                      {translate("auto", "تلقائي")}: {line.autoQty}
+                      {costs ? ` x ${line.autoUnitPrice}` : ""}
                       {canEditBoq && !isLocked && (
                         <Button
                           size="compact-xs"
@@ -309,13 +316,15 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                 </Table.Td>
               </Table.Tr>
             ))}
-            <Table.Tr className="font-semibold">
-              <Table.Td colSpan={5} className="text-right">{translate("BOQ Total", "إجمالي جدول الكميات")}</Table.Td>
-              <Table.Td className="text-right">{formatAmount(revision.boqTotal, project.currency)}</Table.Td>
-              <Table.Td />
-              <Table.Td />
-              <Table.Td />
-            </Table.Tr>
+            {costs && (
+              <Table.Tr className="font-semibold">
+                <Table.Td colSpan={5} className="text-right">{translate("BOQ Total", "إجمالي جدول الكميات")}</Table.Td>
+                <Table.Td className="text-right">{formatAmount(revision.boqTotal, project.currency)}</Table.Td>
+                <Table.Td />
+                <Table.Td />
+                <Table.Td />
+              </Table.Tr>
+            )}
           </Table.Tbody>
         </DataTable>
       </DataTableContainer>
@@ -327,7 +336,7 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
         </Button>
       )}
 
-      <CreatePrModal opened={!!prLine} onClose={() => setPrLine(null)} revisionId={revision._id} line={prLine} suppliers={suppliers} onCreated={onChanged} />
+      <CreatePrModal showPrices={costs} opened={!!prLine} onClose={() => setPrLine(null)} revisionId={revision._id} line={prLine} suppliers={suppliers} onCreated={onChanged} />
     </div>
   );
 }

@@ -154,9 +154,9 @@ exports.createProject = asyncHandler(async (req, res, next) => {
 
   if (engineeringInput) {
     const revision = await revisionService.createRevision(project._id, engineeringInput, { userId: req.user._id });
-    return res.status(201).json(apiResponse('Project and first revision created successfully', true, { project, revision }));
+    return res.status(201).json(apiResponse('Project and first revision created successfully', true, { project: shapeProjectForRole(project, req.commercialRoles), revision: shapeRevisionForRole(revision, req.commercialRoles) }));
   }
-  res.status(201).json(apiResponse('Project created successfully', true, { project }));
+  res.status(201).json(apiResponse('Project created successfully', true, { project: shapeProjectForRole(project, req.commercialRoles) }));
 });
 
 /**
@@ -185,7 +185,7 @@ exports.updateProject = asyncHandler(async (req, res, next) => {
     if (String(from ?? '') !== String(to ?? '')) changes.push({ field, from: from ?? null, to: to ?? null });
   }
   const identifiersAdded = await ensureDealIdentifiers(project);
-  if (!changes.length && !identifiersAdded) return res.status(200).json(apiResponse('No changes.', true, project));
+  if (!changes.length && !identifiersAdded) return res.status(200).json(apiResponse('No changes.', true, shapeProjectForRole(project, req.commercialRoles)));
 
   for (const { field, to } of changes) project[field] = to;
   const needsRecalc = changes.some(c => RECALC_FIELDS.includes(c.field));
@@ -205,7 +205,7 @@ exports.updateProject = asyncHandler(async (req, res, next) => {
 
   const fresh = await CommercialProject.findById(project._id).populate({ path: 'currentRevision', populate: STAGE_POPULATE });
   res.status(200).json(
-    apiResponse(invalidated ? 'Project updated. The current revision was reset to Draft - recalculate it on the Engineering Input tab.' : 'Project updated successfully', true, fresh)
+    apiResponse(invalidated ? 'Project updated. The current revision was reset to Draft - recalculate it on the Engineering Input tab.' : 'Project updated successfully', true, shapeProjectForRole(fresh, req.commercialRoles))
   );
 });
 
@@ -222,15 +222,15 @@ exports.duplicateProject = asyncHandler(async (req, res, next) => {
   await project.save();
   if (source.currentRevision) {
     const revision = await revisionService.createRevision(project._id, source.currentRevision.engineeringInput, { userId: req.user._id });
-    return res.status(201).json(apiResponse('Project duplicated successfully', true, { project, revision }));
+    return res.status(201).json(apiResponse('Project duplicated successfully', true, { project: shapeProjectForRole(project, req.commercialRoles), revision: shapeRevisionForRole(revision, req.commercialRoles) }));
   }
-  res.status(201).json(apiResponse('Project duplicated successfully', true, { project }));
+  res.status(201).json(apiResponse('Project duplicated successfully', true, { project: shapeProjectForRole(project, req.commercialRoles) }));
 });
 
 exports.archiveProject = asyncHandler(async (req, res, next) => {
   const project = await CommercialProject.findByIdAndUpdate(req.params.id, { archived: true, archivedAt: new Date(), archivedBy: req.user._id }, { new: true });
   if (!project) return next(new ApiError('Deal Engine project not found.', 404));
-  res.status(200).json(apiResponse('Project archived successfully', true, project));
+  res.status(200).json(apiResponse('Project archived successfully', true, shapeProjectForRole(project, req.commercialRoles)));
 });
 
 exports.listRevisions = asyncHandler(async (req, res) => {

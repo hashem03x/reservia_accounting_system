@@ -19,23 +19,34 @@ type MatrixRow = Record<CommercialRole, AccessLevel>;
 // Pricing; commercial_director gains BOQ edit access per F6; bdm/marketing added throughout).
 export const PROJECT_TAB_MATRIX: Record<string, MatrixRow> = {
   overview: { md: "edit", commercial_director: "edit", sales: "view", technical: "view", procurement: "view", member: "view", bdm: "edit", marketing: "view" },
-  overviewPricing: { md: "edit", commercial_director: "edit", sales: "view", technical: "hidden", procurement: "hidden", member: "hidden", bdm: "view", marketing: "hidden" },
+  overviewPricing: { md: "edit", commercial_director: "edit", sales: "view", technical: "hidden", procurement: "hidden", member: "hidden", bdm: "hidden", marketing: "hidden" },
   engineeringInputDesign: { md: "edit", commercial_director: "edit", sales: "view", technical: "edit", procurement: "hidden", member: "hidden", bdm: "edit", marketing: "hidden" },
   engineeringInputCustomer: { md: "edit", commercial_director: "edit", sales: "view", technical: "edit", procurement: "hidden", member: "hidden", bdm: "edit", marketing: "hidden" },
   designChecks: { md: "edit", commercial_director: "hidden", sales: "hidden", technical: "edit", procurement: "hidden", member: "hidden", bdm: "hidden", marketing: "hidden" },
   boqLines: { md: "edit", commercial_director: "edit", sales: "view", technical: "edit", procurement: "view", member: "hidden", bdm: "edit", marketing: "hidden" },
-  boqCosts: { md: "edit", commercial_director: "edit", sales: "view", technical: "view", procurement: "hidden", member: "hidden", bdm: "edit", marketing: "hidden" },
+  boqCosts: { md: "edit", commercial_director: "edit", sales: "view", technical: "hidden", procurement: "hidden", member: "hidden", bdm: "hidden", marketing: "hidden" },
   pricing: { md: "edit", commercial_director: "edit", sales: "view", technical: "hidden", procurement: "hidden", member: "hidden", bdm: "limited", marketing: "hidden" },
-  feasibility: { md: "edit", commercial_director: "edit", sales: "view", technical: "hidden", procurement: "hidden", member: "hidden", bdm: "edit", marketing: "view" },
+  feasibility: { md: "edit", commercial_director: "edit", sales: "view", technical: "hidden", procurement: "hidden", member: "hidden", bdm: "hidden", marketing: "hidden" },
   approvalsStage1: { md: "edit", commercial_director: "view", sales: "edit", technical: "edit", procurement: "hidden", member: "view", bdm: "edit", marketing: "hidden" },
   approvalsStage2: { md: "edit", commercial_director: "edit", sales: "view", technical: "hidden", procurement: "hidden", member: "view", bdm: "view", marketing: "hidden" },
-  proposal: { md: "edit", commercial_director: "edit", sales: "edit", technical: "hidden", procurement: "hidden", member: "hidden", bdm: "edit", marketing: "view" },
+  proposal: { md: "edit", commercial_director: "edit", sales: "edit", technical: "hidden", procurement: "hidden", member: "hidden", bdm: "hidden", marketing: "hidden" },
 };
 
 export const ENGINE_PAGE_MATRIX: Record<string, MatrixRow> = {
   materials: { md: "edit", commercial_director: "edit", sales: "view", technical: "view", procurement: "edit", member: "view", bdm: "view", marketing: "hidden" },
   suppliers: { md: "edit", commercial_director: "edit", sales: "view", technical: "view", procurement: "edit", member: "view", bdm: "edit", marketing: "hidden" },
+  pricingPolicy: { md: "edit", commercial_director: "edit", sales: "hidden", technical: "hidden", procurement: "hidden", member: "hidden", bdm: "hidden", marketing: "hidden" },
+  priceLists: { md: "edit", commercial_director: "edit", sales: "view", technical: "hidden", procurement: "hidden", member: "hidden", bdm: "hidden", marketing: "hidden" },
 };
+
+/**
+ * Pricing and commission confidentiality (26 Nov 2026, MD instruction) - mirrors the backend's
+ * dealEnginePermissions.js#PRICING_ROLES. Only these roles see any price, cost, margin, deal value or
+ * the sales bonus / engineering incentive; BDM may still SET the category addition % and discount %.
+ * The API already removes the money for everyone else - this only keeps the screens from offering it.
+ */
+export const PRICING_ROLES: CommercialRole[] = ["md", "commercial_director", "sales"];
+export const canSeePricing = (roles: CommercialRole[] | null | undefined) => (roles || []).some((r) => PRICING_ROLES.includes(r));
 
 /** R13: widest access across every Commercial role the user holds (today almost always just one). */
 export function widestLevel(row: MatrixRow, roles: CommercialRole[] | null | undefined): AccessLevel {
@@ -58,3 +69,19 @@ export function enginePageAccess(roles: CommercialRole[] | null | undefined, pag
 export const canView = (level: AccessLevel) => level !== "hidden";
 export const canEdit = (level: AccessLevel) => level === "edit" || level === "limited";
 export const canEditFully = (level: AccessLevel) => level === "edit";
+
+/** Engineering-input keys that are Reservia prices/cost rates - mirrors the backend PRICE_INPUT_KEYS. */
+export const PRICE_INPUT_KEYS = [
+  "acPricePerMOverride", "fareEgp", "hotelEgpPerRoomNight", "perDiemEgp", "allowanceEgpPerPersonDay", "manualAdders",
+  "moduleUnitPrice", "batteryUnitPrice", "inverterUnitPrice", "installationRatePerKwp", "dcCablePricePerM", "acCablePricePerM",
+  "mc4PricePerPair", "dcProtectionPrice", "mountingStructureRatePerKwp", "earthingRatePerKwp", "miscRatePerKwp",
+  "transportationRatePerKwp", "contingencyRate", "profitMarginRate", "vatRate",
+];
+
+/** A non-pricing role's form never sends a price input (the server keeps the stored ones). */
+export function withoutPriceInputs<T extends Record<string, unknown>>(input: T, showMoney: boolean): T {
+  if (showMoney) return input;
+  const out = { ...input };
+  for (const k of PRICE_INPUT_KEYS) delete (out as Record<string, unknown>)[k];
+  return out;
+}

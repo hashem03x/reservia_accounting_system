@@ -1,6 +1,7 @@
 'use strict';
 
 const ApiError = require('../../utils/apiError');
+const { canSeePricing, scrubMoneyText } = require('../../utils/commercial/dealEnginePermissions');
 const CommercialRevision = require('../../models/commercial/commercialRevisionModel');
 const CommercialProject = require('../../models/commercial/commercialProjectModel');
 const CommercialSupplier = require('../../models/commercial/supplierModel');
@@ -76,7 +77,7 @@ async function getBoqLineProcurementStatus(revisionId, component) {
  * @param {number} [opts.quantity] - defaults to the line's FULL remaining quantity (split
  *   procurement when given a smaller amount - Feature 3.3).
  */
-async function createPrFromBoqLine(revisionId, component, { supplierId, quantity } = {}, { role } = {}) {
+async function createPrFromBoqLine(revisionId, component, { supplierId, quantity } = {}, { role, roles } = {}) {
   if (!BOQ_VENDOR_ROLES.includes(role)) {
     throw new ApiError(`Creating a Purchase Order from a BOQ line is for: ${BOQ_VENDOR_ROLES.map(r => r.replace('_', ' ')).join(', ')}. Your Deal Engine role is "${role || 'none'}".`, 403);
   }
@@ -164,13 +165,17 @@ async function createPrFromBoqLine(revisionId, component, { supplierId, quantity
     throw new ApiError(`Only ${freshRemaining} ${line.unit || ''} remain unprocured on this BOQ line - someone else just procured some of it. Refresh and try again.`, 409);
   }
 
+  const withPrice = canSeePricing(roles || [role]);
   let created;
   try {
     created = await Requisition.create({
       vendorId: supplier.erpVendor,
       project: project.erpProject,
-      items: [{ product: product._id, description: line.description || line.component, quantity: requestedQty, unit: line.unit || null, unitPrice: line.unitPrice }],
-      notes: `Created from Deal Engine ${project.dealNumber || ''} BOQ line "${component}".`.trim(),
+      // Pricing confidentiality (26 Nov 2026): the BOQ price is carried into the Purchase Order only
+      // when a PRICING role creates it - a PO raised by Procurement would otherwise hand it the BOQ
+      // price in the ERP. Purchasing enters the agreed supplier price on the PO itself.
+      items: [{ product: product._id, description: scrubMoneyText(line.description || line.component), quantity: requestedQty, unit: line.unit || null, unitPrice: withPrice ? line.unitPrice : 0 }],
+      notes: `Created from Deal Engine ${project.dealNumber || ''} BOQ line "${component}".${withPrice ? '' : ' Unit price not carried from the Deal Engine - enter the agreed supplier price.'}`.trim(),
       dealEngineSource: { commercialProject: project._id, revision: revision._id, boqComponent: component },
     });
   } catch (err) {

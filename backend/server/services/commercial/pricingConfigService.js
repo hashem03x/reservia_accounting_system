@@ -211,14 +211,13 @@ async function getHistory(limit = 50) {
 }
 
 /**
- * Who may change the configuration: Commercial MD / Commercial Director, or an ERP admin (the
- * finance/accounting system's administrators). Server-side, from the DB-loaded memberships only.
+ * Who may change the configuration: the Commercial MD or the Sales and Commercial Director - from
+ * the DB-loaded memberships only. Pricing confidentiality (26 Nov 2026, MD decision): ERP admins
+ * (Finance) no longer manage it - it holds the overhead, profit and Sales Bonus (commission) rates.
  */
 function canManagePricingConfig(user) {
   const memberships = Array.isArray(user?.systemMemberships) ? user.systemMemberships : [];
-  return memberships.some(
-    m => m.isActive && ((m.system === 'COMMERCIAL' && ['md', 'commercial_director'].includes(m.role)) || (m.system === 'ERP' && m.role === 'admin'))
-  );
+  return memberships.some(m => m.isActive && m.system === 'COMMERCIAL' && ['md', 'commercial_director'].includes(m.role));
 }
 
 /**
@@ -230,11 +229,11 @@ function canManagePricingConfig(user) {
  */
 function assertCanSavePolicyChange(user, config) {
   if (!canManagePricingConfig(user)) {
-    throw new ApiError('Only Finance (ERP admin), the Commercial Director or the MD can change the pricing configuration.', 403);
+    throw new ApiError('Only the Sales and Commercial Director or the MD can change the pricing configuration.', 403);
   }
   if (!config.requireMdApprovalForPolicyChange) return;
   const memberships = Array.isArray(user?.systemMemberships) ? user.systemMemberships : [];
-  const isMdOrAdmin = memberships.some(m => m.isActive && ((m.system === 'COMMERCIAL' && m.role === 'md') || (m.system === 'ERP' && m.role === 'admin')));
+  const isMdOrAdmin = memberships.some(m => m.isActive && m.system === 'COMMERCIAL' && m.role === 'md');
   if (!isMdOrAdmin) {
     throw new ApiError('This pricing configuration requires MD approval for any change (a setting on this page) - only the Managing Director can save it.', 403);
   }

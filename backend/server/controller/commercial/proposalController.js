@@ -2,13 +2,14 @@ const asyncHandler = require('express-async-handler');
 const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const proposalService = require('../../services/commercial/proposalService');
-const { assertCanAccessProposal, assertCanIssueProposal } = require('../../utils/commercial/dealEnginePermissions');
+const { assertCanAccessProposal, assertCanIssueProposal, PRICING_ROLES } = require('../../utils/commercial/dealEnginePermissions');
 
 // Deal Engine C12-C17. The internal copy (priced BOQ, pricing stack, approval log) is for the MD,
-// the Commercial Director, Sales and BDM - checked here from the DB-loaded membership
+// the Commercial Director and Sales - checked here from the DB-loaded membership
 // (req.commercialRole). Marketing stays customer-copy-only (go-live: "cannot access the internal
 // proposal copy").
-const INTERNAL_ROLES = ['md', 'commercial_director', 'sales', 'bdm'];
+// Pricing confidentiality (26 Nov 2026): exactly the pricing roles - BDM no longer.
+const INTERNAL_ROLES = PRICING_ROLES;
 
 function copyFor(req) {
   const copy = req.query.copy === 'internal' ? 'internal' : 'customer';

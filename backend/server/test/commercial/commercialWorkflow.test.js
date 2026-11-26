@@ -144,7 +144,7 @@ async function createReferenceProject(user, customer, extra = {}) {
 
 // ===================================================================================== B3
 
-maybeTest('B3: the pricing configuration defaults to the brief 3.3 levers; only Finance/Director/MD may change it; every change is audited', async () => {
+maybeTest('B3: the pricing configuration defaults to the brief 3.3 levers; only the Director/MD may change it (Finance/ERP admin no longer - pricing confidentiality, 26 Nov 2026); every change is audited', async () => {
   const t = await team();
   const read = await api('GET', '/api/v1/commercial/pricing-config', { user: t.sales });
   assert.equal(read.status, 200);
@@ -154,10 +154,12 @@ maybeTest('B3: the pricing configuration defaults to the brief 3.3 levers; only 
 
   const denied = await api('PUT', '/api/v1/commercial/pricing-config', { user: t.sales, body: { levers: { profitPct: 0.2 } } });
   assert.equal(denied.status, 403);
-  const tooHigh = await api('PUT', '/api/v1/commercial/pricing-config', { user: t.finance, body: { levers: { profitPct: 19 } } });
+  assert.equal((await api('PUT', '/api/v1/commercial/pricing-config', { user: t.finance, body: { levers: { profitPct: 0.12 }, note: 'x' } })).status, 403, 'an ERP admin (Finance) no longer manages it');
+  assert.equal((await api('GET', '/api/v1/commercial/pricing-config', { user: t.finance })).status, 403, 'nor reads it');
+  const tooHigh = await api('PUT', '/api/v1/commercial/pricing-config', { user: t.director, body: { levers: { profitPct: 19 } } });
   assert.equal(tooHigh.status, 400, 'a typo like 1900% is refused');
 
-  const ok = await api('PUT', '/api/v1/commercial/pricing-config', { user: t.finance, body: { levers: { profitPct: 0.12 }, note: 'Q4 margin' } });
+  const ok = await api('PUT', '/api/v1/commercial/pricing-config', { user: t.director, body: { levers: { profitPct: 0.12 }, note: 'Q4 margin' } });
   assert.equal(ok.status, 200);
   assert.equal(ok.body.data.version, 2);
   assert.equal(ok.body.data.levers.profitPct, 0.12);
@@ -165,7 +167,7 @@ maybeTest('B3: the pricing configuration defaults to the brief 3.3 levers; only 
   assert.equal(audit.length, 1);
   assert.equal(audit[0].before.levers.profitPct, 0.1);
   assert.equal(audit[0].after.levers.profitPct, 0.12);
-  assert.equal(audit[0].changedByName, 'Fatma Finance');
+  assert.equal(audit[0].changedByName, 'Dina Director');
 });
 
 // ===================================================================================== B2 + U1
@@ -236,7 +238,7 @@ maybeTest('B3: a Finance change applies to NEW revisions only; an open revision 
   const customer = await makeCustomer('Keep Rates', '01005556666');
   const p1 = await createReferenceProject(t.sales, customer);
   const r1 = (await api('POST', `/api/v1/commercial/revisions/project/${p1._id}`, { user: t.sales, body: { engineeringInput: REF_INPUT } })).body.data;
-  await api('PUT', '/api/v1/commercial/pricing-config', { user: t.finance, body: { levers: { profitPct: 0.12 } } });
+  await api('PUT', '/api/v1/commercial/pricing-config', { user: t.director, body: { levers: { profitPct: 0.12 } } });
 
   const recalculated = (await api('PATCH', `/api/v1/commercial/revisions/${r1._id}`, { user: t.sales, body: { engineeringInput: REF_INPUT } })).body.data;
   assert.equal(recalculated.pricing.profitPct, 0.1, 'existing revision keeps its 10%');

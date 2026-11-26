@@ -18,7 +18,7 @@ import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/compone
 import EditMaterialModal from "./_components/edit-material-modal";
 import WorkbookImportModal from "./_components/workbook-import-modal";
 import { useSystemAccess } from "@/context/SystemAccessContext";
-import { canEditFully, enginePageAccess } from "../_shared/dealEnginePermissions";
+import { canEditFully, canSeePricing, enginePageAccess } from "../_shared/dealEnginePermissions";
 
 const CATEGORIES = [
   "PV Modules", "On-Grid Inverter", "Off-Grid Inverter", "Hybrid Inverter", "Lithium Batteries", "DC Cable", "AC Cable", "AC Breaker",
@@ -43,7 +43,10 @@ export default function CommercialMaterials() {
   const [importOpened, { open: openImport, close: closeImport }] = useDisclosure(false);
   const { systems } = useSystemAccess();
   const role = (systems?.COMMERCIAL?.role || "") as CommercialRole | "";
-  const canImport = canEditFully(enginePageAccess(role ? [role as CommercialRole] : [], "materials"));
+  // Pricing confidentiality: prices (reference + supplier) and the workbook import (it carries prices)
+  // are for MD / S&C Director / Sales only - the API omits the prices for everyone else.
+  const showMoney = canSeePricing(role ? [role as CommercialRole] : []);
+  const canImport = showMoney && canEditFully(enginePageAccess(role ? [role as CommercialRole] : [], "materials"));
 
   const { privateRequest, loading, setLoading, error, setError, data: paginated, setData: setPaginated } = useDataHandler<PaginatedData<MaterialItem>>({
     initialData: null,
@@ -113,8 +116,8 @@ export default function CommercialMaterials() {
                   <Table.Th>{translate("Model", "الموديل")}</Table.Th>
                   <Table.Th>{translate("Spec", "المواصفات")}</Table.Th>
                   <Table.Th>{translate("Unit", "الوحدة")}</Table.Th>
-                  <Table.Th className="text-right">{translate("Reference price", "السعر المرجعي")}</Table.Th>
-                  <Table.Th>{translate("Supplier prices", "أسعار الموردين")}</Table.Th>
+                  {showMoney && <Table.Th className="text-right">{translate("Reference price", "السعر المرجعي")}</Table.Th>}
+                  {showMoney && <Table.Th>{translate("Supplier prices", "أسعار الموردين")}</Table.Th>}
                   <Table.Th>{translate("Status", "الحالة")}</Table.Th>
                   <Table.Th>{translate("Source", "المصدر")}</Table.Th>
                   <Table.Th />
@@ -128,7 +131,8 @@ export default function CommercialMaterials() {
                     <Table.Td>{m.model}</Table.Td>
                     <Table.Td className="max-w-[200px] truncate text-xs text-gray-500">{m.spec}</Table.Td>
                     <Table.Td>{m.unit}</Table.Td>
-                    <Table.Td className="text-right font-medium">{formatAmount(m.unitPrice, m.currency)}</Table.Td>
+                    {showMoney && <Table.Td className="text-right font-medium">{formatAmount(m.unitPrice, m.currency)}</Table.Td>}
+                    {showMoney && (
                     <Table.Td className="text-xs">
                       {/* Deal Engine C19: every supplier price carries its supplier code; none = Reference only. */}
                       {m.supplierPrices?.length ? (
@@ -150,6 +154,7 @@ export default function CommercialMaterials() {
                         <span className="text-gray-400">{translate("Reference only", "مرجعي فقط")}</span>
                       )}
                     </Table.Td>
+                    )}
                     <Table.Td>
                       <Badge size="sm" color={m.status === "Available" ? "teal" : m.status === "PLACEHOLDER" ? "orange" : "gray"} variant="light">
                         {m.status === "PLACEHOLDER" ? translate("Needs technical data", "تحتاج بيانات فنية") : m.status}

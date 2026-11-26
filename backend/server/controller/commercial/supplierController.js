@@ -2,34 +2,48 @@ const asyncHandler = require('express-async-handler');
 const apiResponse = require('../../utils/apiResponse');
 const supplierService = require('../../services/commercial/supplierService');
 const uploads = require('../../services/commercial/priceListUploadService');
+const { canSeePricing, assertCanAccessEnginePage } = require('../../utils/commercial/dealEnginePermissions');
 
 // Deal Engine C18-C24 - approved supplier list and supplier price list uploads. Role checks are in
 // the services, from req.commercialRole (the DB-loaded Deal Engine membership).
-const ctx = req => ({ user: req.user, role: req.commercialRole });
+const ctx = req => ({ user: req.user, role: req.commercialRole, roles: req.commercialRoles });
+
+/**
+ * Pricing confidentiality: a supplier record is shared with every Deal Engine role (the BOQ names the
+ * vendor), but its price-list history notes ("Percentage discount of 5% applied...") are not - removed
+ * for roles that may not see prices.
+ */
+const forRole = (req, supplier) => {
+  if (!supplier || canSeePricing(req.commercialRoles)) return supplier;
+  const out = typeof supplier.toObject === 'function' ? supplier.toObject() : { ...supplier };
+  if (Array.isArray(out.notes)) out.notes = out.notes.filter(n => n.kind !== 'upload');
+  delete out.columnMapping;
+  return out;
+};
 
 exports.listSuppliers = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Suppliers', true, await supplierService.listSuppliers({ status: req.query.status, q: req.query.q })));
 });
 exports.getSupplier = asyncHandler(async (req, res) => {
-  res.status(200).json(apiResponse('Supplier', true, supplierService.shape(await supplierService.getSupplier(req.params.id))));
+  res.status(200).json(apiResponse('Supplier', true, forRole(req, supplierService.shape(await supplierService.getSupplier(req.params.id)))));
 });
 exports.createSupplier = asyncHandler(async (req, res) => {
-  res.status(201).json(apiResponse('Supplier added as a Candidate', true, await supplierService.createSupplier(req.body || {}, ctx(req))));
+  res.status(201).json(apiResponse('Supplier added as a Candidate', true, forRole(req, await supplierService.createSupplier(req.body || {}, ctx(req)))));
 });
 exports.updateSupplier = asyncHandler(async (req, res) => {
-  res.status(200).json(apiResponse('Supplier updated', true, await supplierService.updateSupplier(req.params.id, req.body || {}, ctx(req))));
+  res.status(200).json(apiResponse('Supplier updated', true, forRole(req, await supplierService.updateSupplier(req.params.id, req.body || {}, ctx(req)))));
 });
 exports.setStatus = asyncHandler(async (req, res) => {
-  res.status(200).json(apiResponse('Supplier status changed', true, await supplierService.setStatus(req.params.id, req.body || {}, ctx(req))));
+  res.status(200).json(apiResponse('Supplier status changed', true, forRole(req, await supplierService.setStatus(req.params.id, req.body || {}, ctx(req)))));
 });
 exports.addNote = asyncHandler(async (req, res) => {
-  res.status(200).json(apiResponse('Note added', true, await supplierService.addNote(req.params.id, req.body || {}, ctx(req))));
+  res.status(200).json(apiResponse('Note added', true, forRole(req, await supplierService.addNote(req.params.id, req.body || {}, ctx(req)))));
 });
 exports.setScorecard = asyncHandler(async (req, res) => {
-  res.status(200).json(apiResponse('Scorecard updated', true, await supplierService.setScorecard(req.params.id, req.body || {}, ctx(req))));
+  res.status(200).json(apiResponse('Scorecard updated', true, forRole(req, await supplierService.setScorecard(req.params.id, req.body || {}, ctx(req)))));
 });
 exports.upsertDocument = asyncHandler(async (req, res) => {
-  res.status(200).json(apiResponse('Document recorded', true, await supplierService.upsertDocument(req.params.id, req.body || {}, ctx(req))));
+  res.status(200).json(apiResponse('Document recorded', true, forRole(req, await supplierService.upsertDocument(req.params.id, req.body || {}, ctx(req)))));
 });
 
 // Feature 1.3 - ERP Vendor sync.
@@ -37,10 +51,10 @@ exports.getVendorCandidates = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Candidate ERP vendors', true, await supplierService.findVendorCandidates(req.params.id)));
 });
 exports.linkVendor = asyncHandler(async (req, res) => {
-  res.status(200).json(apiResponse('Linked to the ERP vendor', true, await supplierService.linkVendor(req.params.id, req.body?.vendorId, ctx(req))));
+  res.status(200).json(apiResponse('Linked to the ERP vendor', true, forRole(req, await supplierService.linkVendor(req.params.id, req.body?.vendorId, ctx(req)))));
 });
 exports.unlinkVendor = asyncHandler(async (req, res) => {
-  res.status(200).json(apiResponse('Unlinked from the ERP vendor', true, await supplierService.unlinkVendor(req.params.id, ctx(req))));
+  res.status(200).json(apiResponse('Unlinked from the ERP vendor', true, forRole(req, await supplierService.unlinkVendor(req.params.id, ctx(req)))));
 });
 exports.createVendor = asyncHandler(async (req, res) => {
   res.status(201).json(apiResponse('ERP vendor created and linked', true, await supplierService.createVendorFromSupplier(req.params.id, req.body || {}, ctx(req))));
@@ -58,9 +72,11 @@ exports.previewPriceList = asyncHandler(async (req, res) => {
   res.status(201).json(apiResponse(`Price list read - review the preview, then confirm.${notPricingNote(upload)}`, true, upload));
 });
 exports.listPriceLists = asyncHandler(async (req, res) => {
+  assertCanAccessEnginePage(req.commercialRoles, 'priceLists', 'view');
   res.status(200).json(apiResponse('Price list uploads', true, await uploads.listUploads(req.params.id)));
 });
 exports.getPriceList = asyncHandler(async (req, res) => {
+  assertCanAccessEnginePage(req.commercialRoles, 'priceLists', 'view');
   res.status(200).json(apiResponse('Price list upload', true, await uploads.getUpload(req.params.uploadId)));
 });
 exports.confirmPriceList = asyncHandler(async (req, res) => {

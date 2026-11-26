@@ -6,6 +6,17 @@ import { ApprovalStage, ApprovalStageKey } from "@/types/commercial";
  * Approvals tab so the two can never show different vocabularies again (QA U5). The backend
  * enforces the same rules; this list only decides which buttons to show.
  */
+/**
+ * The 3-stage workflow (26 Nov 2026) - mirrors backend approvalService.js#STAGE_ROLES_V2. Stage 3 is
+ * stored in the revision's `md` field. Labels only; who may act is decided by the server.
+ */
+export const STAGE_META_V2: { key: ApprovalStageKey; title: { en: string; ar: string }; who: { en: string; ar: string } }[] = [
+  { key: "stage1", title: { en: "Stage 1: Technical Approval", ar: "المرحلة 1: الموافقة الفنية" }, who: { en: "Technical", ar: "الفني" } },
+  { key: "stage2", title: { en: "Stage 2: Sales / BDM Approval", ar: "المرحلة 2: موافقة المبيعات / تطوير الأعمال" }, who: { en: "Sales or BDM", ar: "المبيعات أو تطوير الأعمال" } },
+  { key: "md", title: { en: "Stage 3: Final Commercial Approval", ar: "المرحلة 3: الاعتماد التجاري النهائي" }, who: { en: "Sales & Commercial Director or MD", ar: "المدير التجاري أو المدير العام" } },
+];
+
+/** The earlier (workflow 1) stages - for revisions priced before the 3-stage workflow. */
 export const STAGE_META: { key: ApprovalStageKey; apiStage: string; roles: string[]; title: { en: string; ar: string }; who: { en: string; ar: string } }[] = [
   {
     key: "stage1",
@@ -41,5 +52,10 @@ export function approverName(stage: ApprovalStage): string | null {
 }
 
 export function statusColor(status: string) {
-  return status === "Approved" ? "teal" : status === "Rejected" ? "red" : "gray";
+  return status === "Approved" ? "teal" : status === "Rejected" ? "red" : status === "Requires Reapproval" ? "orange" : "gray";
+}
+
+/** "Requires Reapproval" for a stage reset by a change after it was approved. */
+export function displayStatus(stage: ApprovalStage): string {
+  return stage.status === "Pending" && stage.requiresReapproval ? "Requires Reapproval" : stage.status;
 }

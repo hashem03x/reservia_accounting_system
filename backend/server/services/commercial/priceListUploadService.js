@@ -10,7 +10,7 @@ const Upload = require('../../models/commercial/priceListUploadModel');
 const CommercialRevision = require('../../models/commercial/commercialRevisionModel');
 const pricingConfigService = require('./pricingConfigService');
 const { engineSettings } = require('./dealEngineSettings');
-const { EDIT_ROLES } = require('./supplierService');
+const { assertCanAccessEnginePage } = require('../../utils/commercial/dealEnginePermissions');
 const { canonicalMaterialKey } = require('../../utils/commercial/materialKey');
 
 // Deal Engine C21-C24 / Spec Part 2 section 5 - supplier price list upload. Nothing is written to the
@@ -172,8 +172,13 @@ function toDate(v) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function assertEditor(role) {
-  if (!EDIT_ROLES.includes(role)) throw new ApiError(`Supplier price lists are uploaded by Procurement, the Commercial Director or the MD. Your Deal Engine role is "${role || 'none'}".`, 403);
+/**
+ * Pricing confidentiality (26 Nov 2026): supplier price lists are uploaded, confirmed, discounted and
+ * rolled back by the MD, the Sales and Commercial Director or BDM only (ENGINE_PAGE_MATRIX.priceLists) -
+ * Procurement no longer handles prices. Checked against the authenticated user's own Commercial roles.
+ */
+function assertEditor(roles) {
+  assertCanAccessEnginePage(roles, 'priceLists', 'edit');
 }
 
 /** Builds the preview rows. Pure apart from the Price Book and config reads. */
@@ -263,8 +268,8 @@ async function buildPreview({ supplier, headers, rows, mapping, validityDate, he
   return { rows: out, summary };
 }
 
-async function previewUpload(supplierId, { file, mapping: mappingInput, validityDate }, { user, role }) {
-  assertEditor(role);
+async function previewUpload(supplierId, { file, mapping: mappingInput, validityDate }, { user, role, roles }) {
+  assertEditor(roles || [role]);
   if (!file || !file.buffer) throw new ApiError('Choose the price list file (CSV or XLSX).', 400);
   const supplier = await Supplier.findById(supplierId);
   if (!supplier) throw new ApiError('Supplier not found.', 404);
@@ -307,8 +312,8 @@ async function flagOpenRevisions(items) {
   return n;
 }
 
-async function confirmUpload(uploadId, { createNew = [] } = {}, { user, role }) {
-  assertEditor(role);
+async function confirmUpload(uploadId, { createNew = [] } = {}, { user, role, roles }) {
+  assertEditor(roles || [role]);
   if (!mongoose.isValidObjectId(uploadId)) throw new ApiError('Invalid upload id.', 400);
   // Claim the upload (only a 'previewed' upload can be confirmed, once).
   const upload = await Upload.findOneAndUpdate({ _id: uploadId, status: 'previewed' }, { $set: { status: 'confirmed', confirmedBy: user._id, confirmedAt: new Date() } }, { new: true });
@@ -394,8 +399,8 @@ async function revertChanges(changes) {
 }
 
 /** C21: rollback restores the previous prices for THIS upload only. */
-async function rollbackUpload(uploadId, { user, role }) {
-  assertEditor(role);
+async function rollbackUpload(uploadId, { user, role, roles }) {
+  assertEditor(roles || [role]);
   if (!mongoose.isValidObjectId(uploadId)) throw new ApiError('Invalid upload id.', 400);
   const upload = await Upload.findById(uploadId);
   if (!upload) throw new ApiError('Upload not found.', 404);
@@ -421,8 +426,8 @@ async function rollbackUpload(uploadId, { user, role }) {
  * revisions using a changed item" all apply to it unchanged - this is not a second price-change
  * mechanism, just a second way to produce one.
  */
-async function applyPercentageDiscount(supplierId, { pct, note } = {}, { user, role }) {
-  assertEditor(role);
+async function applyPercentageDiscount(supplierId, { pct, note } = {}, { user, role, roles }) {
+  assertEditor(roles || [role]);
   const supplier = await Supplier.findById(supplierId);
   if (!supplier) throw new ApiError('Supplier not found.', 404);
   if (['Suspended', 'Removed'].includes(supplier.status)) throw new ApiError(`${supplier.code} is ${supplier.status} - its prices would never be used. Change its status first.`, 400);

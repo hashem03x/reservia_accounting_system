@@ -4,6 +4,8 @@ import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { notifyRecalculated, newRequestId } from "../../../_shared/recalcNotice";
+import usePricingAccess from "../../../_shared/usePricingAccess";
+import { withoutPriceInputs } from "../../../_shared/dealEnginePermissions";
 import SectionCard from "@/components/ui/section-card";
 import { CommercialProject, CommercialRevision } from "@/types/commercial";
 import useMaterialOptions, { engineSelectData } from "../../../_shared/useMaterialOptions";
@@ -18,6 +20,8 @@ const STRUCTURE_TYPES = ["Rooftop", "Ground Mounted", "Hangar Roof"];
 // headline escalation 10%, sensitivities 3% and flat.
 export default function OnGridForm({ project, revision, onSaved }: { project: CommercialProject; revision: CommercialRevision | null; onSaved: () => void }) {
   const { translate, language } = useLanguage();
+  // Pricing confidentiality: price inputs are for pricing roles only (hidden here, never sent).
+  const { canSeePricing: showMoney } = usePricingAccess();
   const pvModules = useMaterialOptions("PV Modules");
   const dcCables = useMaterialOptions("DC Cable");
   const inverters = useMaterialOptions("On-Grid Inverter");
@@ -95,7 +99,9 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
         maintenancePctOfCapex: maintenancePctOfCapex / 100,
       };
       const url = revision ? `commercial/revisions/${revision._id}` : `commercial/revisions/project/${project._id}`;
-      const res = await privateRequest({ url, method: revision ? "PATCH" : "POST", data: revision ? { engineeringInput } : { engineeringInput, requestId }, language });
+      // The first revision carries the form's default rates (nothing stored to keep yet).
+      const sent = withoutPriceInputs(engineeringInput, showMoney || !revision);
+      const res = await privateRequest({ url, method: revision ? "PATCH" : "POST", data: revision ? { engineeringInput: sent } : { engineeringInput: sent, requestId }, language });
       // The revision number saved and what moved (BOQ total, net price) - never a silent result.
       notifyRecalculated({ language, translate, response: res, currency: project.currency });
       onSaved();
@@ -117,6 +123,7 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
           />
           <Select label={translate("Mounting Structure", "نظام التثبيت")} data={STRUCTURE_TYPES} value={structureType} onChange={(v) => setStructureType(v || "Hangar Roof")} allowDeselect={false} />
           <NumberInput label={translate("AC Cable Length (m)", "طول كابل التيار المتردد (م)")} value={acLengthM} onChange={(v) => setAcLengthM(v as number)} min={1} />
+          {showMoney && (
           <NumberInput
             label={translate("AC Cable Price Override (EGP/m, optional)", "سعر كابل التيار المتردد (اختياري)")}
             description={translate("Used instead of the reference table price when entered (e.g. a supplier quote).", "يُستخدم بدلاً من سعر الجدول المرجعي عند إدخاله (مثل عرض مورد).")}
@@ -124,6 +131,7 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
             onChange={(v) => setAcPricePerMOverride(v === "" ? "" : (v as number))}
             min={0}
           />
+          )}
           <Select
             label={translate("DC Cable Brand (optional)", "ماركة كابل التيار المستمر (اختياري)")}
             description={translate("Blank = cheapest cable of the required size in the Price Book.", "فارغ = أرخص كابل بالمقاس المطلوب في قائمة الأسعار.")}
@@ -154,7 +162,7 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
       <SectionCard title={translate("Site Costs - optional", "تكاليف الموقع - اختياري")}>
         <p className="mb-3 text-sm text-gray-500">
           {translate(
-            "Travel, hotel and per diem apply outside Greater Cairo; the personnel allowance applies everywhere (300 EGP per person-day). Leave both blank to price without site personnel costs.",
+            showMoney ? "Travel, hotel and per diem apply outside Greater Cairo; the personnel allowance applies everywhere (300 EGP per person-day). Leave both blank to price without site personnel costs." : "Crew size and days on site for travel, hotel, per diem and personnel allowance. Leave both blank for none.",
             "السفر والفندق والبدل اليومي خارج القاهرة الكبرى؛ بدل الأفراد في كل المناطق (300 جنيه للفرد يومياً). اتركهما فارغين للتسعير بدون تكاليف الأفراد."
           )}
         </p>

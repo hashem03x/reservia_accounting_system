@@ -85,6 +85,13 @@ const approvalStageSchema = new Schema(
     approverRole: { type: String, default: null },
     decidedAt: { type: Date, default: null },
     note: { type: String, default: '' },
+    // 3-stage approval (26 Nov 2026): a stage that WAS approved and was reset by a change shows
+    // "Requires Reapproval" until it is decided again; what the decision signed (revision number,
+    // calculation time, fingerprints - utils/commercial/approvalFingerprint.js).
+    requiresReapproval: { type: Boolean, default: false },
+    revisionNumber: { type: Number, default: null },
+    calculatedAt: { type: Date, default: null },
+    basis: { type: Schema.Types.Mixed, default: null },
   },
   { _id: false }
 );
@@ -162,6 +169,22 @@ const commercialRevisionSchema = new Schema(
     // the engineering form (e.g. the project's region - QA finding B1) and the revision must be
     // recalculated before it can be approved or issued. Stored figures stay visible, flagged stale.
     status: { type: String, enum: ['Calculated', 'Draft'], default: 'Calculated' },
+    // 3-stage approval workflow (26 Nov 2026): 2 = Technical -> Sales/BDM -> S&C Director/MD, with
+    // targeted invalidation. Unset = a revision priced before it, still under the earlier 2-stage +
+    // MD rules until its next recalculation (which moves it to 2 and resets its sign-offs).
+    approvalWorkflow: { type: Number, default: null },
+    // Fingerprints of the latest calculation (what an approval signs; see approvalFingerprint.js).
+    approvalBasis: { type: Schema.Types.Mixed, default: null },
+    // Set on the final (Stage 3) approval: who, when, and exactly which calculation was approved.
+    finalApproval: {
+      approvedAt: { type: Date, default: null },
+      by: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+      byName: { type: String, default: null },
+      byRole: { type: String, default: null },
+      revisionNumber: { type: Number, default: null },
+      calculatedAt: { type: Date, default: null },
+      basis: { type: Schema.Types.Mixed, default: null },
+    },
     // When (and by whom) the engineering/BOQ/pricing were last actually calculated - distinct from
     // updatedAt, which also moves on a vendor pick or an approval.
     lastCalculatedAt: { type: Date, default: null },

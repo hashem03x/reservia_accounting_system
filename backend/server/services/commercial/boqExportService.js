@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 const ApiError = require('../../utils/apiError');
 const CommercialRevision = require('../../models/commercial/commercialRevisionModel');
 const MaterialItem = require('../../models/commercial/materialItemModel');
-const { PROJECT_TAB_MATRIX, widestLevel, canView } = require('../../utils/commercial/dealEnginePermissions');
+const { PROJECT_TAB_MATRIX, widestLevel, canView, canSeePricing, scrubMoneyText } = require('../../utils/commercial/dealEnginePermissions');
 
 // Deal Engine - export one revision's BOQ (Excel or CSV). Built from the STORED revision in MongoDB
 // (never the dashboard's state), so the file is exactly what was calculated and saved. The current
@@ -70,13 +70,13 @@ function toRow(line, item, currency, costs) {
     category: item?.category || line.costGroup || '',
     subcategory: line.component,
     product: item ? `${item.brand} ${item.model}` : line.component,
-    description: line.description || '',
+    description: costs ? line.description || '' : scrubMoneyText(line.description || ''),
     specs: specText(item),
     unit: line.unit,
     qty: line.qty ?? null,
     lineSource: line.source || 'auto',
     autoQty: line.source === 'override' ? line.autoQty ?? null : null,
-    engineeringReference: [line.flag, line.notes].filter(Boolean).join(' | '),
+    engineeringReference: [line.flag, line.notes].filter(Boolean).map(t => (costs ? t : scrubMoneyText(t))).join(' | '),
   };
   if (costs) {
     Object.assign(row, {
@@ -105,8 +105,10 @@ async function loadExport(revisionId, roles) {
     .lean();
   if (!revision) throw new ApiError('Revision not found.', 404);
   if (!revision.boqLines?.length) throw new ApiError('This revision has no BOQ lines to export yet - calculate it first.', 400);
-  const costs = canView(widestLevel(PROJECT_TAB_MATRIX.boqCosts, roles));
-  const pricing = canView(widestLevel(PROJECT_TAB_MATRIX.pricing, roles));
+  // Pricing confidentiality: a role that may not see prices gets the TECHNICAL BOQ - no price, total,
+  // supplier, exchange rate or pricing column, no amount inside a description, no pricing summary.
+  const costs = canSeePricing(roles) && canView(widestLevel(PROJECT_TAB_MATRIX.boqCosts, roles));
+  const pricing = costs && canView(widestLevel(PROJECT_TAB_MATRIX.pricing, roles));
   const keys = [...new Set(revision.boqLines.map(l => l.materialItemKey).filter(Boolean))];
   const items = keys.length ? await MaterialItem.find({ key: { $in: keys } }).select('key category brand model spec attrs').lean() : [];
   const byKey = new Map(items.map(i => [i.key, i]));
@@ -114,7 +116,7 @@ async function loadExport(revisionId, roles) {
   const rows = revision.boqLines.map(l => toRow(l, byKey.get(l.materialItemKey), currency, costs));
   const columns = COLUMNS.filter(c => costs || !c.cost);
   const p = revision.project || {};
-  const fileBase = `BOQ_${p.projectCode || 'project'}_Rev${revision.revisionNumber}`.replace(/[^A-Za-z0-9_.-]+/g, '-');
+  const fileBase = `BOQ_${p.projectCode || 'project'}_Rev${revision.revisionNumber}${costs ? '' : '_technical'}`.replace(/[^A-Za-z0-9_.-]+/g, '-');
   return { revision, project: p, rows, columns, costs, pricing, currency, fileBase };
 }
 
@@ -131,7 +133,7 @@ function subtotals(rows) {
   return [...map.values()];
 }
 
-function infoRows({ revision, project, user }) {
+function infoRows({ revision, project, user, costs }) {
   return [
     ['Project', `${project.projectCode || ''} - ${project.name || ''}`],
     ['Deal number', project.dealNumber || ''],
@@ -141,7 +143,7 @@ function infoRows({ revision, project, user }) {
     ['Revision', `${revision.revisionNumber}${revision.isCurrent ? ' (current)' : ' (superseded - historical)'}`],
     ['Revision status', revision.status === 'Draft' ? `Draft - recalculation required${revision.invalidationReason ? `: ${revision.invalidationReason}` : ''}` : 'Calculated'],
     ['Calculated at (UTC)', revision.lastCalculatedAt ? new Date(revision.lastCalculatedAt).toISOString().replace('T', ' ').slice(0, 16) : date(revision.updatedAt)],
-    ...(revision.priceChangedSinceCalculation ? [['Warning', `Prices changed since this calculation (${(revision.priceChangedItems || []).join(', ')}) - these figures are outdated until the revision is recalculated.`]] : []),
+    ...(revision.priceChangedSinceCalculation && costs ? [['Warning', `Prices changed since this calculation (${(revision.priceChangedItems || []).join(', ')}) - these figures are outdated until the revision is recalculated.`]] : []),
     ['Exported at (UTC)', new Date().toISOString().replace('T', ' ').slice(0, 16)],
     ['Exported by', user?.name || ''],
   ];
@@ -198,7 +200,7 @@ async function buildXlsx(revisionId, { roles, user } = {}) {
   ss.columns = [{ width: 34 }, { width: 22 }, { width: 14 }, { width: 16 }];
   ss.addRow(['Reservia Deal Engine - BOQ summary']).font = { bold: true, size: 14 };
   ss.addRow([]);
-  for (const [k, v] of infoRows({ revision, project, user })) {
+  for (const [k, v] of infoRows({ revision, project, user, costs })) {
     const r = ss.addRow([k, v]);
     r.getCell(1).font = { bold: true };
   }

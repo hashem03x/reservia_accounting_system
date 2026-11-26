@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const ApiError = require('../../utils/apiError');
 const CommercialProject = require('../../models/commercial/commercialProjectModel');
 const CommercialRevision = require('../../models/commercial/commercialRevisionModel');
@@ -7,7 +8,8 @@ const boqService = require('./boqService');
 const pricingConfigService = require('./pricingConfigService');
 const { pickLevers, LEVER_KEYS } = require('./commercialPricingService');
 const { resolveProjectRegion } = require('../../utils/commercial/regions');
-const { computeMdRequired } = require('./approvalService');
+const { computeMdRequired, invalidateForChanges, recordResets, syncProjectRollups, workflowStatus, computeReleaseStatus } = require('./approvalService');
+const { fingerprints } = require('../../utils/commercial/approvalFingerprint');
 const dealEngineSettings = require('./dealEngineSettings');
 const { assertSalesPricingWithinLimits } = require('../../utils/commercial/dealEnginePermissions');
 
@@ -176,6 +178,8 @@ async function computeAndSave(project, engineeringInput, { manualOverrides = {},
     invalidatedAt: null,
     invalidationReason: null,
     lastCalculatedAt: new Date(),
+    // 3-stage approval: every (re)calculation is on workflow 2 and records what an approval signs.
+    approvalWorkflow: 2,
     lastCalculatedBy: userId || null,
     createdBy: revision ? revision.createdBy : userId,
   };
@@ -200,6 +204,7 @@ async function createRevision(projectId, engineeringInput, opts = {}) {
   }
 
   const computed = await computeAndSave(project, engineeringInput, { ...opts, revision: null });
+  computed.approvalBasis = fingerprints(computed);
   // R9: checked on the REAL computed result, before anything is persisted - never a separate,
   // possibly-diverging dry-run calculation (opts.roles/salesLimits come from the controller;
   // absent for internal callers like duplicateProject, which correctly skip this check).
@@ -243,14 +248,15 @@ async function resetSignedStages(revision, reason, { userId = null } = {}) {
     const current = revision[field];
     if (current && (current.status === 'Approved' || current.status === 'Rejected')) {
       reset.push({ field, stage, previous: current.status });
-      revision[field] = { status: 'Pending', approver: null, approverName: null, approverRole: null, decidedAt: null, note: `Reset: ${reason}` };
+      revision[field] = { status: 'Pending', approver: null, approverName: null, approverRole: null, decidedAt: null, note: `Reset: ${reason}`, requiresReapproval: current.status === 'Approved' || !!current.requiresReapproval, revisionNumber: null, calculatedAt: null, basis: null };
     }
   }
   revision.releaseStatus = 'NOT RELEASED';
   if (reset.length && userId) {
     await CommercialApproval.insertMany(
       reset.map(r => ({
-        revision: revision._id, stage: r.stage, status: 'Pending', approver: userId, note: `Reset from ${r.previous}: ${reason}`,
+        revision: revision._id, project: revision.project?._id || revision.project, stage: r.stage, status: 'Pending', action: 'Reset', approver: userId, note: `Reset from ${r.previous}: ${reason}`,
+        revisionNumber: revision.revisionNumber, calculatedAt: revision.lastCalculatedAt || null, workflowVersion: revision.approvalWorkflow === 2 ? 2 : 1,
         valueSnapshot: { netExclVat: revision.pricing?.netExclVat ?? null, grossProfitPct: revision.pricing?.grossProfitPct ?? null },
       }))
     );
@@ -267,20 +273,32 @@ async function recomputeCurrentRevision(revisionId, engineeringInput, opts = {})
   const project = await CommercialProject.findById(revision.project);
   const computed = await computeAndSave(project, engineeringInput || revision.engineeringInput, { ...opts, revision });
   if (opts.salesLimits) assertSalesPricingWithinLimits(opts.roles, computed.pricing, opts.salesLimits);
+  computed.approvalBasis = fingerprints(computed);
 
   const before = revision.toObject();
-  await resetSignedStages(revision, 'engineering input or pricing changed after sign-off.', { userId: opts.userId });
-  Object.assign(revision, computed);
+  let resets = [];
+  if (revision.approvalWorkflow !== 2) {
+    // A revision priced under the earlier 2-stage + MD rules: its sign-offs reset (as before) and it
+    // moves to the 3-stage workflow from here on.
+    await resetSignedStages(revision, 'engineering input or pricing changed after sign-off.', { userId: opts.userId });
+    Object.assign(revision, computed);
+  } else {
+    // 3-stage workflow: only the approvals whose underlying data changed are reset (and a
+    // recalculation that changes nothing resets nothing) - approvalService.js#invalidateForChanges.
+    const actor = opts.userId ? await mongoose.model('User').findById(opts.userId).select('name').lean() : null;
+    const previousBasis = revision.approvalBasis || null;
+    Object.assign(revision, computed);
+    resets = invalidateForChanges(revision, previousBasis, computed.approvalBasis, { userId: opts.userId, userName: actor?.name || null, role: (opts.roles || [])[0] || null });
+  }
+  revision.releaseStatus = computeReleaseStatus(revision);
   // Mixed paths: Object.assign replaces them, but mark them so an equal-looking object is still written.
   revision.markModified('engineeringInput');
   revision.markModified('engineeringResult');
   revision.markModified('feasibility');
   await revision.save();
-  revision.$locals.recalcSummary = recalcSummary(before, revision.toObject());
-
-  project.engineeringApprovalRollup = 'PENDING';
-  project.commercialApprovalRollup = 'PENDING';
-  await project.save();
+  await recordResets(revision, resets);
+  revision.$locals.recalcSummary = { ...recalcSummary(before, revision.toObject()), approvalsReset: resets.map(r => r.stage), workflowStatus: workflowStatus(revision) };
+  await syncProjectRollups(revision);
   return revision;
 }
 

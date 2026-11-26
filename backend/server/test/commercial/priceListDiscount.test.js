@@ -47,7 +47,7 @@ maybeTest('applyPercentageDiscount reduces every current price for this supplier
   const item1 = await makeItem({ key: `K1-${Date.now()}`, unitPrice: 1000 });
   const item2 = await makeItem({ key: `K2-${Date.now()}`, unitPrice: 200 });
 
-  const upload = await priceListUploadService.applyPercentageDiscount(supplier._id, { pct: 10 }, { user: { _id: new mongoose.Types.ObjectId(), name: 'Tester' }, role: 'procurement' });
+  const upload = await priceListUploadService.applyPercentageDiscount(supplier._id, { pct: 10 }, { user: { _id: new mongoose.Types.ObjectId(), name: 'Tester' }, role: 'commercial_director' });
 
   assert.equal(upload.kind, 'discount');
   assert.equal(upload.discountPct, 10);
@@ -111,6 +111,6 @@ maybeTest('applyPercentageDiscount refuses an unauthorized role - never bypassed
   await makeItem({ key: `K7-${Date.now()}`, unitPrice: 1000 });
   await assert.rejects(
     priceListUploadService.applyPercentageDiscount(supplier._id, { pct: 10 }, { user: { _id: new mongoose.Types.ObjectId(), name: 'Tester' }, role: 'sales' }),
-    /Procurement, the Commercial Director or the MD/
+    /not allowed to change supplier price lists/
   );
 });

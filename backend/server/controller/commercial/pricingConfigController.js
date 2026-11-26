@@ -3,7 +3,7 @@ const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const pricingConfigService = require('../../services/commercial/pricingConfigService');
 const ratesMatrix = require('../../services/commercial/ratesMatrix');
-const { hasActiveCommercialMembership } = require('../../middleware/commercialAccess');
+const { canSeePricing, commercialRolesOf } = require('../../utils/commercial/dealEnginePermissions');
 const ChartOfAccount = require('../../models/accounting/chartOfAccountModel');
 const { ACCOUNT_CODE_SORT, ACCOUNT_CODE_COLLATION } = require('../../utils/accountCodeSort');
 
@@ -12,14 +12,18 @@ const { ACCOUNT_CODE_SORT, ACCOUNT_CODE_COLLATION } = require('../../utils/accou
 // (pricingConfigService.canManagePricingConfig - Commercial MD / Commercial Director / ERP admin),
 // checked here server-side from the DB-loaded memberships.
 
+// Pricing confidentiality (26 Nov 2026): the configuration (pricing levers incl. the Sales Bonus /
+// commission %, exchange rates, the cost Rates Matrix) is READ by pricing roles only - the MD, the
+// Sales and Commercial Director and Sales - and managed by the MD / S&C Director. Every other
+// Deal Engine role, and Finance / HR / ERP admins without one of those roles, gets a 403.
 exports.requireReadAccess = (req, res, next) => {
-  if (hasActiveCommercialMembership(req.user) || pricingConfigService.canManagePricingConfig(req.user)) return next();
+  if (canSeePricing(commercialRolesOf(req.user)) || pricingConfigService.canManagePricingConfig(req.user)) return next();
   return next(new ApiError('You do not have access to the Deal Engine pricing configuration.', 403));
 };
 
 exports.requireManageAccess = (req, res, next) => {
   if (pricingConfigService.canManagePricingConfig(req.user)) return next();
-  return next(new ApiError('Only Finance (ERP admin), the Commercial Director or the MD can change the pricing configuration.', 403));
+  return next(new ApiError('Only the Sales and Commercial Director or the MD can change the pricing configuration.', 403));
 };
 
 exports.getConfig = asyncHandler(async (req, res) => {

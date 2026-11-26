@@ -1,7 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const apiResponse = require('../../utils/apiResponse');
 const approvalService = require('../../services/commercial/approvalService');
-const { assertCanAccessApprovals, widestLevel, canView, PROJECT_TAB_MATRIX } = require('../../utils/commercial/dealEnginePermissions');
+const { assertCanAccessApprovals, canSeePricing, shapeRevisionForRole } = require('../../utils/commercial/dealEnginePermissions');
 
 // R2/R12: Approvals is Hidden to Procurement (A12 lists Overview/BOQ/Materials/Suppliers for
 // procurement, never Approvals). WHO may sign a given stage was already correctly enforced inside
@@ -10,11 +10,20 @@ const { assertCanAccessApprovals, widestLevel, canView, PROJECT_TAB_MATRIX } = r
 // gate neither function had.
 exports.setStageStatus = asyncHandler(async (req, res) => {
   assertCanAccessApprovals(req.commercialRoles);
-  const { status, note } = req.body;
+  const { status, note, expectedCalculatedAt } = req.body;
+  // Roles come from the authenticated user's own Commercial memberships (commercialAccess.js) - never the request.
   const revision = await approvalService.setStageStatus(req.params.id, req.params.stage.toUpperCase(), status, {
-    userId: req.user._id, userRole: req.commercialRole, note, actor: req.user,
+    userId: req.user._id, userRole: req.commercialRole, roles: req.commercialRoles, note, expectedCalculatedAt, actor: req.user,
   });
-  res.status(200).json(apiResponse('Approval stage updated successfully', true, revision));
+  // Pricing confidentiality: a Technical approver gets the revision without any money.
+  res.status(200).json(apiResponse('Approval stage updated successfully', true, shapeRevisionForRole(revision, req.commercialRoles)));
+});
+
+/** The 3-stage workflow of one revision for the Approvals tab: stages, who may act, and the deal's approval timeline. */
+exports.getWorkflow = asyncHandler(async (req, res) => {
+  assertCanAccessApprovals(req.commercialRoles);
+  const view = await approvalService.getWorkflowView(req.params.id, { userId: req.user._id, roles: req.commercialRoles });
+  res.status(200).json(apiResponse('Approval workflow', true, view));
 });
 
 exports.getApprovalLog = asyncHandler(async (req, res) => {
@@ -24,7 +33,6 @@ exports.getApprovalLog = asyncHandler(async (req, res) => {
   // theirs to sign) but "must never... see gross profit" - each log row's valueSnapshot carries
   // the exact net price and GP%, which this endpoint returned to EVERY role that could reach
   // Approvals at all, with no redaction. Same gate as the Overview tab's price section.
-  const canSeePricing = canView(widestLevel(PROJECT_TAB_MATRIX.overviewPricing, req.commercialRoles));
-  const shaped = canSeePricing ? log : log.map(entry => ({ ...entry.toObject(), valueSnapshot: undefined }));
+  const shaped = canSeePricing(req.commercialRoles) ? log : log.map(entry => ({ ...entry.toObject(), valueSnapshot: undefined }));
   res.status(200).json(apiResponse('Approval log retrieved successfully', true, shaped));
 });

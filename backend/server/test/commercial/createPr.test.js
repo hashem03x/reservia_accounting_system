@@ -157,3 +157,15 @@ maybeTest('CONCURRENCY: two simultaneous Create PR calls for the full remaining 
   const status = await createPrService.getBoqLineProcurementStatus(revision._id, 'PV Modules');
   assert.equal(status.orderedQty, 10);
 });
+
+// Pricing confidentiality (26 Nov 2026): a Purchase Order raised from the Deal Engine by a role that
+// may not see BOQ prices (Procurement, BDM) carries NO price - the ERP would otherwise hand it the BOQ
+// price; one raised by a pricing role (MD / S&C Director / Sales) carries the BOQ price as before.
+maybeTest('Create PR by Procurement carries no BOQ price; by the MD it does', async () => {
+  const { revision } = await makeDeal({ qty: 10 });
+  const byProc = await createPrService.createPrFromBoqLine(revision._id, 'PV Modules', { quantity: 4 }, { role: 'procurement', roles: ['procurement'] });
+  assert.equal(byProc.items[0].unitPrice, 0);
+  assert.match(byProc.notes, /Unit price not carried from the Deal Engine/);
+  const byMd = await createPrService.createPrFromBoqLine(revision._id, 'PV Modules', { quantity: 3 }, { role: 'md', roles: ['md'] });
+  assert.equal(byMd.items[0].unitPrice, 100);
+});

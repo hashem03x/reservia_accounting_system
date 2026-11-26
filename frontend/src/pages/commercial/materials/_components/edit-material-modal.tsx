@@ -7,6 +7,7 @@ import Modal from "@/components/ui/modal";
 import { MaterialItem } from "@/types/commercial";
 import { Product } from "@/types/product";
 import ProductSearch from "@/components/global/product-search";
+import usePricingAccess from "../../_shared/usePricingAccess";
 
 // Editing the price here APPENDS to the material's priceHistory (materialController.js), never
 // overwrites it - a project revision that already resolved this item's price at an earlier value
@@ -16,6 +17,7 @@ let specFieldsCache: Record<string, SpecField[]> | null = null;
 
 export default function EditMaterialModal({ opened, onClose, material, onSaved }: { opened: boolean; onClose: () => void; material: MaterialItem | null; onSaved: () => void }) {
   const { translate, language } = useLanguage();
+  const { canSeePricing: showMoney } = usePricingAccess();
   const [unitPrice, setUnitPrice] = useState<number>(0);
   // ERP BOQ mapping fix: the real catalog Product this Price Book item corresponds to - used by
   // wonToErpService.js#buildErpBoqLines as the one trustworthy match for a Won deal's BOQ transfer.
@@ -62,7 +64,8 @@ export default function EditMaterialModal({ opened, onClose, material, onSaved }
     handleRequest(language, setLoading, setError, async () => {
       const changed = fields.filter((f) => (specs[f.key] ?? "") !== original(f.key));
       const attrs = changed.length ? Object.fromEntries(fields.map((f) => [f.key, specs[f.key] === "" || specs[f.key] === undefined ? null : specs[f.key]])) : undefined;
-      await privateRequest({ url: `commercial/materials/${material._id}`, method: "PATCH", data: { unitPrice, erpProduct: erpProduct?._id || null, ...(attrs ? { attrs } : {}) }, language });
+      // Pricing confidentiality: only a pricing role sends (and sees) the price.
+      await privateRequest({ url: `commercial/materials/${material._id}`, method: "PATCH", data: { ...(showMoney ? { unitPrice } : {}), erpProduct: erpProduct?._id || null, ...(attrs ? { attrs } : {}) }, language });
       onClose();
       onSaved();
     });
@@ -76,7 +79,7 @@ export default function EditMaterialModal({ opened, onClose, material, onSaved }
         <p className="text-xs text-gray-500">
           {translate("Source", "المصدر")}: {material.sourceWorkbook} - {material.sourceSheet}
         </p>
-        <NumberInput label={translate("Unit Price", "سعر الوحدة")} value={unitPrice} onChange={(v) => setUnitPrice((v as number) || 0)} suffix={` ${material.currency}`} />
+        {showMoney && <NumberInput label={translate("Unit Price", "سعر الوحدة")} value={unitPrice} onChange={(v) => setUnitPrice((v as number) || 0)} suffix={` ${material.currency}`} />}
         <ProductSearch
           label={translate("Linked ERP product", "المنتج المرتبط في النظام")}
           description={translate("Used to transfer this item's BOQ lines into the ERP project when a deal is Won. Leave unset until Purchasing confirms the match.", "يُستخدم لترحيل بنود الكميات لهذا البند إلى مشروع النظام عند ربح الصفقة. اتركه دون ربط حتى يؤكد قسم المشتريات التطابق.")}

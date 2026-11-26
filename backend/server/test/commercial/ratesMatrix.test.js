@@ -112,7 +112,13 @@ async function project(user, extra = {}) {
   const res = await api('POST', '/api/v1/commercial/projects', { user, body: { name: 'Reference 80 kWp', customer: customer._id, country: 'Egypt', region: REGION, category: 'On-Grid C&I', scope: 'Supply & Installation', ...extra } });
   return res;
 }
-const calc = (user, id, input = REF_INPUT) => api('POST', `/api/v1/commercial/revisions/project/${id}`, { user, body: { engineeringInput: input } });
+// Pricing confidentiality (26 Nov 2026): Technical calculates but its response carries no prices -
+// the figures checked below are read from the stored revision (what a pricing role sees).
+async function withStored(res) {
+  if (res.status === 201 && res.body?.data?._id) res.body.data = { ...(await mongoose.model('CommercialRevision').findById(res.body.data._id).lean()), _id: String(res.body.data._id) };
+  return res;
+}
+const calc = async (user, id, input = REF_INPUT) => withStored(await api('POST', `/api/v1/commercial/revisions/project/${id}`, { user, body: { engineeringInput: input } }));
 
 maybeTest('missing matrix: a clear, actionable error and nothing is created', async () => {
   const t = await team();

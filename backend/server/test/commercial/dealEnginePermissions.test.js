@@ -237,12 +237,15 @@ test('shapeProjectForRole also redacts an embedded currentRevision (the same obj
   assert.equal(shaped.currentRevision.boqLines[0].component, 'Pump', 'component/qty must stay visible to procurement');
 });
 
-test('shapeRevisionForRole strips pricing and feasibility for technical, keeps BOQ lines+costs (technical owns BOQ)', () => {
+// Pricing confidentiality (26 Nov 2026): Technical keeps the BOQ quantities/specs but no longer its costs.
+test('shapeRevisionForRole strips pricing, feasibility and BOQ costs for technical, keeps BOQ lines (technical owns the quantities)', () => {
   const revision = { pricing: { netExclVat: 999 }, feasibility: { paybackYears: 5 }, boqLines: [{ component: 'Pump', unitPrice: 50, total: 50 }], boqTotal: 50 };
   const shaped = shapeRevisionForRole(revision, ['technical']);
   assert.equal(shaped.pricing, undefined);
   assert.equal(shaped.feasibility, undefined);
-  assert.equal(shaped.boqLines[0].unitPrice, 50, 'technical keeps full BOQ including costs (boqCosts=view for technical)');
+  assert.equal(shaped.boqLines[0].unitPrice, undefined, 'no BOQ prices for technical (boqCosts hidden)');
+  assert.equal(shaped.boqLines[0].component, 'Pump');
+  assert.equal(shaped.boqTotal, undefined);
 });
 
 // Go-live section 5.4: Sales Engineer gains BOQ view access (items AND costs) - was fully hidden
@@ -256,12 +259,12 @@ test('shapeRevisionForRole keeps pricing/feasibility/BOQ (incl. costs) for sales
   assert.equal(shaped.boqTotal, 50);
 });
 
-// Marketing gets Feasibility/Proposal view but Pricing/BOQ/Engineering Input stay hidden entirely.
-test('shapeRevisionForRole strips pricing and BOQ for marketing, keeps feasibility', () => {
+// Pricing confidentiality (26 Nov 2026): Marketing loses Feasibility too (its capex is the final price).
+test('shapeRevisionForRole strips pricing, BOQ and feasibility for marketing', () => {
   const revision = { pricing: { netExclVat: 999 }, feasibility: { paybackYears: 5 }, boqLines: [{ component: 'Pump', total: 50 }], boqTotal: 50 };
   const shaped = shapeRevisionForRole(revision, ['marketing']);
   assert.equal(shaped.pricing, undefined);
-  assert.equal(shaped.feasibility.paybackYears, 5);
+  assert.equal(shaped.feasibility, undefined);
   assert.equal(shaped.boqLines, undefined);
   assert.equal(shaped.boqTotal, undefined);
 });
@@ -335,7 +338,8 @@ test('category addition above the maximum is refused, naming the field', () => {
 test('gross profit below the floor is refused, independent of the concession check', () => {
   // Deliberately tiny profit lever to drag GP% below a 40% floor - isolates the GP-floor branch.
   const pricing = priced(0.19, 0);
-  assert.throws(() => assertSalesPricingWithinLimits(['bdm'], pricing, { ...EXAMPLE_LIMITS, gpFloorPct: 0.4 }), /Gross profit .* is below the 40% floor/);
+  // BDM may not see margins: refused without the figures.
+  assert.throws(() => assertSalesPricingWithinLimits(['bdm'], pricing, { ...EXAMPLE_LIMITS, gpFloorPct: 0.4 }), /below the gross profit floor/);
 });
 
 test('every Sales-limits check is SKIPPED (not approximated) when its limit is unset (null) - "do not invent missing business limits"', () => {

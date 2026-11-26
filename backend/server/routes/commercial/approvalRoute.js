@@ -13,5 +13,6 @@ router.use(authController.protect, requireCommercialAccess);
 
 router.patch('/:id/:stage', approvalController.setStageStatus);
 router.get('/:id/log', approvalController.getApprovalLog);
+router.get('/:id/workflow', approvalController.getWorkflow);
 
 module.exports = router;

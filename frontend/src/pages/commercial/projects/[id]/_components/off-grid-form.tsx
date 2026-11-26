@@ -4,6 +4,8 @@ import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { notifyRecalculated, newRequestId } from "../../../_shared/recalcNotice";
+import usePricingAccess from "../../../_shared/usePricingAccess";
+import { withoutPriceInputs } from "../../../_shared/dealEnginePermissions";
 import SectionCard from "@/components/ui/section-card";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import { CommercialProject, CommercialRevision, MaterialItem } from "@/types/commercial";
@@ -24,6 +26,8 @@ const DEFAULT_APPLIANCES: Appliance[] = [
 // instead of a typed flat rate.
 export default function OffGridForm({ project, revision, onSaved }: { project: CommercialProject; revision: CommercialRevision | null; onSaved: () => void }) {
   const { translate, language } = useLanguage();
+  // Pricing confidentiality: price inputs and Price Book prices for pricing roles only (hidden here, never sent).
+  const { canSeePricing: showMoney } = usePricingAccess();
   const input = (revision?.engineeringInput || {}) as Record<string, unknown>;
   const pvModules = useMaterialOptions("PV Modules");
   const batteries = useMaterialOptions("Lithium Batteries");
@@ -91,7 +95,9 @@ export default function OffGridForm({ project, revision, onSaved }: { project: C
         batteryReplacementIntervalYears, analysisPeriodYears, discountRate: discountRate / 100,
       };
       const url = revision ? `commercial/revisions/${revision._id}` : `commercial/revisions/project/${project._id}`;
-      const res = await privateRequest({ url, method: revision ? "PATCH" : "POST", data: revision ? { engineeringInput } : { engineeringInput, requestId }, language });
+      // The first revision carries the form's default rates (nothing stored to keep yet).
+      const sent = withoutPriceInputs(engineeringInput, showMoney || !revision);
+      const res = await privateRequest({ url, method: revision ? "PATCH" : "POST", data: revision ? { engineeringInput: sent } : { engineeringInput: sent, requestId }, language });
       // The revision number saved and what moved (BOQ total, net price) - never a silent result.
       notifyRecalculated({ language, translate, response: res, currency: project.currency });
       onSaved();
@@ -164,11 +170,11 @@ export default function OffGridForm({ project, revision, onSaved }: { project: C
 
       <SectionCard title={translate("Cabling, Structure & Installation Rates", "الكابلات والتركيب")}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <NumberInput label={translate("DC Cable Price/m", "سعر كابل التيار المستمر/م")} value={dcCablePricePerM} onChange={(v) => setDcCablePricePerM((v as number) || 0)} />
+          {showMoney && <NumberInput label={translate("DC Cable Price/m", "سعر كابل التيار المستمر/م")} value={dcCablePricePerM} onChange={(v) => setDcCablePricePerM((v as number) || 0)} />}
           <NumberInput label={translate("AC Cable Length (m)", "طول كابل التيار المتردد")} value={acLengthM} onChange={(v) => setAcLengthM((v as number) || 0)} />
-          <NumberInput label={translate("AC Cable Price/m", "سعر كابل التيار المتردد/م")} value={acCablePricePerM} onChange={(v) => setAcCablePricePerM((v as number) || 0)} />
-          <NumberInput label={translate("Mounting Structure Rate/kWp", "سعر التثبيت/كيلوواط")} value={mountingStructureRatePerKwp} onChange={(v) => setMountingStructureRatePerKwp((v as number) || 0)} />
-          {usesRatesMatrix ? (
+          {showMoney && <NumberInput label={translate("AC Cable Price/m", "سعر كابل التيار المتردد/م")} value={acCablePricePerM} onChange={(v) => setAcCablePricePerM((v as number) || 0)} />}
+          {showMoney && <NumberInput label={translate("Mounting Structure Rate/kWp", "سعر التثبيت/كيلوواط")} value={mountingStructureRatePerKwp} onChange={(v) => setMountingStructureRatePerKwp((v as number) || 0)} />}
+          {!showMoney ? null : usesRatesMatrix ? (
             <div className="rounded border border-gray-100 p-2 text-xs text-gray-600">
               {translate("Installation rate: from the Rates matrix for", "سعر التركيب: من جدول الأسعار لمنطقة")} <strong>{project.region || "-"}</strong> {translate("and the system size band.", "وفئة حجم النظام.")}
             </div>
@@ -276,7 +282,7 @@ function PriceBookSelect({ label, items, value, onChange, spec }: { label: strin
       label={label}
       searchable
       required
-      data={items.map((i) => ({ value: i.key, label: `${i.brand} ${i.model} - ${spec(i)} - ${Math.round(i.unitPrice).toLocaleString("en-US")} ${i.currency}` }))}
+      data={items.map((i) => ({ value: i.key, label: `${i.brand} ${i.model} - ${spec(i)}${typeof i.unitPrice === "number" ? ` - ${Math.round(i.unitPrice).toLocaleString("en-US")} ${i.currency}` : ""}` }))}
       value={value || null}
       onChange={(v) => onChange(v || "")}
       nothingFoundMessage="-"

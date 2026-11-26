@@ -2,7 +2,7 @@ const asyncHandler = require('express-async-handler');
 const CommercialProject = require('../../models/commercial/commercialProjectModel');
 const CommercialRevision = require('../../models/commercial/commercialRevisionModel');
 const apiResponse = require('../../utils/apiResponse');
-const { widestLevel, canView, PROJECT_TAB_MATRIX } = require('../../utils/commercial/dealEnginePermissions');
+const { canSeePricing } = require('../../utils/commercial/dealEnginePermissions');
 
 // Reservia Commercial dashboard - every KPI here is computed from persisted CommercialProject/
 // CommercialRevision documents at request time; nothing is hardcoded or sampled (the project's
@@ -47,7 +47,9 @@ exports.getDashboard = asyncHandler(async (req, res) => {
   // Go-live Developer Pack section 5.4: Technical Engineer "must never... see gross profit" -
   // this endpoint had no redaction at all, leaking net value/GP/margin to every Commercial-access
   // role (technical, procurement, member). Same gate as the Overview tab's price section.
-  if (!canView(widestLevel(PROJECT_TAB_MATRIX.overviewPricing, req.commercialRoles))) {
+  // Pricing confidentiality: every money KPI (incl. the material cost) for pricing roles only.
+  if (!canSeePricing(req.commercialRoles)) {
+    delete data.totalEstimatedMaterialCost;
     delete data.totalEstimatedProjectValue;
     delete data.expectedGrossProfit;
     delete data.averageMarginPct;

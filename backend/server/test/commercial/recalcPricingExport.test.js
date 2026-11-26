@@ -161,17 +161,17 @@ maybeTest('Candidate supplier: upload is stored and named, but not used - the BO
   const sup = (await api('POST', '/api/v1/commercial/suppliers', { user: t.proc, body: { legalName: 'Delta Solar Trading', contacts: [{ name: 'S', phone: '01011112222' }] } })).body.data;
   assert.equal(sup.status, 'Candidate');
   const newPrice = Math.round(invItem.unitPrice * 0.9 * 100) / 100 + 0.5; // decimals kept end to end
-  const { preview, confirm } = await uploadAndConfirm(t.proc, sup, priceListBuffer([itemRow(invItem, newPrice, 'EGP', 'ratedKw')]));
+  const { preview, confirm } = await uploadAndConfirm(t.cd, sup, priceListBuffer([itemRow(invItem, newPrice, 'EGP', 'ratedKw')]));
   assert.equal(preview.data.supplierName, 'Delta Solar Trading');
   assert.match(preview.message, /is Candidate - its prices are stored but the Deal Engine prices only from Approved or Conditional suppliers/);
   assert.match(confirm.message, /1 price\(s\) imported for Delta Solar Trading/);
 
   // History: the supplier's name, accurate counts, and the stored rows with the actual price.
-  const hist = (await api('GET', `/api/v1/commercial/suppliers/${sup._id}/price-lists`, { user: t.proc })).body.data;
+  const hist = (await api('GET', `/api/v1/commercial/suppliers/${sup._id}/price-lists`, { user: t.cd })).body.data;
   assert.equal(hist[0].supplierName, 'Delta Solar Trading');
   assert.deepEqual(hist[0].counts, { rows: 1, errors: 0, imported: 1 });
   assert.equal(hist[0].supplierPricesBoq, false);
-  const detail = (await api('GET', `/api/v1/commercial/suppliers/price-lists/${hist[0]._id}`, { user: t.proc })).body.data;
+  const detail = (await api('GET', `/api/v1/commercial/suppliers/price-lists/${hist[0]._id}`, { user: t.cd })).body.data;
   assert.equal(detail.rows[0].price, newPrice);
   assert.equal(detail.rows[0].egp, newPrice);
 
@@ -250,7 +250,7 @@ maybeTest('Foreign-currency quotes are converted with the CURRENT configured rat
   const invItem = await MaterialItem.findOne({ category: 'On-Grid Inverter', model: line(rev, 'Solar Inverters').description }).lean();
   const sup = await Supplier.create({ code: 'SUP-0901', legalName: 'Shenzhen PV Export', status: 'Approved', contacts: [{ name: 'X', phone: '01099990000' }] });
   const usd = Math.round((invItem.unitPrice / 50) * 0.8);
-  await uploadAndConfirm(t.proc, sup, priceListBuffer([itemRow(invItem, usd, 'USD', 'ratedKw')]));
+  await uploadAndConfirm(t.cd, sup, priceListBuffer([itemRow(invItem, usd, 'USD', 'ratedKw')]));
   await recalc(t.md, rev._id, { engineeringInput: INPUT });
   let l = line(await stored(rev._id), 'Solar Inverters');
   assert.equal(l.unitPrice, usd * 50);
@@ -278,7 +278,7 @@ maybeTest('Agriculture Pumping prices the selected pump and motor from the Price
   const sup = await Supplier.create({ code: 'SUP-0902', legalName: 'Nile Pumps', status: 'Approved', contacts: [{ name: 'X', phone: '01099990001' }] });
   const price = Math.round(item.unitPrice * 0.85);
   const [brand, model, spec] = [item.brand, item.model, item.spec];
-  await uploadAndConfirm(t.proc, sup, priceListBuffer([[item.category, brand, model, spec, 'pcs', price, 'EGP', 'In stock', 0, 1, item.n1 || 1, '', '2099-12-31']]));
+  await uploadAndConfirm(t.cd, sup, priceListBuffer([[item.category, brand, model, spec, 'pcs', price, 'EGP', 'In stock', 0, 1, item.n1 || 1, '', '2099-12-31']]));
   const r2 = await recalc(t.md, r.body.data._id, { engineeringInput: input });
   assert.equal(r2.status, 200, JSON.stringify(r2.body));
   const l = line(await stored(r.body.data._id), 'Submersible Water Pump');
@@ -293,7 +293,7 @@ maybeTest('BOQ export (xlsx + csv) is the stored revision: rows, supplier names,
   const rev = await calcFirst(t, p);
   const invItem = await MaterialItem.findOne({ category: 'On-Grid Inverter', model: line(rev, 'Solar Inverters').description }).lean();
   const sup = await Supplier.create({ code: 'SUP-0903', legalName: 'Cairo "Green", Energy', status: 'Approved', contacts: [{ name: 'X', phone: '01099990002' }] });
-  await uploadAndConfirm(t.proc, sup, priceListBuffer([itemRow(invItem, 120000.25, 'EGP', 'ratedKw')]));
+  await uploadAndConfirm(t.cd, sup, priceListBuffer([itemRow(invItem, 120000.25, 'EGP', 'ratedKw')]));
   await recalc(t.md, rev._id, { engineeringInput: INPUT });
   const s = await stored(rev._id);
 
@@ -380,7 +380,7 @@ maybeTest('Price list files: title rows above the header, "Unit Price (USD)" hea
   ], { header, titleRows: [['Alex Cables - price list November'], ['Tel 0100'], []] });
   const fd = new FormData();
   fd.append('file', new Blob([buf]), 'alex.xlsx');
-  const prev = await api('POST', `/api/v1/commercial/suppliers/${sup._id}/price-lists/preview`, { user: t.proc, form: fd });
+  const prev = await api('POST', `/api/v1/commercial/suppliers/${sup._id}/price-lists/preview`, { user: t.cd, form: fd });
   assert.equal(prev.status, 201, JSON.stringify(prev.body));
   const rows = prev.body.data.rows;
   assert.equal(prev.body.data.mapping.unitPrice, 'Unit Price (USD)');

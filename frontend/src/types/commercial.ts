@@ -31,6 +31,38 @@ export type ApprovalStage = {
   approverRole?: string | null;
   decidedAt: string | null;
   note: string;
+  // 3-stage workflow: reset by a change after it was approved -> shown as "Requires Reapproval".
+  requiresReapproval?: boolean;
+  revisionNumber?: number | null;
+};
+
+/** GET commercial/approvals/:revisionId/workflow - the 3-stage approval workflow of one revision. */
+export type ApprovalWorkflowStage = {
+  key: "STAGE1" | "STAGE2" | "MD";
+  apiStage: string;
+  number: number;
+  label: string;
+  approvers: string;
+  status: ApprovalStatus;
+  displayStatus: "Pending" | "Approved" | "Rejected" | "Requires Reapproval";
+  approverName: string | null;
+  approverRole: string | null;
+  decidedAt: string | null;
+  note: string;
+  revisionNumber: number | null;
+  canAct: boolean;
+  cannotActReason: string | null;
+};
+export type ApprovalWorkflowView = {
+  revisionId: string;
+  revisionNumber: number;
+  isCurrent: boolean;
+  workflowVersion: 1 | 2;
+  workflowStatus: string;
+  fullyApproved: boolean;
+  finalApproval: { approvedAt: string; byName: string | null; byRole: string | null; revisionNumber: number | null; calculatedAt: string | null } | null;
+  stages: ApprovalWorkflowStage[];
+  timeline: { at: string; kind: "revision" | "approval"; revisionNumber: number | null; text?: string; stage?: string; stageLabel?: string; action?: string; byName?: string | null; byRole?: string | null; note?: string; workflowBefore?: string | null; workflowAfter?: string | null }[];
 };
 
 /** The 8 Egyptian Rates matrix regions (QA B2) - mirrors backend utils/commercial/regions.js. */
@@ -234,6 +266,8 @@ export type CommercialRevision = {
   waitingOn?: string | null;
   // When the engineering/BOQ/pricing were last actually calculated (not a vendor pick or approval).
   lastCalculatedAt?: string | null;
+  // 2 = the 3-stage workflow (Technical -> Sales/BDM -> S&C Director/MD); unset = the earlier rules.
+  approvalWorkflow?: number | null;
   createdAt: string;
   updatedAt: string;
   // PATCH commercial/revisions/:id only - what that recalculation changed (never stored).

@@ -6,8 +6,9 @@ import { ApprovalStage, CommercialProject, CommercialRevision } from "@/types/co
 import { formatAmount } from "@/utils/helpers/format-amount";
 import SectionCard from "@/components/ui/section-card";
 import { outlineIcons } from "@/components/icons";
-import { STAGE_META, approverName, statusColor } from "../../../_shared/approvalStages";
+import { STAGE_META, STAGE_META_V2, approverName, displayStatus, statusColor } from "../../../_shared/approvalStages";
 import { perKwpBasis, ruleVersionLabel } from "../../../_shared/ruleVersion";
+import usePricingAccess from "../../../_shared/usePricingAccess";
 
 export default function OverviewTab({
   project,
@@ -20,6 +21,9 @@ export default function OverviewTab({
   onEdit?: () => void;
 }) {
   const { translate } = useLanguage();
+  // Pricing confidentiality: price rows are not rendered at all for roles that may not see them
+  // (the API does not send the values either) - never an empty "-" that hints a hidden figure.
+  const { canSeePricing: showMoney } = usePricingAccess();
   const { systems } = useSystemAccess();
   const hasCrm = !!systems?.CRM;
 
@@ -117,6 +121,8 @@ export default function OverviewTab({
                 </span>
               }
             />
+            {showMoney && (
+              <>
             <Row label={translate("BOQ Total (COGS)", "إجمالي جدول الكميات (التكلفة)")} value={formatAmount(revision.boqTotal, project.currency)} />
             <Row label={translate("Net Price (excl. VAT)", "السعر الصافي (قبل الضريبة)")} value={formatAmount(revision.pricing?.netExclVat, project.currency)} />
             <Row label={translate("Final Price (incl. VAT)", "السعر النهائي (شامل الضريبة)")} value={formatAmount(revision.pricing?.grossInclVat, project.currency)} />
@@ -128,11 +134,13 @@ export default function OverviewTab({
               }
               value={revision.pricing?.perKwpExclVat != null ? `${formatAmount(revision.pricing.perKwpExclVat, project.currency)}${revision.pricing.designKwp ? ` / ${revision.pricing.designKwp} kWp` : ""}` : "-"}
             />
+              </>
+            )}
             <Row label={translate("Rule version", "إصدار القواعد")} value={ruleVersionLabel(revision)} />
-            {revision.priceChangedSinceCalculation && (
+            {showMoney && revision.priceChangedSinceCalculation && (
               <Row label={translate("Prices", "الأسعار")} value={<Badge color="orange" variant="light" data-testid="overview-price-changed">{translate("Price changed since calculation - recalculate", "تغيّر السعر منذ الحساب - أعد الحساب")}</Badge>} />
             )}
-            <Row label={translate("Gross Profit", "الربح الإجمالي")} value={revision.pricing?.grossProfitPct != null ? `${(revision.pricing.grossProfitPct * 100).toFixed(1)}%` : "-"} />
+            {showMoney && <Row label={translate("Gross Profit", "الربح الإجمالي")} value={revision.pricing?.grossProfitPct != null ? `${(revision.pricing.grossProfitPct * 100).toFixed(1)}%` : "-"} />}
             <Row label={translate("Release Status", "حالة الإصدار")} value={<Badge color={revision.releaseStatus === "APPROVED FOR ISSUE" ? "teal" : "yellow"} variant="light">{revision.releaseStatus}</Badge>} />
           </>
         )}
@@ -143,9 +151,10 @@ export default function OverviewTab({
           <p className="text-sm text-gray-500">{translate("Approvals start once a revision is calculated.", "تبدأ الموافقات بعد حساب نسخة.")}</p>
         ) : (
           <>
-            {STAGE_META.map((s) => {
+            {(revision.approvalWorkflow === 2 ? STAGE_META_V2 : STAGE_META).map((s) => {
               const stage = revision[s.key] as ApprovalStage;
-              const notRequired = s.key === "md" && !revision.mdRequired;
+              // The earlier workflow's MD sign-off depended on the deal value; Stage 3 is always required.
+              const notRequired = revision.approvalWorkflow !== 2 && s.key === "md" && revision.mdRequired === false;
               const name = approverName(stage);
               return (
                 <Row
@@ -156,7 +165,7 @@ export default function OverviewTab({
                       <span className="text-xs text-gray-400">{translate("Not required (net at or below EGP 1.5M)", "غير مطلوبة (الصافي حتى 1.5 مليون)")}</span>
                     ) : (
                       <span>
-                        <Badge color={statusColor(stage.status)} variant="light">{stage.status}</Badge>
+                        <Badge color={statusColor(displayStatus(stage))} variant="light">{displayStatus(stage)}</Badge>
                         {name && <span className="ms-2 text-xs text-gray-500">{name}{stage.decidedAt ? ` - ${dayjs(stage.decidedAt).format("DD MMM YYYY")}` : ""}</span>}
                       </span>
                     )

@@ -4,7 +4,29 @@ const ApiError = require('../../utils/apiError');
 const apiResponse = require('../../utils/apiResponse');
 const ApiFeatures = require('../../utils/apiFeatures');
 const { canonicalMaterialKey } = require('../../utils/commercial/materialKey');
-const { assertCanAccessEnginePage } = require('../../utils/commercial/dealEnginePermissions');
+const { assertCanAccessEnginePage, canSeePricing, assertCanSeePricing, redactMoney } = require('../../utils/commercial/dealEnginePermissions');
+
+// Pricing confidentiality (26 Nov 2026): Materials stays readable by every Deal Engine role that
+// had it (specifications, ratings, ERP links - Technical completes module data here), but prices
+// are for PRICING_ROLES only: the reference price, the supplier prices and their history, and any
+// price attribute (pricePerWatt, castIronPrice...) are removed from the response, a price can not
+// be filtered or sorted on (that would reveal it by bisection), and a price can not be written.
+const PRICE_ITEM_FIELDS = ['unitPrice', 'currency', 'supplierPrices', 'priceHistory', 'effectiveDate', 'referenceCheckedAt', 'referenceValidUntil'];
+function materialForRole(m, roles) {
+  if (!m || canSeePricing(roles)) return m;
+  const out = { ...m };
+  for (const k of PRICE_ITEM_FIELDS) delete out[k];
+  if (out.attrs) out.attrs = redactMoney(out.attrs);
+  return out;
+}
+function stripPriceQuery(query) {
+  const isPrice = k => /price|cost|supplier|history|currency|egp/i.test(k);
+  for (const k of Object.keys(query)) if (isPrice(k)) delete query[k];
+  if (typeof query.sort === 'string') query.sort = query.sort.split(',').filter(f => !isPrice(f)).join(',') || undefined;
+  if (typeof query.fields === 'string') query.fields = query.fields.split(',').filter(f => !isPrice(f)).join(',') || undefined;
+  if (query.sort === undefined) delete query.sort;
+  if (query.fields === undefined) delete query.fields;
+}
 const { ENGINE_SPECS, missingSpecs, cleanSpecPatch } = require('../../utils/commercial/engineSpecs');
 const workbookImport = require('../../services/commercial/workbookImport/importService');
 const erpProductSync = require('../../services/commercial/workbookImport/erpProductSync');
@@ -46,13 +68,14 @@ function withSpecStatus(doc) {
 // filter object but never called ApiFeatures#search(), so every query returned the same unfiltered
 // first page (the category filter "worked" because it is applied separately, directly below).
 exports.listMaterials = asyncHandler(async (req, res) => {
+  if (!canSeePricing(req.commercialRoles)) stripPriceQuery(req.query);
   const filter = { archived: false, ...req.filterObject };
   if (req.query.category) filter.category = req.query.category;
   const countDocuments = await MaterialItem.countDocuments(filter);
   const mongooseQuery = MaterialItem.find(filter);
   const { mongooseQuery: query, paginationResult } = new ApiFeatures(mongooseQuery, req.query).paginate(countDocuments).sort().filter(filter).search('MaterialItem').limitFields();
   const materials = await query;
-  res.status(200).json({ results: materials.length, paginationResult, data: await withSupplierNames(materials.map(withSpecStatus)) });
+  res.status(200).json({ results: materials.length, paginationResult, data: (await withSupplierNames(materials.map(withSpecStatus))).map(m => materialForRole(m, req.commercialRoles)) });
 });
 
 // ---------------------------------------------------------------- workbook import + ERP products
@@ -67,11 +90,13 @@ const options = body => {
 };
 
 exports.previewWorkbookImport = asyncHandler(async (req, res) => {
+  assertCanSeePricing(req.commercialRoles, 'workbook prices');
   const data = await workbookImport.previewImport(req.file || {}, { user: req.user, roles: req.commercialRoles });
   res.status(200).json(apiResponse('Workbook preview', true, data));
 });
 
 exports.applyWorkbookImport = asyncHandler(async (req, res) => {
+  assertCanSeePricing(req.commercialRoles, 'workbook prices');
   const data = await workbookImport.applyImport(req.file || {}, options(req.body), { user: req.user, roles: req.commercialRoles });
   res.status(200).json(apiResponse('Workbook imported', true, data));
 });
@@ -96,7 +121,7 @@ exports.getSpecFields = asyncHandler(async (req, res) => {
 exports.getMaterial = asyncHandler(async (req, res, next) => {
   const material = await MaterialItem.findById(req.params.id);
   if (!material) return next(new ApiError('Material not found.', 404));
-  res.status(200).json(apiResponse('Material retrieved successfully', true, (await withSupplierNames([withSpecStatus(material)]))[0]));
+  res.status(200).json(apiResponse('Material retrieved successfully', true, materialForRole((await withSupplierNames([withSpecStatus(material)]))[0], req.commercialRoles)));
 });
 
 // R12/R2: "procurement owns Materials, Suppliers and price list uploads" (section 3) - md and
@@ -106,6 +131,8 @@ exports.getMaterial = asyncHandler(async (req, res, next) => {
 // comment on why (BOQ lines reference materialItemKey).
 exports.createMaterial = asyncHandler(async (req, res, next) => {
   assertCanAccessEnginePage(req.commercialRoles, 'materials', 'edit');
+  // A new Price Book item is created WITH its reference price - a pricing action.
+  assertCanSeePricing(req.commercialRoles, 'Price Book prices');
   const { category, brand, model, spec = '', unit } = req.body;
   if (!category) return next(new ApiError('Category is required.', 400));
   if (!brand || !model) return next(new ApiError('Brand and model are required.', 400));
@@ -142,6 +169,16 @@ exports.updateMaterial = asyncHandler(async (req, res, next) => {
   if (!material) return next(new ApiError('Material not found.', 404));
 
   const { unitPrice, currency, attrs: attrsPatch, status, ...rest } = req.body;
+  // A non-pricing editor (Procurement, Technical data entry) may complete specifications, status
+  // and ERP links - never a price (it cannot see one).
+  if (!canSeePricing(req.commercialRoles)) {
+    const priceAttr = attrsPatch && typeof attrsPatch === 'object' ? Object.keys(attrsPatch).find(k => /price|cost/i.test(k)) : null;
+    if (unitPrice !== undefined || currency !== undefined || priceAttr || rest.supplierPrices !== undefined || rest.priceHistory !== undefined) {
+      return next(new ApiError('Prices are changed by the MD, the Sales and Commercial Director or Sales only - your role can update the technical data.', 403));
+    }
+  }
+  delete rest.supplierPrices;
+  delete rest.priceHistory;
   if (unitPrice !== undefined && (unitPrice !== material.unitPrice || currency !== material.currency)) {
     material.priceHistory.push({ price: unitPrice, currency: currency || material.currency, effectiveDate: new Date(), changedBy: req.user._id });
     material.effectiveDate = new Date();
@@ -179,12 +216,12 @@ exports.updateMaterial = asyncHandler(async (req, res, next) => {
   await material.save();
   // C24: a Reference price edit reaches open revisions only on their next recalculation - flag them.
   if (priceMoved) await flagOpenRevisions([{ key: material.key, model: material.model }]);
-  res.status(200).json(apiResponse('Material updated successfully', true, withSpecStatus(material)));
+  res.status(200).json(apiResponse('Material updated successfully', true, materialForRole(withSpecStatus(material), req.commercialRoles)));
 });
 
 exports.archiveMaterial = asyncHandler(async (req, res, next) => {
   assertCanAccessEnginePage(req.commercialRoles, 'materials', 'edit');
   const material = await MaterialItem.findByIdAndUpdate(req.params.id, { archived: true, archivedAt: new Date(), archivedBy: req.user._id }, { new: true });
   if (!material) return next(new ApiError('Material not found.', 404));
-  res.status(200).json(apiResponse('Material archived successfully', true, material));
+  res.status(200).json(apiResponse('Material archived successfully', true, materialForRole(withSpecStatus(material), req.commercialRoles)));
 });

@@ -115,7 +115,13 @@ async function setup() {
   t.project = p.body.data.project;
   return t;
 }
-const calc = (t, input = INPUT) => api('POST', `/api/v1/commercial/revisions/project/${t.project._id}`, { user: t.tech, body: { engineeringInput: input } });
+// Pricing confidentiality (26 Nov 2026): Technical calculates but its response carries no prices -
+// the figures checked below are read from the stored revision (what a pricing role sees).
+async function withStored(res) {
+  if (res.status === 201 && res.body?.data?._id) res.body.data = { ...(await mongoose.model('CommercialRevision').findById(res.body.data._id).lean()), _id: String(res.body.data._id) };
+  return res;
+}
+const calc = async (t, input = INPUT) => withStored(await api('POST', `/api/v1/commercial/revisions/project/${t.project._id}`, { user: t.tech, body: { engineeringInput: input } }));
 
 maybeTest('a module without its electrical data: listed as not ready, and the calculation says why', async () => {
   const t = await setup();

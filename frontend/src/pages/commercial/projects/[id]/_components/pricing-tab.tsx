@@ -10,7 +10,7 @@ import SectionCard from "@/components/ui/section-card";
 import { CommercialProject, CommercialRevision, CommercialRole, PricingLevers } from "@/types/commercial";
 import PctInput, { toPct } from "../../../_shared/PctInput";
 import { perKwpBasis } from "../../../_shared/ruleVersion";
-import { projectTabAccess, canEdit, canEditFully } from "../../../_shared/dealEnginePermissions";
+import { projectTabAccess, canEdit, canEditFully, canSeePricing } from "../../../_shared/dealEnginePermissions";
 import { notifyRecalculated } from "../../../_shared/recalcNotice";
 
 // R2/R9/R11: the five policy levers (read-only to Sales; an S&C/MD deal override needs a reason).
@@ -46,6 +46,10 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
   const leversReadOnly = !fullyEditable; // the 5 policy levers: md/commercial_director only
   const categoryDiscountReadOnly = !limitedEditable; // category/discount: md/commercial_director/bdm
   const canOverride = fullyEditable;
+  // Pricing confidentiality (26 Nov 2026): BDM may SET the category addition % and discount %, but sees
+  // no price, lever, margin or commission - the API sends it only those two values.
+  const showMoney = canSeePricing(role ? [role] : []);
+  const visibleLevers = showMoney ? LEVERS : LEVERS.filter((l) => l.key === "categoryAdditionPct" || l.key === "discountPct");
   const p = revision.pricing;
   const applied = revision.pricingConfigApplied;
   const cur = project.currency;
@@ -112,7 +116,7 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
             </Alert>
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {LEVERS.map((l) => (
+            {visibleLevers.map((l) => (
               <PctInput
                 key={l.key}
                 label={translate(l.en, l.ar)}
@@ -122,7 +126,15 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
               />
             ))}
           </div>
-          {leversReadOnly && !categoryDiscountReadOnly && (
+          {!showMoney && (
+            <p className="mt-2 text-xs text-gray-400" data-testid="pricing-bdm-note">
+              {translate(
+                "You can set the category addition and the discount within the Sales limits. Prices, cost levers, margins and commission are visible to Sales, the Sales and Commercial Director and the MD only.",
+                "يمكنك تحديد إضافة الفئة والخصم ضمن حدود المبيعات. الأسعار وعوامل التكلفة والهوامش والعمولات تظهر للمبيعات والمدير التجاري والمدير العام فقط."
+              )}
+            </p>
+          )}
+          {showMoney && leversReadOnly && !categoryDiscountReadOnly && (
             <p className="mt-2 text-xs text-gray-400">
               {translate(
                 "The five policy levers are read-only, shown as set by the policy version applied. Category addition and discount are yours to move within the Sales limits.",
@@ -176,6 +188,7 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
           </p>
         </SectionCard>
 
+        {showMoney && (
         <SectionCard title={translate("Applied Pricing Configuration", "إعدادات التسعير المطبقة")}>
           {applied?.source ? (
             <>
@@ -203,8 +216,10 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
             <p className="text-sm text-gray-500">{translate("This revision predates the pricing configuration - it keeps the levers it was priced with.", "هذه النسخة أقدم من إعدادات التسعير - تحتفظ بالقيم التي سُعّرت بها.")}</p>
           )}
         </SectionCard>
+        )}
       </div>
 
+      {showMoney && (
       <SectionCard title={translate("Price Build", "تركيبة السعر")}>
         <Row label={translate("Direct COGS (materials + site costs)", "التكلفة المباشرة (المواد + الموقع)")} value={formatAmount(p.cogs, cur)} />
         <Row label={`${translate("Overhead", "المصروفات العامة")} (${pct(p.overheadPct)})`} value={formatAmount(p.overheadAmt, cur)} />
@@ -227,6 +242,7 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
         <Row label={translate("Gross Profit", "إجمالي الربح")} value={`${formatAmount(p.grossProfit, cur)} (${pct(p.grossProfitPct)})`} />
         {p.operatingProfit != null && <Row label={translate("Operating Profit", "الربح التشغيلي")} value={`${formatAmount(p.operatingProfit, cur)} (${pct(p.operatingProfitPct)})`} />}
       </SectionCard>
+      )}
     </div>
   );
 }
