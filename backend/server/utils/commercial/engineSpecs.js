@@ -19,13 +19,23 @@ const ENGINE_SPECS = {
     { key: 'vocTempCoeffPctPerC', label: 'Voc temperature coefficient', unit: '%/°C', required: true, negative: true },
     { key: 'maxDcV', label: 'Maximum system voltage', unit: 'V', required: false, positive: true },
   ],
+  // The on-grid calculation picks the inverter automatically by rating, and checks the string voltage
+  // against the DC limits - an inverter without them would be chosen with no voltage check at all.
   'On-Grid Inverter': [
     { key: 'ratedKw', label: 'Rated AC power', unit: 'kW', required: true, positive: true },
-    // The string-sizing check is skipped (never guessed) for an inverter without these two.
-    { key: 'maxDcV', label: 'Maximum DC input voltage', unit: 'V', required: false, positive: true },
-    { key: 'mpptMaxV', label: 'MPPT voltage range - maximum', unit: 'V', required: false, positive: true },
+    { key: 'maxDcV', label: 'Maximum DC input voltage', unit: 'V', required: true, positive: true },
+    { key: 'mpptMaxV', label: 'MPPT voltage range - maximum', unit: 'V', required: true, positive: true },
     { key: 'mpptMinV', label: 'MPPT voltage range - minimum', unit: 'V', required: false, positive: true },
     { key: 'mpptCount', label: 'Number of MPPTs', unit: '', required: false, positive: true },
+  ],
+  // services/commercial/boqService.js#resolveOffGridInput sizes with these.
+  'Off-Grid Inverter': [
+    { key: 'ratedKw', label: 'Rated AC power', unit: 'kW', required: true, positive: true },
+    { key: 'batteryVoltageV', label: 'Battery (DC) voltage', unit: 'V', required: false, positive: true },
+  ],
+  'Lithium Batteries': [
+    { key: 'voltageV', label: 'Nominal voltage', unit: 'V', required: true, positive: true },
+    { key: 'capacityAh', label: 'Capacity', unit: 'Ah', required: true, positive: true },
   ],
 };
 

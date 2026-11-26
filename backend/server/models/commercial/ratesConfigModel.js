@@ -33,7 +33,7 @@ const ratesConfigSchema = new Schema(
     // Where this version came from: the db:seed-commercial-materials script, the reference matrix
     // loaded from the Pricing Config page, or rates entered on that page. Optional - documents
     // created before this field read as 'seed'.
-    source: { type: String, enum: ['seed', 'reference', 'manual'], default: 'manual' },
+    source: { type: String, enum: ['seed', 'reference', 'manual', 'workbook'], default: 'manual' },
     note: { type: String, trim: true, maxlength: 500, default: '' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },

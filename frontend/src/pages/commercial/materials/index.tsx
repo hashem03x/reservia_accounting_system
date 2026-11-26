@@ -8,7 +8,7 @@ import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import { formatAmount } from "@/utils/helpers/format-amount";
 import { PaginatedData } from "@/types/global";
-import { MaterialItem } from "@/types/commercial";
+import { CommercialRole, MaterialItem } from "@/types/commercial";
 import AdminLayoutBox from "@/components/ui/admin-layout-box";
 import LoadingSection from "@/components/ui/sections/loading";
 import ErrorSection from "@/components/ui/sections/error";
@@ -16,10 +16,14 @@ import EmptySection from "@/components/ui/sections/empty";
 import PaginationHandler from "@/components/ui/pagination-handler";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
 import EditMaterialModal from "./_components/edit-material-modal";
+import WorkbookImportModal from "./_components/workbook-import-modal";
+import { useSystemAccess } from "@/context/SystemAccessContext";
+import { canEditFully, enginePageAccess } from "../_shared/dealEnginePermissions";
 
 const CATEGORIES = [
-  "PV Modules", "On-Grid Inverter", "DC Cable", "AC Breaker", "MC4 Connectors", "AC Distribution Board", "Mounting Structure",
-  "Solar Pump Drive", "Pump Motor",
+  "PV Modules", "On-Grid Inverter", "Off-Grid Inverter", "Hybrid Inverter", "Lithium Batteries", "DC Cable", "AC Cable", "AC Breaker",
+  "Electrical Protection", "MC4 Connectors", "AC Distribution Board", "Metallic Panel", "Mounting Structure",
+  "Submersible Pump", "Pump Motor", "Solar Pump Drive", "Pipe", "AC Reactor", "DC Charge Controller",
 ];
 
 // Reservia Commercial Price Book admin. Calculations never hardcode a price - every number the
@@ -36,6 +40,10 @@ export default function CommercialMaterials() {
   const [debouncedQ] = useDebounce(q, 350);
   const [editing, setEditing] = useState<MaterialItem | null>(null);
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
+  const [importOpened, { open: openImport, close: closeImport }] = useDisclosure(false);
+  const { systems } = useSystemAccess();
+  const role = (systems?.COMMERCIAL?.role || "") as CommercialRole | "";
+  const canImport = canEditFully(enginePageAccess(role ? [role as CommercialRole] : [], "materials"));
 
   const { privateRequest, loading, setLoading, error, setError, data: paginated, setData: setPaginated } = useDataHandler<PaginatedData<MaterialItem>>({
     initialData: null,
@@ -69,6 +77,13 @@ export default function CommercialMaterials() {
 
   return (
     <AdminLayoutBox header={{ title: translate("Material Price List", "قائمة أسعار المواد") }}>
+      {canImport && (
+        <div className="mb-3 flex justify-end">
+          <Button variant="light" onClick={openImport} data-testid="materials-import">
+            {translate("Import workbook", "استيراد ملف Excel")}
+          </Button>
+        </div>
+      )}
       <div className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-gray-100 p-3 sm:grid-cols-3">
         <TextInput label={translate("Search", "بحث")} value={q} onChange={(e) => (setActivePage(1), setQ(e.target.value))} placeholder={translate("Brand or model", "الماركة أو الموديل")} />
         <Select
@@ -149,6 +164,7 @@ export default function CommercialMaterials() {
       )}
 
       <EditMaterialModal opened={modalOpened} onClose={closeModal} material={editing} onSaved={reload} />
+      <WorkbookImportModal opened={importOpened} onClose={closeImport} onImported={reload} />
     </AdminLayoutBox>
   );
 }

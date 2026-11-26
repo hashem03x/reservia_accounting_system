@@ -6,6 +6,8 @@ const ApiFeatures = require('../../utils/apiFeatures');
 const { canonicalMaterialKey } = require('../../utils/commercial/materialKey');
 const { assertCanAccessEnginePage } = require('../../utils/commercial/dealEnginePermissions');
 const { ENGINE_SPECS, missingSpecs, cleanSpecPatch } = require('../../utils/commercial/engineSpecs');
+const workbookImport = require('../../services/commercial/workbookImport/importService');
+const erpProductSync = require('../../services/commercial/workbookImport/erpProductSync');
 
 /** Adds `missingSpecs` (labels of the technical data the design engines still need; [] = usable). */
 function withSpecStatus(doc) {
@@ -31,6 +33,39 @@ exports.listMaterials = asyncHandler(async (req, res) => {
   const { mongooseQuery: query, paginationResult } = new ApiFeatures(mongooseQuery, req.query).paginate(countDocuments).sort().filter(filter).search('MaterialItem').limitFields();
   const materials = await query;
   res.status(200).json({ results: materials.length, paginationResult, data: materials.map(withSpecStatus) });
+});
+
+// ---------------------------------------------------------------- workbook import + ERP products
+
+const options = body => {
+  if (!body?.options) return {};
+  try {
+    return typeof body.options === 'string' ? JSON.parse(body.options) : body.options;
+  } catch {
+    throw new ApiError('Import options are not valid JSON.', 400);
+  }
+};
+
+exports.previewWorkbookImport = asyncHandler(async (req, res) => {
+  const data = await workbookImport.previewImport(req.file || {}, { user: req.user, roles: req.commercialRoles });
+  res.status(200).json(apiResponse('Workbook preview', true, data));
+});
+
+exports.applyWorkbookImport = asyncHandler(async (req, res) => {
+  const data = await workbookImport.applyImport(req.file || {}, options(req.body), { user: req.user, roles: req.commercialRoles });
+  res.status(200).json(apiResponse('Workbook imported', true, data));
+});
+
+exports.erpProductsStatus = asyncHandler(async (req, res) => {
+  assertCanAccessEnginePage(req.commercialRoles, 'materials', 'view');
+  res.status(200).json(apiResponse('ERP products', true, await erpProductSync.status(req.user)));
+});
+
+exports.createErpProducts = asyncHandler(async (req, res) => {
+  assertCanAccessEnginePage(req.commercialRoles, 'materials', 'edit');
+  const st = await erpProductSync.status(req.user);
+  if (!st.canApply) throw new ApiError(st.reason, 403);
+  res.status(200).json(apiResponse('ERP products created and linked', true, await erpProductSync.apply(req.user)));
 });
 
 /** The technical fields each engine category needs (utils/commercial/engineSpecs.js) - drives the Materials editor. */
