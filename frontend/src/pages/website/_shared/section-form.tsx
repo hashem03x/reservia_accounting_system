@@ -441,7 +441,7 @@ export function SectionSettingsForm({ registry, value, onChange, readOnly }: { r
               size="xs"
               value={value.spacing[side]}
               onChange={(v) => set({ spacing: { ...value.spacing, [side]: v as Spacing } })}
-              data={registry.settings.spacing.map((s) => ({ value: s, label: translate(SPACING_LABEL[s].en, SPACING_LABEL[s].ar) }))}
+              data={registry.settings.spacing.map((s) => ({ value: s, label: translate(SPACING_LABEL[s]?.en ?? String(s), SPACING_LABEL[s]?.ar ?? String(s)) }))}
               disabled={readOnly}
             />
           </div>

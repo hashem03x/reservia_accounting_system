@@ -26,5 +26,5 @@ export const sortOrdersArray = Object.values(sortOrders);
 // ================ Helpers ================
 
 export const getSortOrderLabel = (sortOrder: SortOrder, language: Language) => {
-  return translate(language, sortOrders[sortOrder].label.en, sortOrders[sortOrder].label.ar);
+  return sortOrders[sortOrder] ? translate(language, sortOrders[sortOrder].label.en, sortOrders[sortOrder].label.ar) : String(sortOrder ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 };

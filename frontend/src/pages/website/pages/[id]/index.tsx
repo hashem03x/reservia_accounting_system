@@ -433,7 +433,7 @@ function SeoTab({
           onChange={(v) => setLocale(v as WebsiteLocale)}
           data={(["ar", "en"] as WebsiteLocale[]).map((l) => ({
             value: l,
-            label: `${translate(LOCALE_LABELS[l].en, LOCALE_LABELS[l].ar)}${l === "ar" ? translate(" (default)", " (الافتراضية)") : ""}${draft.locales.includes(l) ? "" : translate(" - off", " - غير مفعلة")}`,
+            label: `${translate(LOCALE_LABELS[l]?.en ?? String(l), LOCALE_LABELS[l]?.ar ?? String(l))}${l === "ar" ? translate(" (default)", " (الافتراضية)") : ""}${draft.locales.includes(l) ? "" : translate(" - off", " - غير مفعلة")}`,
           }))}
           w="fit-content"
         />

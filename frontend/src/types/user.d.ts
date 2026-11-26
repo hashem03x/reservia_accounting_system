@@ -39,7 +39,7 @@ export interface UserContextProps {
 
 // ============================================================================
 
-export type Role = "admin" | "moderator" | "operator" | "user";
+export type Role = "admin" | "moderator" | "operator" | "viewer" | "po_drafter" | "user";
 
 export type Resource =
   | "vendors"

@@ -167,7 +167,7 @@ export default function WebsiteOverview() {
                         <Table.Td>{p.title}</Table.Td>
                         <Table.Td>
                           <Badge size="sm" variant="light" color={{ published: "teal", draft: "yellow", scheduled: "blue", archived: "gray" }[p.status]}>
-                            {translate(STATUS_LABEL[p.status].en, STATUS_LABEL[p.status].ar)}
+                            {translate(STATUS_LABEL[p.status]?.en ?? String(p.status), STATUS_LABEL[p.status]?.ar ?? String(p.status))}
                           </Badge>
                         </Table.Td>
                         <Table.Td className="text-xs text-gray-500">{formatCairoDateTime(p.updatedAt, language)}</Table.Td>
@@ -241,7 +241,7 @@ export default function WebsiteOverview() {
               <ul className="flex flex-col gap-1 text-sm">
                 {data.recentActivity.map((a) => (
                   <li key={a._id}>
-                    <span className="font-medium">{a.actorName}</span> · {ACTION_LABELS[a.action] ? translate(ACTION_LABELS[a.action].en, ACTION_LABELS[a.action].ar) : a.action}
+                    <span className="font-medium">{a.actorName}</span> · {ACTION_LABELS[a.action] ? translate(ACTION_LABELS[a.action]?.en ?? String(a.action), ACTION_LABELS[a.action]?.ar ?? String(a.action)) : a.action}
                     {a.targetLabel ? ` · ${a.targetLabel}` : ""} <span className="text-xs text-gray-500">· {formatCairoDateTime(a.createdAt, language)}</span>
                   </li>
                 ))}

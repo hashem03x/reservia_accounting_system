@@ -38,5 +38,5 @@ export default documentTypes;
 export const documentTypesArray = Object.values(documentTypes);
 
 export const getDocumentTypeLabel = (documentType: DocumentType, language: Language) => {
-  return translate(language, documentTypes[documentType].label.en, documentTypes[documentType].label.ar);
+  return documentTypes[documentType] ? translate(language, documentTypes[documentType].label.en, documentTypes[documentType].label.ar) : String(documentType ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 };

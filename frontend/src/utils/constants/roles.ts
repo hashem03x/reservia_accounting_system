@@ -25,6 +25,22 @@ const roles: LocalizedEntity<Role> = {
       ar: "مندوب",
     },
   },
+  // Go-live roles matrix (Developer Pack 5.2) - the server has had these since go-live; without them
+  // here every page that shows such a user's role crashed ("reading 'label'").
+  viewer: {
+    value: "viewer",
+    label: {
+      en: "Viewer (read-only)",
+      ar: "مشاهد (قراءة فقط)",
+    },
+  },
+  po_drafter: {
+    value: "po_drafter",
+    label: {
+      en: "Purchase order drafter",
+      ar: "معد أوامر الشراء",
+    },
+  },
   user: {
     value: "user",
     label: {
@@ -41,7 +57,7 @@ export const rolesArray = Object.values(roles);
 // ================ Helpers ================
 
 export const getRoleLabel = (role: Role, language: Language) => {
-  return translate(language, roles[role].label.en, roles[role].label.ar);
+  return roles[role] ? translate(language, roles[role].label.en, roles[role].label.ar) : String(role ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 };
 
 export function isAdmin(role: Role) {

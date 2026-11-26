@@ -34,7 +34,7 @@ export const orderStatusesArray = Object.values(orderStatuses);
 // ================ Helpers ================
 
 export function getOrderStatusLabel(status: OrderStatus, language: Language) {
-  return translate(language, orderStatuses[status].label.en, orderStatuses[status].label.ar);
+  return orderStatuses[status] ? translate(language, orderStatuses[status].label.en, orderStatuses[status].label.ar) : String(status ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 }
 
 export function isPendingOrder(status: OrderStatus) {

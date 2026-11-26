@@ -89,7 +89,7 @@ export const paymentMethodsArray = Object.values(paymentMethods);
 // `payment.paymentAccount` (code/name) when present, falling back to this for historical payments.
 export function getPaymentMethodLabel(method: PaymentMethod | null | undefined, language: Language) {
   if (!method || !paymentMethods[method]) return translate(language, "-", "-");
-  return translate(language, paymentMethods[method].label.en, paymentMethods[method].label.ar);
+  return paymentMethods[method] ? translate(language, paymentMethods[method].label.en, paymentMethods[method].label.ar) : String(method ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 }
 
 export function isCashPayment(method: PaymentMethod) {

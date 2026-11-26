@@ -32,7 +32,7 @@ export default function PermissionRow({
               "This action is not allowed for users on this resource.",
               "هذا الإجراء غير مسموح للمستخدمين على هذه البيانات.",
             )
-          : translate(allActions[action].label.en, allActions[action].label.ar);
+          : translate(allActions[action]?.label.en ?? String(action), allActions[action]?.label.ar ?? String(action));
 
     return (
       <Table.Td key={action}>
@@ -50,7 +50,7 @@ export default function PermissionRow({
 
   return (
     <Table.Tr>
-      <Table.Td>{translate(resources[resource].label.en, resources[resource].label.ar)}</Table.Td>
+      <Table.Td>{translate(resources[resource]?.label.en ?? String(resource), resources[resource]?.label.ar ?? String(resource))}</Table.Td>
       <MantineProvider theme={theme}>{actionsArray.map((action) => renderActionCheckbox(action.value))}</MantineProvider>
     </Table.Tr>
   );

@@ -97,5 +97,5 @@ export const expenseCategoriesArray = Object.values(expenseCategories);
 // ================ Helpers ================
 
 export function getExpenseCategoryLabel(category: ExpenseCategory, language: Language) {
-  return translate(language, expenseCategories[category].label.en, expenseCategories[category].label.ar);
+  return expenseCategories[category] ? translate(language, expenseCategories[category].label.en, expenseCategories[category].label.ar) : String(category ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 }

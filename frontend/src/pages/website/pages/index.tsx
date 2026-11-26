@@ -263,7 +263,7 @@ export default function WebsitePages() {
                           </Badge>
                         </Tooltip>
                       </Table.Td>
-                      <Table.Td>{(p.locales || []).map((l) => translate(LOCALE_LABELS[l].en, LOCALE_LABELS[l].ar)).join(" + ")}</Table.Td>
+                      <Table.Td>{(p.locales || []).map((l) => translate(LOCALE_LABELS[l]?.en ?? String(l), LOCALE_LABELS[l]?.ar ?? String(l))).join(" + ")}</Table.Td>
                       <Table.Td>
                         <div className="flex flex-wrap items-center gap-1">
                           <Badge color={status.color} variant="light" data-testid="row-status">

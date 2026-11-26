@@ -27,5 +27,5 @@ export const transferTypesArray = Object.values(transferTypes);
 // ================ Helpers ================
 
 export const getTransferTypeLabel = (type: TransferType, language: Language) => {
-  return translate(language, transferTypes[type].label.en, transferTypes[type].label.ar);
+  return transferTypes[type] ? translate(language, transferTypes[type].label.en, transferTypes[type].label.ar) : String(type ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 };

@@ -27,7 +27,7 @@ export const productTypesArray = Object.values(productTypes);
 // ================ Helpers ================
 
 export const getProductTypeLabel = (productType: ProductType, language: Language) => {
-  return translate(language, productTypes[productType].label.en, productTypes[productType].label.ar);
+  return productTypes[productType] ? translate(language, productTypes[productType].label.en, productTypes[productType].label.ar) : String(productType ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 };
 
 export function isService(productType: ProductType) {
@@ -51,5 +51,5 @@ const durationUnits: LocalizedEntity<DurationUnit> = {
 export const durationUnitsArray = Object.values(durationUnits);
 
 export const getDurationUnitLabel = (durationUnit: DurationUnit, language: Language) => {
-  return translate(language, durationUnits[durationUnit].label.en, durationUnits[durationUnit].label.ar);
+  return durationUnits[durationUnit] ? translate(language, durationUnits[durationUnit].label.en, durationUnits[durationUnit].label.ar) : String(durationUnit ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 };

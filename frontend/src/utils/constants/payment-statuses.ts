@@ -53,7 +53,7 @@ export function getPaymentStatus(totalAmount: number, totalPaid: number): Paymen
 }
 
 export function getPaymentStatusLabel(status: PaymentStatus, language: Language) {
-  return translate(language, paymentStatuses[status].label.en, paymentStatuses[status].label.ar);
+  return paymentStatuses[status] ? translate(language, paymentStatuses[status].label.en, paymentStatuses[status].label.ar) : String(status ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 }
 
 export function isPaid(status: PaymentStatus) {

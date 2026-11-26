@@ -27,7 +27,7 @@ export const vendorTypesArray = Object.values(vendorTypes);
 // ================ Helpers ================
 
 export const getVendorTypeLabel = (vendorType: VendorType, language: Language) => {
-  return translate(language, vendorTypes[vendorType].label.en, vendorTypes[vendorType].label.ar);
+  return vendorTypes[vendorType] ? translate(language, vendorTypes[vendorType].label.en, vendorTypes[vendorType].label.ar) : String(vendorType ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 };
 
 export function isCurrentVendor(vendorType: VendorType) {

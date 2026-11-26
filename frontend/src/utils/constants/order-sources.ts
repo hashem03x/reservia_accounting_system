@@ -34,7 +34,7 @@ export const orderSourcesArray = Object.values(orderSources);
 // ================ Helpers ================
 
 export function getOrderSourceLabel(source: OrderSource, language: Language) {
-  return translate(language, orderSources[source].label.en, orderSources[source].label.ar);
+  return orderSources[source] ? translate(language, orderSources[source].label.en, orderSources[source].label.ar) : String(source ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 }
 
 export function isWebsiteOrder(source: OrderSource) {

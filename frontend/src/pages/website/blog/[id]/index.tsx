@@ -323,7 +323,7 @@ function ContentTab({
         </Checkbox.Group>
       </Panel>
 
-      <Panel title={translate("Content", "المحتوى")} side={<SegmentedControl size="xs" value={locale} onChange={(v) => setLocale(v as WebsiteLocale)} data={draft.locales.map((l) => ({ value: l, label: translate(LOCALE_LABELS[l].en, LOCALE_LABELS[l].ar) }))} />}>
+      <Panel title={translate("Content", "المحتوى")} side={<SegmentedControl size="xs" value={locale} onChange={(v) => setLocale(v as WebsiteLocale)} data={draft.locales.map((l) => ({ value: l, label: translate(LOCALE_LABELS[l]?.en ?? String(l), LOCALE_LABELS[l]?.ar ?? String(l)) }))} />}>
         <div className="flex flex-col gap-3">
           <TextInput
             label={translate("Title", "العنوان")}
@@ -419,7 +419,7 @@ function SeoTab({
 
   return (
     <div className="flex max-w-3xl flex-col gap-4">
-      <SegmentedControl value={locale} onChange={(v) => setLocale(v as WebsiteLocale)} data={draft.locales.map((l) => ({ value: l, label: translate(LOCALE_LABELS[l].en, LOCALE_LABELS[l].ar) }))} />
+      <SegmentedControl value={locale} onChange={(v) => setLocale(v as WebsiteLocale)} data={draft.locales.map((l) => ({ value: l, label: translate(LOCALE_LABELS[l]?.en ?? String(l), LOCALE_LABELS[l]?.ar ?? String(l)) }))} />
 
       <Panel title={translate("Search appearance", "شكل النتيجة في البحث")}>
         <div className="flex flex-col gap-3">

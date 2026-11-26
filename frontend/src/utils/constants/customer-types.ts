@@ -27,7 +27,7 @@ export const customerTypesArray = Object.values(customerTypes);
 // ================ Helpers ================
 
 export const getCustomerTypeLabel = (customerType: CustomerType, language: Language) => {
-  return translate(language, customerTypes[customerType].label.en, customerTypes[customerType].label.ar);
+  return customerTypes[customerType] ? translate(language, customerTypes[customerType].label.en, customerTypes[customerType].label.ar) : String(customerType ?? ""); // unknown value (e.g. added on the server later): shown as-is, never a crash
 };
 
 export function isOnline(customerType: CustomerType) {

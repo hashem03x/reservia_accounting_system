@@ -109,9 +109,9 @@ export default function WebsiteCustomCodePage() {
                     {r.description && <div className="text-xs text-gray-500">{r.description}</div>}
                   </Table.Td>
                   <Table.Td>
-                    <Badge variant="light">{translate(KIND_LABEL[r.kind || "html"].en, KIND_LABEL[r.kind || "html"].ar)}</Badge>
+                    <Badge variant="light">{translate(KIND_LABEL[r.kind || "html"]?.en ?? String(r.kind || "html"), KIND_LABEL[r.kind || "html"]?.ar ?? String(r.kind || "html"))}</Badge>
                   </Table.Td>
-                  <Table.Td>{translate(PLACEMENT_LABEL[r.placement].en, PLACEMENT_LABEL[r.placement].ar)}</Table.Td>
+                  <Table.Td>{translate(PLACEMENT_LABEL[r.placement]?.en ?? String(r.placement), PLACEMENT_LABEL[r.placement]?.ar ?? String(r.placement))}</Table.Td>
                   <Table.Td>{r.scope === "page" ? pageName(r.page) : translate("Every page", "كل الصفحات")}</Table.Td>
                   <Table.Td className="text-xs">{formatCairoDateTime(r.updatedAt, language)}</Table.Td>
                   <Table.Td>
@@ -208,7 +208,7 @@ function SnippetEditor({ form, pages, onClose, onSaved }: { form: Form | null; p
             value={f.kind}
             onChange={(v) => set({ kind: (v || "html") as CustomCodeKind, placement: v === "js" ? "body_end" : f.placement })}
             allowDeselect={false}
-            data={(Object.keys(KIND_LABEL) as CustomCodeKind[]).map((k) => ({ value: k, label: translate(KIND_LABEL[k].en, KIND_LABEL[k].ar) }))}
+            data={(Object.keys(KIND_LABEL) as CustomCodeKind[]).map((k) => ({ value: k, label: translate(KIND_LABEL[k]?.en ?? String(k), KIND_LABEL[k]?.ar ?? String(k)) }))}
             data-testid="snippet-kind"
           />
           <Select
@@ -217,7 +217,7 @@ function SnippetEditor({ form, pages, onClose, onSaved }: { form: Form | null; p
             onChange={(v) => set({ placement: (v || "head") as CustomCodePlacement })}
             allowDeselect={false}
             disabled={f.kind === "css"}
-            data={(Object.keys(PLACEMENT_LABEL) as CustomCodePlacement[]).map((k) => ({ value: k, label: translate(PLACEMENT_LABEL[k].en, PLACEMENT_LABEL[k].ar) }))}
+            data={(Object.keys(PLACEMENT_LABEL) as CustomCodePlacement[]).map((k) => ({ value: k, label: translate(PLACEMENT_LABEL[k]?.en ?? String(k), PLACEMENT_LABEL[k]?.ar ?? String(k)) }))}
           />
           <Select
             label={translate("Applies to", "ينطبق على")}

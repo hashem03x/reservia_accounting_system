@@ -15,7 +15,7 @@ const LABELS: Record<CrmStage, { en: string; ar: string }> = {
 };
 
 export const crmStageLabel = (translate: (en: string, ar: string) => string) => (stage: CrmStage) =>
-  translate(LABELS[stage].en, LABELS[stage].ar);
+  translate(LABELS[stage]?.en ?? String(stage), LABELS[stage]?.ar ?? String(stage));
 
 const COLORS: Record<CrmStage, string> = {
   new: "gray",
