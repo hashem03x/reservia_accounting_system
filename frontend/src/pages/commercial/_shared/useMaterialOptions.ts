@@ -24,3 +24,18 @@ export default function useMaterialOptions(category: string) {
 
   return items;
 }
+
+/** A Price Book item the design engines can size with: not PLACEHOLDER and no technical data missing. */
+export const isEngineReady = (m: MaterialItem) => m.status !== "PLACEHOLDER" && !(m.missingSpecs && m.missingSpecs.length);
+
+/**
+ * Select options for an engine input (PV module, inverter). Items still missing technical data are
+ * listed but disabled, marked "needs technical data", so the estimator sees them without being able
+ * to pick one the calculation would refuse ("PV module ... cannot be used in a calculation yet").
+ */
+export function engineSelectData(items: MaterialItem[], unit: string, needsData: string) {
+  return items.map((m) => {
+    const ready = isEngineReady(m);
+    return { value: m.model, label: `${m.brand} ${m.model} (${m.n1 ?? "?"}${unit})${ready ? "" : ` - ${needsData}`}`, disabled: !ready };
+  });
+}

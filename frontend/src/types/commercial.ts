@@ -303,6 +303,8 @@ export type MaterialItem = {
   currency: string;
   countryStock: string;
   status: "Available" | "PLACEHOLDER" | "Discontinued";
+  /** Labels of the technical data the design engines still need ([] = usable) - utils/commercial/engineSpecs.js. */
+  missingSpecs?: string[];
   sourceWorkbook: string;
   // Deal Engine C19: supplier prices (the item's own unitPrice is the Reference price).
   supplierPrices?: { supplierCode: string; unitPrice: number; currency: string; foreignPrice: number | null; validUntil: string | null; checkedAt: string; availability: string }[];

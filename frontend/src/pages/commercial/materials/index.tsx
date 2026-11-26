@@ -130,7 +130,7 @@ export default function CommercialMaterials() {
                     </Table.Td>
                     <Table.Td>
                       <Badge size="sm" color={m.status === "Available" ? "teal" : m.status === "PLACEHOLDER" ? "orange" : "gray"} variant="light">
-                        {m.status}
+                        {m.status === "PLACEHOLDER" ? translate("Needs technical data", "تحتاج بيانات فنية") : m.status}
                       </Badge>
                     </Table.Td>
                     <Table.Td className="text-xs text-gray-400">{m.sourceWorkbook}</Table.Td>

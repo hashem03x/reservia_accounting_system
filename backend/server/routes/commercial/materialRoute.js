@@ -10,6 +10,7 @@ const router = express.Router();
 
 router.use(authController.protect, requireCommercialAccess);
 
+router.get('/spec-fields', materialController.getSpecFields);
 router.route('/').get(materialController.listMaterials).post(materialController.createMaterial);
 router.route('/:id').get(materialController.getMaterial).patch(materialController.updateMaterial);
 router.patch('/:id/archive', materialController.archiveMaterial);

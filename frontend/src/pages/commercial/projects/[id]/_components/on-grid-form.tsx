@@ -5,7 +5,7 @@ import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
 import SectionCard from "@/components/ui/section-card";
 import { CommercialProject, CommercialRevision } from "@/types/commercial";
-import useMaterialOptions from "../../../_shared/useMaterialOptions";
+import useMaterialOptions, { engineSelectData } from "../../../_shared/useMaterialOptions";
 import PctInput, { toPct } from "../../../_shared/PctInput";
 
 const STRUCTURE_TYPES = ["Rooftop", "Ground Mounted", "Hangar Roof"];
@@ -104,7 +104,7 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
           <Select
             label={translate("PV Module", "الوحدة الشمسية")}
             placeholder={translate("Select a module", "اختر وحدة")}
-            data={pvModules.map((m) => ({ value: m.model, label: `${m.brand} ${m.model} (${m.n1}W)` }))}
+            data={engineSelectData(pvModules, "W", translate("needs technical data (Materials)", "تحتاج بيانات فنية (المواد)"))}
             value={pvModuleModel || null}
             onChange={(v) => setPvModuleModel(v || "")}
             required
@@ -129,7 +129,7 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
           <Select
             label={translate("Inverter (optional)", "العاكس (اختياري)")}
             description={translate("Blank = automatic: the smallest Price Book inverter giving DC/AC 1.10 to 1.30.", "فارغ = تلقائي: أصغر عاكس في قائمة الأسعار يعطي نسبة 1.10 إلى 1.30.")}
-            data={inverters.map((m) => ({ value: m.model, label: `${m.brand} ${m.model} (${m.n1} kW)` }))}
+            data={engineSelectData(inverters, " kW", translate("needs technical data (Materials)", "تحتاج بيانات فنية (المواد)"))}
             value={inverterModel || null}
             onChange={(v) => setInverterModel(v || "")}
             clearable

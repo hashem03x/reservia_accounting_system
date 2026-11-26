@@ -93,8 +93,7 @@ async function buildOnGridCatalog(country, region) {
 
 async function runOnGridOrUtility({ category, engineeringInput, country, region, manualOverrides, engineSettings = null }) {
   const catalog = await buildOnGridCatalog(country, region);
-  const module_ = catalog.PV_MODULES.find(m => m.model === engineeringInput.pvModuleModel);
-  if (!module_) throw new ApiError(`PV module "${engineeringInput.pvModuleModel}" not found in the Price Book`, 400);
+  const module_ = await priceBook.resolvePvModule(catalog.PV_MODULES, engineeringInput.pvModuleModel);
   const siteCosts = engineeringInput.siteCrew > 0 && engineeringInput.siteDays > 0
     ? {
       crew: engineeringInput.siteCrew,
@@ -343,7 +342,7 @@ async function runAgriculturePumping({ engineeringInput, manualOverrides }) {
 
   const pvItems = await priceBook.getItemsByCategory('PV Modules');
   const pvModules = priceBook.toPvModuleShape(pvItems);
-  const module_ = pvModules.find(m => m.model === (engineeringInput.pvModuleModel || 'JKM670N-66QL6-BDV'));
+  const module_ = await priceBook.resolvePvModule(pvModules, engineeringInput.pvModuleModel || 'JKM670N-66QL6-BDV');
   const pv = pumping.sizePvForMotor({ motorKw: motor.kw, module: module_ });
   const modulesPerString = engineeringInput.modulesPerString || pv.modulesRequired;
   const strings = pumping.sizeStrings({ modulesRequired: pv.modulesRequired, modulesPerString, module: module_ });

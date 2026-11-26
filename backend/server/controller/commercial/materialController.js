@@ -5,6 +5,14 @@ const apiResponse = require('../../utils/apiResponse');
 const ApiFeatures = require('../../utils/apiFeatures');
 const { canonicalMaterialKey } = require('../../utils/commercial/materialKey');
 const { assertCanAccessEnginePage } = require('../../utils/commercial/dealEnginePermissions');
+const { ENGINE_SPECS, missingSpecs, cleanSpecPatch } = require('../../utils/commercial/engineSpecs');
+
+/** Adds `missingSpecs` (labels of the technical data the design engines still need; [] = usable). */
+function withSpecStatus(doc) {
+  const m = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
+  if (m.category === undefined || m.attrs === undefined) return m;
+  return { ...m, missingSpecs: missingSpecs(m.category, m.attrs) };
+}
 
 // Reservia Commercial - Material Price List admin. Price edits never overwrite history (the
 // project's own explicit rule): updatePrice appends to priceHistory, archive is soft-delete only.
@@ -22,13 +30,18 @@ exports.listMaterials = asyncHandler(async (req, res) => {
   const mongooseQuery = MaterialItem.find(filter);
   const { mongooseQuery: query, paginationResult } = new ApiFeatures(mongooseQuery, req.query).paginate(countDocuments).sort().filter(filter).search('MaterialItem').limitFields();
   const materials = await query;
-  res.status(200).json({ results: materials.length, paginationResult, data: materials });
+  res.status(200).json({ results: materials.length, paginationResult, data: materials.map(withSpecStatus) });
+});
+
+/** The technical fields each engine category needs (utils/commercial/engineSpecs.js) - drives the Materials editor. */
+exports.getSpecFields = asyncHandler(async (req, res) => {
+  res.status(200).json(apiResponse('Spec fields', true, ENGINE_SPECS));
 });
 
 exports.getMaterial = asyncHandler(async (req, res, next) => {
   const material = await MaterialItem.findById(req.params.id);
   if (!material) return next(new ApiError('Material not found.', 404));
-  res.status(200).json(apiResponse('Material retrieved successfully', true, material));
+  res.status(200).json(apiResponse('Material retrieved successfully', true, withSpecStatus(material)));
 });
 
 // R12/R2: "procurement owns Materials, Suppliers and price list uploads" (section 3) - md and
@@ -73,14 +86,42 @@ exports.updateMaterial = asyncHandler(async (req, res, next) => {
   const material = await MaterialItem.findById(req.params.id);
   if (!material) return next(new ApiError('Material not found.', 404));
 
-  const { unitPrice, currency } = req.body;
+  const { unitPrice, currency, attrs: attrsPatch, status, ...rest } = req.body;
   if (unitPrice !== undefined && (unitPrice !== material.unitPrice || currency !== material.currency)) {
     material.priceHistory.push({ price: unitPrice, currency: currency || material.currency, effectiveDate: new Date(), changedBy: req.user._id });
     material.effectiveDate = new Date();
   }
-  Object.assign(material, req.body);
+  Object.assign(material, rest);
+  if (unitPrice !== undefined) material.unitPrice = unitPrice;
+  if (currency !== undefined) material.currency = currency;
+
+  // Technical data (Deal Engine "PV module not found in the Price Book"): an item a supplier upload
+  // created carries its rated value only and stays PLACEHOLDER - out of the engine catalogs - until
+  // the rest is entered here. Values are merged into attrs (never replacing unrelated keys) and
+  // checked against utils/commercial/engineSpecs.js.
+  if (attrsPatch !== undefined) {
+    if (!attrsPatch || typeof attrsPatch !== 'object' || Array.isArray(attrsPatch)) return next(new ApiError('Technical data must be an object.', 400));
+    const { attrs: clean, errors } = cleanSpecPatch(material.category, attrsPatch);
+    if (errors.length) return next(new ApiError(errors.join(' '), 400));
+    material.attrs = { ...(material.attrs || {}), ...clean };
+    // A module's per-watt price is what the engines bill (pmaxW x pricePerWatt); derived from its
+    // unit (per-piece) price, and re-derived from the supplier price at lookup (priceBookLookup.js).
+    if (material.category === 'PV Modules' && material.attrs.pmaxW > 0) {
+      material.attrs.pricePerWatt = Math.round((material.unitPrice / material.attrs.pmaxW) * 1e6) / 1e6;
+      if (material.n1 == null) material.n1 = material.attrs.pmaxW;
+    }
+    material.markModified('attrs');
+  }
+  const missing = missingSpecs(material.category, material.attrs);
+  if (status !== undefined) {
+    if (status === 'Available' && missing.length) return next(new ApiError(`${material.brand} ${material.model} cannot be made available yet - missing: ${missing.join(', ')}.`, 400));
+    material.status = status;
+  } else if (material.status === 'PLACEHOLDER' && attrsPatch !== undefined && ENGINE_SPECS[material.category] && !missing.length) {
+    // Completed: the engines can now size with it.
+    material.status = 'Available';
+  }
   await material.save();
-  res.status(200).json(apiResponse('Material updated successfully', true, material));
+  res.status(200).json(apiResponse('Material updated successfully', true, withSpecStatus(material)));
 });
 
 exports.archiveMaterial = asyncHandler(async (req, res, next) => {

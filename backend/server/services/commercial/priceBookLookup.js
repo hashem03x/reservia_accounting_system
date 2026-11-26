@@ -1,6 +1,7 @@
 const MaterialItem = require('../../models/commercial/materialItemModel');
 const ApiError = require('../../utils/apiError');
 const { effectivePrice } = require('./supplierPricing');
+const { missingSpecs } = require('../../utils/commercial/engineSpecs');
 
 // Reservia Commercial - Mongo-backed Price Book lookups for the calculation engines. Mirrors the
 // reference HTML's own `makeLookup` behaviour deliberately: throws on a missing key rather than
@@ -42,6 +43,29 @@ async function getItemByKey(key) {
   return withEffectivePrice(item, await supplierStatuses());
 }
 
+/**
+ * The PV module an engineering input names, from the engine catalog (toPvModuleShape). When it is not
+ * usable, says WHY instead of a bare "not found": the engineering form lists every non-archived
+ * module, but a module a supplier upload created stays PLACEHOLDER (no electrical data yet) and is
+ * kept out of the engine catalog until it is completed on Deal Engine -> Materials.
+ */
+async function resolvePvModule(modules, model) {
+  const name = String(model || '').trim();
+  if (!name) throw new ApiError('Choose the PV module.', 400);
+  const found = modules.find(m => m.model === name);
+  const gaps = found ? missingSpecs('PV Modules', found) : null;
+  if (found && !gaps.length) return found;
+  const item = found ? null : await MaterialItem.findOne({ category: 'PV Modules', model: name }).sort({ archived: 1 }).lean();
+  if (!found && !item) throw new ApiError(`PV module "${name}" is not in the Price Book. Choose a module from the list (Deal Engine -> Materials shows the catalog).`, 400);
+  if (item && item.archived) throw new ApiError(`PV module "${name}" was archived in the Price Book. Choose another module.`, 400);
+  const missing = gaps || missingSpecs('PV Modules', item.attrs);
+  throw new ApiError(
+    `PV module "${name}" cannot be used in a calculation yet: its electrical data is incomplete${missing.length ? ` (missing: ${missing.join(', ')})` : ' (it is still marked PLACEHOLDER)'}. ` +
+    'A Materials editor (MD, Sales and Commercial Director or Procurement) can complete it on Deal Engine -> Materials, then calculate again.',
+    400
+  );
+}
+
 /** Reshapes 'PV Modules' CommercialMaterialItem docs into onGridEngine.js's PV_MODULES shape. */
 function toPvModuleShape(items) {
   return items.map(it => ({ brand: it.brand, model: it.model, pmaxW: it.attrs.pmaxW, vmp: it.attrs.vmp, imp: it.attrs.imp, voc: it.attrs.voc, isc: it.attrs.isc, vocTempCoeffPctPerC: it.attrs.vocTempCoeffPctPerC, maxDcV: it.attrs.maxDcV, pricePerWatt: it.attrs.pricePerWatt, key: it.key, priceInfo: it.priceInfo }));
@@ -67,6 +91,6 @@ function toAcDistributionBoardShape(items) {
 }
 
 module.exports = {
-  getItemsByCategory, getItemByKey, withEffectivePrice, supplierStatuses,
+  getItemsByCategory, getItemByKey, withEffectivePrice, supplierStatuses, resolvePvModule,
   toPvModuleShape, toGridInverterShape, toDcCableShape, toAcBreakerShape, toAcDistributionBoardShape,
 };

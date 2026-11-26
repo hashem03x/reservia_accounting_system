@@ -6,7 +6,7 @@ import handleRequest from "@/utils/helpers/handle-request";
 import SectionCard from "@/components/ui/section-card";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import { CommercialProject, CommercialRevision } from "@/types/commercial";
-import useMaterialOptions from "../../../_shared/useMaterialOptions";
+import useMaterialOptions, { engineSelectData } from "../../../_shared/useMaterialOptions";
 
 type FieldCropRow = { areaFeddan: number; irrigationCode: number; intervalDays: number; sunHours: number };
 type TreeRow = { areaFeddan: number; treeCode: number; intervalDays: number };
@@ -119,7 +119,7 @@ export default function PumpingForm({ project, revision, onSaved }: { project: C
           <NumberInput label={translate("Pump Drives (qty)", "عدد وحدات الضخ")} value={pumpQty} onChange={(v) => setPumpQty((v as number) || 1)} min={1} />
           <Select
             label={translate("PV Module", "الوحدة الشمسية")}
-            data={pvModules.map((m) => ({ value: m.model, label: `${m.brand} ${m.model} (${m.n1}W)` }))}
+            data={engineSelectData(pvModules, "W", translate("needs technical data (Materials)", "تحتاج بيانات فنية (المواد)"))}
             value={pvModuleModel || null}
             onChange={(v) => setPvModuleModel(v || "")}
           />
