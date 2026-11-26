@@ -8,6 +8,26 @@ const { assertCanAccessEnginePage } = require('../../utils/commercial/dealEngine
 const { ENGINE_SPECS, missingSpecs, cleanSpecPatch } = require('../../utils/commercial/engineSpecs');
 const workbookImport = require('../../services/commercial/workbookImport/importService');
 const erpProductSync = require('../../services/commercial/workbookImport/erpProductSync');
+const { flagOpenRevisions } = require('../../services/commercial/priceListUploadService');
+const Supplier = require('../../models/commercial/supplierModel');
+
+/**
+ * Supplier prices carry a code; the Materials page shows the supplier's NAME and current status
+ * next to it (and whether that price is used: only Approved/Conditional suppliers price a BOQ).
+ */
+async function withSupplierNames(materials) {
+  const ids = [...new Set(materials.flatMap(m => (m.supplierPrices || []).map(sp => String(sp.supplier))))];
+  if (!ids.length) return materials;
+  const sups = await Supplier.find({ _id: { $in: ids } }).select('legalName status').lean();
+  const byId = new Map(sups.map(s => [String(s._id), s]));
+  return materials.map(m => ({
+    ...m,
+    supplierPrices: (m.supplierPrices || []).map(sp => {
+      const s = byId.get(String(sp.supplier));
+      return { ...sp, supplierName: s?.legalName || null, supplierStatus: s?.status || null, usedInPricing: s?.status === 'Approved' || s?.status === 'Conditional' };
+    }),
+  }));
+}
 
 /** Adds `missingSpecs` (labels of the technical data the design engines still need; [] = usable). */
 function withSpecStatus(doc) {
@@ -32,7 +52,7 @@ exports.listMaterials = asyncHandler(async (req, res) => {
   const mongooseQuery = MaterialItem.find(filter);
   const { mongooseQuery: query, paginationResult } = new ApiFeatures(mongooseQuery, req.query).paginate(countDocuments).sort().filter(filter).search('MaterialItem').limitFields();
   const materials = await query;
-  res.status(200).json({ results: materials.length, paginationResult, data: materials.map(withSpecStatus) });
+  res.status(200).json({ results: materials.length, paginationResult, data: await withSupplierNames(materials.map(withSpecStatus)) });
 });
 
 // ---------------------------------------------------------------- workbook import + ERP products
@@ -76,7 +96,7 @@ exports.getSpecFields = asyncHandler(async (req, res) => {
 exports.getMaterial = asyncHandler(async (req, res, next) => {
   const material = await MaterialItem.findById(req.params.id);
   if (!material) return next(new ApiError('Material not found.', 404));
-  res.status(200).json(apiResponse('Material retrieved successfully', true, withSpecStatus(material)));
+  res.status(200).json(apiResponse('Material retrieved successfully', true, (await withSupplierNames([withSpecStatus(material)]))[0]));
 });
 
 // R12/R2: "procurement owns Materials, Suppliers and price list uploads" (section 3) - md and
@@ -155,7 +175,10 @@ exports.updateMaterial = asyncHandler(async (req, res, next) => {
     // Completed: the engines can now size with it.
     material.status = 'Available';
   }
+  const priceMoved = material.isModified('unitPrice') || material.isModified('currency') || (material.category === 'PV Modules' && material.isModified('attrs'));
   await material.save();
+  // C24: a Reference price edit reaches open revisions only on their next recalculation - flag them.
+  if (priceMoved) await flagOpenRevisions([{ key: material.key, model: material.model }]);
   res.status(200).json(apiResponse('Material updated successfully', true, withSpecStatus(material)));
 });
 

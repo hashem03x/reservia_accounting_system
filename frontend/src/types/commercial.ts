@@ -138,6 +138,10 @@ export type BoqLine = {
   // Deal Engine C19/C23 - where a Price Book line's price came from.
   priceSource?: "supplier" | "reference" | null;
   supplierCode?: string | null;
+  // The supplier's name at calculation time, and why the price is what it is when that is not
+  // obvious (an unapproved supplier's quote not used, a foreign quote at the upload-day rate).
+  supplierName?: string | null;
+  priceNote?: string | null;
   supplierStatus?: string | null;
   priceFlags?: string[];
   foreignPrice?: number | null;
@@ -228,8 +232,22 @@ export type CommercialRevision = {
   // R11: a deal-specific override of a policy lever by the S&C Director or MD.
   policyOverride?: { active: boolean; reason: string | null; byName: string | null; at: string | null; policyVersion: number | null };
   waitingOn?: string | null;
+  // When the engineering/BOQ/pricing were last actually calculated (not a vendor pick or approval).
+  lastCalculatedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  // PATCH commercial/revisions/:id only - what that recalculation changed (never stored).
+  recalcSummary?: RecalcSummary | null;
+};
+
+type RecalcTotals = { boqTotal?: number | null; netExclVat?: number | null; grossInclVat?: number | null };
+export type RecalcSummary = {
+  revisionNumber: number;
+  previous: RecalcTotals;
+  current: RecalcTotals;
+  changedLines: { component: string; change: "added" | "changed" | "removed"; qty?: { from: number | null; to: number | null } | number | null; unitPrice?: { from: number | null; to: number | null } | number | null }[];
+  overridesKept: number;
+  linesWithPriceNotes: string[];
 };
 
 export type CommercialProject = {
@@ -307,7 +325,21 @@ export type MaterialItem = {
   missingSpecs?: string[];
   sourceWorkbook: string;
   // Deal Engine C19: supplier prices (the item's own unitPrice is the Reference price).
-  supplierPrices?: { supplierCode: string; unitPrice: number; currency: string; foreignPrice: number | null; validUntil: string | null; checkedAt: string; availability: string }[];
+  supplierPrices?: {
+    supplierCode: string;
+    // Added by the API from the supplier record: its name, current status, and whether this price is
+    // used by the Deal Engine at all (only Approved / Conditional suppliers price a BOQ).
+    supplierName?: string | null;
+    supplierStatus?: string | null;
+    usedInPricing?: boolean;
+    unitPrice: number;
+    currency: string;
+    foreignPrice: number | null;
+    fxRate?: number | null;
+    validUntil: string | null;
+    checkedAt: string;
+    availability: string;
+  }[];
   sourceSheet: string;
   effectiveDate: string;
   key: string;

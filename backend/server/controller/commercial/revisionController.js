@@ -7,10 +7,27 @@ const revisionService = require('../../services/commercial/revisionService');
 const createPrService = require('../../services/commercial/createPrService');
 const pricingConfigService = require('../../services/commercial/pricingConfigService');
 const { waitingOn } = require('../../services/commercial/approvalService');
+const boqExport = require('../../services/commercial/boqExportService');
+const { setFileHeaders } = require('../../utils/contentDisposition');
 const {
   shapeRevisionForRole, assertEngineeringInputWriteAllowed, assertPricingWriteAllowed,
-  isPolicyLeverOverride, assertOverrideReasonGiven,
+  isPolicyLeverOverride, assertOverrideReasonGiven, PROJECT_TAB_MATRIX, widestLevel, canView,
 } = require('../../utils/commercial/dealEnginePermissions');
+
+/**
+ * What a recalculation changed, for the dashboard's notification - with money stripped for roles
+ * that may not see BOQ costs or pricing (R12, the same matrix as shapeRevisionForRole).
+ */
+function summaryForRole(summary, roles) {
+  if (!summary) return null;
+  const costs = canView(widestLevel(PROJECT_TAB_MATRIX.boqCosts, roles));
+  const pricing = canView(widestLevel(PROJECT_TAB_MATRIX.pricing, roles));
+  const money = t => ({ boqTotal: costs ? t.boqTotal : undefined, netExclVat: pricing ? t.netExclVat : undefined, grossInclVat: pricing ? t.grossInclVat : undefined });
+  const lines = summary.changedLines
+    .map(({ unitPrice, ...rest }) => (costs ? { ...rest, unitPrice } : rest))
+    .filter(l => costs || l.change !== 'changed' || l.qty || l.description);
+  return { ...summary, previous: money(summary.previous), current: money(summary.current), changedLines: lines };
+}
 
 /** R7/R9: the Sales-limits row and the active policy version that apply to a project's own category/sector. */
 async function salesLimitsForProjectCategory(category) {
@@ -93,13 +110,31 @@ exports.recomputeRevision = asyncHandler(async (req, res, next) => {
     manualOverrides, pricingOverrides, applyCurrentConfig: applyCurrentConfig === true, userId: req.user._id,
     roles: req.commercialRoles, salesLimits,
   });
+  const summary = revision.$locals.recalcSummary;
   if (isOverride) revision = await recordPolicyOverride(revision, { userId: req.user._id, userName: req.user.name, reason: overrideReason, policyVersion });
-  res.status(200).json(apiResponse('Revision recomputed successfully', true, shapeRevisionForRole(withWaitingOn(revision), req.commercialRoles)));
+  const data = shapeRevisionForRole(withWaitingOn(revision), req.commercialRoles);
+  data.recalcSummary = summaryForRole(summary, req.commercialRoles);
+  const n = data.recalcSummary ? data.recalcSummary.changedLines.length : 0;
+  const what = n ? `${n} BOQ line(s) changed` : 'no BOQ line changed (same inputs and prices)';
+  res.status(200).json(apiResponse(`Revision ${revision.revisionNumber} recalculated and saved - ${what}.`, true, data));
+});
+
+/**
+ * Deal Engine - BOQ export of ONE stored revision (the current one unless the dashboard selected a
+ * historical one): ?format=xlsx (default) or csv. Generated from MongoDB, never from browser state.
+ */
+exports.exportBoq = asyncHandler(async (req, res) => {
+  const format = String(req.query.format || 'xlsx').toLowerCase();
+  if (!['xlsx', 'csv'].includes(format)) throw new ApiError('Export format must be xlsx or csv.', 400);
+  const ctx = { roles: req.commercialRoles, user: req.user };
+  const file = format === 'csv' ? await boqExport.buildCsv(req.params.id, ctx) : await boqExport.buildXlsx(req.params.id, ctx);
+  setFileHeaders(res, { fileName: file.fileName, contentType: file.contentType, size: file.buffer.length });
+  res.status(200).end(file.buffer);
 });
 
 /** Creates a brand-new revision (never edits a previous one) against the same project. Same field-level gate as recompute above. */
 exports.createRevisionForProject = asyncHandler(async (req, res, next) => {
-  const { engineeringInput, manualOverrides, pricingOverrides, overrideReason } = req.body;
+  const { engineeringInput, manualOverrides, pricingOverrides, overrideReason, requestId } = req.body;
   assertEngineeringInputWriteAllowed(req.commercialRoles, engineeringInput);
   assertPricingWriteAllowed(req.commercialRoles, pricingOverrides);
   const isOverride = isPolicyLeverOverride(req.commercialRoles, pricingOverrides);
@@ -108,8 +143,12 @@ exports.createRevisionForProject = asyncHandler(async (req, res, next) => {
   if (!project) return next(new ApiError('Deal Engine project not found.', 404));
   const { salesLimits, policyVersion } = await salesLimitsForProjectCategory(project.category);
   let revision = await revisionService.createRevision(req.params.projectId, engineeringInput, {
-    manualOverrides, pricingOverrides, userId: req.user._id, roles: req.commercialRoles, salesLimits,
+    manualOverrides, pricingOverrides, userId: req.user._id, roles: req.commercialRoles, salesLimits, requestId,
   });
+  const duplicate = !!revision.$locals?.duplicateOf;
   if (isOverride) revision = await recordPolicyOverride(revision, { userId: req.user._id, userName: req.user.name, reason: overrideReason, policyVersion });
-  res.status(201).json(apiResponse('Revision created successfully', true, shapeRevisionForRole(withWaitingOn(revision), req.commercialRoles)));
+  const message = duplicate
+    ? `Revision ${revision.revisionNumber} was already created from these inputs a moment ago - no duplicate revision was added.`
+    : `Revision ${revision.revisionNumber} calculated and created.`;
+  res.status(duplicate ? 200 : 201).json(apiResponse(message, true, shapeRevisionForRole(withWaitingOn(revision), req.commercialRoles)));
 });

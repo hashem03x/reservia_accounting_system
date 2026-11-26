@@ -339,6 +339,10 @@ async function applyImport(file, options, { user, roles }) {
   const plan = await buildPlan(parsed);
   const written = await writeItems(plan, user, parsed.fileName);
   const result = { items: { ...summarize(plan), written }, rates: null, pricing: null, erp: null };
+  // C24: open revisions that use an item whose price this import changed are flagged to recalculate.
+  const repriced = plan.updates.filter(u => u.set.unitPrice !== undefined || (u.doc.category === 'PV Modules' && u.set.attrs !== undefined)).map(u => ({ key: u.doc.key, model: u.doc.model }));
+  // eslint-disable-next-line global-require
+  if (repriced.length) result.items.flaggedRevisions = await require('../priceListUploadService').flagOpenRevisions(repriced);
 
   if (opts.rates && rates && rates.status !== 'unchanged') {
     const version = await RatesConfig.create({ ...ratesMatrix.validateMatrix('Egypt', rates.body), source: 'workbook', createdBy: user._id });

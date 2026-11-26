@@ -18,6 +18,10 @@ const priceListUploadSchema = new Schema(
   {
     supplier: { type: Schema.Types.ObjectId, ref: 'CommercialSupplier', required: true },
     supplierCode: { type: String, required: true },
+    // The supplier's name and status at upload time (the history shows the CURRENT ones - see
+    // priceListUploadService.js#withSupplier); only Approved/Conditional suppliers price a BOQ.
+    supplierName: { type: String, default: null },
+    supplierStatus: { type: String, default: null },
     // A blanket percentage discount applied across this supplier's current prices
     // (priceListUploadService.js#applyPercentageDiscount), without re-uploading a whole list -
     // uses this SAME record shape (changes/rollback/C24 open-revision flagging) so the existing

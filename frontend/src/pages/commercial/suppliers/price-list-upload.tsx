@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
-import { Alert, Badge, Button, Checkbox, FileInput, NumberInput, Select, Table, TextInput } from "@mantine/core";
+import { Alert, Badge, Button, FileInput, Modal, NumberInput, Select, Table, TextInput } from "@mantine/core";
 import errorMessage from "@/utils/helpers/error-message";
 import { useLanguage } from "@/context/LanguageContext";
 import usePrivateRequest from "@/hooks/usePrivateRequest";
 import SectionCard from "@/components/ui/section-card";
 import { MAPPING_FIELDS, type PriceListUpload as Upload } from "./types";
+import PriceListRows from "./price-list-rows";
 
-const STATUS_COLOR: Record<string, string> = { Update: "blue", New: "grape", Unchanged: "gray", Error: "red" };
-const egp = (v: number | null | undefined) => (v == null ? "-" : Math.round(v).toLocaleString("en-US"));
+const supplierLabel = (u: Pick<Upload, "supplierName" | "supplierCode">) => (u.supplierName ? `${u.supplierName} (${u.supplierCode})` : u.supplierCode);
 
 /**
  * Deal Engine C21-C24 / Spec Part 2 section 5. Choose a CSV/XLSX and the quote validity date; the
@@ -28,6 +28,20 @@ export default function PriceListUpload({ supplierId, canEdit, onChanged }: { su
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [history, setHistory] = useState<Upload[]>([]);
   const [discountPct, setDiscountPct] = useState<number | "">("");
+  // An earlier upload's stored rows (View) - supplier, quoted price, EGP price and errors per row.
+  const [viewing, setViewing] = useState<Upload | null>(null);
+
+  async function view(id: string) {
+    setBusy(`view-${id}`);
+    try {
+      const res = await privateRequest({ url: `commercial/suppliers/price-lists/${id}`, language });
+      setViewing(res.data as Upload);
+    } catch (e) {
+      setMessage({ ok: false, text: errorMessage(e) });
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function loadHistory() {
     try {
@@ -189,65 +203,25 @@ export default function PriceListUpload({ supplierId, canEdit, onChanged }: { su
                 {translate("Preview again with this mapping", "معاينة مرة أخرى بهذا الربط")}
               </Button>
             </div>
-            <p className="text-xs text-gray-600">
-              {Object.entries(preview.summary)
-                .map(([k, v]) => `${k}: ${v}`)
-                .join(" · ")}
+            {preview.supplierPricesBoq === false || (preview.supplierStatus && !["Approved", "Conditional"].includes(preview.supplierStatus)) ? (
+              <Alert color="yellow" variant="light" data-testid="price-list-not-pricing">
+                {translate(
+                  `${supplierLabel(preview)} is ${preview.supplierStatus}. Its prices will be stored, but the Deal Engine prices BOQs only from Approved or Conditional suppliers - approve the supplier for these prices to be used.`,
+                  `${supplierLabel(preview)} حالته ${preview.supplierStatus}. ستُحفظ الأسعار، لكن محرك الصفقات يسعّر فقط من الموردين المعتمدين أو المشروطين - اعتمد المورد لاستخدام هذه الأسعار.`
+                )}
+              </Alert>
+            ) : null}
+            <p className="text-xs text-gray-600" data-testid="price-list-summary">
+              {supplierLabel(preview)} · {translate("rows", "صفوف")}: {preview.summary.total ?? 0}
+              {(["Update", "New", "Unchanged", "Error"] as const).map((k) => (preview.summary[k] ? ` · ${k}: ${preview.summary[k]}` : "")).join("")}
             </p>
-            <div className="max-h-[420px] overflow-auto">
-              <Table striped stickyHeader fz="xs" miw={980} data-testid="price-list-preview-table">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>#</Table.Th>
-                    <Table.Th>{translate("Item (brand | model | spec)", "الصنف")}</Table.Th>
-                    <Table.Th>{translate("Current (EGP)", "الحالي")}</Table.Th>
-                    <Table.Th>{translate("New", "الجديد")}</Table.Th>
-                    <Table.Th>{translate("Change", "التغير")}</Table.Th>
-                    <Table.Th>{translate("Rated", "القيمة المقننة")}</Table.Th>
-                    <Table.Th>{translate("Availability", "التوفر")}</Table.Th>
-                    <Table.Th>{translate("Status", "الحالة")}</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {preview.rows?.map((r) => (
-                    <Table.Tr key={r.rowNo}>
-                      <Table.Td>{r.rowNo}</Table.Td>
-                      <Table.Td>
-                        <div>{r.key}</div>
-                        <div className="text-[10px] text-gray-500">{r.category}</div>
-                      </Table.Td>
-                      <Table.Td>{egp(r.current)}</Table.Td>
-                      <Table.Td>
-                        {r.currency !== "EGP" && r.price != null ? `${r.price.toLocaleString("en-US")} ${r.currency} = ` : ""}
-                        {egp(r.egp)}
-                      </Table.Td>
-                      <Table.Td className={r.changePct != null && r.changePct > 0 ? "text-red-600" : "text-teal-700"}>{r.changePct != null ? `${r.changePct > 0 ? "+" : ""}${r.changePct}%` : "-"}</Table.Td>
-                      <Table.Td>{r.ratedValue != null ? `${r.ratedValue} ${r.ratedUnit || ""}` : "-"}</Table.Td>
-                      <Table.Td>
-                        {r.availability}
-                        {r.leadTimeDays ? ` (${r.leadTimeDays} d)` : ""}
-                      </Table.Td>
-                      <Table.Td>
-                        <div className="flex items-center gap-1">
-                          <Badge color={STATUS_COLOR[r.status]} variant="light" size="sm">
-                            {r.status}
-                          </Badge>
-                          {r.status === "New" && (
-                            <Checkbox
-                              size="xs"
-                              label={translate("create", "إنشاء")}
-                              checked={createNew.includes(r.rowNo)}
-                              onChange={(e) => setCreateNew((c) => (e.currentTarget.checked ? [...c, r.rowNo] : c.filter((n) => n !== r.rowNo)))}
-                            />
-                          )}
-                        </div>
-                        {r.errors.length > 0 && <div className="text-[10px] text-red-600">{r.errors.join("; ")}</div>}
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </div>
+            <PriceListRows
+              rows={preview.rows || []}
+              supplierLabel={supplierLabel(preview)}
+              createNew={createNew}
+              onToggleCreate={(rowNo, checked) => setCreateNew((c) => (checked ? [...c, rowNo] : c.filter((n) => n !== rowNo)))}
+              testId="price-list-preview-table"
+            />
             <p className="text-xs text-gray-500">
               {translate(
                 "Confirm writes the Update rows and the New rows you ticked (new items start as placeholders until their electrical data is completed). Errors and unchanged rows are skipped. Open revisions using a changed item are flagged - nothing is recalculated automatically.",
@@ -265,25 +239,58 @@ export default function PriceListUpload({ supplierId, canEdit, onChanged }: { su
           <p className="text-xs text-gray-500">{translate("No uploads yet.", "لا يوجد رفع بعد.")}</p>
         ) : (
           <div className="overflow-x-auto">
-            <Table fz="xs" miw={620}>
+            <Table fz="xs" miw={900} data-testid="price-list-history">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{translate("File", "الملف")}</Table.Th>
+                  <Table.Th>{translate("Supplier", "المورد")}</Table.Th>
+                  <Table.Th>{translate("Uploaded", "تاريخ الرفع")}</Table.Th>
+                  <Table.Th>{translate("By", "بواسطة")}</Table.Th>
+                  <Table.Th>{translate("Status", "الحالة")}</Table.Th>
+                  <Table.Th className="text-right">{translate("Imported", "تم استيراده")}</Table.Th>
+                  <Table.Th className="text-right">{translate("Rows with errors", "صفوف بها أخطاء")}</Table.Th>
+                  <Table.Th>{translate("Revisions flagged", "نسخ معلَّمة")}</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Thead>
               <Table.Tbody>
                 {history.map((h) => (
-                  <Table.Tr key={h._id}>
+                  <Table.Tr key={h._id} data-testid="price-list-history-row">
                     <Table.Td>{h.fileName}</Table.Td>
+                    <Table.Td>
+                      {supplierLabel(h)}
+                      {h.supplierPricesBoq === false && (
+                        <Badge size="xs" color="yellow" variant="light" ml={4}>
+                          {translate(`${h.supplierStatus} - prices not used`, `${h.supplierStatus} - الأسعار غير مستخدمة`)}
+                        </Badge>
+                      )}
+                    </Table.Td>
                     <Table.Td>{dayjs(h.createdAt).format("DD MMM YYYY HH:mm")}</Table.Td>
                     <Table.Td>{h.uploadedByName || "-"}</Table.Td>
                     <Table.Td>
                       <Badge size="sm" variant="light" color={h.status === "confirmed" ? "teal" : h.status === "rolledBack" ? "orange" : "gray"}>
-                        {h.status}
+                        {h.status === "previewed" ? translate("not confirmed", "لم يؤكد") : h.status}
                       </Badge>
                     </Table.Td>
-                    <Table.Td>{h.status !== "previewed" ? `${h.changes?.length ?? 0} ${translate("price(s)", "سعر")}, ${h.flaggedRevisions} ${translate("revision(s) flagged", "نسخة معلَّمة")}` : translate("not confirmed", "لم يؤكد")}</Table.Td>
+                    <Table.Td className="text-right" data-testid="price-list-history-imported">
+                      {h.counts?.imported ?? h.changes?.length ?? 0}
+                      {h.kind !== "discount" && h.counts?.rows != null ? ` / ${h.counts.rows}` : ""}
+                    </Table.Td>
+                    <Table.Td className={`text-right ${h.counts?.errors ? "text-red-600" : ""}`}>{h.counts?.errors ?? 0}</Table.Td>
+                    <Table.Td>{h.status !== "previewed" ? h.flaggedRevisions : "-"}</Table.Td>
                     <Table.Td className="text-right">
-                      {canEdit && h.status === "confirmed" && (
-                        <Button size="compact-xs" variant="subtle" color="orange" loading={busy === `rb-${h._id}`} onClick={() => rollback(h._id)}>
-                          {translate("Roll back", "تراجع")}
-                        </Button>
-                      )}
+                      <div className="flex justify-end gap-1">
+                        {h.kind !== "discount" && (
+                          <Button size="compact-xs" variant="subtle" loading={busy === `view-${h._id}`} onClick={() => view(h._id)} data-testid="price-list-view">
+                            {translate("View", "عرض")}
+                          </Button>
+                        )}
+                        {canEdit && h.status === "confirmed" && (
+                          <Button size="compact-xs" variant="subtle" color="orange" loading={busy === `rb-${h._id}`} onClick={() => rollback(h._id)}>
+                            {translate("Roll back", "تراجع")}
+                          </Button>
+                        )}
+                      </div>
                     </Table.Td>
                   </Table.Tr>
                 ))}
@@ -291,6 +298,22 @@ export default function PriceListUpload({ supplierId, canEdit, onChanged }: { su
             </Table>
           </div>
         )}
+        <Modal
+          opened={!!viewing}
+          onClose={() => setViewing(null)}
+          size="90%"
+          title={viewing ? `${viewing.fileName} - ${supplierLabel(viewing)}` : ""}
+        >
+          {viewing && (
+            <div className="flex flex-col gap-2" data-testid="price-list-view-modal">
+              <p className="text-xs text-gray-600">
+                {dayjs(viewing.createdAt).format("DD MMM YYYY HH:mm")} · {viewing.uploadedByName || "-"} · {viewing.status} · {translate("imported", "تم استيراده")}: {viewing.counts?.imported ?? 0} / {viewing.counts?.rows ?? 0}
+                {viewing.counts?.errors ? ` · ${translate("rows with errors", "صفوف بها أخطاء")}: ${viewing.counts.errors}` : ""}
+              </p>
+              <PriceListRows rows={viewing.rows || []} supplierLabel={supplierLabel(viewing)} testId="price-list-view-table" />
+            </div>
+          )}
+        </Modal>
       </div>
     </SectionCard>
   );

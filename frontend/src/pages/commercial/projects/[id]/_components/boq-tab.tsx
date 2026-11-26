@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Alert, Badge, Button, NumberInput, Select, Table, Tooltip } from "@mantine/core";
+import dayjs from "dayjs";
+import { Alert, Badge, Button, Menu, NumberInput, Select, Table, Tooltip } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import { useSystemAccess } from "@/context/SystemAccessContext";
 import useDataHandler from "@/hooks/useDataHandler";
@@ -8,9 +9,11 @@ import { formatAmount } from "@/utils/helpers/format-amount";
 import { DataTable, DataTableContainer, dataTableHeadClassName } from "@/components/ui/data-table";
 import { solidIcons } from "@/components/icons";
 import { notifyError } from "@/utils/helpers/notifiers";
+import errorMessage from "@/utils/helpers/error-message";
 import { BoqLine, CommercialProject, CommercialRevision, CommercialRole } from "@/types/commercial";
 import { canEdit, projectTabAccess } from "../../../_shared/dealEnginePermissions";
 import CreatePrModal from "./create-pr-modal";
+import { notifyRecalculated } from "../../../_shared/recalcNotice";
 
 // Feature 2/3 - who may select/change a BOQ line's vendor (mirrors backend
 // revisionService.js#BOQ_VENDOR_ROLES).
@@ -67,26 +70,120 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
     setOverrides((prev) => ({ ...prev, [component]: { ...prev[component], [field]: value } }));
   }
 
-  function handleSave() {
+  // One write path for every BOQ action: the revision is recalculated from its stored engineering
+  // input with the LATEST Price Book / supplier prices and Rates matrix, saved, and reloaded. Saved
+  // overrides are kept by the server (revisionService.js#carriedOverrides); `null` resets one.
+  const [busy, setBusy] = useState<string | null>(null);
+  function recalculate(manualOverrides: Record<string, { qty?: number; unitPrice?: number } | null> | undefined, key: string) {
+    setBusy(key);
     handleRequest(language, setLoading, setError, async () => {
-      await privateRequest({
-        url: `commercial/revisions/${revision._id}`,
-        method: "PATCH",
-        data: { engineeringInput: revision.engineeringInput, manualOverrides: overrides },
-        language,
-      });
-      setOverrides({});
-      onChanged();
+      try {
+        const res = await privateRequest({
+          url: `commercial/revisions/${revision._id}`,
+          method: "PATCH",
+          data: { engineeringInput: revision.engineeringInput, ...(manualOverrides ? { manualOverrides } : {}) },
+          language,
+        });
+        setOverrides({});
+        notifyRecalculated({ language, translate, response: res, currency: project.currency });
+        onChanged();
+      } finally {
+        setBusy(null);
+      }
     });
   }
+  const handleSave = () => recalculate(overrides, "save");
+
+  // Export of the STORED revision (generated server-side from MongoDB, never from this table's state).
+  const [exporting, setExporting] = useState<"xlsx" | "csv" | null>(null);
+  async function exportBoq(format: "xlsx" | "csv") {
+    setExporting(format);
+    try {
+      await privateRequest({
+        url: `commercial/revisions/${revision._id}/boq-export`,
+        params: { format },
+        download: true,
+        filename: `BOQ_${project.projectCode}_Rev${revision.revisionNumber}.${format}`,
+        language,
+      });
+    } catch (e) {
+      notifyError({ language, message: errorMessage(e) });
+    } finally {
+      setExporting(null);
+    }
+  }
+  const hasLines = revision.boqLines.length > 0;
+  const isLocked = !revision.isCurrent;
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2" data-testid="boq-toolbar">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-semibold">{translate(`Revision ${revision.revisionNumber}`, `النسخة ${revision.revisionNumber}`)}</span>
+          <Badge size="sm" variant="light" color={revision.isCurrent ? "teal" : "gray"}>
+            {revision.isCurrent ? translate("Current", "الحالية") : translate("Superseded", "سابقة")}
+          </Badge>
+          {revision.status === "Draft" && (
+            <Badge size="sm" variant="light" color="orange">
+              {translate("Draft - recalculate", "مسودة - أعد الحساب")}
+            </Badge>
+          )}
+          <span className="text-xs text-gray-500" data-testid="boq-calculated-at">
+            {translate("Calculated", "تم الحساب")} {dayjs(revision.lastCalculatedAt || revision.updatedAt).format("DD MMM YYYY HH:mm")}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {canEditBoq && !isLocked && (
+            <Tooltip
+              label={translate(
+                "Re-runs this revision with its engineering inputs and the latest Price Book, supplier prices and rates, keeps your overrides, and saves it.",
+                "يعيد حساب هذه النسخة بمدخلاتها الفنية وأحدث الأسعار وأسعار الموردين والمعدلات مع الإبقاء على تعديلاتك ويحفظها."
+              )}
+              multiline
+              w={300}
+            >
+              <Button size="xs" color="teal" loading={busy === "recalc"} disabled={!!busy} onClick={() => recalculate(undefined, "recalc")} data-testid="boq-recalculate">
+                {translate("Recalculate BOQ", "إعادة حساب جدول الكميات")}
+              </Button>
+            </Tooltip>
+          )}
+          <Menu position="bottom-end" withinPortal>
+            <Menu.Target>
+              <Button size="xs" variant="default" loading={!!exporting} disabled={!hasLines} data-testid="boq-export">
+                {translate("Export", "تصدير")}
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item onClick={() => exportBoq("xlsx")} data-testid="boq-export-xlsx">
+                {translate("Export Excel (.xlsx)", "تصدير Excel (.xlsx)")}
+              </Menu.Item>
+              <Menu.Item onClick={() => exportBoq("csv")} data-testid="boq-export-csv">
+                {translate("Export CSV (.csv)", "تصدير CSV (.csv)")}
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        </div>
+      </div>
       {revision.priceChangedSinceCalculation && (
-        // Deal Engine C24 - a supplier price list changed an item this revision uses. Nothing recalculates
-        // on its own; the sales engineer presses Recalculate on the Engineering Input tab.
-        <Alert color="orange" variant="light" title={translate("Price changed since calculation", "تغيّر السعر منذ الحساب")} data-testid="price-changed-banner">
-          {translate("A supplier price list changed", "قائمة أسعار مورد غيّرت")}: {(revision.priceChangedItems || []).join(", ")}. {translate("Recalculate on the Engineering Input tab to use the new prices.", "أعد الحساب من تبويب المدخلات الفنية لاستخدام الأسعار الجديدة.")}
+        // Deal Engine C24 - a price this revision uses changed (supplier price list, supplier approval,
+        // Materials edit, workbook import). Nothing recalculates on its own: the figures below stay the
+        // stored ones - flagged outdated - until someone recalculates.
+        <Alert color="orange" variant="light" title={translate("Prices changed since this calculation - the figures below are outdated", "تغيّرت الأسعار منذ هذا الحساب - الأرقام أدناه قديمة")} data-testid="price-changed-banner">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              {translate("Changed", "تغيّر")}: {(revision.priceChangedItems || []).join(", ")}.
+            </span>
+            {canEditBoq && !isLocked && (
+              <Button size="xs" color="orange" loading={busy === "recalc"} disabled={!!busy} onClick={() => recalculate(undefined, "recalc")}>
+                {translate("Recalculate BOQ now", "أعد حساب جدول الكميات الآن")}
+              </Button>
+            )}
+          </div>
+        </Alert>
+      )}
+      {!hasLines && (
+        <Alert color="gray" variant="light">
+          {translate("This revision has no BOQ lines yet - calculate it on the Engineering Input tab.", "لا توجد بنود في هذه النسخة بعد - احسبها من تبويب المدخلات الفنية.")}
         </Alert>
       )}
       <DataTableContainer>
@@ -120,7 +217,11 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                   {line.priceSource && (
                     // Deal Engine C19/C23: price source, flags, foreign price and the EGP price used.
                     <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px]" data-testid="boq-price-source">
-                      <span className="text-gray-500">{line.priceSource === "supplier" ? line.supplierCode : translate("Reference price", "سعر مرجعي")}</span>
+                      <span className="text-gray-500" data-testid="boq-line-supplier">
+                        {line.priceSource === "supplier"
+                          ? `${line.supplierName || line.supplierCode}${line.supplierName && line.supplierCode ? ` (${line.supplierCode})` : ""}`
+                          : translate("Price Book reference price", "سعر مرجعي من دليل الأسعار")}
+                      </span>
                       {line.foreignPrice != null && (
                         <span className="text-gray-500">
                           ({line.foreignPrice.toLocaleString("en-US")} {line.priceCurrency} x {line.fxRate})
@@ -133,6 +234,11 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                           </Badge>
                         </Tooltip>
                       ))}
+                    </div>
+                  )}
+                  {line.priceNote && (
+                    <div className="whitespace-normal text-[11px] text-amber-700" data-testid="boq-line-price-note">
+                      {line.priceNote}
                     </div>
                   )}
                   {line.notes && <div className="whitespace-normal text-[11px] text-amber-700">{line.notes}</div>}
@@ -152,6 +258,19 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
                   {line.source === "override" && (
                     <div className="mt-0.5 text-[10px] text-gray-400">
                       {translate("auto", "تلقائي")}: {line.autoQty} x {line.autoUnitPrice}
+                      {canEditBoq && !isLocked && (
+                        <Button
+                          size="compact-xs"
+                          variant="subtle"
+                          color="gray"
+                          ml={4}
+                          disabled={!!busy}
+                          loading={busy === `reset-${line.component}`}
+                          onClick={() => recalculate({ [line.component]: null }, `reset-${line.component}`)}
+                        >
+                          {translate("reset to auto", "إعادة للتلقائي")}
+                        </Button>
+                      )}
                     </div>
                   )}
                 </Table.Td>
@@ -203,7 +322,7 @@ export default function BoqTab({ project, revision, onChanged }: { project: Comm
 
       {error && <p className="text-sm text-red-600">{error}</p>}
       {canEditBoq && (
-        <Button onClick={handleSave} loading={loading} color="teal" disabled={!Object.keys(overrides).length} className="self-start">
+        <Button onClick={handleSave} loading={loading && busy === "save"} color="teal" disabled={!Object.keys(overrides).length || !!busy || isLocked} className="self-start">
           {translate("Save Overrides", "حفظ التعديلات")}
         </Button>
       )}

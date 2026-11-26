@@ -177,6 +177,18 @@ async function setStatus(id, { status, note, reviewDate }, { user, role }) {
   }
   supplier.notes.push({ by: user._id, byName: user.name || null, kind: 'status', text: `${before} -> ${status}${reason ? `: ${reason}` : '.'}` });
   await supplier.save();
+  // Approving (or suspending) a supplier changes which price every item it quotes contributes to a
+  // BOQ (supplierPricing.effectivePrice) - open revisions using those items are flagged "price
+  // changed since calculation" (C24), exactly like a price list upload, never silently stale.
+  const pricing = s => s === 'Approved' || s === 'Conditional';
+  if (pricing(before) !== pricing(status)) {
+    // eslint-disable-next-line global-require
+    const MaterialItem = require('../../models/commercial/materialItemModel');
+    // eslint-disable-next-line global-require
+    const { flagOpenRevisions } = require('./priceListUploadService');
+    const items = await MaterialItem.find({ archived: false, 'supplierPrices.supplier': supplier._id }).select('key model').lean();
+    if (items.length) await flagOpenRevisions(items);
+  }
   return shape(supplier);
 }
 

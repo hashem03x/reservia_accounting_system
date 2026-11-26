@@ -133,10 +133,17 @@ export default function CommercialMaterials() {
                       {/* Deal Engine C19: every supplier price carries its supplier code; none = Reference only. */}
                       {m.supplierPrices?.length ? (
                         m.supplierPrices.map((sp) => (
-                          <div key={sp.supplierCode} className={sp.validUntil && new Date(sp.validUntil) < new Date() ? "text-red-600" : ""}>
-                            {sp.supplierCode}: {formatAmount(sp.unitPrice, "EGP")}
+                          <div key={sp.supplierCode} className={sp.validUntil && new Date(sp.validUntil) < new Date() ? "text-red-600" : ""} data-testid="material-supplier-price">
+                            <span className="font-medium">{sp.supplierName || sp.supplierCode}</span>
+                            {sp.supplierName ? <span className="text-gray-400"> ({sp.supplierCode})</span> : null}: {formatAmount(sp.unitPrice, "EGP")}
                             {sp.foreignPrice != null ? ` (${sp.foreignPrice} ${sp.currency})` : ""}
                             {sp.validUntil ? ` - ${translate("valid to", "صالح حتى")} ${sp.validUntil.slice(0, 10)}` : ""}
+                            {sp.usedInPricing === false && (
+                              // Only Approved/Conditional suppliers price a BOQ - say so next to the price itself.
+                              <Badge size="xs" color="gray" variant="light" ml={4}>
+                                {translate(`not used - ${sp.supplierStatus || "not approved"}`, `غير مستخدم - ${sp.supplierStatus || "غير معتمد"}`)}
+                              </Badge>
+                            )}
                           </div>
                         ))
                       ) : (

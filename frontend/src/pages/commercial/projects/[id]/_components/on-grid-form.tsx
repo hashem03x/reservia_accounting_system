@@ -3,6 +3,7 @@ import { Button, NumberInput, Select, TextInput } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
+import { notifyRecalculated, newRequestId } from "../../../_shared/recalcNotice";
 import SectionCard from "@/components/ui/section-card";
 import { CommercialProject, CommercialRevision } from "@/types/commercial";
 import useMaterialOptions, { engineSelectData } from "../../../_shared/useMaterialOptions";
@@ -58,6 +59,9 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
   const [maintenancePctOfCapex, setMaintenancePctOfCapex] = useState<number>(toPct(input.headlineEscalation !== undefined ? (n("maintenancePctOfCapex") ?? 0) : 0));
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler<null>({ initialData: null });
+  // One id per form session: a resubmitted "Calculate & Create Revision" returns the revision it already
+  // created instead of adding a duplicate (backend revisionService.js#createRevision).
+  const [requestId] = useState(newRequestId);
   const dcBrands = Array.from(new Set(dcCables.map((c) => c.brand))).sort();
 
   function handleSubmit() {
@@ -91,7 +95,9 @@ export default function OnGridForm({ project, revision, onSaved }: { project: Co
         maintenancePctOfCapex: maintenancePctOfCapex / 100,
       };
       const url = revision ? `commercial/revisions/${revision._id}` : `commercial/revisions/project/${project._id}`;
-      await privateRequest({ url, method: revision ? "PATCH" : "POST", data: { engineeringInput }, language });
+      const res = await privateRequest({ url, method: revision ? "PATCH" : "POST", data: revision ? { engineeringInput } : { engineeringInput, requestId }, language });
+      // The revision number saved and what moved (BOQ total, net price) - never a silent result.
+      notifyRecalculated({ language, translate, response: res, currency: project.currency });
       onSaved();
     });
   }

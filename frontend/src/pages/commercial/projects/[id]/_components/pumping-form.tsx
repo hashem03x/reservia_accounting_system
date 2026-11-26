@@ -3,6 +3,7 @@ import { ActionIcon, Button, NumberInput, Select, Table } from "@mantine/core";
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
+import { notifyRecalculated, newRequestId } from "../../../_shared/recalcNotice";
 import SectionCard from "@/components/ui/section-card";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import { CommercialProject, CommercialRevision } from "@/types/commercial";
@@ -33,12 +34,17 @@ export default function PumpingForm({ project, revision, onSaved }: { project: C
   const [pvModuleModel, setPvModuleModel] = useState<string>((input.pvModuleModel as string) || "JKM670N-66QL6-BDV");
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler<null>({ initialData: null });
+  // One id per form session: a resubmitted "Calculate & Create Revision" returns the revision it already
+  // created instead of adding a duplicate (backend revisionService.js#createRevision).
+  const [requestId] = useState(newRequestId);
 
   function handleSubmit() {
     handleRequest(language, setLoading, setError, async () => {
       const engineeringInput = { fieldCropRows, treeRows, waterLevelM, safetyAllowanceM, wellDepthM, pumpQty, pvModuleModel };
       const url = revision ? `commercial/revisions/${revision._id}` : `commercial/revisions/project/${project._id}`;
-      await privateRequest({ url, method: revision ? "PATCH" : "POST", data: { engineeringInput }, language });
+      const res = await privateRequest({ url, method: revision ? "PATCH" : "POST", data: revision ? { engineeringInput } : { engineeringInput, requestId }, language });
+      // The revision number saved and what moved (BOQ total, net price) - never a silent result.
+      notifyRecalculated({ language, translate, response: res, currency: project.currency });
       onSaved();
     });
   }

@@ -29,20 +29,23 @@ const { canonicalMaterialKey } = require('../../utils/commercial/materialKey');
 const FIELDS = ['category', 'brand', 'model', 'spec', 'unit', 'unitPrice', 'currency', 'availability', 'leadTimeDays', 'minQuantity', 'ratedValue', 'ratedUnit', 'validityDate'];
 const REQUIRED_FIELDS = ['category', 'brand', 'model', 'unitPrice'];
 // Header names recognised for each field (the A2 template's headers first).
+// Matched against normalizeHeader(header): lower case, camelCase split, punctuation removed and a
+// trailing "(EGP)"-style currency note dropped - so "Unit Price (EGP)", "UnitPrice", "unit_price"
+// and "Unit price" all read as "unit price". The template's own headers are unchanged.
 const SYNONYMS = {
-  category: ['category', 'item category', 'type'],
-  brand: ['brand', 'manufacturer', 'make'],
-  model: ['model', 'model code', 'part number', 'item'],
-  spec: ['spec', 'specification', 'description'],
+  category: ['category', 'item category', 'type', 'product category'],
+  brand: ['brand', 'manufacturer', 'make', 'brand name'],
+  model: ['model', 'model code', 'part number', 'item', 'model no', 'model number', 'part no', 'item code'],
+  spec: ['spec', 'specification', 'specifications', 'description', 'item description'],
   unit: ['unit', 'uom', 'unit of measure'],
-  unitPrice: ['unit price', 'price', 'unit cost', 'cost', 'net price'],
-  currency: ['currency', 'ccy'],
-  availability: ['availability', 'stock', 'status'],
-  leadTimeDays: ['lead time (days)', 'lead time', 'lead time days', 'delivery (days)'],
-  minQuantity: ['minimum quantity', 'min qty', 'moq', 'minimum order'],
-  ratedValue: ['rated value', 'rating', 'power'],
+  unitPrice: ['unit price', 'price', 'unit cost', 'cost', 'net price', 'purchase price', 'price per unit', 'unit rate', 'rate', 'list price', 'net unit price', 'cost price', 'supplier price', 'dealer price'],
+  currency: ['currency', 'ccy', 'cur'],
+  availability: ['availability', 'stock', 'status', 'stock status'],
+  leadTimeDays: ['lead time days', 'lead time', 'delivery days', 'delivery time', 'lead time in days'],
+  minQuantity: ['minimum quantity', 'min qty', 'moq', 'minimum order', 'minimum order quantity'],
+  ratedValue: ['rated value', 'rating', 'power', 'rated power'],
   ratedUnit: ['rated unit', 'rating unit'],
-  validityDate: ['validity date', 'valid until', 'validity'],
+  validityDate: ['validity date', 'valid until', 'validity', 'valid to', 'expiry date'],
 };
 const UNITS = ['pcs', 'm', 'kwp', 'roll', 'set', 'lot', 'pair'];
 const CURRENCIES = ['EGP', 'USD', 'EUR', 'CNY'];
@@ -63,6 +66,42 @@ const MAX_ROWS = 2000;
 const norm = v => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 const keyOf = (brand, model, spec) => `${String(brand).trim()} | ${String(model).trim()} | ${String(spec ?? '').trim()}`;
 
+/** "Unit Price (EGP)" / "UnitPrice" / "unit_price" -> "unit price" (see SYNONYMS). */
+function normalizeHeader(h) {
+  return String(h ?? '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/\((egp|usd|eur|cny|rmb|le|l\.e\.?|\$|€|¥)\)|\[(egp|usd|eur|cny)\]/g, ' ')
+    .replace(/\b(in )?(egp|usd|eur|cny)\b$/, ' ')
+    .replace(/[_\-./:#()[\]]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+const headerMatches = (field, h) => SYNONYMS[field].includes(normalizeHeader(h)) || SYNONYMS[field].includes(norm(h));
+
+/** A currency stated in the price column's header ("Unit Price (USD)") - used when there is no currency column. */
+function currencyFromHeader(h) {
+  const m = String(h || '').toUpperCase().match(/\b(EGP|USD|EUR|CNY|RMB)\b|\$|€|¥/);
+  if (!m) return null;
+  const c = m[1] || { $: 'USD', '€': 'EUR', '¥': 'CNY' }[m[0]];
+  return c === 'RMB' ? 'CNY' : c;
+}
+
+/**
+ * The header row: suppliers' own lists often carry a title/address block above the table, so the
+ * first 20 rows are scanned for the one that names a price column and the most other known fields.
+ */
+function findHeaderRow(matrix) {
+  let best = { idx: -1, score: 0 };
+  for (let i = 0; i < Math.min(matrix.length, 20); i += 1) {
+    const row = matrix[i] || [];
+    if (!row.some(h => headerMatches('unitPrice', h))) continue;
+    const score = FIELDS.filter(f => row.some(h => headerMatches(f, h))).length;
+    if (score > best.score) best = { idx: i, score };
+  }
+  return best.idx;
+}
+
 /** Reads the first sheet with a header row (CSV or XLSX). Returns { headers, rows: [{header: value}] }. */
 function readFile({ buffer, originalname }) {
   const name = String(originalname || '').toLowerCase();
@@ -71,20 +110,19 @@ function readFile({ buffer, originalname }) {
     matrix = parseCsv(buffer.toString('utf8').replace(/^﻿/, ''), { relax_column_count: true, skip_empty_lines: true });
   } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-    // The template's first sheet is "Price list"; any sheet whose first row has a price header works.
-    const sheetName = wb.SheetNames.find(n => {
-      const first = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' })[0] || [];
-      return first.some(h => SYNONYMS.unitPrice.includes(norm(h)));
-    }) || wb.SheetNames[0];
-    matrix = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '', raw: true });
+    // The template's first sheet is "Price list"; any sheet with a price header row works.
+    const sheets = wb.SheetNames.map(n => ({ n, m: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '', raw: true }) }));
+    matrix = (sheets.find(s => findHeaderRow(s.m) >= 0) || sheets[0]).m;
   } else {
     throw new ApiError('Upload a CSV or XLSX file.', 400);
   }
-  const headers = (matrix[0] || []).map(h => String(h).trim());
+  const headerIdx = Math.max(0, findHeaderRow(matrix));
+  const headers = (matrix[headerIdx] || []).map(h => String(h).trim());
   if (!headers.filter(Boolean).length) throw new ApiError('The file has no header row.', 400);
-  const body = matrix.slice(1).filter(r => r.some(c => String(c ?? '').trim() !== ''));
+  const body = matrix.slice(headerIdx + 1).filter(r => r.some(c => String(c ?? '').trim() !== ''));
   if (body.length > MAX_ROWS) throw new ApiError(`At most ${MAX_ROWS} rows per upload (this file has ${body.length}).`, 400);
-  return { headers, rows: body.map(r => Object.fromEntries(headers.map((h, i) => [h, r[i]]))) };
+  // rowNo = the row number the user sees in Excel (header row + 1-based).
+  return { headers, headerRowNo: headerIdx + 1, rows: body.map(r => Object.fromEntries(headers.map((h, i) => [h, r[i]]))) };
 }
 
 /** Field -> header. The supplier's saved mapping wins where its header is still present; else by name. */
@@ -92,16 +130,41 @@ function proposeMapping(headers, saved = null) {
   const mapping = {};
   for (const f of FIELDS) {
     if (saved && saved[f] && headers.includes(saved[f])) mapping[f] = saved[f];
-    else mapping[f] = headers.find(h => SYNONYMS[f].includes(norm(h))) || null;
+    else mapping[f] = headers.find(h => headerMatches(f, h)) || null;
   }
   return mapping;
 }
 
+const ARABIC_DIGITS = /[٠-٩۰-۹]/g;
+/**
+ * A spreadsheet price as a number: numbers as they are; text with a currency symbol or code,
+ * thousands separators, Arabic-Indic digits or a decimal comma ("1.250,50") is read correctly.
+ * Anything else is null - reported as "Missing price", never read as 0.
+ */
 function toNumber(v) {
   if (v === null || v === undefined || v === '') return null;
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
-  const n = Number(String(v).replace(/[,\s]/g, '').replace(/[^\d.-]/g, ''));
-  return Number.isFinite(n) && String(v).trim() !== '' ? n : null;
+  let s = String(v).trim().replace(ARABIC_DIGITS, d => {
+    const c = d.charCodeAt(0);
+    return String(c >= 0x06f0 ? c - 0x06f0 : c - 0x0660);
+  });
+  s = s.replace(/٫/g, '.').replace(/٬/g, ',');
+  const negative = /^\(.*\)$/.test(s) || /^-/.test(s.replace(/^[^\d-]+/, ''));
+  s = s.replace(/[^\d.,]/g, '');
+  if (!/\d/.test(s)) return null;
+  const lastDot = s.lastIndexOf('.');
+  const lastComma = s.lastIndexOf(',');
+  if (lastDot >= 0 && lastComma >= 0) {
+    // Both present: the LAST one is the decimal separator.
+    s = lastComma > lastDot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (lastComma >= 0) {
+    // Only commas: thousands groups ("12,500" / "1,250,000") unless it is a single decimal comma ("12,5").
+    s = /^\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, '') : s.split(',').length === 2 ? s.replace(',', '.') : s.replace(/,/g, '');
+  } else if ((s.match(/\./g) || []).length > 1) {
+    s = s.replace(/\./g, ''); // "1.250.000"
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? (negative ? -n : n) : null;
 }
 function toDate(v) {
   if (!v) return null;
@@ -114,7 +177,7 @@ function assertEditor(role) {
 }
 
 /** Builds the preview rows. Pure apart from the Price Book and config reads. */
-async function buildPreview({ supplier, headers, rows, mapping, validityDate }) {
+async function buildPreview({ supplier, headers, rows, mapping, validityDate, headerRowNo = 1 }) {
   for (const f of REQUIRED_FIELDS) if (!mapping[f]) throw new ApiError(`Map a column to "${f}" (required).`, 400);
   for (const [f, h] of Object.entries(mapping)) if (h && !headers.includes(h)) throw new ApiError(`Column "${h}" (mapped to ${f}) is not in the file.`, 400);
 
@@ -142,14 +205,19 @@ async function buildPreview({ supplier, headers, rows, mapping, validityDate }) 
     const nk = canonicalMaterialKey({ brand, model, spec });
     if (brand && model) {
       if (seen.has(nk)) errors.push(`Duplicate key (also on row ${seen.get(nk)})`);
-      else seen.set(nk, i + 2);
+      else seen.set(nk, headerRowNo + 1 + i);
     }
-    const price = toNumber(get(row, 'unitPrice'));
-    if (price === null || price <= 0) errors.push('Missing price');
+    const rawPrice = get(row, 'unitPrice');
+    const price = toNumber(rawPrice);
+    // Each case named, so a blank price is never shown as an empty value nor imported as 0.
+    if (rawPrice === undefined || rawPrice === null || String(rawPrice).trim() === '') errors.push('Missing price');
+    else if (price === null) errors.push(`Price "${String(rawPrice).slice(0, 40)}" is not a number`);
+    else if (price <= 0) errors.push('Price must be greater than 0');
     const unitRaw = norm(get(row, 'unit') || 'pcs');
     const unit = unitRaw === 'pc' ? 'pcs' : unitRaw;
     if (!UNITS.includes(unit)) errors.push(`Unknown unit "${get(row, 'unit')}"`);
-    const currency = String(get(row, 'currency') || supplier.terms?.currency || 'EGP').trim().toUpperCase();
+    // Currency: the row's own column, else one stated in the price header ("Unit Price (USD)"), else the supplier's terms.
+    const currency = String(get(row, 'currency') || currencyFromHeader(mapping.unitPrice) || supplier.terms?.currency || 'EGP').trim().toUpperCase().replace(/^RMB$/, 'CNY');
     let rate = null;
     if (!CURRENCIES.includes(currency)) errors.push(`Unknown currency "${currency}"`);
     else if (currency !== 'EGP') {
@@ -185,7 +253,7 @@ async function buildPreview({ supplier, headers, rows, mapping, validityDate }) 
     else if (previous && Math.abs(previous.unitPrice - egp) < 0.005 && String(previous.validUntil || '') === String(rowValidity || '') && previous.availability === availability) status = 'Unchanged';
     else status = 'Update';
     return {
-      rowNo: i + 2, key, itemId: item ? item._id : null, category, brand, model, spec, unit,
+      rowNo: headerRowNo + 1 + i, key, itemId: item ? item._id : null, category, brand, model, spec, unit,
       price, currency, fxRate: rate, egp, current, currentSource: previous ? 'this supplier' : item ? 'Price Book' : null, changePct,
       availability, leadTimeDays, minQuantity, ratedValue, ratedUnit: ratedUnitNeeded || ratedUnit || null, validUntil: rowValidity,
       status, errors,
@@ -201,7 +269,7 @@ async function previewUpload(supplierId, { file, mapping: mappingInput, validity
   const supplier = await Supplier.findById(supplierId);
   if (!supplier) throw new ApiError('Supplier not found.', 404);
   if (['Suspended', 'Removed'].includes(supplier.status)) throw new ApiError(`${supplier.code} is ${supplier.status} - its prices would never be used. Change its status first.`, 400);
-  const { headers, rows } = readFile(file);
+  const { headers, rows, headerRowNo } = readFile(file);
   if (!rows.length) throw new ApiError('The file has no data rows.', 400);
   let mapping = proposeMapping(headers, supplier.columnMapping);
   if (mappingInput) {
@@ -210,9 +278,9 @@ async function previewUpload(supplierId, { file, mapping: mappingInput, validity
   }
   const validity = validityDate ? toDate(validityDate) : null;
   if (validityDate && !validity) throw new ApiError('The quote validity date is not a valid date.', 400);
-  const { rows: preview, summary } = await buildPreview({ supplier, headers, rows, mapping, validityDate: validity });
+  const { rows: preview, summary } = await buildPreview({ supplier, headers, rows, mapping, validityDate: validity, headerRowNo });
   const upload = await Upload.create({
-    supplier: supplier._id, supplierCode: supplier.code, fileName: String(file.originalname || 'upload').slice(0, 200), validityDate: validity,
+    supplier: supplier._id, supplierCode: supplier.code, supplierName: supplier.legalName, supplierStatus: supplier.status, fileName: String(file.originalname || 'upload').slice(0, 200), validityDate: validity,
     mapping, headers, rows: preview, summary, uploadedBy: user._id, uploadedByName: user.name || null,
   });
   return upload;
@@ -294,6 +362,11 @@ async function confirmUpload(uploadId, { createNew = [] } = {}, { user, role }) 
     throw err;
   }
   upload.changes = changes;
+  // Accurate counts after the write (the preview summary counts rows, not what was written).
+  upload.summary = { ...(upload.summary || {}), imported: changes.length, created: changes.filter(c => c.created).length, updated: changes.filter(c => !c.created).length };
+  upload.markModified('summary');
+  upload.supplierName = supplier.legalName;
+  upload.supplierStatus = supplier.status;
   upload.flaggedRevisions = await flagOpenRevisions(changedItems);
   await upload.save();
   supplier.columnMapping = upload.mapping; // C21: reused on the next upload
@@ -395,15 +468,45 @@ async function applyPercentageDiscount(supplierId, { pct, note } = {}, { user, r
   return upload;
 }
 
+/** Whether the Deal Engine prices from this supplier at all (supplierPricing.effectivePrice). */
+const pricesBoq = status => status === 'Approved' || status === 'Conditional';
+
+/**
+ * Upload records with the supplier's CURRENT name and status (an upload made before supplierName was
+ * stored, or a supplier renamed since, still shows the right name - never an id or a blank).
+ */
+async function withSupplier(uploads) {
+  const ids = [...new Set(uploads.map(u => String(u.supplier)))];
+  const sups = await Supplier.find({ _id: { $in: ids } }).select('code legalName status').lean();
+  const byId = new Map(sups.map(x => [String(x._id), x]));
+  return uploads.map(u => {
+    const sup = byId.get(String(u.supplier));
+    const rows = u.rows || [];
+    return {
+      ...u,
+      supplierName: sup?.legalName || u.supplierName || null,
+      supplierStatus: sup?.status || u.supplierStatus || null,
+      supplierPricesBoq: pricesBoq(sup?.status),
+      // Counts for the history table even when rows are not sent.
+      counts: {
+        rows: u.summary?.total ?? rows.length,
+        errors: u.summary?.Error ?? rows.filter(r => r.status === 'Error').length,
+        imported: u.status === 'previewed' ? 0 : u.summary?.imported ?? (u.changes || []).length,
+      },
+    };
+  });
+}
+
 async function listUploads(supplierId) {
-  return Upload.find({ supplier: supplierId }).select('-rows').sort({ createdAt: -1 }).limit(50).lean();
+  const uploads = await Upload.find({ supplier: supplierId }).select('-rows').sort({ createdAt: -1 }).limit(50).lean();
+  return withSupplier(uploads);
 }
 
 async function getUpload(uploadId) {
   if (!mongoose.isValidObjectId(uploadId)) throw new ApiError('Invalid upload id.', 400);
   const u = await Upload.findById(uploadId).lean();
   if (!u) throw new ApiError('Upload not found.', 404);
-  return u;
+  return (await withSupplier([u]))[0];
 }
 
-module.exports = { previewUpload, confirmUpload, rollbackUpload, applyPercentageDiscount, listUploads, getUpload, readFile, proposeMapping, buildPreview, flagOpenRevisions, FIELDS, RATED };
+module.exports = { pricesBoq, toNumber, normalizeHeader, findHeaderRow, currencyFromHeader, previewUpload, confirmUpload, rollbackUpload, applyPercentageDiscount, listUploads, getUpload, readFile, proposeMapping, buildPreview, flagOpenRevisions, FIELDS, RATED };

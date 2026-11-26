@@ -101,6 +101,22 @@ export default function CommercialProjectDetail() {
           </div>
         </Alert>
       )}
+      {!isDraft && revision?.priceChangedSinceCalculation && (
+        // C24 on every tab (not only BOQ): pricing, feasibility and the proposal all read figures that
+        // were calculated with prices that have since changed - never silently shown as current.
+        <Alert color="orange" variant="light" mb="md" title={translate("Prices changed since the last calculation", "تغيّرت الأسعار منذ آخر حساب")} data-testid="project-price-changed">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              {translate("Outdated until recalculated", "قديمة حتى إعادة الحساب")}: {(revision.priceChangedItems || []).join(", ")}
+            </span>
+            {showBoq && (
+              <Button size="xs" color="orange" variant="light" onClick={() => setTab("boq")}>
+                {translate("Go to BOQ to recalculate", "اذهب لجدول الكميات لإعادة الحساب")}
+              </Button>
+            )}
+          </div>
+        </Alert>
+      )}
       <Tabs value={tab} onChange={setTab} keepMounted={false}>
         <Tabs.List>
           <Tabs.Tab value="overview">{translate("Overview", "نظرة عامة")}</Tabs.Tab>

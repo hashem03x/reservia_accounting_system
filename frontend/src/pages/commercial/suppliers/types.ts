@@ -72,6 +72,12 @@ export type PreviewRow = {
 export type PriceListUpload = {
   _id: string;
   supplierCode: string;
+  // The supplier's (current) name and status, and whether the Deal Engine prices from it at all -
+  // only Approved / Conditional suppliers do (backend priceListUploadService.js#withSupplier).
+  supplierName?: string | null;
+  supplierStatus?: string | null;
+  supplierPricesBoq?: boolean;
+  counts?: { rows: number; errors: number; imported: number };
   // A blanket percentage discount (priceListUploadService.js#applyPercentageDiscount) shows up in
   // this SAME history list, distinguished only by `kind` - everything else (status/changes/
   // flaggedRevisions/rollback) already works unchanged for it.

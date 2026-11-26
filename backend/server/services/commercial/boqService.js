@@ -351,7 +351,15 @@ async function runAgriculturePumping({ engineeringInput, manualOverrides }) {
   const dcCables = [...priceBook.toDcCableShape(dcItems), ...pumpingExtras.PUMPING_DC_CABLES];
   const dcCable = pumping.sizeDcCable({ installedKwp: strings.installedKwp, strings: strings.strings, module: module_, stringVmpStc: modulesPerString * module_.vmp, dcCables });
 
-  const lines = applyManualOverrides(buildPumpingBoqLines({ pump, motor, module_, strings, dcCable, submersible, demand, pumpQty: engineeringInput.pumpQty }), manualOverrides);
+  // Priced from the live Price Book (supplier price lists, Materials edits), selected from the
+  // engineering curves above - see priceBookLookup.js#findPricedItem.
+  const [pumpItem, motorItem] = await Promise.all([
+    priceBook.findPricedItem({ key: `Generic | ${pump.model} | ${pump.casing} casing`, categories: ['Submersible Pump', 'Solar Pump Drive'], model: pump.model }),
+    priceBook.findPricedItem({ key: `Ferat/PMTech | ${motor.model} | ${motor.casing}in cast iron`, categories: ['Pump Motor'], model: motor.model }),
+  ]);
+  const dcSource = dcCables.find(c => c.priceInfo && c.sizeMm2 === dcCable.selectedSizeMm2 && c.pricePerM === dcCable.pricePerM) || null;
+  const raw = buildPumpingBoqLines({ pump, motor, module_, strings, dcCable, submersible, demand, pumpQty: engineeringInput.pumpQty, pumpItem, motorItem, dcSource });
+  const lines = applyManualOverrides(raw, manualOverrides);
 
   return {
     engineeringResult: { demand, pump, motor, pv, strings, submersible, dcCable },
@@ -373,13 +381,22 @@ async function runAgriculturePumping({ engineeringInput, manualOverrides }) {
  * Pump Inverter, 10 DC Cables - rows 5/6/9/11-18 are not modeled here, see this file's own header
  * on Pipe/VFD selection being flagged rather than invented).
  */
-function buildPumpingBoqLines({ pump, motor, module_, strings, dcCable, submersible, demand, pumpQty }) {
+function buildPumpingBoqLines({ pump, motor, module_, strings, dcCable, submersible, demand, pumpQty, pumpItem = null, motorItem = null, dcSource = null }) {
   const qty = pumpQty || 1;
+  const NOT_IN_PRICE_BOOK = 'Not in the Price Book - priced from the Solar_Pumping3.xlsx reference list; add it on Materials to use supplier prices';
+  // A Price Book item (with its effective supplier/reference price) when there is one; the reference
+  // list price otherwise, flagged so it is never mistaken for a current supplier price.
+  const priced = (item, refPrice) => (item
+    ? { unitPrice: item.unitPrice, ...linePriceFields(item.priceInfo, item.key) }
+    : { unitPrice: refPrice, flag: NOT_IN_PRICE_BOOK });
+  const pumpP = priced(pumpItem, pump.price);
+  const motorP = priced(motorItem, motor.castIronPrice);
+  const modulePrice = module_.pricePerWatt * module_.pmaxW;
   return [
-    { no: 1, component: 'Submersible Water Pump', description: `${pump.model} | ${pump.casing} | ${pump.hp} HP | ${pump.flowM3h} m3/h | ${pump.headM} m head`, unit: 'pcs', qty, unitPrice: pump.price, total: qty * pump.price },
-    { no: 2, component: 'Pump Motor', description: `${motor.model} | ${motor.hp} HP | ${motor.kw} kW`, unit: 'pcs', qty: 1, unitPrice: motor.castIronPrice, total: motor.castIronPrice },
-    { no: 7, component: 'Solar PV Modules', description: `${module_.brand} ${module_.model}`, unit: 'pcs', qty: strings.installedModules, unitPrice: module_.pricePerWatt * module_.pmaxW, total: strings.installedModules * module_.pricePerWatt * module_.pmaxW },
-    { no: 10, component: 'DC Cables', description: `${dcCable.selectedSizeMm2} mm2`, unit: 'm', qty: dcCable.totalLengthM, unitPrice: dcCable.pricePerM, total: dcCable.totalCost },
+    { no: 1, component: 'Submersible Water Pump', description: `${pump.model} | ${pump.casing} | ${pump.hp} HP | ${pump.flowM3h} m3/h | ${pump.headM} m head`, unit: 'pcs', qty, ...pumpP, total: qty * pumpP.unitPrice },
+    { no: 2, component: 'Pump Motor', description: `${motor.model} | ${motor.hp} HP | ${motor.kw} kW`, unit: 'pcs', qty: 1, ...motorP, total: motorP.unitPrice },
+    { no: 7, component: 'Solar PV Modules', description: `${module_.brand} ${module_.model}`, unit: 'pcs', qty: strings.installedModules, unitPrice: modulePrice, total: strings.installedModules * modulePrice, ...(module_.priceInfo ? linePriceFields(module_.priceInfo, module_.key) : {}) },
+    { no: 10, component: 'DC Cables', description: `${dcCable.selectedSizeMm2} mm2`, unit: 'm', qty: dcCable.totalLengthM, unitPrice: dcCable.pricePerM, total: dcCable.totalCost, ...(dcSource ? linePriceFields(dcSource.priceInfo, dcSource.key) : {}) },
     { no: 4, component: 'Submersible Drop Cable', description: submersible.size, unit: 'm', qty: submersible.cableLengthM, unitPrice: null, total: null, flag: 'Requires supplier quotation for this cable size' },
     { no: 3, component: 'Rising Main Pipe', description: `Diameter band ${pumping.pipeDiameterBand(demand.totalFlowM3h)}" (manual pipe/price selection - no selection formula in the source workbook)`, unit: 'pcs', qty: null, unitPrice: null, total: null, flag: 'Manual selection required' },
     { no: 8, component: 'Pump Inverter / VFD', description: 'Manual selection required - brand compatibility tables not yet modeled', unit: 'pcs', qty: null, unitPrice: null, total: null, flag: 'Manual selection required' },

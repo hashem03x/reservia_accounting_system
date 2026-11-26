@@ -50,6 +50,56 @@ function carryForwardVendors(newLines, oldLines) {
   });
 }
 
+/**
+ * Manual BOQ overrides survive a recalculation (the rule in boqService.js#applyManualOverrides: an
+ * override is applied ON TOP of the live recalculation). They are stored only on the lines
+ * themselves (source 'override', with the auto values alongside), so they are read back from the
+ * revision's own lines - only the field that really differs from the auto value is carried, so a
+ * price override does not freeze a quantity the engineering would now change. The request's
+ * overrides win; `null` for a component clears its override ("reset to auto").
+ */
+function carriedOverrides(oldLines, requested = {}) {
+  const out = {};
+  for (const l of oldLines || []) {
+    if (l.source !== 'override') continue;
+    const o = {};
+    if (l.qty != null && l.qty !== l.autoQty) o.qty = l.qty;
+    if (l.unitPrice != null && l.unitPrice !== l.autoUnitPrice) o.unitPrice = l.unitPrice;
+    if (Object.keys(o).length) out[l.component] = l.notes ? { ...o, notes: l.notes } : o;
+  }
+  for (const [component, o] of Object.entries(requested || {})) {
+    if (o === null) delete out[component];
+    else if (o && typeof o === 'object') out[component] = { ...(out[component] || {}), ...o };
+  }
+  return out;
+}
+
+/** What a recalculation changed - returned to the dashboard so the user sees the effect (never persisted). */
+function recalcSummary(before, after) {
+  const byComp = new Map((before.boqLines || []).map(l => [l.component, l]));
+  const changedLines = [];
+  for (const l of after.boqLines || []) {
+    const b = byComp.get(l.component);
+    if (!b) { changedLines.push({ component: l.component, change: 'added', qty: l.qty, unitPrice: l.unitPrice }); continue; }
+    byComp.delete(l.component);
+    const d = {};
+    if ((b.qty ?? null) !== (l.qty ?? null)) d.qty = { from: b.qty ?? null, to: l.qty ?? null };
+    if ((b.unitPrice ?? null) !== (l.unitPrice ?? null)) d.unitPrice = { from: b.unitPrice ?? null, to: l.unitPrice ?? null };
+    if ((b.description || '') !== (l.description || '')) d.description = { from: b.description || '', to: l.description || '' };
+    if (Object.keys(d).length) changedLines.push({ component: l.component, change: 'changed', ...d });
+  }
+  for (const b of byComp.values()) changedLines.push({ component: b.component, change: 'removed' });
+  const pick = r => ({ boqTotal: r.boqTotal ?? null, netExclVat: r.pricing?.netExclVat ?? null, grossInclVat: r.pricing?.grossInclVat ?? null });
+  return {
+    revisionNumber: after.revisionNumber,
+    previous: pick(before),
+    current: pick(after),
+    changedLines,
+    overridesKept: (after.boqLines || []).filter(l => l.source === 'override').length,
+    linesWithPriceNotes: (after.boqLines || []).filter(l => l.priceNote).map(l => l.component),
+  };
+}
+
 /** VAT fraction for a project: an explicit override, else the revision's own, else the configured rate for the country. */
 function resolveVat({ project, config, pricingOverrides, revision }) {
   if (typeof pricingOverrides?.vatPct === 'number') return pricingOverrides.vatPct;
@@ -95,7 +145,7 @@ async function computeAndSave(project, engineeringInput, { manualOverrides = {},
   // Deal Engine settings (C1-C4, C7, C9, discount rate) - recorded on the revision with the rule version (C11).
   const engineSettings = dealEngineSettings.engineSettings(config);
   const built = await boqService.buildBoq({
-    category: project.category, engineeringInput, country: project.country, region: project.region, manualOverrides, engineSettings,
+    category: project.category, engineeringInput, country: project.country, region: project.region, manualOverrides: carriedOverrides(revision?.boqLines, manualOverrides), engineSettings,
   });
   // Cable-breaker protection coordination (onGridEngine.js#sizeAcCable, 2026 engineering review):
   // never let a proposal go out with an AC cable that cannot safely carry its own breaker's rated
@@ -125,6 +175,8 @@ async function computeAndSave(project, engineeringInput, { manualOverrides = {},
     priceChangedSinceCalculation: false,
     invalidatedAt: null,
     invalidationReason: null,
+    lastCalculatedAt: new Date(),
+    lastCalculatedBy: userId || null,
     createdBy: revision ? revision.createdBy : userId,
   };
 }
@@ -132,6 +184,20 @@ async function computeAndSave(project, engineeringInput, { manualOverrides = {},
 async function createRevision(projectId, engineeringInput, opts = {}) {
   const project = await CommercialProject.findById(projectId);
   if (!project) throw new ApiError('Deal Engine project not found.', 404);
+
+  // A resubmitted "Calculate & Create Revision" (double submit, or a retry after a timeout whose
+  // first request did succeed) must not add a second revision. The engineering form sends one
+  // requestId per form session; a revision already created with it is returned as it is. Identical
+  // INPUTS alone are not a duplicate: a new revision with the same inputs is a legitimate way to
+  // re-price after a Rates matrix or Finance change.
+  const requestId = typeof opts.requestId === 'string' && opts.requestId.trim() ? opts.requestId.trim().slice(0, 80) : null;
+  if (requestId) {
+    const existing = await CommercialRevision.findOne({ project: project._id, createRequestId: requestId });
+    if (existing) {
+      existing.$locals.duplicateOf = true;
+      return existing;
+    }
+  }
 
   const computed = await computeAndSave(project, engineeringInput, { ...opts, revision: null });
   // R9: checked on the REAL computed result, before anything is persisted - never a separate,
@@ -155,6 +221,7 @@ async function createRevision(projectId, engineeringInput, opts = {}) {
     revisionNumber: previousCount + 1,
     isCurrent: true,
     ...computed,
+    createRequestId: requestId,
     createdBy: opts.userId,
   });
 
@@ -201,9 +268,15 @@ async function recomputeCurrentRevision(revisionId, engineeringInput, opts = {})
   const computed = await computeAndSave(project, engineeringInput || revision.engineeringInput, { ...opts, revision });
   if (opts.salesLimits) assertSalesPricingWithinLimits(opts.roles, computed.pricing, opts.salesLimits);
 
+  const before = revision.toObject();
   await resetSignedStages(revision, 'engineering input or pricing changed after sign-off.', { userId: opts.userId });
   Object.assign(revision, computed);
+  // Mixed paths: Object.assign replaces them, but mark them so an equal-looking object is still written.
+  revision.markModified('engineeringInput');
+  revision.markModified('engineeringResult');
+  revision.markModified('feasibility');
   await revision.save();
+  revision.$locals.recalcSummary = recalcSummary(before, revision.toObject());
 
   project.engineeringApprovalRollup = 'PENDING';
   project.commercialApprovalRollup = 'PENDING';
@@ -273,4 +346,4 @@ async function setBoqLineVendor(revisionId, component, supplierId, { role } = {}
   return revision.populate({ path: 'boqLines.vendor', select: 'code legalName status' });
 }
 
-module.exports = { createRevision, recomputeCurrentRevision, invalidateCurrentRevision, resetSignedStages, computeAndSave, setBoqLineVendor, carryForwardVendors };
+module.exports = { createRevision, recomputeCurrentRevision, invalidateCurrentRevision, resetSignedStages, computeAndSave, setBoqLineVendor, carryForwardVendors, carriedOverrides, recalcSummary };

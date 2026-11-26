@@ -3,6 +3,7 @@ import { ActionIcon, Alert, Button, NumberInput, Select, Table } from "@mantine/
 import { useLanguage } from "@/context/LanguageContext";
 import useDataHandler from "@/hooks/useDataHandler";
 import handleRequest from "@/utils/helpers/handle-request";
+import { notifyRecalculated, newRequestId } from "../../../_shared/recalcNotice";
 import SectionCard from "@/components/ui/section-card";
 import { outlineIcons, solidIcons } from "@/components/icons";
 import { CommercialProject, CommercialRevision, MaterialItem } from "@/types/commercial";
@@ -61,6 +62,9 @@ export default function OffGridForm({ project, revision, onSaved }: { project: C
   const [discountRate, setDiscountRate] = useState<number>(((input.discountRate as number) ?? 0.1) * 100);
 
   const { privateRequest, loading, setLoading, error, setError } = useDataHandler<null>({ initialData: null });
+  // One id per form session: a resubmitted "Calculate & Create Revision" returns the revision it already
+  // created instead of adding a duplicate (backend revisionService.js#createRevision).
+  const [requestId] = useState(newRequestId);
 
   function updateAppliance(i: number, field: keyof Appliance, value: number | string) {
     setAppliances((prev) => prev.map((a, idx) => (idx === i ? { ...a, [field]: value } : a)));
@@ -87,7 +91,9 @@ export default function OffGridForm({ project, revision, onSaved }: { project: C
         batteryReplacementIntervalYears, analysisPeriodYears, discountRate: discountRate / 100,
       };
       const url = revision ? `commercial/revisions/${revision._id}` : `commercial/revisions/project/${project._id}`;
-      await privateRequest({ url, method: revision ? "PATCH" : "POST", data: { engineeringInput }, language });
+      const res = await privateRequest({ url, method: revision ? "PATCH" : "POST", data: revision ? { engineeringInput } : { engineeringInput, requestId }, language });
+      // The revision number saved and what moved (BOQ total, net price) - never a silent result.
+      notifyRecalculated({ language, translate, response: res, currency: project.currency });
       onSaved();
     });
   }

@@ -58,6 +58,8 @@ const boqLineSchema = new Schema(
     // Deal Engine C19/C23: where a Price Book line's price came from (supplierPricing.linePriceFields).
     priceSource: { type: String, enum: ['supplier', 'reference', null], default: null },
     supplierCode: { type: String, default: null },
+    // The supplier's legal name at calculation time (a code alone means nothing on a BOQ export).
+    supplierName: { type: String, default: null },
     supplierStatus: { type: String, default: null },
     priceFlags: { type: [String], default: undefined },
     foreignPrice: { type: Number, default: null },
@@ -66,6 +68,9 @@ const boqLineSchema = new Schema(
     priceCheckedAt: { type: Date, default: null },
     priceValidUntil: { type: Date, default: null },
     priceStaleReason: { type: String, default: null },
+    // Why the price is what it is when that is not obvious: a supplier price not used (Candidate or
+    // Suspended supplier), a foreign quote converted at the upload-day rate. Shown on the BOQ line.
+    priceNote: { type: String, default: null },
     notes: { type: String, default: '' },
   },
   { _id: false }
@@ -157,6 +162,13 @@ const commercialRevisionSchema = new Schema(
     // the engineering form (e.g. the project's region - QA finding B1) and the revision must be
     // recalculated before it can be approved or issued. Stored figures stay visible, flagged stale.
     status: { type: String, enum: ['Calculated', 'Draft'], default: 'Calculated' },
+    // When (and by whom) the engineering/BOQ/pricing were last actually calculated - distinct from
+    // updatedAt, which also moves on a vendor pick or an approval.
+    lastCalculatedAt: { type: Date, default: null },
+    lastCalculatedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    // The engineering form's request id that created this revision - a resubmission of the same
+    // request returns this revision instead of adding a duplicate (revisionService.js#createRevision).
+    createRequestId: { type: String, default: null },
     invalidatedAt: { type: Date, default: null },
     invalidationReason: { type: String, default: null },
 
@@ -191,5 +203,6 @@ const commercialRevisionSchema = new Schema(
 
 commercialRevisionSchema.index({ project: 1, revisionNumber: -1 });
 commercialRevisionSchema.index({ project: 1, isCurrent: 1 });
+commercialRevisionSchema.index({ project: 1, createRequestId: 1 }, { partialFilterExpression: { createRequestId: { $type: 'string' } } });
 
 module.exports = model('CommercialRevision', commercialRevisionSchema);

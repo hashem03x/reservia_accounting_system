@@ -21,16 +21,38 @@ function staleness({ checkedAt, validUntil }, now) {
 }
 
 /**
- * @param {object} item - a CommercialMaterialItem (lean)
- * @param {Map<string,{status:string,code:string}>} suppliersById
- * @returns {{ unitPrice:number, source:'supplier'|'reference', supplierCode:string|null, supplierStatus:string|null,
- *   flags:string[], foreignPrice:number|null, currency:string, fxRate:number|null, checkedAt:Date|null, validUntil:Date|null, stale:boolean, staleReason:string|null }}
+ * A supplier price in EGP. A foreign-currency quote is converted with the CURRENT Pricing
+ * Configuration rate (Deal Engine C23: "Recalculate Pricing" must use the configured exchange rate,
+ * not the one that applied on the upload day). When that rate has since been cleared, the EGP value
+ * converted at upload is kept and the line says so - never a silent zero or a guessed rate.
  */
-function effectivePrice(item, suppliersById, now = new Date()) {
-  const usable = (item.supplierPrices || [])
-    .map(sp => ({ sp, status: suppliersById.get(String(sp.supplier))?.status || null }))
-    .filter(x => x.status === 'Approved' || x.status === 'Conditional')
-    .sort((a, b) => a.sp.unitPrice - b.sp.unitPrice);
+function supplierPriceEgp(sp, fxRates) {
+  const currency = sp.currency || 'EGP';
+  if (currency === 'EGP' || sp.foreignPrice == null) return { egp: sp.unitPrice, fxRate: currency === 'EGP' ? null : sp.fxRate ?? null, note: null };
+  const rate = fxRates && fxRates[currency] > 0 ? fxRates[currency] : null;
+  if (rate) return { egp: Math.round(sp.foreignPrice * rate * 100) / 100, fxRate: rate, note: null };
+  return { egp: sp.unitPrice, fxRate: sp.fxRate ?? null, note: `No ${currency} rate is configured now - converted at the upload-day rate ${sp.fxRate ?? '?'}.` };
+}
+
+/**
+ * @param {object} item - a CommercialMaterialItem (lean)
+ * @param {Map<string,{status:string,code:string,legalName?:string}>} suppliersById
+ * @param {Date} [now]
+ * @param {{USD?:number,EUR?:number,CNY?:number}} [fxRates] - EGP per unit, from the active Pricing Configuration
+ * @returns {{ unitPrice:number, source:'supplier'|'reference', supplierCode:string|null, supplierName:string|null, supplierStatus:string|null,
+ *   flags:string[], foreignPrice:number|null, currency:string, fxRate:number|null, checkedAt:Date|null, validUntil:Date|null, stale:boolean, staleReason:string|null, note:string|null }}
+ */
+function effectivePrice(item, suppliersById, now = new Date(), fxRates = null) {
+  const all = (item.supplierPrices || []).map(sp => {
+    const sup = suppliersById.get(String(sp.supplier)) || null;
+    return { sp, status: sup?.status || null, name: sup?.legalName || null, ...supplierPriceEgp(sp, fxRates) };
+  });
+  const usable = all.filter(x => x.status === 'Approved' || x.status === 'Conditional').sort((a, b) => a.egp - b.egp);
+  // Prices from a supplier that may not price (Candidate, Suspended, Removed) are kept on the item but
+  // never used - said on the line, so "I uploaded a price and nothing changed" has a visible answer.
+  const notUsed = all
+    .filter(x => !(x.status === 'Approved' || x.status === 'Conditional'))
+    .map(x => `${x.sp.supplierCode}${x.name ? ` (${x.name})` : ''} quoted ${x.egp} EGP but is ${x.status || 'not on the supplier list'} - only Approved or Conditional suppliers price the BOQ`);
   const approved = usable.filter(x => x.status === 'Approved');
   const pick = approved[0] || usable[0] || null;
   if (pick) {
@@ -39,18 +61,20 @@ function effectivePrice(item, suppliersById, now = new Date()) {
     if (pick.status === 'Conditional') flags.push('CONDITIONAL SUPPLIER');
     if (st.stale) flags.push('RECHECK PRICE');
     return {
-      unitPrice: pick.sp.unitPrice,
+      unitPrice: pick.egp,
       source: 'supplier',
       supplierCode: pick.sp.supplierCode,
+      supplierName: pick.name,
       supplierStatus: pick.status,
       flags,
-      foreignPrice: pick.sp.currency !== 'EGP' ? pick.sp.foreignPrice : null,
+      foreignPrice: pick.sp.currency && pick.sp.currency !== 'EGP' ? pick.sp.foreignPrice : null,
       currency: pick.sp.currency || 'EGP',
-      fxRate: pick.sp.fxRate ?? null,
+      fxRate: pick.fxRate,
       checkedAt: pick.sp.checkedAt || null,
       validUntil: pick.sp.validUntil || null,
       stale: st.stale,
       staleReason: st.reason,
+      note: [pick.note, ...notUsed].filter(Boolean).join('; ') || null,
     };
   }
   const checkedAt = item.referenceCheckedAt || item.effectiveDate || null;
@@ -59,6 +83,7 @@ function effectivePrice(item, suppliersById, now = new Date()) {
     unitPrice: item.unitPrice,
     source: 'reference',
     supplierCode: null,
+    supplierName: null,
     supplierStatus: null,
     flags: st.stale ? ['RECHECK PRICE'] : [],
     foreignPrice: null,
@@ -68,6 +93,7 @@ function effectivePrice(item, suppliersById, now = new Date()) {
     validUntil: item.referenceValidUntil || null,
     stale: st.stale,
     staleReason: st.reason,
+    note: notUsed.join('; ') || null,
   };
 }
 
@@ -102,6 +128,7 @@ function linePriceFields(info, key) {
     materialItemKey: key || null,
     priceSource: info.source,
     supplierCode: info.supplierCode,
+    supplierName: info.supplierName || null,
     supplierStatus: info.supplierStatus,
     priceFlags: info.flags,
     foreignPrice: info.foreignPrice,
@@ -110,7 +137,8 @@ function linePriceFields(info, key) {
     priceCheckedAt: info.checkedAt,
     priceValidUntil: info.validUntil,
     priceStaleReason: info.staleReason,
+    priceNote: info.note || null,
   };
 }
 
-module.exports = { effectivePrice, releaseBlockers, linePriceFields, staleness, STALE_DAYS };
+module.exports = { effectivePrice, supplierPriceEgp, releaseBlockers, linePriceFields, staleness, STALE_DAYS };

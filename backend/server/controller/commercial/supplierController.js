@@ -46,9 +46,16 @@ exports.createVendor = asyncHandler(async (req, res) => {
   res.status(201).json(apiResponse('ERP vendor created and linked', true, await supplierService.createVendorFromSupplier(req.params.id, req.body || {}, ctx(req))));
 });
 
+// Only Approved (or Conditional) suppliers price a BOQ (supplierPricing.effectivePrice). A Candidate's
+// upload is still stored - but saying so up front is the difference between "recalculate changed
+// nothing" and a clear next step.
+const notPricingNote = upload => (uploads.pricesBoq(upload.supplierStatus)
+  ? ''
+  : ` Note: ${upload.supplierCode}${upload.supplierName ? ` (${upload.supplierName})` : ''} is ${upload.supplierStatus || 'not approved'} - its prices are stored but the Deal Engine prices only from Approved or Conditional suppliers. Approve the supplier for these prices to be used in calculations.`);
+
 exports.previewPriceList = asyncHandler(async (req, res) => {
   const upload = await uploads.previewUpload(req.params.id, { file: req.file, mapping: req.body?.mapping, validityDate: req.body?.validityDate }, ctx(req));
-  res.status(201).json(apiResponse('Price list read - review the preview, then confirm', true, upload));
+  res.status(201).json(apiResponse(`Price list read - review the preview, then confirm.${notPricingNote(upload)}`, true, upload));
 });
 exports.listPriceLists = asyncHandler(async (req, res) => {
   res.status(200).json(apiResponse('Price list uploads', true, await uploads.listUploads(req.params.id)));
@@ -58,7 +65,9 @@ exports.getPriceList = asyncHandler(async (req, res) => {
 });
 exports.confirmPriceList = asyncHandler(async (req, res) => {
   const upload = await uploads.confirmUpload(req.params.uploadId, { createNew: req.body?.createNew || [] }, ctx(req));
-  res.status(200).json(apiResponse(`Confirmed: ${upload.changes.length} price(s) written, ${upload.flaggedRevisions} open revision(s) flagged`, true, upload));
+  const created = upload.changes.filter(c => c.created).length;
+  const parts = [`Confirmed: ${upload.changes.length} price(s) imported for ${upload.supplierName || upload.supplierCode}`, created ? `(${created} new Price Book item(s))` : '', `- ${upload.flaggedRevisions} open revision(s) flagged to recalculate.`];
+  res.status(200).json(apiResponse(`${parts.filter(Boolean).join(' ')}${notPricingNote(upload)}`, true, upload));
 });
 exports.rollbackPriceList = asyncHandler(async (req, res) => {
   const upload = await uploads.rollbackUpload(req.params.uploadId, ctx(req));

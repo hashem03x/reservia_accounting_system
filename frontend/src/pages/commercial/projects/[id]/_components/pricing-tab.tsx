@@ -11,6 +11,7 @@ import { CommercialProject, CommercialRevision, CommercialRole, PricingLevers } 
 import PctInput, { toPct } from "../../../_shared/PctInput";
 import { perKwpBasis } from "../../../_shared/ruleVersion";
 import { projectTabAccess, canEdit, canEditFully } from "../../../_shared/dealEnginePermissions";
+import { notifyRecalculated } from "../../../_shared/recalcNotice";
 
 // R2/R9/R11: the five policy levers (read-only to Sales; an S&C/MD deal override needs a reason).
 // Category addition and discount are Sales' own fields - never part of this set.
@@ -58,8 +59,9 @@ export default function PricingTab({ project, revision, onChanged }: { project: 
 
   function save(body: Record<string, unknown>) {
     handleRequest(language, setLoading, setError, async () => {
-      await privateRequest({ url: `commercial/revisions/${revision._id}`, method: "PATCH", data: body, language });
+      const res = await privateRequest({ url: `commercial/revisions/${revision._id}`, method: "PATCH", data: body, language });
       setOverrideReason("");
+      notifyRecalculated({ language, translate, response: res, currency: cur });
       onChanged();
     });
   }

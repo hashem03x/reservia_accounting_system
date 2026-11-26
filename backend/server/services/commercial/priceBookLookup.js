@@ -8,12 +8,21 @@ const { missingSpecs } = require('../../utils/commercial/engineSpecs');
 // defaulting to 0 (the project's explicit rule - "never silently replace a missing material price
 // with zero or produce a misleading quotation").
 
-/** Current supplier statuses (Deal Engine C19) - one small read per lookup. */
+/** Current supplier statuses and names (Deal Engine C19) - one small read per lookup. */
 async function supplierStatuses() {
   // eslint-disable-next-line global-require
   const Supplier = require('../../models/commercial/supplierModel');
-  const rows = await Supplier.find({}).select('_id status code').lean();
+  const rows = await Supplier.find({}).select('_id status code legalName').lean();
   return new Map(rows.map(r => [String(r._id), r]));
+}
+
+/** The active Pricing Configuration's exchange rates (EGP per USD/EUR/CNY), used to convert foreign supplier quotes at calculation time. */
+async function currentFxRates() {
+  // eslint-disable-next-line global-require
+  const pricingConfigService = require('./pricingConfigService');
+  // eslint-disable-next-line global-require
+  const { engineSettings } = require('./dealEngineSettings');
+  return engineSettings(await pricingConfigService.getActiveConfig()).fxRatesEgp || {};
 }
 
 /**
@@ -22,8 +31,8 @@ async function supplierStatuses() {
  * uses, `priceInfo` says where it came from. PV modules are priced per watt in the engine, so their
  * per-watt price follows a supplier's per-piece price.
  */
-function withEffectivePrice(item, suppliers, now = new Date()) {
-  const info = effectivePrice(item, suppliers, now);
+function withEffectivePrice(item, suppliers, now = new Date(), fxRates = null) {
+  const info = effectivePrice(item, suppliers, now, fxRates);
   const out = { ...item, unitPrice: info.unitPrice, priceInfo: info };
   if (info.source === 'supplier' && item.attrs && item.attrs.pmaxW > 0 && item.attrs.pricePerWatt != null) {
     out.attrs = { ...item.attrs, pricePerWatt: info.unitPrice / item.attrs.pmaxW };
@@ -32,15 +41,34 @@ function withEffectivePrice(item, suppliers, now = new Date()) {
 }
 
 async function getItemsByCategory(category) {
-  const [items, suppliers] = await Promise.all([MaterialItem.find({ category, archived: false, status: { $ne: 'PLACEHOLDER' } }).lean(), supplierStatuses()]);
+  const [items, suppliers, fx] = await Promise.all([MaterialItem.find({ category, archived: false, status: { $ne: 'PLACEHOLDER' } }).lean(), supplierStatuses(), currentFxRates()]);
   const now = new Date();
-  return items.map(it => withEffectivePrice(it, suppliers, now));
+  return items.map(it => withEffectivePrice(it, suppliers, now, fx));
 }
 
 async function getItemByKey(key) {
   const item = await MaterialItem.findOne({ key, archived: false }).lean();
   if (!item) throw new ApiError(`Price Book item not found: "${key}"`, 400);
-  return withEffectivePrice(item, await supplierStatuses());
+  const [suppliers, fx] = await Promise.all([supplierStatuses(), currentFxRates()]);
+  return withEffectivePrice(item, suppliers, new Date(), fx);
+}
+
+/**
+ * Agriculture Pumping: the pump and motor are SELECTED from the engineering reference curves
+ * (catalogData/pumpingCatalog.js - flow/head/casing tables, not a priced catalog) but PRICED from the
+ * live Price Book item of the same model, so supplier price lists and Materials edits reach the BOQ.
+ * The seeded key is tried first (keys never change), then a unique model match in the given
+ * categories. Returns null when the Price Book has no single item for that model.
+ */
+async function findPricedItem({ key, categories, model }) {
+  let item = key ? await MaterialItem.findOne({ key, archived: false }).lean() : null;
+  if (!item) {
+    const found = await MaterialItem.find({ category: { $in: categories }, model, archived: false }).limit(2).lean();
+    item = found.length === 1 ? found[0] : null;
+  }
+  if (!item) return null;
+  const [suppliers, fx] = await Promise.all([supplierStatuses(), currentFxRates()]);
+  return withEffectivePrice(item, suppliers, new Date(), fx);
 }
 
 /**
@@ -91,6 +119,6 @@ function toAcDistributionBoardShape(items) {
 }
 
 module.exports = {
-  getItemsByCategory, getItemByKey, withEffectivePrice, supplierStatuses, resolvePvModule,
+  getItemsByCategory, getItemByKey, findPricedItem, withEffectivePrice, supplierStatuses, currentFxRates, resolvePvModule,
   toPvModuleShape, toGridInverterShape, toDcCableShape, toAcBreakerShape, toAcDistributionBoardShape,
 };
